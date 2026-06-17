@@ -47,6 +47,9 @@ jobpilot:
     daily-limit: ${JOBPILOT_MAIL_DAILY_LIMIT:25}
   digest:
     min-score: ${JOBPILOT_DIGEST_MIN_SCORE:60}
+  schedule:
+    daily-cron: ${JOBPILOT_DAILY_CRON:-}
+    zone: ${JOBPILOT_DAILY_ZONE:Asia/Kolkata}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:
@@ -62,7 +65,7 @@ jobpilot:
     model: ${JOBPILOT_OLLAMA_MODEL:llama3.1}
   gemini:
     api-key: ${JOBPILOT_GEMINI_API_KEY:}
-    model: ${JOBPILOT_GEMINI_MODEL:gemini-1.5-flash}
+    model: ${JOBPILOT_GEMINI_MODEL:gemini-2.5-flash}
   adzuna:
     app-id: ${JOBPILOT_ADZUNA_APP_ID:}
     app-key: ${JOBPILOT_ADZUNA_APP_KEY:}

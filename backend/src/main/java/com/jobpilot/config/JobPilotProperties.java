@@ -18,6 +18,14 @@ public class JobPilotProperties {
 
     private Mail mail = new Mail();
     private Digest digest = new Digest();
+    private Schedule schedule = new Schedule();
+
+    @Data
+    public static class Schedule {
+        /** Spring cron for the in-app daily run; "-" disables it. */
+        private String dailyCron = "-";
+        private String zone = "Asia/Kolkata";
+    }
     private CoverLetter coverletter = new CoverLetter();
     private Ai ai = new Ai();
     private Groq groq = new Groq();

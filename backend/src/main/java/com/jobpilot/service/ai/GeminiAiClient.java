@@ -37,9 +37,15 @@ public class GeminiAiClient implements AiClient {
         String key = props.getGemini().getApiKey();
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                 + props.getGemini().getModel() + ":generateContent?key=" + key;
+        // Disable "thinking" so the token budget isn't spent on hidden reasoning
+        // (2.5-flash otherwise truncates the visible answer). Cap output tokens.
         Map<String, Object> body = Map.of(
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", system))),
-                "contents", List.of(Map.of("parts", List.of(Map.of("text", user)))));
+                "contents", List.of(Map.of("parts", List.of(Map.of("text", user)))),
+                "generationConfig", Map.of(
+                        "maxOutputTokens", 1200,
+                        "temperature", 0.6,
+                        "thinkingConfig", Map.of("thinkingBudget", 0)));
         JsonNode resp = http.post().uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
