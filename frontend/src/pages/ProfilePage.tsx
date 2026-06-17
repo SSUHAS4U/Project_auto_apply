@@ -21,6 +21,7 @@ export function ProfilePage() {
   const [prefLocText, setPrefLocText] = useState('');
   const [langText, setLangText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
     api.profile().then((prof) => {
@@ -53,8 +54,6 @@ export function ProfilePage() {
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setSaving(false); }
   };
-
-  const [analyzing, setAnalyzing] = useState(false);
 
   const onResume = async (file?: File) => {
     if (!file) return;
