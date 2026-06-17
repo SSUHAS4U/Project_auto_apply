@@ -1,5 +1,5 @@
 import type {
-  Application, ApplicationEvent, Job, Notification, Page, Profile, SavedJob,
+  Application, ApplicationEvent, AssistantJob, Job, Notification, Page, Profile, SavedJob,
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
@@ -71,6 +71,30 @@ export const api = {
     fd.append('file', file);
     return req<{ filename: string; stored: boolean }>('/api/profile/resume', { method: 'POST', body: fd });
   },
+  analyzeResume: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return req<Profile>('/api/profile/resume/analyze', { method: 'POST', body: fd });
+  },
+
+  aiStatus: () => req<{ enabled: boolean; provider: string; remainingToday: number }>('/api/ai/status'),
+  aiSuggest: (field: string, text: string, context?: string) =>
+    req<{ suggestion: string }>('/api/ai/suggest', {
+      method: 'POST', body: JSON.stringify({ field, text, context: context ?? '' }),
+    }),
+  assistantChat: (messages: { role: string; content: string }[]) =>
+    req<{ reply: string; jobs: AssistantJob[] }>('/api/assistant/chat', {
+      method: 'POST', body: JSON.stringify({ messages }),
+    }),
+
+  composeGenerate: (role: string, company: string, jobDetails: string) =>
+    req<{ coverLetter: string; coldEmail: string }>('/api/compose/generate', {
+      method: 'POST', body: JSON.stringify({ role, company, jobDetails }),
+    }),
+  composeSend: (body: { to: string; subject?: string; coldEmail: string; coverLetter: string; attachResume: boolean }) =>
+    req<{ sentTo: string; subject: string; resumeAttached: boolean }>('/api/compose/send', {
+      method: 'POST', body: JSON.stringify(body),
+    }),
 
   previewCoverLetter: (jobId: string) =>
     req<{ coverLetter: string }>('/api/cover-letter/preview', {

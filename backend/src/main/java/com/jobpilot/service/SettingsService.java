@@ -17,6 +17,22 @@ public class SettingsService {
         this.repo = repo;
     }
 
+    public Optional<String> get(String key) {
+        return repo.findById(key).map(AppSetting::getValue);
+    }
+
+    @Transactional
+    public void put(String key, String value) {
+        AppSetting s = repo.findById(key).orElseGet(() -> {
+            AppSetting n = new AppSetting();
+            n.setKey(key);
+            return n;
+        });
+        s.setValue(value);
+        s.setUpdatedAt(Instant.now());
+        repo.save(s);
+    }
+
     public Optional<Instant> getInstant(String key) {
         return repo.findById(key)
                 .map(AppSetting::getValue)

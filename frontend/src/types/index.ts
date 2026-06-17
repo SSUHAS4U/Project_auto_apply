@@ -121,6 +121,16 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface AssistantJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  applyType: ApplyType;
+  matchScore: number;
+  url: string;
+}
+
 export interface Page<T> {
   items: T[];
   page: number;

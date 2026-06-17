@@ -4,6 +4,8 @@ import { api } from '../api/client';
 
 const NAV = [
   { to: '/', label: 'Jobs', ico: '🧭', end: true },
+  { to: '/assistant', label: 'Assistant', ico: '🤖' },
+  { to: '/compose', label: 'Compose & send', ico: '✍️' },
   { to: '/applications', label: 'Applications', ico: '📋' },
   { to: '/saved', label: 'Saved', ico: '🔖' },
   { to: '/notifications', label: 'Notifications', ico: '🔔', badge: true },

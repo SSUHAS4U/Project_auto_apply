@@ -10,6 +10,8 @@ import { SavedJobsPage } from './pages/SavedJobsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ComposePage } from './pages/ComposePage';
+import { AssistantPage } from './pages/AssistantPage';
 
 const router = createBrowserRouter([
   {
@@ -17,6 +19,8 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { index: true, element: <JobsPage /> },
+      { path: 'assistant', element: <AssistantPage /> },
+      { path: 'compose', element: <ComposePage /> },
       { path: 'applications', element: <ApplicationsPage /> },
       { path: 'saved', element: <SavedJobsPage /> },
       { path: 'notifications', element: <NotificationsPage /> },

@@ -54,10 +54,35 @@ export function ProfilePage() {
     finally { setSaving(false); }
   };
 
+  const [analyzing, setAnalyzing] = useState(false);
+
   const onResume = async (file?: File) => {
     if (!file) return;
     try { const r = await api.uploadResume(file); set({ resumeFilename: r.filename }); toast('Resume uploaded', 'success'); }
     catch (e) { toast((e as Error).message, 'error'); }
+  };
+
+  const onAnalyze = async (file?: File) => {
+    if (!file) return;
+    setAnalyzing(true);
+    try {
+      const saved = await api.analyzeResume(file);
+      setP(saved);
+      setSkillsText((saved.skills ?? []).join(', '));
+      setPrefLocText((saved.preferredLocations ?? []).join(', '));
+      setLangText((saved.languages ?? []).join(', '));
+      toast('Resume analyzed — fields auto-filled. Review & save.', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setAnalyzing(false); }
+  };
+
+  const suggest = async (field: string, current: string, apply: (v: string) => void) => {
+    try {
+      const ctx = `Name: ${p.fullName}; Headline: ${p.headline ?? ''}; Skills: ${(skillsText)}`;
+      const r = await api.aiSuggest(field, current, ctx);
+      apply(r.suggestion);
+      toast('Suggestion applied — edit as needed', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); }
   };
 
   return (
@@ -150,7 +175,12 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="📝" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
-            <Field label="Professional summary" full><textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} /></Field>
+            <label className="field full">
+              <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
+                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}>✨ AI suggest</button>
+              </div>
+              <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
+            </label>
             <Field label="Cover-letter style/notes (optional)" full><textarea className="input" rows={3} value={p.coverLetterTemplate ?? ''} onChange={(e) => set({ coverLetterTemplate: e.target.value })} placeholder="Tone, things to emphasize, custom intro…" /></Field>
           </Section>
         </div>
@@ -227,8 +257,19 @@ export function ProfilePage() {
           <Section ico="📄" title="Resume" sub="attached to email-apply jobs">
             <div className="row">
               <span className="muted">{p.resumeFilename ? `📄 ${p.resumeFilename}` : 'No resume uploaded'}</span>
-              <label className="btn btn-sm">Upload
+              <label className="btn btn-sm">Upload only
                 <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={(e) => onResume(e.target.files?.[0])} />
+              </label>
+            </div>
+            <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>✨ Smart auto-fill</div>
+              <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>
+                Upload a PDF/DOCX resume and AI extracts your name, contact, skills, experience &
+                education — then fills and saves the profile. You review and tweak.
+              </div>
+              <label className="btn btn-primary btn-sm">
+                {analyzing ? <span className="spinner" /> : '⚡'} Analyze resume & auto-fill
+                <input type="file" accept=".pdf,.docx" style={{ display: 'none' }} disabled={analyzing} onChange={(e) => onAnalyze(e.target.files?.[0])} />
               </label>
             </div>
           </Section>

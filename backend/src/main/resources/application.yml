@@ -49,6 +49,14 @@ jobpilot:
     min-score: ${JOBPILOT_DIGEST_MIN_SCORE:60}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
+  ai:
+    provider: ${JOBPILOT_AI_PROVIDER:template}
+    daily-limit: ${JOBPILOT_AI_DAILY_LIMIT:80}
+  groq:
+    api-key: ${JOBPILOT_GROQ_API_KEY:}
+    model: ${JOBPILOT_GROQ_MODEL:llama-3.3-70b-versatile}
+    fast-model: ${JOBPILOT_GROQ_FAST_MODEL:llama-3.1-8b-instant}
+    url: ${JOBPILOT_GROQ_URL:https://api.groq.com/openai/v1/chat/completions}
   ollama:
     url: ${JOBPILOT_OLLAMA_URL:http://localhost:11434}
     model: ${JOBPILOT_OLLAMA_MODEL:llama3.1}

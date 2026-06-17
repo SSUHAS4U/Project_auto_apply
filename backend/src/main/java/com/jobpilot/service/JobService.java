@@ -27,6 +27,26 @@ public class JobService {
         return repo.findById(id).orElseThrow(() -> new NotFoundException("job not found: " + id));
     }
 
+    /** Free-text search over title/company/description+location for the assistant. */
+    public List<Job> keywordSearch(String text, int limit) {
+        String[] words = text == null ? new String[0]
+                : text.toLowerCase().split("[^a-z0-9+#.]+");
+        Specification<Job> spec = (root, query, cb) -> {
+            List<Predicate> ors = new ArrayList<>();
+            for (String w : words) {
+                if (w.length() < 3) continue;
+                String like = "%" + w + "%";
+                ors.add(cb.like(cb.lower(root.get("title")), like));
+                ors.add(cb.like(cb.lower(root.get("description")), like));
+                ors.add(cb.like(cb.lower(root.get("company")), like));
+                ors.add(cb.like(cb.lower(root.get("location")), like));
+            }
+            return ors.isEmpty() ? cb.conjunction() : cb.or(ors.toArray(new Predicate[0]));
+        };
+        Sort sort = Sort.by(Sort.Order.desc("matchScore").nullsLast(), Sort.Order.desc("postedAt"));
+        return repo.findAll(spec, PageRequest.of(0, Math.max(1, limit), sort)).getContent();
+    }
+
     public Page<Job> search(String role, String location, Integer minScore,
                             String applyType, Instant since, int page, int size) {
         Specification<Job> spec = (root, query, cb) -> {

@@ -19,10 +19,28 @@ public class JobPilotProperties {
     private Mail mail = new Mail();
     private Digest digest = new Digest();
     private CoverLetter coverletter = new CoverLetter();
+    private Ai ai = new Ai();
+    private Groq groq = new Groq();
     private Ollama ollama = new Ollama();
     private Gemini gemini = new Gemini();
     private Adzuna adzuna = new Adzuna();
     private Jooble jooble = new Jooble();
+
+    @Data
+    public static class Ai {
+        /** groq | ollama | gemini | template */
+        private String provider = "template";
+        /** Hard cap on AI completions per rolling day (cost guardrail). */
+        private int dailyLimit = 80;
+    }
+
+    @Data
+    public static class Groq {
+        private String apiKey = "";
+        private String model = "llama-3.3-70b-versatile";
+        private String fastModel = "llama-3.1-8b-instant";
+        private String url = "https://api.groq.com/openai/v1/chat/completions";
+    }
 
     @Data
     public static class Mail {

@@ -1,46 +1,43 @@
 package com.jobpilot.service.cover;
 
-import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.domain.Job;
 import com.jobpilot.domain.Profile;
+import com.jobpilot.service.ai.AiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
-/** Selects the configured provider; falls back to the template on any failure. */
+/**
+ * Generates a tailored cover letter via the configured AI provider, falling back
+ * to the deterministic template if AI is unavailable or fails.
+ */
 @Service
 public class CoverLetterService {
 
     private static final Logger log = LoggerFactory.getLogger(CoverLetterService.class);
 
-    private final Map<String, CoverLetterProvider> providers;
-    private final TemplateCoverLetterProvider template;
-    private final JobPilotProperties props;
+    private static final String SYSTEM = """
+            You are a concise, professional career writer. You write authentic, specific
+            cover letters in first person. Never invent facts not implied by the candidate's
+            details. No placeholders like [Your Name]; sign off with the real name. Output
+            ONLY the letter body — no subject line, no preamble.""";
 
-    public CoverLetterService(List<CoverLetterProvider> providerList,
-                              TemplateCoverLetterProvider template,
-                              JobPilotProperties props) {
-        this.providers = providerList.stream()
-                .collect(Collectors.toMap(CoverLetterProvider::name, Function.identity()));
+    private final AiService ai;
+    private final TemplateCoverLetterProvider template;
+
+    public CoverLetterService(AiService ai, TemplateCoverLetterProvider template) {
+        this.ai = ai;
         this.template = template;
-        this.props = props;
     }
 
     public String generate(Job job, Profile profile) {
-        String configured = props.getCoverletter().getProvider();
-        CoverLetterProvider p = providers.getOrDefault(configured, template);
+        if (!ai.isEnabled()) return template.generate(job, profile);
         try {
-            String letter = p.generate(job, profile);
+            String letter = ai.complete(SYSTEM, CoverLetterPrompt.build(job, profile), false);
             if (letter == null || letter.isBlank()) throw new IllegalStateException("empty letter");
             return letter;
         } catch (Exception e) {
-            log.warn("Cover-letter provider '{}' failed ({}); using template fallback",
-                    configured, e.getMessage());
+            log.warn("AI cover letter failed ({}); using template", e.getMessage());
             return template.generate(job, profile);
         }
     }
