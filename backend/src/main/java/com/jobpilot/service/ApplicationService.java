@@ -41,6 +41,15 @@ public class ApplicationService {
                 : appRepo.findByStatusOrderByUpdatedAtDesc(status);
     }
 
+    /** Applications enriched with their linked job summary, for the dashboard. */
+    public List<com.jobpilot.web.dto.ApplicationView> listDetailed(String status) {
+        return list(status).stream().map(a -> {
+            com.jobpilot.domain.Job job = a.getJobId() == null ? null
+                    : jobRepo.findById(a.getJobId()).orElse(null);
+            return com.jobpilot.web.dto.ApplicationView.of(a, job);
+        }).toList();
+    }
+
     public Application get(UUID id) {
         return appRepo.findById(id).orElseThrow(() -> new NotFoundException("application not found: " + id));
     }

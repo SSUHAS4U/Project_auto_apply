@@ -12,6 +12,7 @@ export function JobsPage() {
   const [ingesting, setIngesting] = useState(false);
   const [filters, setFilters] = useState<JobFilters>({ page: 0, size: 25 });
   const [applyJob, setApplyJob] = useState<Job | null>(null);
+  const [detailJob, setDetailJob] = useState<Job | null>(null);
 
   const load = (f: JobFilters) => {
     setLoading(true);
@@ -98,7 +99,7 @@ export function JobsPage() {
             {jobs.map((j) => (
               <tr key={j.id}>
                 <td>
-                  <div className="job-title">{j.title}</div>
+                  <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setDetailJob(j)}>{j.title}</div>
                   <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
                 </td>
                 <td className="muted">{j.location ?? (j.remote ? 'Remote' : '—')}</td>
@@ -133,7 +134,39 @@ export function JobsPage() {
       </div>
 
       {applyJob && <EmailApplyModal job={applyJob} onClose={() => setApplyJob(null)} />}
+      {detailJob && (
+        <JobDetailModal
+          job={detailJob}
+          onClose={() => setDetailJob(null)}
+          onTrack={() => track(detailJob)}
+          onApply={() => { setDetailJob(null); setApplyJob(detailJob); }}
+        />
+      )}
     </>
+  );
+}
+
+function JobDetailModal({ job, onClose, onTrack, onApply }: {
+  job: Job; onClose: () => void; onTrack: () => void; onApply: () => void;
+}) {
+  return (
+    <Modal title={job.title} onClose={onClose} wide
+      footer={<>
+        <a className="btn btn-ghost" href={job.url} target="_blank" rel="noreferrer">Open posting ↗</a>
+        <button className="btn" onClick={onTrack}>Track</button>
+        {job.applyType === 'email' && <button className="btn btn-primary" onClick={onApply}>✉ Email apply</button>}
+      </>}>
+      <dl className="detail-grid">
+        <dt>Company</dt><dd>{job.company ?? '—'}</dd>
+        <dt>Location</dt><dd>{job.location ?? (job.remote ? 'Remote' : '—')}</dd>
+        <dt>Source</dt><dd>{job.source}</dd>
+        <dt>Apply</dt><dd><ApplyBadge type={job.applyType} />{job.applyEmail ? ` · ${job.applyEmail}` : ''}</dd>
+        <dt>Match score</dt><dd><ScoreBar score={job.matchScore} /></dd>
+        {job.salaryText && <><dt>Salary</dt><dd>{job.salaryText}</dd></>}
+        <dt>Posted</dt><dd>{fmtDate(job.postedAt ?? job.fetchedAt)}</dd>
+      </dl>
+      {job.description && <div className="job-desc">{job.description}</div>}
+    </Modal>
   );
 }
 

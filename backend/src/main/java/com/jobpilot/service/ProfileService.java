@@ -24,17 +24,47 @@ public class ProfileService {
     }
 
     @Transactional
-    public Profile save(Profile incoming) {
+    public Profile save(Profile in) {
         Profile p = repo.findFirstByOrderByUpdatedAtAsc().orElseGet(Profile::new);
-        p.setFullName(incoming.getFullName());
-        p.setEmail(incoming.getEmail());
-        p.setPhone(incoming.getPhone());
-        p.setLocation(incoming.getLocation());
-        if (incoming.getLinks() != null) p.setLinks(incoming.getLinks());
-        if (incoming.getSkills() != null) p.setSkills(incoming.getSkills());
-        p.setSeniority(incoming.getSeniority());
-        if (incoming.getExperience() != null) p.setExperience(incoming.getExperience());
-        if (incoming.getFieldMap() != null) p.setFieldMap(incoming.getFieldMap());
+        // Personal
+        p.setFullName(in.getFullName());
+        p.setFirstName(in.getFirstName());
+        p.setLastName(in.getLastName());
+        p.setEmail(in.getEmail());
+        p.setPhone(in.getPhone());
+        p.setHeadline(in.getHeadline());
+        p.setSummary(in.getSummary());
+        p.setLocation(in.getLocation());
+        p.setAddress(in.getAddress());
+        p.setCity(in.getCity());
+        p.setState(in.getState());
+        p.setCountry(in.getCountry());
+        p.setPostalCode(in.getPostalCode());
+        p.setDateOfBirth(in.getDateOfBirth());
+        p.setGender(in.getGender());
+        p.setNationality(in.getNationality());
+        // Professional
+        p.setSeniority(in.getSeniority());
+        p.setCurrentTitle(in.getCurrentTitle());
+        p.setCurrentCompany(in.getCurrentCompany());
+        p.setYearsExperience(in.getYearsExperience());
+        p.setCurrentCtc(in.getCurrentCtc());
+        p.setExpectedCtc(in.getExpectedCtc());
+        p.setNoticePeriod(in.getNoticePeriod());
+        p.setAvailableFrom(in.getAvailableFrom());
+        p.setWorkAuthorization(in.getWorkAuthorization());
+        p.setRequiresSponsorship(in.getRequiresSponsorship());
+        p.setWillingToRelocate(in.getWillingToRelocate());
+        if (in.getPreferredLocations() != null) p.setPreferredLocations(in.getPreferredLocations());
+        if (in.getLanguages() != null) p.setLanguages(in.getLanguages());
+        if (in.getSkills() != null) p.setSkills(in.getSkills());
+        // Structured
+        if (in.getExperience() != null) p.setExperience(in.getExperience());
+        if (in.getEducation() != null) p.setEducation(in.getEducation());
+        if (in.getCertifications() != null) p.setCertifications(in.getCertifications());
+        if (in.getLinks() != null) p.setLinks(in.getLinks());
+        if (in.getFieldMap() != null) p.setFieldMap(in.getFieldMap());
+        p.setCoverLetterTemplate(in.getCoverLetterTemplate());
         p.setUpdatedAt(Instant.now());
         return repo.save(p);
     }

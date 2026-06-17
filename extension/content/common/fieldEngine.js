@@ -4,21 +4,48 @@
   if (window.JobPilot) return;
 
   // Synonym dictionary: profile key -> label keywords (normalized, lowercased).
+  // Order matters — more specific keys are matched before generic ones.
   const SYNONYMS = {
-    full_name: ['full name', 'your name', 'name', 'candidate name', 'applicant name'],
     first_name: ['first name', 'given name', 'forename'],
     last_name: ['last name', 'surname', 'family name'],
-    email: ['email', 'e-mail', 'email address', 'mail'],
-    phone: ['phone', 'mobile', 'contact number', 'phone number', 'telephone', 'cell'],
-    location: ['location', 'city', 'current location', 'address', 'based in'],
-    linkedin: ['linkedin', 'linkedin profile', 'linkedin url'],
-    github: ['github', 'github profile', 'github url'],
-    portfolio: ['portfolio', 'website', 'personal site', 'portfolio url'],
+    full_name: ['full name', 'your name', 'candidate name', 'applicant name', 'name'],
+    email: ['email', 'e-mail', 'email address'],
+    phone: ['phone', 'mobile', 'contact number', 'phone number', 'telephone', 'cell', 'whatsapp'],
+    linkedin: ['linkedin'],
+    github: ['github'],
+    portfolio: ['portfolio', 'personal website', 'personal site', 'website url', 'website'],
+    current_title: ['current title', 'current role', 'current designation', 'job title', 'present role'],
+    current_company: ['current company', 'current employer', 'present company', 'organization', 'employer'],
+    years_experience: ['years of experience', 'total experience', 'work experience', 'experience in years', 'years exp'],
+    current_ctc: ['current ctc', 'current salary', 'current compensation'],
+    expected_ctc: ['expected ctc', 'expected salary', 'salary expectation', 'expected compensation', 'desired salary'],
+    notice_period: ['notice period', 'notice', 'availability to join'],
+    available_from: ['available from', 'start date', 'available to start', 'earliest start', 'joining date'],
+    work_authorization: ['work authorization', 'work permit', 'authorized to work', 'visa status', 'work status'],
+    requires_sponsorship: ['sponsorship', 'require sponsorship', 'need sponsorship', 'visa sponsorship'],
+    willing_to_relocate: ['relocate', 'willing to relocate', 'open to relocation'],
+    city: ['city'],
+    state: ['state', 'province'],
+    country: ['country'],
+    postal_code: ['postal code', 'zip code', 'zip', 'pincode', 'pin code'],
+    address: ['address', 'street address', 'mailing address'],
+    location: ['location', 'current location', 'based in'],
+    nationality: ['nationality'],
+    gender: ['gender', 'sex'],
+    date_of_birth: ['date of birth', 'dob', 'birth date'],
     seniority: ['seniority', 'experience level', 'level'],
+    summary: ['summary', 'about you', 'about yourself', 'cover letter', 'why should we hire', 'tell us about'],
+    headline: ['headline', 'professional headline', 'tagline'],
   };
 
   function norm(s) {
     return (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function boolToText(v) {
+    if (v === true) return 'Yes';
+    if (v === false) return 'No';
+    return '';
   }
 
   // Resolve a profile key to a concrete value.
@@ -29,15 +56,35 @@
     const name = profile.full_name || '';
     switch (key) {
       case 'full_name': return name;
-      case 'first_name': return name.split(' ')[0] || '';
-      case 'last_name': return name.split(' ').slice(1).join(' ') || '';
+      case 'first_name': return profile.first_name || name.split(' ')[0] || '';
+      case 'last_name': return profile.last_name || name.split(' ').slice(1).join(' ') || '';
       case 'email': return profile.email || '';
       case 'phone': return profile.phone || '';
+      case 'headline': return profile.headline || '';
+      case 'summary': return profile.summary || '';
       case 'location': return profile.location || '';
+      case 'address': return profile.address || '';
+      case 'city': return profile.city || '';
+      case 'state': return profile.state || '';
+      case 'country': return profile.country || '';
+      case 'postal_code': return profile.postal_code || '';
+      case 'nationality': return profile.nationality || '';
+      case 'gender': return profile.gender || '';
+      case 'date_of_birth': return profile.date_of_birth || '';
       case 'linkedin': return links.linkedin || '';
       case 'github': return links.github || '';
       case 'portfolio': return links.portfolio || '';
       case 'seniority': return profile.seniority || '';
+      case 'current_title': return profile.current_title || '';
+      case 'current_company': return profile.current_company || '';
+      case 'years_experience': return profile.years_experience || '';
+      case 'current_ctc': return profile.current_ctc || '';
+      case 'expected_ctc': return profile.expected_ctc || '';
+      case 'notice_period': return profile.notice_period || '';
+      case 'available_from': return profile.available_from || '';
+      case 'work_authorization': return profile.work_authorization || '';
+      case 'requires_sponsorship': return boolToText(profile.requires_sponsorship);
+      case 'willing_to_relocate': return boolToText(profile.willing_to_relocate);
       default: return fieldMap[key] || null;
     }
   }

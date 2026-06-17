@@ -21,8 +21,8 @@ public class ApplicationController {
     }
 
     @GetMapping
-    public List<Application> list(@RequestParam(required = false) String status) {
-        return service.list(status);
+    public List<com.jobpilot.web.dto.ApplicationView> list(@RequestParam(required = false) String status) {
+        return service.listDetailed(status);
     }
 
     @PostMapping

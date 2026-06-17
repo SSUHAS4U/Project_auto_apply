@@ -29,18 +29,37 @@ public class ExtensionController {
                 req.url(), req.sourceSite(), req.raw());
     }
 
-    /** Extension pulls profile + field_map for autofill. */
+    /** Extension pulls profile + a flattened answer map for autofill. */
     @GetMapping("/profile-export")
     public Map<String, Object> profileExport() {
         Profile p = profile.get();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("full_name", p.getFullName());
+        out.put("first_name", p.getFirstName());
+        out.put("last_name", p.getLastName());
         out.put("email", p.getEmail());
         out.put("phone", p.getPhone());
+        out.put("headline", p.getHeadline());
+        out.put("summary", p.getSummary());
         out.put("location", p.getLocation());
+        out.put("address", p.getAddress());
+        out.put("city", p.getCity());
+        out.put("state", p.getState());
+        out.put("country", p.getCountry());
+        out.put("postal_code", p.getPostalCode());
         out.put("links", p.getLinks());
         out.put("skills", p.getSkills());
         out.put("seniority", p.getSeniority());
+        out.put("current_title", p.getCurrentTitle());
+        out.put("current_company", p.getCurrentCompany());
+        out.put("years_experience", p.getYearsExperience());
+        out.put("current_ctc", p.getCurrentCtc());
+        out.put("expected_ctc", p.getExpectedCtc());
+        out.put("notice_period", p.getNoticePeriod());
+        out.put("available_from", p.getAvailableFrom());
+        out.put("work_authorization", p.getWorkAuthorization());
+        out.put("requires_sponsorship", p.getRequiresSponsorship());
+        out.put("willing_to_relocate", p.getWillingToRelocate());
         out.put("field_map", p.getFieldMap());
         return out;
     }

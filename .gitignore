@@ -17,6 +17,9 @@ extension/dist/
 *.log
 npm-debug.log*
 
+# Embedded Postgres data dir (dev only)
+backend/.embedded-pg/
+
 # Resumes / uploads (never commit personal files)
 backend/uploads/
 *.pdf

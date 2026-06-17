@@ -18,7 +18,14 @@ public final class EmbeddedDb {
         }
         try {
             int port = Integer.parseInt(System.getenv().getOrDefault("JOBPILOT_EMBEDDED_DB_PORT", "5432"));
-            EmbeddedPostgres pg = EmbeddedPostgres.builder().setPort(port).start();
+            // Persist data across restarts (fixed dir, not cleaned) so dev data survives.
+            java.io.File dataDir = new java.io.File(
+                    System.getenv().getOrDefault("JOBPILOT_EMBEDDED_DB_DIR", "./.embedded-pg")).getAbsoluteFile();
+            EmbeddedPostgres pg = EmbeddedPostgres.builder()
+                    .setPort(port)
+                    .setDataDirectory(dataDir)
+                    .setCleanDataDirectory(false)
+                    .start();
             String url = "jdbc:postgresql://localhost:" + port + "/postgres";
             System.setProperty("spring.datasource.url", url);
             System.setProperty("spring.datasource.username", "postgres");
