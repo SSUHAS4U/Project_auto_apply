@@ -7,7 +7,9 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
     hibernate:
-      ddl-auto: validate
+      # Flyway owns the schema; Hibernate must not validate/alter it. Validation
+      # is too strict for Postgres array (text[]) and jsonb columns.
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate:
