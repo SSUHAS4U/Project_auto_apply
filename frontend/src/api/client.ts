@@ -113,9 +113,10 @@ export const api = {
   markNotificationRead: (id: string) =>
     req<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
 
-  ingest: () => req<{ fetched: number; inserted: number; updated: number }>('/api/ingest', { method: 'POST' }),
+  ingest: () => req<{ status: string; message: string }>('/api/ingest', { method: 'POST' }),
   digest: () => req<{ count: number; sent: boolean }>('/api/digest', { method: 'POST' }),
 
-  dailyRun: () => req<{ fetched: number; inserted: number; topPicks: number; purged: number; briefing: string }>('/api/daily/run', { method: 'POST' }),
+  dailyRun: () => req<{ status: string; message: string }>('/api/daily/run', { method: 'POST' }),
   dailyPicks: () => req<{ briefing: string; generatedAt?: string; jobs: Job[] }>('/api/daily/picks'),
+  opsStatus: () => req<{ running: boolean; last: string }>('/api/ops/status'),
 };

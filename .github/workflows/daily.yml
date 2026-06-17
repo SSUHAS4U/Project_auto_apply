@@ -11,11 +11,11 @@ jobs:
   daily:
     runs-on: ubuntu-latest
     steps:
-      - name: POST /api/daily/run
+      - name: POST /api/daily/run/sync
         run: |
           code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
             --retry 5 --retry-all-errors --retry-delay 15 --max-time 240 \
-            -X POST "$BACKEND_URL/api/daily/run" \
+            -X POST "$BACKEND_URL/api/daily/run/sync" \
             -H "X-Api-Token: $API_TOKEN")
           echo "HTTP $code"; cat /tmp/out.json || true
           test "$code" = "200"

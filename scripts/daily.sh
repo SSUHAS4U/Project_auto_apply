@@ -5,5 +5,5 @@ set -euo pipefail
 BASE="${JOBPILOT_BACKEND_URL:-http://localhost:8080}"
 TOKEN="${JOBPILOT_API_TOKEN:-***REMOVED***}"
 echo "JobPilot daily run against $BASE ..."
-curl -fsS --max-time 180 -X POST "$BASE/api/daily/run" -H "X-Api-Token: $TOKEN"
+curl -fsS --max-time 180 -X POST "$BASE/api/daily/run/sync" -H "X-Api-Token: $TOKEN"
 echo

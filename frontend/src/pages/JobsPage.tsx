@@ -34,10 +34,16 @@ export function JobsPage() {
     setIngesting(true);
     try {
       const r = await api.ingest();
-      toast(`Ingest done — ${r.inserted} new, ${r.updated} updated`, 'success');
-      load(filters);
-    } catch (e) { toast((e as Error).message, 'error'); }
-    finally { setIngesting(false); }
+      if (r.status === 'busy') { toast('A run is already in progress…', 'info'); }
+      else { toast('Ingest started in the background — jobs will refresh shortly', 'success'); }
+      // Poll until the background run finishes, then reload.
+      const poll = setInterval(async () => {
+        try {
+          const st = await api.opsStatus();
+          if (!st.running) { clearInterval(poll); setIngesting(false); load(filters); toast(st.last, 'success'); }
+        } catch { clearInterval(poll); setIngesting(false); }
+      }, 5000);
+    } catch (e) { toast((e as Error).message, 'error'); setIngesting(false); }
   };
 
   const track = async (j: Job) => {

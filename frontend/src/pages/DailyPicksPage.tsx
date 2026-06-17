@@ -25,10 +25,15 @@ export function DailyPicksPage() {
     setRunning(true);
     try {
       const r = await api.dailyRun();
-      toast(`Fetched ${r.inserted} new · ${r.topPicks} picks · purged ${r.purged} old`, 'success');
-      load();
-    } catch (e) { toast((e as Error).message, 'error'); }
-    finally { setRunning(false); }
+      if (r.status === 'busy') { toast('A run is already in progress…', 'info'); setRunning(false); return; }
+      toast('Daily run started — fetching jobs & curating picks…', 'success');
+      const poll = setInterval(async () => {
+        try {
+          const st = await api.opsStatus();
+          if (!st.running) { clearInterval(poll); setRunning(false); load(); toast(st.last, 'success'); }
+        } catch { clearInterval(poll); setRunning(false); }
+      }, 5000);
+    } catch (e) { toast((e as Error).message, 'error'); setRunning(false); }
   };
 
   const track = async (j: Job) => {

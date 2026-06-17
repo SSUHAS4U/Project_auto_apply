@@ -15,9 +15,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -59,9 +65,8 @@ public class IngestService {
                 .collect(Collectors.toMap(JobConnector::source, c -> c, (a, b) -> a));
         Profile profile = profileRepo.findFirstByOrderByUpdatedAtAsc().orElse(null);
 
-        int fetched = 0, inserted = 0, updated = 0;
-
-        // 1. Per-board ATS connectors from curated ats_source rows.
+        // Build the full task list (per-board ATS + aggregator queries).
+        List<Callable<List<RawJob>>> tasks = new ArrayList<>();
         for (AtsSource src : atsRepo.findByActiveTrue()) {
             JobConnector c = byName.get(src.getProvider());
             if (c == null) {
@@ -69,28 +74,36 @@ public class IngestService {
                 continue;
             }
             FetchParams p = FetchParams.builder()
-                    .boardToken(src.getBoardToken())
-                    .company(src.getCompany())
-                    .build();
-            List<RawJob> raws = safeFetch(c, p);
-            fetched += raws.size();
-            for (RawJob r : raws) {
-                int code = upsert(r, profile);
-                if (code == 1) inserted++; else if (code == 2) updated++;
-            }
+                    .boardToken(src.getBoardToken()).company(src.getCompany()).build();
+            tasks.add(() -> safeFetch(c, p));
         }
-
-        // 2. Aggregator connectors (adzuna/jooble) from config queries.
         for (JobConnector c : connectors) {
             if (c.isPerBoard() || !c.isConfigured()) continue;
             for (FetchParams p : queriesFor(c)) {
-                List<RawJob> raws = safeFetch(c, p);
-                fetched += raws.size();
-                for (RawJob r : raws) {
-                    int code = upsert(r, profile);
-                    if (code == 1) inserted++; else if (code == 2) updated++;
-                }
+                tasks.add(() -> safeFetch(c, p));
             }
+        }
+
+        // Fetch all sources concurrently (I/O bound) — much faster than serial.
+        List<RawJob> all = new ArrayList<>();
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(16, Math.max(1, tasks.size())));
+        try {
+            for (Future<List<RawJob>> f : pool.invokeAll(tasks, 4, TimeUnit.MINUTES)) {
+                try {
+                    all.addAll(f.get());
+                } catch (Exception ignored) { /* cancelled/failed fetch */ }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        // Upsert sequentially (DB writes); scoring runs on new rows.
+        int fetched = all.size(), inserted = 0, updated = 0;
+        for (RawJob r : all) {
+            int code = upsert(r, profile);
+            if (code == 1) inserted++; else if (code == 2) updated++;
         }
 
         log.info("Ingest complete: fetched={} inserted={} updated={}", fetched, inserted, updated);
