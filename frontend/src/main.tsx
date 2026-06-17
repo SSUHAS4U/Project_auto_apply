@@ -12,6 +12,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ComposePage } from './pages/ComposePage';
 import { AssistantPage } from './pages/AssistantPage';
+import { DailyPicksPage } from './pages/DailyPicksPage';
 
 const router = createBrowserRouter([
   {
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { index: true, element: <JobsPage /> },
+      { path: 'daily', element: <DailyPicksPage /> },
       { path: 'assistant', element: <AssistantPage /> },
       { path: 'compose', element: <ComposePage /> },
       { path: 'applications', element: <ApplicationsPage /> },

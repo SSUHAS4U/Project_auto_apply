@@ -115,4 +115,7 @@ export const api = {
 
   ingest: () => req<{ fetched: number; inserted: number; updated: number }>('/api/ingest', { method: 'POST' }),
   digest: () => req<{ count: number; sent: boolean }>('/api/digest', { method: 'POST' }),
+
+  dailyRun: () => req<{ fetched: number; inserted: number; topPicks: number; purged: number; briefing: string }>('/api/daily/run', { method: 'POST' }),
+  dailyPicks: () => req<{ briefing: string; generatedAt?: string; jobs: Job[] }>('/api/daily/picks'),
 };

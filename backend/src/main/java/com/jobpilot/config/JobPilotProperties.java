@@ -33,6 +33,17 @@ public class JobPilotProperties {
     private Gemini gemini = new Gemini();
     private Adzuna adzuna = new Adzuna();
     private Jooble jooble = new Jooble();
+    private GoogleCse googleCse = new GoogleCse();
+
+    @Data
+    public static class GoogleCse {
+        /** Google Custom Search JSON API key (free, 100 queries/day). */
+        private String apiKey = "";
+        /** Programmable Search Engine id (cx). */
+        private String cx = "";
+        /** Search queries; results are treated as url-apply jobs. */
+        private List<String> queries = List.of();
+    }
 
     @Data
     public static class Ai {

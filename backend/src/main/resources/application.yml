@@ -75,6 +75,13 @@ jobpilot:
   jooble:
     key: ${JOBPILOT_JOOBLE_KEY:}
     keywords: ${JOBPILOT_JOOBLE_KEYWORDS:java developer}
+  google-cse:
+    api-key: ${JOBPILOT_GOOGLE_CSE_KEY:}
+    cx: ${JOBPILOT_GOOGLE_CSE_CX:}
+    queries: ${JOBPILOT_GOOGLE_CSE_QUERIES:}
+  cleanup:
+    retention-days: ${JOBPILOT_RETENTION_DAYS:7}
+    cron: ${JOBPILOT_CLEANUP_CRON:0 30 3 * * *}
 
 logging:
   level:

@@ -119,6 +119,13 @@ public class IngestService {
             return List.of(FetchParams.builder()
                     .query(props.getJooble().getKeywords()).build());
         }
+        if ("google".equals(c.source())) {
+            List<String> qs = props.getGoogleCse().getQueries();
+            if (qs == null || qs.isEmpty()) return List.of();
+            return qs.stream()
+                    .map(q -> FetchParams.builder().query(q.trim()).build())
+                    .collect(Collectors.toList());
+        }
         return List.of(FetchParams.builder().build());
     }
 
