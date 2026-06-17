@@ -47,12 +47,14 @@ public class GoogleCseConnector implements JobConnector {
         JobPilotProperties.GoogleCse g = props.getGoogleCse();
         String q = p.getQuery();
         String url = UriComponentsBuilder
-                .fromHttpUrl("https://www.googleapis.com/customsearch/v1")
+                .fromHttpUrl("https://customsearch.googleapis.com/customsearch/v1")
                 .queryParam("key", g.getApiKey())
                 .queryParam("cx", g.getCx())
                 .queryParam("q", q)
                 .queryParam("num", 10)
                 .queryParam("dateRestrict", "d7")   // last 7 days
+                .queryParam("gl", "in")             // geolocation: India
+                .queryParam("lr", "lang_en")        // English results
                 .build().toUriString();
 
         List<RawJob> out = new ArrayList<>();
