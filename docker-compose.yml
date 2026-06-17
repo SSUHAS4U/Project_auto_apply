@@ -1,0 +1,26 @@
+# Local Postgres for development (alternative to Supabase).
+#   docker compose up -d
+# Then set in backend .env:
+#   SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/jobpilot
+#   SPRING_DATASOURCE_USERNAME=jobpilot
+#   SPRING_DATASOURCE_PASSWORD=jobpilot
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jobpilot-db
+    environment:
+      POSTGRES_DB: jobpilot
+      POSTGRES_USER: jobpilot
+      POSTGRES_PASSWORD: jobpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - jobpilot_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  jobpilot_pg:

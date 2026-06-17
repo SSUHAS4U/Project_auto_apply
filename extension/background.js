@@ -1,0 +1,85 @@
+// JobPilot MV3 service worker — owns config, backend calls, profile cache.
+
+const DEFAULTS = { backendUrl: 'http://localhost:8080', token: '' };
+
+async function getConfig() {
+  const c = await chrome.storage.local.get(['backendUrl', 'token']);
+  return { backendUrl: c.backendUrl || DEFAULTS.backendUrl, token: c.token || DEFAULTS.token };
+}
+
+async function apiFetch(path, init = {}) {
+  const { backendUrl, token } = await getConfig();
+  if (!token) throw new Error('No API token set. Open the extension Options.');
+  const res = await fetch(`${backendUrl}${path}`, {
+    ...init,
+    headers: {
+      'X-Api-Token': token,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { const b = await res.json(); if (b.message) msg = b.message; } catch (_) {}
+    throw new Error(msg);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// Profile cache (5 min TTL) so fillers don't hit the backend every page.
+async function getProfile(force) {
+  const cached = await chrome.storage.local.get(['profile', 'profileAt']);
+  const fresh = cached.profileAt && Date.now() - cached.profileAt < 5 * 60 * 1000;
+  if (!force && cached.profile && fresh) return cached.profile;
+  const profile = await apiFetch('/api/extension/profile-export');
+  await chrome.storage.local.set({ profile, profileAt: Date.now() });
+  return profile;
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  (async () => {
+    try {
+      switch (msg.type) {
+        case 'GET_CONFIG':
+          sendResponse({ ok: true, data: await getConfig() });
+          break;
+        case 'GET_PROFILE':
+          sendResponse({ ok: true, data: await getProfile(msg.force) });
+          break;
+        case 'SAVE_JOB': {
+          const data = await apiFetch('/api/extension/saved-job', {
+            method: 'POST', body: JSON.stringify(msg.payload),
+          });
+          notify('Saved to JobPilot', `${msg.payload.title || 'Listing'} captured.`);
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'CHECK_NOTIFICATIONS': {
+          const data = await apiFetch('/api/notifications?unread=true');
+          if (data && data.unreadCount > 0) {
+            notify('JobPilot', `${data.unreadCount} unread notification(s).`);
+          }
+          sendResponse({ ok: true, data });
+          break;
+        }
+        default:
+          sendResponse({ ok: false, error: 'unknown message ' + msg.type });
+      }
+    } catch (e) {
+      sendResponse({ ok: false, error: e.message });
+    }
+  })();
+  return true; // async response
+});
+
+function notify(title, message) {
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title,
+      message,
+    });
+  } catch (_) { /* icon optional */ }
+}

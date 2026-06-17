@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>JobPilot</title>
+</head>
+<body>
+  <div class="head">
+    <div class="logo">J</div>
+    <div>
+      <div class="name">JobPilot</div>
+      <div class="sub" id="conn">checking…</div>
+    </div>
+  </div>
+
+  <div class="profile" id="profile">
+    <div class="muted">Loading profile…</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="fill">⚡ Fill this form</button>
+    <button class="btn" id="save">🔖 Save this listing</button>
+    <button class="btn ghost" id="refresh">↻ Refresh profile</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <a class="foot" id="opts" href="#">⚙ Options — set backend &amp; token</a>
+  <script src="popup.js"></script>
+</body>
+</html>

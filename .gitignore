@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.local
+*.env
+!.env.example
+
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vite
+node_modules/
+frontend/dist/
+extension/dist/
+*.log
+npm-debug.log*
+
+# Resumes / uploads (never commit personal files)
+backend/uploads/
+*.pdf
+*.docx
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store

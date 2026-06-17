@@ -1,0 +1,25 @@
+name: ingest
+
+# Wakes the (possibly sleeping) backend and triggers a job-ingest run.
+# Configure repo secrets: BACKEND_URL (e.g. https://jobpilot.onrender.com) and API_TOKEN.
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/ingest
+        run: |
+          echo "Triggering ingest on $BACKEND_URL"
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            --retry 5 --retry-all-errors --retry-delay 15 --max-time 180 \
+            -X POST "$BACKEND_URL/api/ingest" \
+            -H "X-Api-Token: $API_TOKEN")
+          echo "HTTP $code"; cat /tmp/out.json || true
+          test "$code" = "200"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}

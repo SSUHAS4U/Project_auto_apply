@@ -1,0 +1,24 @@
+name: digest
+
+# Sends the daily high-match digest email.
+# Configure repo secrets: BACKEND_URL and API_TOKEN.
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 02:30 UTC = 08:00 IST daily
+  workflow_dispatch: {}
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/digest
+        run: |
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            --retry 5 --retry-all-errors --retry-delay 15 --max-time 180 \
+            -X POST "$BACKEND_URL/api/digest" \
+            -H "X-Api-Token: $API_TOKEN")
+          echo "HTTP $code"; cat /tmp/out.json || true
+          test "$code" = "200"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}

@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: jobpilot
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jobpilot}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: ${PORT:8080}
+
+jobpilot:
+  api-token: ${JOBPILOT_API_TOKEN:dev-token}
+  cors-origins: ${JOBPILOT_CORS_ORIGINS:http://localhost:5173}
+  resume-dir: ${JOBPILOT_RESUME_DIR:./uploads}
+  mail:
+    from: ${JOBPILOT_MAIL_FROM:}
+    digest-to: ${JOBPILOT_MAIL_DIGEST_TO:}
+    daily-limit: ${JOBPILOT_MAIL_DAILY_LIMIT:25}
+  digest:
+    min-score: ${JOBPILOT_DIGEST_MIN_SCORE:60}
+  coverletter:
+    provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
+  ollama:
+    url: ${JOBPILOT_OLLAMA_URL:http://localhost:11434}
+    model: ${JOBPILOT_OLLAMA_MODEL:llama3.1}
+  gemini:
+    api-key: ${JOBPILOT_GEMINI_API_KEY:}
+    model: ${JOBPILOT_GEMINI_MODEL:gemini-1.5-flash}
+  adzuna:
+    app-id: ${JOBPILOT_ADZUNA_APP_ID:}
+    app-key: ${JOBPILOT_ADZUNA_APP_KEY:}
+    country: ${JOBPILOT_ADZUNA_COUNTRY:in}
+    where: ${JOBPILOT_ADZUNA_WHERE:India}
+    queries: ${JOBPILOT_ADZUNA_QUERIES:java developer,backend engineer}
+  jooble:
+    key: ${JOBPILOT_JOOBLE_KEY:}
+    keywords: ${JOBPILOT_JOOBLE_KEYWORDS:java developer}
+
+logging:
+  level:
+    com.jobpilot: INFO
