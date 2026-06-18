@@ -24,6 +24,12 @@ import java.util.regex.Pattern;
 @Component
 public class KeywordMatchScorer implements MatchScorer {
 
+    private final NormalizeService normalize;
+
+    public KeywordMatchScorer(NormalizeService normalize) {
+        this.normalize = normalize;
+    }
+
     private static final Pattern YEARS =
             Pattern.compile("(\\d{1,2})\\s*\\+?\\s*(?:-\\s*\\d{1,2}\\s*)?(?:years|yrs|yr)");
 
@@ -35,22 +41,17 @@ public class KeywordMatchScorer implements MatchScorer {
             "intern", "internship", "junior", "jr.", "entry level", "entry-level",
             "graduate", "new grad", "trainee", "associate", "fresher", "early career", "apprentice"
     };
-    private static final String[] INDIA = {
-            "india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai", "mumbai",
-            "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "remote - india", "remote india"
-    };
 
     @Override
     public int score(Job job, Profile profile) {
         if (profile == null) return 0;
         String title = job.getTitle() == null ? "" : job.getTitle().toLowerCase(Locale.ROOT);
         String desc = job.getDescription() == null ? "" : job.getDescription().toLowerCase(Locale.ROOT);
-        String loc = job.getLocation() == null ? "" : job.getLocation().toLowerCase(Locale.ROOT);
         String hay = title + " " + desc;
 
         int skills = scoreSkills(hay, profile.getSkills());
         int exp = scoreExperience(title, hay, candidateYears(profile));
-        int region = scoreRegion(loc, job.isRemote());
+        int region = scoreRegion(normalize.region(job.getLocation(), job.isRemote()));
         int recency = scoreRecency(job.getPostedAt());
 
         return clamp(skills + exp + region + recency);
@@ -113,11 +114,13 @@ public class KeywordMatchScorer implements MatchScorer {
         return max;
     }
 
-    private int scoreRegion(String loc, boolean remote) {
-        if (containsAny(loc, INDIA)) return 15;
-        if (remote || loc.contains("remote") || loc.contains("anywhere")) return 11;
-        if (loc.isBlank()) return 6;
-        return 2; // foreign on-site — least relevant for an India-based fresher
+    private int scoreRegion(String region) {
+        return switch (region) {
+            case "india" -> 15;
+            case "remote" -> 11;
+            case "unknown" -> 6;
+            default -> 2; // outside — least relevant for an India-based fresher
+        };
     }
 
     private int scoreRecency(Instant postedAt) {

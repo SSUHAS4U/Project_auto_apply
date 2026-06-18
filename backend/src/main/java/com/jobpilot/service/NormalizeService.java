@@ -72,19 +72,35 @@ public class NormalizeService {
     private static final String[] INDIA_HINTS = {
             "india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai", "mumbai",
             "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "jaipur",
-            "kochi", "coimbatore", "indore", "chandigarh", "trivandrum", "thiruvananthapuram"
+            "kochi", "coimbatore", "indore", "chandigarh", "trivandrum", "thiruvananthapuram",
+            "visakhapatnam", "vizag", "vijayawada", "guntur", "nagpur", "lucknow", "surat",
+            "bhubaneswar", "mysore", "mysuru", "mangalore", "mangaluru", "vadodara", "thane",
+            "navi mumbai", "faridabad", "ghaziabad", "mohali", "dehradun", "nashik", "raipur",
+            "kanpur", "patna", "bhopal", "karnataka", "telangana", "maharashtra", "tamil nadu",
+            "andhra pradesh", "kerala", "gujarat", "haryana", "uttar pradesh", "west bengal"
     };
 
-    /** india | remote | outside | unknown */
+    private static final String[] REMOTE_WORDS = {
+            "remote", "anywhere", "worldwide", "global", "distributed", "wfh", "work from home"
+    };
+
+    /**
+     * india | remote | outside | unknown.
+     * "remote" means a location-agnostic role (so it belongs in the India tab). A role flagged
+     * remote but tied to a concrete foreign city (e.g. "San Francisco") is "outside".
+     */
     public String region(String location, boolean remote) {
         String loc = location == null ? "" : location.toLowerCase(Locale.ROOT);
         for (String h : INDIA_HINTS) {
             if (loc.contains(h)) return "india";
         }
-        if (remote || loc.contains("remote") || loc.contains("anywhere") || loc.contains("worldwide")) {
-            return "remote";
-        }
-        return loc.isBlank() ? "unknown" : "outside";
+        if (loc.isBlank()) return remote ? "remote" : "unknown";
+        // Strip remote-ish words; if nothing concrete remains, it's a global remote role.
+        String residue = loc;
+        for (String w : REMOTE_WORDS) residue = residue.replace(w, " ");
+        residue = residue.replaceAll("[^a-z]", "");
+        if (residue.isEmpty()) return "remote";   // pure "Remote"/"Anywhere"/"Worldwide"
+        return "outside";                          // concrete non-India place (even if remote-flagged)
     }
 
     /**

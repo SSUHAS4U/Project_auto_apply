@@ -2,32 +2,37 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { AssistantJob } from '../types';
 import { ApplyBadge, useToast } from '../lib/ui';
+import { ModelSwitcher } from '../components/ModelSwitcher';
 
 interface Msg { role: 'user' | 'assistant'; content: string; jobs?: AssistantJob[]; }
 
 const GREETING: Msg = {
   role: 'assistant',
-  content: "Hi! I'm your JobPilot assistant. Ask me to find jobs (\"show me remote java roles\"), or help fill your profile. I search the jobs already in your database.",
+  content: "Hi Suhas 👋 I'm your JobPilot assistant. Tell me what you're after and I'll pull matches from your job database, or ask me to help fill your profile.",
 };
+const SUGGESTIONS = [
+  'Show me fresher java jobs in India',
+  'Remote react developer roles',
+  'Which of my tracked jobs should I prioritise?',
+  'Help me improve my profile summary',
+];
 
 export function AssistantPage() {
   const toast = useToast();
   const [msgs, setMsgs] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [ai, setAi] = useState<{ enabled: boolean; provider: string; remainingToday: number } | null>(null);
+  const [enabled, setEnabled] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { api.aiStatus().then(setAi).catch(() => {}); }, []);
-  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs]);
+  useEffect(() => { api.aiStatus().then((s) => setEnabled(s.enabled)).catch(() => {}); }, []);
+  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
 
-  const send = async () => {
-    const text = input.trim();
-    if (!text || busy) return;
-    const next = [...msgs, { role: 'user' as const, content: text }];
-    setMsgs(next);
-    setInput('');
-    setBusy(true);
+  const send = async (text?: string) => {
+    const q = (text ?? input).trim();
+    if (!q || busy) return;
+    const next = [...msgs, { role: 'user' as const, content: q }];
+    setMsgs(next); setInput(''); setBusy(true);
     try {
       const payload = next.filter((m) => m !== GREETING).map((m) => ({ role: m.role, content: m.content }));
       const r = await api.assistantChat(payload);
@@ -38,28 +43,33 @@ export function AssistantPage() {
     } finally { setBusy(false); }
   };
 
+  const showSuggestions = msgs.length === 1 && !busy;
+
   return (
     <>
       <div className="page-head">
         <div>
           <h1 className="page-title">Assistant</h1>
-          <div className="page-sub">Find jobs by describing what you want · get help filling your profile</div>
+          <div className="page-sub">Find jobs from your database · get profile help</div>
         </div>
-        {ai && <span className="chip">{ai.enabled ? `${ai.provider} · ${ai.remainingToday} left` : 'AI off'}</span>}
+        <ModelSwitcher />
       </div>
 
       <div className="chat-wrap">
         <div className="chat-log" ref={logRef}>
           {msgs.map((m, i) => (
             <Fragment key={i}>
-              <div className={`bubble ${m.role}`}>{m.content}</div>
+              <div className={`chat-row ${m.role}`}>
+                <div className={`chat-avatar ${m.role === 'user' ? 'me' : 'ai'}`}>{m.role === 'user' ? 'S' : '✦'}</div>
+                <div className={`bubble ${m.role}`}>{m.content}</div>
+              </div>
               {m.jobs && m.jobs.length > 0 && (
                 <div className="chat-jobs">
                   {m.jobs.map((j) => (
                     <a key={j.id} className="chat-jobcard" href={j.url} target="_blank" rel="noreferrer">
                       <div className="jt">{j.title}</div>
-                      <div className="muted">{j.company} · {j.location || '—'}</div>
-                      <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                      <div className="muted" style={{ margin: '3px 0 6px' }}>{j.company} · {j.location || '—'}</div>
+                      <div className="row" style={{ gap: 6 }}>
                         <ApplyBadge type={j.applyType} /><span className="faint">★ {j.matchScore}</span>
                       </div>
                     </a>
@@ -68,12 +78,24 @@ export function AssistantPage() {
               )}
             </Fragment>
           ))}
-          {busy && <div className="bubble assistant"><span className="spinner" /></div>}
+          {busy && (
+            <div className="chat-row assistant">
+              <div className="chat-avatar ai">✦</div>
+              <div className="bubble assistant"><span className="typing"><span /><span /><span /></span></div>
+            </div>
+          )}
+          {showSuggestions && (
+            <div className="chat-suggests">
+              {SUGGESTIONS.map((s) => <button key={s} className="chat-suggest" onClick={() => send(s)}>{s}</button>)}
+            </div>
+          )}
         </div>
         <div className="chat-input">
-          <input className="input grow" value={input} placeholder="Ask me anything about jobs or your profile…"
-            onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} disabled={ai !== null && !ai.enabled} />
-          <button className="btn btn-primary" onClick={send} disabled={busy || (ai !== null && !ai.enabled)}>Send</button>
+          <input className="input grow" value={input} placeholder={enabled ? 'Ask anything about jobs or your profile…' : 'Set an AI model in Settings to chat'}
+            onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} disabled={!enabled} />
+          <button className="btn btn-primary" onClick={() => send()} disabled={busy || !enabled || !input.trim()}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+          </button>
         </div>
       </div>
     </>

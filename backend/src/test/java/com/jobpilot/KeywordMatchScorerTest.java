@@ -12,7 +12,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class KeywordMatchScorerTest {
 
-    private final KeywordMatchScorer scorer = new KeywordMatchScorer();
+    private final KeywordMatchScorer scorer =
+            new KeywordMatchScorer(new com.jobpilot.service.NormalizeService());
 
     private Profile profile() {
         Profile p = new Profile();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../lib/ui';
+import { ModelSwitcher } from '../components/ModelSwitcher';
 
 export function ComposePage() {
   const toast = useToast();
@@ -49,7 +50,7 @@ export function ComposePage() {
           <h1 className="page-title">Compose & send</h1>
           <div className="page-sub">Generate a cover letter + cold email from any job, review, and send with your resume</div>
         </div>
-        {ai && <span className="chip">{ai.enabled ? `AI: ${ai.provider} · ${ai.remainingToday} left today` : 'AI off'}</span>}
+        <ModelSwitcher />
       </div>
 
       <div className="grid2" style={{ alignItems: 'start' }}>
