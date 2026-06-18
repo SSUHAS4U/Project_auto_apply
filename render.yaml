@@ -1,0 +1,99 @@
+# Render.yaml deployment configuration
+# Reference: https://render.com/docs/deploy-migrations
+
+services:
+  - type: web
+    name: jobpilot-backend
+    env: java
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && ./mvnw clean package -DskipTests -q"
+    startCommand: "java -XX:MaxRAMPercentage=75 -jar backend/target/jobpilot-backend-*.jar"
+    healthCheckPath: /health
+    envVars:
+      - key: JAVA_OPTS
+        value: "-Xmx512m"
+      # Database (Supabase)
+      - key: SPRING_DATASOURCE_URL
+        fromService:
+          type: pserv
+          name: jobpilot-postgres
+          envVarKey: SPRING_DATASOURCE_URL
+      - key: SPRING_DATASOURCE_USERNAME
+        fromService:
+          type: pserv
+          name: jobpilot-postgres
+          envVarKey: SPRING_DATASOURCE_USERNAME
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromService:
+          type: pserv
+          name: jobpilot-postgres
+          envVarKey: SPRING_DATASOURCE_PASSWORD
+      # Mail
+      - key: SPRING_MAIL_HOST
+        value: smtp.gmail.com
+      - key: SPRING_MAIL_PORT
+        value: "587"
+      - key: SPRING_MAIL_USERNAME
+        sync: false
+      - key: SPRING_MAIL_PASSWORD
+        sync: false
+      - key: JOBPILOT_MAIL_FROM
+        sync: false
+      - key: JOBPILOT_MAIL_DIGEST_TO
+        sync: false
+      - key: JOBPILOT_MAIL_DAILY_LIMIT
+        value: "25"
+      # AI Providers
+      - key: JOBPILOT_AI_PROVIDER
+        value: "groq"
+      - key: JOBPILOT_AI_DAILY_LIMIT
+        value: "80"
+      - key: JOBPILOT_GROQ_API_KEY
+        sync: false
+      - key: JOBPILOT_GROQ_MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: JOBPILOT_GROQ_FAST_MODEL
+        value: "llama-3.1-8b-instant"
+      - key: JOBPILOT_GEMINI_API_KEY
+        sync: false
+      - key: JOBPILOT_GEMINI_MODEL
+        value: "gemini-2.5-flash"
+      # Connectors
+      - key: JOBPILOT_ADZUNA_APP_ID
+        sync: false
+      - key: JOBPILOT_ADZUNA_APP_KEY
+        sync: false
+      - key: JOBPILOT_ADZUNA_COUNTRY
+        value: "in"
+      - key: JOBPILOT_ADZUNA_QUERIES
+        value: "software developer fresher,java developer,backend developer,react developer,graduate software engineer,associate software engineer,full stack developer,spring boot developer"
+      - key: JOBPILOT_ADZUNA_WHERE
+        value: "India"
+      - key: JOBPILOT_JOOBLE_KEY
+        sync: false
+      - key: JOBPILOT_JOOBLE_KEYWORDS
+        value: "software developer fresher,java developer fresher,backend developer 0-2 years,react developer fresher,software engineer fresher bangalore,full stack developer fresher,graduate engineer trainee,associate software engineer,spring boot developer,node js developer fresher"
+      # Scheduler
+      - key: JOBPILOT_DAILY_CRON
+        value: "0 0 9 * * *"
+      - key: JOBPILOT_DAILY_ZONE
+        value: "Asia/Kolkata"
+      - key: JOBPILOT_RETENTION_DAYS
+        value: "7"
+      # API Token
+      - key: JOBPILOT_API_TOKEN
+        sync: false
+      - key: JOBPILOT_CORS_ORIGINS
+        value: "https://jobpilot-app.vercel.app"
+
+  - type: web
+    name: jobpilot-frontend
+    env: static
+    buildCommand: "cd frontend && npm ci && npm run build"
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_BASE
+        value: "https://jobpilot-backend.onrender.com"
+      - key: VITE_API_TOKEN
+        sync: false
