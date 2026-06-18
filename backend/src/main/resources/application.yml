@@ -43,6 +43,7 @@ server:
 jobpilot:
   api-token: ${JOBPILOT_API_TOKEN:dev-token}
   cors-origins: ${JOBPILOT_CORS_ORIGINS:http://localhost:5173}
+  ingest-concurrency: ${JOBPILOT_INGEST_CONCURRENCY:3}
   resume-dir: ${JOBPILOT_RESUME_DIR:./uploads}
   mail:
     from: ${JOBPILOT_MAIL_FROM:}

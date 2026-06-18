@@ -14,6 +14,7 @@ public class JobPilotProperties {
 
     private String apiToken = "dev-token";
     private List<String> corsOrigins = List.of("http://localhost:5173");
+    private int ingestConcurrency = 3;
     private String resumeDir = "./uploads";
 
     private Mail mail = new Mail();

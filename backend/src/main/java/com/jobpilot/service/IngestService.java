@@ -86,7 +86,7 @@ public class IngestService {
 
         // Fetch all sources concurrently (I/O bound) — much faster than serial.
         List<RawJob> all = new ArrayList<>();
-        ExecutorService pool = Executors.newFixedThreadPool(Math.min(16, Math.max(1, tasks.size())));
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(props.getIngestConcurrency(), Math.max(1, tasks.size())));
         try {
             for (Future<List<RawJob>> f : pool.invokeAll(tasks, 4, TimeUnit.MINUTES)) {
                 try {
