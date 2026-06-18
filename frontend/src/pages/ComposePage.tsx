@@ -32,6 +32,12 @@ export function ComposePage() {
     finally { setGenerating(false); }
   };
 
+  const copy = async (text: string, label: string) => {
+    if (!text) { toast('Nothing to copy yet', 'info'); return; }
+    try { await navigator.clipboard.writeText(text); toast(`${label} copied`, 'success'); }
+    catch { toast('Copy failed', 'error'); }
+  };
+
   const send = async () => {
     if (!to) { toast('Recipient email required', 'error'); return; }
     if (!coldEmail && !coverLetter) { toast('Generate the content first', 'error'); return; }
@@ -86,12 +92,14 @@ export function ComposePage() {
       </div>
 
       <div className="grid2" style={{ marginTop: 16, alignItems: 'start' }}>
-        <label className="field">Cold email (editable)
-          <textarea className="input" rows={10} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
-        </label>
-        <label className="field">Cover letter (editable)
-          <textarea className="input" rows={10} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
-        </label>
+        <div className="panel">
+          <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
+          <textarea rows={11} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
+        </div>
+        <div className="panel">
+          <div className="panel-head">📄 Cover letter <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button></div>
+          <textarea rows={11} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
+        </div>
       </div>
     </>
   );

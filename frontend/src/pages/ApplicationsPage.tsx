@@ -47,6 +47,13 @@ export function ApplicationsPage() {
         </div>
       </div>
 
+      <div className="stat-grid">
+        <div className="card stat"><div className="stat-label">Tracked</div><div className="stat-value">{apps.length}</div></div>
+        <div className="card stat"><div className="stat-label">Applied</div><div className="stat-value accent">{counts['applied'] ?? 0}</div></div>
+        <div className="card stat"><div className="stat-label">Interviewing</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{counts['interviewing'] ?? 0}</div></div>
+        <div className="card stat"><div className="stat-label">Offers</div><div className="stat-value" style={{ color: 'var(--green)' }}>{counts['offer'] ?? 0}</div></div>
+      </div>
+
       <div className="tabs">
         {(['all', ...STATUSES] as const).map((s) => (
           <div key={s} className={`tab ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>
@@ -78,7 +85,7 @@ export function ApplicationsPage() {
                     <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
                     <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
                     <td>
-                      <select className="select" value={a.status} onClick={(e) => e.stopPropagation()}
+                      <select className="status-pill" value={a.status} onClick={(e) => e.stopPropagation()}
                         onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
                         {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>

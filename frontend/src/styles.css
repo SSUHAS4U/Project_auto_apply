@@ -217,6 +217,36 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .tl-item::before { content: ''; position: absolute; left: -22px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
 .tl-time { color: var(--text-faint); font-size: 11px; }
 
+/* Job cards + view toggle ------------------------------------------------- */
+.job-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 14px; }
+.job-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; display: flex; flex-direction: column; min-height: 150px;
+  transition: border-color .15s, transform .06s, box-shadow .15s;
+}
+.job-card:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--shadow); }
+.job-card-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.job-card .job-title { font-size: 14.5px; line-height: 1.35; }
+.segmented { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: 9px; padding: 2px; }
+.segmented button { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 5px 11px; border-radius: 7px; font-size: 14px; line-height: 1; }
+.segmented button.on { background: var(--accent); color: #fff; }
+
+/* Status pill (applications) --------------------------------------------- */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 5px 11px;
+  font-size: 12px; font-weight: 700; border: 1px solid var(--border-strong); background: var(--bg-elev);
+  color: var(--text); cursor: pointer; appearance: none; padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' stroke='%239aa1b1' stroke-width='2.5'%3E%3Cpath d='M2 4l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+
+/* Copy buttons / output panels ------------------------------------------- */
+.panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.panel textarea { width: 100%; border: none; background: transparent; color: var(--text); padding: 14px; font-size: 13.5px; line-height: 1.6; resize: vertical; font-family: inherit; }
+.panel textarea:focus { outline: none; }
+.copy-btn { font-size: 11px; padding: 4px 9px; }
+
 /* Profile sections + grids ------------------------------------------------ */
 .section { margin-bottom: 16px; }
 .section-title { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; margin: 0 0 14px; color: var(--text); }

@@ -23,6 +23,10 @@ export function JobsPage() {
   const [formKey, setFormKey] = useState(0); // remount inputs when filters reset externally
   const [applyJob, setApplyJob] = useState<Job | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
+  const [view, setView] = useState<'table' | 'cards'>(
+    () => (localStorage.getItem('jobpilot_jobs_view') as 'table' | 'cards')
+      || (typeof window !== 'undefined' && window.innerWidth < 860 ? 'cards' : 'table'));
+  const chooseView = (v: 'table' | 'cards') => { localStorage.setItem('jobpilot_jobs_view', v); setView(v); };
 
   const load = (f: JobFilters) => {
     setLoading(true);
@@ -132,6 +136,10 @@ export function JobsPage() {
           <option value="65">65+</option>
           <option value="80">80+</option>
         </select>
+        <div className="segmented" style={{ marginLeft: 'auto' }}>
+          <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
+          <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
+        </div>
       </div>
 
       {activeChips.length > 0 && (
@@ -147,42 +155,59 @@ export function JobsPage() {
         </div>
       )}
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Role</th><th>Location</th><th>Score</th><th>Apply</th><th>Posted</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
+      {loading ? <div className="empty"><span className="spinner" /></div>
+        : jobs.length === 0 ? (
+          <div className="card card-pad empty"><div className="big">🗂️</div>No jobs in this view. Adjust filters or click <b>Run ingest</b>.</div>
+        ) : view === 'cards' ? (
+          <div className="job-grid">
             {jobs.map((j) => (
-              <tr key={j.id}>
-                <td>
+              <div key={j.id} className="job-card">
+                <div className="job-card-top">
                   <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setDetailJob(j)}>{j.title}</div>
-                  <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
-                </td>
-                <td className="muted">{j.location ?? (j.remote ? 'Remote' : '—')}</td>
-                <td><ScoreBar score={j.matchScore} /></td>
-                <td><ApplyBadge type={j.applyType} /></td>
-                <td className="muted">{fmtDate(j.postedAt ?? j.fetchedAt)}</td>
-                <td>
-                  <div className="cell-actions">
-                    {j.applyType === 'email' && (
-                      <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>
-                    )}
-                    <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
-                    <a className="btn btn-ghost btn-sm" href={j.url} target="_blank" rel="noreferrer">↗</a>
-                  </div>
-                </td>
-              </tr>
+                  <ApplyBadge type={j.applyType} />
+                </div>
+                <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
+                <div className="muted" style={{ fontSize: 12.5, margin: '6px 0' }}>📍 {j.location ?? (j.remote ? 'Remote' : '—')} · {fmtDate(j.postedAt ?? j.fetchedAt)}</div>
+                <div className="row" style={{ alignItems: 'center', gap: 10 }}>
+                  <ScoreBar score={j.matchScore} />
+                </div>
+                <div className="row" style={{ marginTop: 'auto', paddingTop: 12, gap: 7 }}>
+                  {j.applyType === 'email' && <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>}
+                  <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDetailJob(j)}>Details</button>
+                  <a className="btn btn-ghost btn-sm" href={j.url} target="_blank" rel="noreferrer" style={{ marginLeft: 'auto' }}>↗</a>
+                </div>
+              </div>
             ))}
-            {!loading && jobs.length === 0 && (
-              <tr><td colSpan={6}><div className="empty"><div className="big">🗂️</div>No jobs yet. Configure connectors in <code>.env</code> and click <b>Run ingest</b>.</div></td></tr>
-            )}
-            {loading && <tr><td colSpan={6}><div className="empty"><span className="spinner" /></div></td></tr>}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Role</th><th>Location</th><th>Score</th><th>Apply</th><th>Posted</th><th></th></tr></thead>
+              <tbody>
+                {jobs.map((j) => (
+                  <tr key={j.id}>
+                    <td>
+                      <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setDetailJob(j)}>{j.title}</div>
+                      <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
+                    </td>
+                    <td className="muted">{j.location ?? (j.remote ? 'Remote' : '—')}</td>
+                    <td><ScoreBar score={j.matchScore} /></td>
+                    <td><ApplyBadge type={j.applyType} /></td>
+                    <td className="muted">{fmtDate(j.postedAt ?? j.fetchedAt)}</td>
+                    <td>
+                      <div className="cell-actions">
+                        {j.applyType === 'email' && <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>}
+                        <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
+                        <a className="btn btn-ghost btn-sm" href={j.url} target="_blank" rel="noreferrer">↗</a>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
       <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
         <button className="btn btn-sm" disabled={(filters.page ?? 0) <= 0}
