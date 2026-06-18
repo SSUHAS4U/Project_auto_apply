@@ -129,8 +129,14 @@ public class IngestService {
                     .collect(Collectors.toList());
         }
         if ("jooble".equals(c.source())) {
-            return List.of(FetchParams.builder()
-                    .query(props.getJooble().getKeywords()).build());
+            // Jooble aggregates Naukri/Indeed/Shine/etc. Run every fresher/India query
+            // so those postings land in the board (URLs deep-link to the originals).
+            String kw = props.getJooble().getKeywords();
+            if (kw == null || kw.isBlank()) return List.of();
+            return java.util.Arrays.stream(kw.split(","))
+                    .map(String::trim).filter(s -> !s.isEmpty())
+                    .map(q -> FetchParams.builder().query(q).where("India").build())
+                    .collect(Collectors.toList());
         }
         if ("google".equals(c.source())) {
             List<String> qs = props.getGoogleCse().getQueries();
