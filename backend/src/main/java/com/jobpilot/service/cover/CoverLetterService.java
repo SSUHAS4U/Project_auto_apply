@@ -33,7 +33,7 @@ public class CoverLetterService {
     public String generate(Job job, Profile profile) {
         if (!ai.isEnabled()) return template.generate(job, profile);
         try {
-            String letter = ai.complete(SYSTEM, CoverLetterPrompt.build(job, profile), false);
+            String letter = ai.complete(SYSTEM, CoverLetterPrompt.build(job, profile), false, true);
             if (letter == null || letter.isBlank()) throw new IllegalStateException("empty letter");
             return letter;
         } catch (Exception e) {

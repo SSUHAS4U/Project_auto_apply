@@ -92,7 +92,7 @@ public class ComposeService {
                 templateOrDefault(p.getCoverLetterTemplate(), DEFAULT_COVER),
                 nz(role), nz(company), nz(jobDetails));
 
-        String raw = ai.complete(SYSTEM, user, false);
+        String raw = ai.complete(SYSTEM, user, false, true);
         JsonNode json = parseJson(raw);
         String subject = json != null ? json.path("subject").asText("") : "";
         String cover = json != null ? json.path("coverLetter").asText("") : "";

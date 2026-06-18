@@ -57,7 +57,7 @@ public class ResumeAnalysisService {
             throw new IllegalStateException("no readable text found in resume");
         }
         String trimmed = text.length() > 8000 ? text.substring(0, 8000) : text;
-        String raw = ai.complete(SYSTEM, "RESUME:\n" + trimmed, false);
+        String raw = ai.complete(SYSTEM, "RESUME:\n" + trimmed, false, true);
         JsonNode j = parseJson(raw);
         if (j == null) throw new IllegalStateException("AI could not parse the resume into fields");
 
