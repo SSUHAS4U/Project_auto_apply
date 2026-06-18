@@ -45,6 +45,11 @@ public class Profile {
     private String summary;
 
     private String location;
+
+    /** Secondary location — e.g. home town / preferred relocation city. */
+    @Column(name = "location2")
+    private String location2;
+
     private String address;
     private String city;
     private String state;
@@ -128,6 +133,9 @@ public class Profile {
 
     @Column(name = "cover_letter_template", columnDefinition = "text")
     private String coverLetterTemplate;
+
+    @Column(name = "email_template", columnDefinition = "text")
+    private String emailTemplate;
 
     // --- Resume -------------------------------------------------------------
     @Column(name = "resume_path")

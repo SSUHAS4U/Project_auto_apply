@@ -28,7 +28,20 @@ public class AiController {
     @GetMapping("/ai/status")
     public Map<String, Object> status() {
         return Map.of("enabled", ai.isEnabled(), "provider", ai.provider(),
-                "remainingToday", ai.remainingToday());
+                "remainingToday", ai.remainingToday(), "providers", ai.providerStatus());
+    }
+
+    /** Switch the active AI model: groq | gemini | ollama | auto. */
+    @PostMapping("/ai/provider")
+    public Map<String, Object> setProvider(@RequestBody Map<String, String> body) {
+        ai.setProvider(body.get("provider"));
+        return Map.of("provider", ai.provider(), "enabled", ai.isEnabled());
+    }
+
+    /** Live test a specific provider's connection. */
+    @PostMapping("/ai/test")
+    public Map<String, Object> test(@RequestBody Map<String, String> body) {
+        return ai.test(body.getOrDefault("provider", ai.provider()));
     }
 
     /** On-demand field suggestion (uses the fast/cheap model). */

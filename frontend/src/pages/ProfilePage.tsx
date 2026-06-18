@@ -118,7 +118,8 @@ export function ProfilePage() {
 
           <Section ico="📍" title="Location">
             <div className="grid3">
-              <Field label="Location (display)"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} /></Field>
+              <Field label="Current location"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
+              <Field label="Secondary / home location"><input className="input" value={p.location2 ?? ''} onChange={(e) => set({ location2: e.target.value })} placeholder="home town / preferred city" /></Field>
               <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} /></Field>
               <Field label="State / Province"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} /></Field>
               <Field label="Country"><input className="input" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} /></Field>

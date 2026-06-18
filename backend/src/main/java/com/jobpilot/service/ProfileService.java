@@ -35,6 +35,7 @@ public class ProfileService {
         p.setHeadline(in.getHeadline());
         p.setSummary(in.getSummary());
         p.setLocation(in.getLocation());
+        p.setLocation2(in.getLocation2());
         p.setAddress(in.getAddress());
         p.setCity(in.getCity());
         p.setState(in.getState());
@@ -65,6 +66,7 @@ public class ProfileService {
         if (in.getLinks() != null) p.setLinks(in.getLinks());
         if (in.getFieldMap() != null) p.setFieldMap(in.getFieldMap());
         p.setCoverLetterTemplate(in.getCoverLetterTemplate());
+        p.setEmailTemplate(in.getEmailTemplate());
         p.setUpdatedAt(Instant.now());
         return repo.save(p);
     }

@@ -29,11 +29,12 @@ public class JobController {
             @RequestParam(required = false) String location,
             @RequestParam(required = false) Integer minScore,
             @RequestParam(required = false) String applyType,
+            @RequestParam(required = false) String region,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant since,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
         return PageResponse.of(
-                jobs.search(role, location, minScore, applyType, since, page, size),
+                jobs.search(role, location, minScore, applyType, region, since, page, size),
                 j -> j);
     }
 

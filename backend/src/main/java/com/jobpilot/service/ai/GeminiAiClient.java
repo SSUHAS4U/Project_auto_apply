@@ -43,7 +43,7 @@ public class GeminiAiClient implements AiClient {
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", system))),
                 "contents", List.of(Map.of("parts", List.of(Map.of("text", user)))),
                 "generationConfig", Map.of(
-                        "maxOutputTokens", 1200,
+                        "maxOutputTokens", 2000,
                         "temperature", 0.6,
                         "thinkingConfig", Map.of("thinkingBudget", 0)));
         JsonNode resp = http.post().uri(url)

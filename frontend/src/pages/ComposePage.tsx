@@ -25,8 +25,8 @@ export function ComposePage() {
       const r = await api.composeGenerate(role, company, details);
       setCoverLetter(r.coverLetter || '');
       setColdEmail(r.coldEmail || '');
-      if (!subject) setSubject(`Application: ${role}${company ? ` — ${company}` : ''}`.trim());
-      toast('Generated — review before sending', 'success');
+      if (r.subject) setSubject(r.subject);
+      toast('Generated subject, cold email & cover letter — review before sending', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setGenerating(false); }
   };

@@ -21,13 +21,18 @@ import java.util.Map;
 public class ComposeService {
 
     private static final String SYSTEM = """
-            You are an expert job-application writer. Given a candidate profile and a job
-            description, produce TWO things:
-              1. coverLetter — 150-220 words, professional first person, specific to the role.
-              2. coldEmail — a short (90-140 word) outreach email to a recruiter/hiring manager,
-                 warm and direct, referencing the role and 1-2 concrete strengths.
-            Use only facts implied by the candidate. No placeholders. Sign with the real name.
-            Respond with STRICT JSON only: {"coverLetter": "...", "coldEmail": "..."}""";
+            You are an expert job-application writer. Given a candidate profile, the candidate's
+            preferred TEMPLATES, and a target job, produce three things tailored to THIS company/role:
+              1. subject     — a crisp email subject line based on the role + company + candidate
+                               (e.g. "Application for Software Engineer Role - Suhas S | CSE 2026 | Nokia Intern").
+              2. coldEmail   — rewrite the candidate's EMAIL TEMPLATE for this specific company and role,
+                               keeping its structure, bullet snapshot, and signature; fill [Company Name]/
+                               [Recruiter Name] (use "Hiring Team" if unknown). Keep all real facts.
+              3. coverLetter — rewrite the candidate's COVER LETTER TEMPLATE for this company/role,
+                               keeping structure and real facts; fill placeholders.
+            Use ONLY facts from the profile/templates. Never invent experience. No leftover [brackets]
+            except a name you genuinely cannot know. Respond with STRICT JSON only:
+            {"subject": "...", "coldEmail": "...", "coverLetter": "..."}""";
 
     private final AiService ai;
     private final ProfileService profileService;
@@ -53,33 +58,81 @@ public class ComposeService {
             throw new IllegalStateException("AI is not configured. Set JOBPILOT_AI_PROVIDER + key, "
                     + "or use the Email-apply flow which has a template fallback.");
         }
+        String contact = nz(p.getFullName())
+                + (notBlank(p.getPhone()) ? " | " + p.getPhone() : "")
+                + (notBlank(p.getEmail()) ? " | " + p.getEmail() : "");
+        String links = p.getLinks() == null ? "" : p.getLinks().entrySet().stream()
+                .filter(e -> e.getValue() != null && !e.getValue().isBlank())
+                .map(e -> e.getKey() + ": " + e.getValue()).reduce((a, b) -> a + ", " + b).orElse("");
+
         String user = """
                 CANDIDATE: %s
+                CONTACT: %s
+                LINKS: %s
                 HEADLINE: %s
                 SKILLS: %s
-                EXPERIENCE (yrs): %s
+                EXPERIENCE: %s
                 SUMMARY: %s
 
-                ROLE: %s
-                COMPANY: %s
+                EMAIL TEMPLATE (rewrite this for the company/role):
+                %s
+
+                COVER LETTER TEMPLATE (rewrite this for the company/role):
+                %s
+
+                TARGET ROLE: %s
+                TARGET COMPANY: %s
                 JOB DETAILS:
                 %s
                 """.formatted(
-                nz(p.getFullName()), nz(p.getHeadline()),
+                nz(p.getFullName()), contact, links, nz(p.getHeadline()),
                 p.getSkills() == null ? "" : String.join(", ", p.getSkills()),
                 nz(p.getYearsExperience()), nz(p.getSummary()),
+                templateOrDefault(p.getEmailTemplate(), DEFAULT_EMAIL),
+                templateOrDefault(p.getCoverLetterTemplate(), DEFAULT_COVER),
                 nz(role), nz(company), nz(jobDetails));
 
         String raw = ai.complete(SYSTEM, user, false);
         JsonNode json = parseJson(raw);
+        String subject = json != null ? json.path("subject").asText("") : "";
         String cover = json != null ? json.path("coverLetter").asText("") : "";
         String cold = json != null ? json.path("coldEmail").asText("") : "";
-        if (cover.isBlank() && cold.isBlank()) {
-            // Model didn't return JSON — surface its text as the cover letter.
-            cover = raw;
+        if (cover.isBlank() && cold.isBlank()) cover = raw;
+        if (subject.isBlank()) {
+            subject = "Application for " + nz(role) + (notBlank(company) ? " - " + company : "")
+                    + " | " + nz(p.getFullName());
         }
-        return Map.of("coverLetter", cover, "coldEmail", cold);
+        return Map.of("subject", subject, "coverLetter", cover, "coldEmail", cold);
     }
+
+    private String templateOrDefault(String t, String def) {
+        return (t == null || t.isBlank()) ? def : t;
+    }
+
+    private static final String DEFAULT_EMAIL = """
+            Subject: Application for [Role] - [Your Name]
+
+            Hi [Recruiter Name],
+            I came across the [Role] opening at [Company Name] and would like to express my interest.
+            Based on the requirements, I believe my background aligns well with what your team needs.
+            A quick snapshot of my profile:
+            - <key education / current role>
+            - <relevant internship / experience>
+            - <notable projects>
+            - <core skills>
+            - <certifications>
+            I've attached my resume and would welcome the chance to discuss how I can contribute.
+            Best regards,
+            [Your Name]""";
+
+    private static final String DEFAULT_COVER = """
+            Dear Hiring Manager,
+            I am writing to express my interest in the [Role] position at [Company Name].
+            <2-3 paragraphs tying the candidate's education, internship, projects, and skills to the role>
+            I would welcome the opportunity to discuss my qualifications further. Thank you for your
+            time and consideration.
+            Sincerely,
+            [Your Name]""";
 
     public Map<String, Object> send(String to, String subject, String coldEmail,
                                     String coverLetter, boolean attachResume) {

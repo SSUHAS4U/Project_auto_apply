@@ -66,6 +66,25 @@ public class NormalizeService {
         ApplyClassification c = classify(r);
         j.setApplyType(c.type());
         j.setApplyEmail(c.email());
+        j.setRegion(region(r.getLocation(), r.isRemote()));
+    }
+
+    private static final String[] INDIA_HINTS = {
+            "india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai", "mumbai",
+            "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "jaipur",
+            "kochi", "coimbatore", "indore", "chandigarh", "trivandrum", "thiruvananthapuram"
+    };
+
+    /** india | remote | outside | unknown */
+    public String region(String location, boolean remote) {
+        String loc = location == null ? "" : location.toLowerCase(Locale.ROOT);
+        for (String h : INDIA_HINTS) {
+            if (loc.contains(h)) return "india";
+        }
+        if (remote || loc.contains("remote") || loc.contains("anywhere") || loc.contains("worldwide")) {
+            return "remote";
+        }
+        return loc.isBlank() ? "unknown" : "outside";
     }
 
     /**

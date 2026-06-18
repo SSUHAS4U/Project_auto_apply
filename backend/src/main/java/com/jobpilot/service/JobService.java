@@ -49,6 +49,11 @@ public class JobService {
 
     public Page<Job> search(String role, String location, Integer minScore,
                             String applyType, Instant since, int page, int size) {
+        return search(role, location, minScore, applyType, null, since, page, size);
+    }
+
+    public Page<Job> search(String role, String location, Integer minScore, String applyType,
+                            String region, Instant since, int page, int size) {
         Specification<Job> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (role != null && !role.isBlank()) {
@@ -62,6 +67,14 @@ public class JobService {
             }
             if (applyType != null && !applyType.isBlank()) {
                 ps.add(cb.equal(root.get("applyType"), applyType));
+            }
+            if (region != null && !region.isBlank()) {
+                // "india" tab includes remote roles (relevant to an India-based seeker).
+                if (region.equals("india")) {
+                    ps.add(root.get("region").in("india", "remote"));
+                } else {
+                    ps.add(cb.equal(root.get("region"), region));
+                }
             }
             if (since != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("fetchedAt"), since));

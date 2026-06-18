@@ -69,6 +69,18 @@ export function JobsPage() {
         </button>
       </div>
 
+      <div className="tabs">
+        {([
+          { k: '', label: 'All jobs' },
+          { k: 'india', label: 'India + Remote' },
+          { k: 'outside', label: 'Outside India' },
+        ] as const).map((t) => (
+          <div key={t.k} className={`tab ${(filters.region ?? '') === t.k ? 'active' : ''}`}
+            onClick={() => apply({ region: t.k || undefined })}>{t.label}</div>
+        ))}
+        <a className="tab" href="/daily" style={{ marginLeft: 'auto' }}>☀️ AI Picks →</a>
+      </div>
+
       <div className="stat-grid">
         <div className="card stat"><div className="stat-label">Jobs in view</div><div className="stat-value">{stats.total}</div></div>
         <div className="card stat"><div className="stat-label">Email-apply</div><div className="stat-value accent">{stats.emails}</div></div>

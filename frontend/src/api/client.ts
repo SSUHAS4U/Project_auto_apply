@@ -38,6 +38,7 @@ export interface JobFilters {
   location?: string;
   minScore?: number;
   applyType?: string;
+  region?: string;
   since?: string;
   page?: number;
   size?: number;
@@ -77,7 +78,9 @@ export const api = {
     return req<Profile>('/api/profile/resume/analyze', { method: 'POST', body: fd });
   },
 
-  aiStatus: () => req<{ enabled: boolean; provider: string; remainingToday: number }>('/api/ai/status'),
+  aiStatus: () => req<{ enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] }>('/api/ai/status'),
+  aiSetProvider: (provider: string) => req<{ provider: string; enabled: boolean }>('/api/ai/provider', { method: 'POST', body: JSON.stringify({ provider }) }),
+  aiTest: (provider: string) => req<{ provider: string; ok: boolean; ms?: number; sample?: string; error?: string }>('/api/ai/test', { method: 'POST', body: JSON.stringify({ provider }) }),
   aiSuggest: (field: string, text: string, context?: string) =>
     req<{ suggestion: string }>('/api/ai/suggest', {
       method: 'POST', body: JSON.stringify({ field, text, context: context ?? '' }),
@@ -88,7 +91,7 @@ export const api = {
     }),
 
   composeGenerate: (role: string, company: string, jobDetails: string) =>
-    req<{ coverLetter: string; coldEmail: string }>('/api/compose/generate', {
+    req<{ subject: string; coverLetter: string; coldEmail: string }>('/api/compose/generate', {
       method: 'POST', body: JSON.stringify({ role, company, jobDetails }),
     }),
   composeSend: (body: { to: string; subject?: string; coldEmail: string; coverLetter: string; attachResume: boolean }) =>

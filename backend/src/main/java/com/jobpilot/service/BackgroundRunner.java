@@ -48,6 +48,14 @@ public class BackgroundRunner {
         });
     }
 
+    public Map<String, Object> startRescore() {
+        return submit("rescore", () -> {
+            int n = ingest.rescoreAll();
+            notifications.create("ingest", "Rescore complete", n + " jobs re-scored for your profile.", Map.of("rescored", n));
+            return "rescored " + n + " jobs";
+        });
+    }
+
     public Map<String, Object> startDaily() {
         return submit("daily", () -> {
             Map<String, Object> r = daily.run();

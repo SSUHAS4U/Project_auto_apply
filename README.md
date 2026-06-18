@@ -7,6 +7,9 @@ Built to run on free tiers. Spring Boot API · React dashboard · Chrome MV3 ext
 > mailbox). For LinkedIn/Naukri/Indeed/Google Forms/MS Forms the extension *fills* the form and
 > **you review & submit** — no unattended submission, no server-side scraping of those platforms.
 
+> 📖 **New: see [APP_GUIDE.md](APP_GUIDE.md)** — the full walkthrough of every screen, resume-aware
+> matching, the AI models, Compose templates, the extension, and how to test it.
+
 ---
 
 ## What's in the box

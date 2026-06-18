@@ -32,13 +32,57 @@ public class AiService {
         this.settings = settings;
     }
 
+    private static final String K_PROVIDER = "ai_provider";
+    private static final List<String> AUTO_ORDER = List.of("groq", "gemini", "ollama");
+
+    /** Configured provider — settings override the .env default; "auto" resolves at call time. */
+    public String provider() {
+        return settings.get(K_PROVIDER).filter(s -> !s.isBlank())
+                .orElse(props.getAi().getProvider());
+    }
+
+    public void setProvider(String name) {
+        settings.put(K_PROVIDER, name == null ? "auto" : name.trim().toLowerCase());
+    }
+
+    /** Resolve "auto" to the first configured client; otherwise the named one. */
+    private AiClient resolve() {
+        String p = provider();
+        if ("auto".equals(p)) {
+            return AUTO_ORDER.stream().map(clients::get)
+                    .filter(c -> c != null && c.isConfigured()).findFirst().orElse(null);
+        }
+        return clients.get(p);
+    }
+
     public boolean isEnabled() {
-        AiClient c = clients.get(props.getAi().getProvider());
+        AiClient c = resolve();
         return c != null && c.isConfigured();
     }
 
-    public String provider() {
-        return props.getAi().getProvider();
+    /** Per-provider configured + reachable status (for the Settings test panel). */
+    public List<Map<String, Object>> providerStatus() {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (String name : List.of("groq", "gemini", "ollama")) {
+            AiClient c = clients.get(name);
+            out.add(Map.of("provider", name, "configured", c != null && c.isConfigured()));
+        }
+        return out;
+    }
+
+    /** Live test: run a 1-token completion against a specific provider. */
+    public Map<String, Object> test(String name) {
+        AiClient c = clients.get(name);
+        if (c == null) return Map.of("provider", name, "ok", false, "error", "unknown provider");
+        if (!c.isConfigured()) return Map.of("provider", name, "ok", false, "error", "not configured (missing key)");
+        try {
+            long t0 = System.currentTimeMillis();
+            String r = c.complete("You are a test.", "Reply with the single word: ok", true);
+            return Map.of("provider", name, "ok", true,
+                    "ms", System.currentTimeMillis() - t0, "sample", r.length() > 40 ? r.substring(0, 40) : r);
+        } catch (Exception e) {
+            return Map.of("provider", name, "ok", false, "error", e.getMessage());
+        }
     }
 
     /** Remaining AI calls allowed today. */
@@ -48,10 +92,10 @@ public class AiService {
 
     /** Run a completion through the active provider, counting it against the daily cap. */
     public String complete(String system, String user, boolean fast) {
-        AiClient client = clients.get(props.getAi().getProvider());
+        AiClient client = resolve();
         if (client == null || !client.isConfigured()) {
-            throw new IllegalStateException("AI provider '" + props.getAi().getProvider()
-                    + "' is not configured. Set JOBPILOT_AI_PROVIDER + its API key.");
+            throw new IllegalStateException("AI provider '" + provider()
+                    + "' is not configured. Set a provider + API key (Settings) or JOBPILOT_AI_PROVIDER.");
         }
         enforceDailyLimit();
         try {

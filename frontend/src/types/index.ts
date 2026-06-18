@@ -67,6 +67,7 @@ export interface Profile {
   headline?: string;
   summary?: string;
   location?: string;
+  location2?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -97,6 +98,7 @@ export interface Profile {
   links?: Record<string, string>;
   fieldMap?: Record<string, string>;
   coverLetterTemplate?: string;
+  emailTemplate?: string;
   // resume
   resumeFilename?: string;
 }

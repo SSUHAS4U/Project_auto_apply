@@ -63,4 +63,7 @@ public class Job {
 
     @Column(name = "match_score")
     private Integer matchScore;
+
+    /** india | outside | remote | unknown — for the Jobs board split. */
+    private String region;
 }

@@ -142,6 +142,26 @@ public class IngestService {
         return List.of(FetchParams.builder().build());
     }
 
+    /** Recompute match_score + region for ALL stored jobs with the current profile. */
+    public int rescoreAll() {
+        Profile profile = profileRepo.findFirstByOrderByUpdatedAtAsc().orElse(null);
+        if (profile == null) return 0;
+        int page = 0, size = 500, total = 0;
+        org.springframework.data.domain.Page<Job> batch;
+        do {
+            batch = jobRepo.findAll(org.springframework.data.domain.PageRequest.of(page, size));
+            for (Job j : batch.getContent()) {
+                j.setMatchScore(scorer.score(j, profile));
+                j.setRegion(normalize.region(j.getLocation(), j.isRemote()));
+            }
+            jobRepo.saveAll(batch.getContent());
+            total += batch.getNumberOfElements();
+            page++;
+        } while (batch.hasNext());
+        log.info("Rescored {} jobs", total);
+        return total;
+    }
+
     /** @return 0 = skipped, 1 = inserted, 2 = updated */
     @Transactional
     protected int upsert(RawJob r, Profile profile) {

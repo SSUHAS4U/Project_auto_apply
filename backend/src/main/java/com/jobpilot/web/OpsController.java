@@ -66,6 +66,12 @@ public class OpsController {
         return runner.status();
     }
 
+    /** Recompute match scores + region for all jobs (background). */
+    @PostMapping("/maintenance/rescore")
+    public Map<String, Object> rescore() {
+        return runner.startRescore();
+    }
+
     /** The current AI-curated Daily Picks (separate from the main board). */
     @GetMapping("/daily/picks")
     public Map<String, Object> dailyPicks() {
