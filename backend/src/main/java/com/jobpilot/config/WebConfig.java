@@ -42,7 +42,7 @@ public class WebConfig {
     }
 
     @Bean
-    public CorsFilter corsFilter() {
+    public FilterRegistrationBean<CorsFilter> corsFilter() {
         CorsConfiguration cfg = new CorsConfiguration();
         // Allow configured dashboard origins + any chrome extension origin.
         cfg.setAllowedOriginPatterns(buildPatterns());
@@ -51,7 +51,10 @@ public class WebConfig {
         cfg.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);
-        return new CorsFilter(source);
+        
+        FilterRegistrationBean<CorsFilter> reg = new FilterRegistrationBean<>(new CorsFilter(source));
+        reg.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE);
+        return reg;
     }
 
     private List<String> buildPatterns() {
