@@ -200,6 +200,9 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .toast.success { border-left-color: var(--green); }
 @keyframes slideIn { from { transform: translateY(12px); opacity: 0; } }
 .chip { background: var(--accent-soft); color: var(--accent-hi); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.filter-chip { display: inline-flex; align-items: center; gap: 7px; background: var(--accent-soft); color: var(--accent-hi); border: 1px solid rgba(99,102,241,.3); border-radius: 999px; padding: 4px 5px 4px 11px; font-size: 12px; font-weight: 600; }
+.filter-chip-x { background: rgba(99,102,241,.18); border: none; color: var(--accent-hi); width: 18px; height: 18px; border-radius: 50%; cursor: pointer; font-size: 10px; display: grid; place-items: center; transition: background .15s; }
+.filter-chip-x:hover { background: var(--accent); color: #fff; }
 .skill-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .pre { white-space: pre-wrap; line-height: 1.6; font-size: 13.5px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; }
 .tl { border-left: 2px solid var(--border-strong); margin-left: 6px; padding-left: 16px; }

@@ -4,13 +4,23 @@ import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 
+const FILTER_KEY = 'jobpilot_job_filters';
+function loadStoredFilters(): JobFilters {
+  try {
+    const raw = localStorage.getItem(FILTER_KEY);
+    if (raw) return { page: 0, size: 25, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { page: 0, size: 25 };
+}
+
 export function JobsPage() {
   const toast = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [ingesting, setIngesting] = useState(false);
-  const [filters, setFilters] = useState<JobFilters>({ page: 0, size: 25 });
+  const [filters, setFilters] = useState<JobFilters>(loadStoredFilters);
+  const [formKey, setFormKey] = useState(0); // remount inputs when filters reset externally
   const [applyJob, setApplyJob] = useState<Job | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
 
@@ -22,6 +32,13 @@ export function JobsPage() {
       .finally(() => setLoading(false));
   };
 
+  // Persist filters (minus paging) so they survive reload/navigation until cleared.
+  useEffect(() => {
+    const { page, size, ...persist } = filters;
+    void page; void size;
+    localStorage.setItem(FILTER_KEY, JSON.stringify(persist));
+  }, [filters]);
+
   useEffect(() => { load(filters); /* eslint-disable-next-line */ }, [filters.page, filters.size]);
 
   const apply = (patch: Partial<JobFilters>) => {
@@ -29,6 +46,17 @@ export function JobsPage() {
     setFilters(next);
     load(next);
   };
+
+  const clearOne = (key: keyof JobFilters) => { apply({ [key]: undefined } as Partial<JobFilters>); setFormKey((k) => k + 1); };
+  const clearAll = () => { const next = { page: 0, size: 25 }; setFilters(next); load(next); setFormKey((k) => k + 1); };
+
+  const activeChips = ([
+    ['role', filters.role && `Role: ${filters.role}`],
+    ['location', filters.location && `Location: ${filters.location}`],
+    ['applyType', filters.applyType && `Apply: ${filters.applyType}`],
+    ['minScore', filters.minScore && `Score ≥ ${filters.minScore}`],
+    ['region', filters.region && `Region: ${filters.region}`],
+  ] as [keyof JobFilters, string | undefined][]).filter(([, v]) => v);
 
   const runIngest = async () => {
     setIngesting(true);
@@ -87,11 +115,11 @@ export function JobsPage() {
         <div className="card stat"><div className="stat-label">Avg match (page)</div><div className="stat-value">{stats.avg}</div></div>
       </div>
 
-      <div className="toolbar">
-        <input className="input" placeholder="Role / title…" defaultValue={filters.role}
-          onKeyDown={(e) => e.key === 'Enter' && apply({ role: (e.target as HTMLInputElement).value })} />
-        <input className="input" placeholder="Location…" defaultValue={filters.location}
-          onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value })} />
+      <div className="toolbar" key={formKey}>
+        <input className="input" placeholder="Role / title…  (Enter)" defaultValue={filters.role}
+          onKeyDown={(e) => e.key === 'Enter' && apply({ role: (e.target as HTMLInputElement).value || undefined })} />
+        <input className="input" placeholder="Location…  (Enter)" defaultValue={filters.location}
+          onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
         <select className="select" value={filters.applyType ?? ''} onChange={(e) => apply({ applyType: e.target.value || undefined })}>
           <option value="">All apply types</option>
           <option value="email">Email</option>
@@ -105,6 +133,19 @@ export function JobsPage() {
           <option value="80">80+</option>
         </select>
       </div>
+
+      {activeChips.length > 0 && (
+        <div className="row" style={{ gap: 8, marginBottom: 16, alignItems: 'center' }}>
+          <span className="faint" style={{ fontSize: 12 }}>Active filters:</span>
+          {activeChips.map(([key, label]) => (
+            <span key={key} className="filter-chip">
+              {label}
+              <button className="filter-chip-x" title="Remove" onClick={() => clearOne(key)}>✕</button>
+            </span>
+          ))}
+          <button className="btn btn-ghost btn-sm" onClick={clearAll}>Clear all</button>
+        </div>
+      )}
 
       <div className="table-wrap">
         <table>

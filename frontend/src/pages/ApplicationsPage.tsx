@@ -11,7 +11,9 @@ export function ApplicationsPage() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Application | null>(null);
-  const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all');
+  const [filter, setFilterState] = useState<ApplicationStatus | 'all'>(
+    () => (localStorage.getItem('jobpilot_app_filter') as ApplicationStatus | 'all') || 'all');
+  const setFilter = (f: ApplicationStatus | 'all') => { localStorage.setItem('jobpilot_app_filter', f); setFilterState(f); };
 
   const load = () => {
     setLoading(true);
