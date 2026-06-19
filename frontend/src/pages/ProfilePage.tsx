@@ -94,6 +94,33 @@ export function ProfilePage() {
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <span className="spinner" /> : '💾'} Save all</button>
       </div>
 
+      {(() => {
+        const checks = [p.fullName, p.email, p.phone, p.headline, p.location, p.summary,
+          (p.skills ?? []).length > 0, (p.experience ?? []).length > 0, (p.education ?? []).length > 0,
+          p.resumeFilename, p.expectedCtc, p.links?.github];
+        const done = checks.filter(Boolean).length;
+        const pct = Math.round((done / checks.length) * 100);
+        return (
+          <div className="card card-pad profile-hero">
+            <div className="hero-avatar">{(p.fullName?.[0] ?? 'U').toUpperCase()}</div>
+            <div className="grow">
+              <div className="hero-name">{p.fullName || 'Your Name'}</div>
+              <div className="muted" style={{ fontSize: 13 }}>{p.headline || 'Add a headline'} · {p.location || 'location'}</div>
+              <div className="skill-row" style={{ marginTop: 8 }}>
+                <span className="chip">🧩 {(p.skills ?? []).length} skills</span>
+                <span className="chip">💼 {p.yearsExperience || '0'} yrs</span>
+                <span className="chip">{p.resumeFilename ? '📄 resume ✓' : '📄 no resume'}</span>
+              </div>
+            </div>
+            <div className="hero-pct">
+              <div className="hero-pct-num">{pct}%</div>
+              <div className="hero-pct-label">complete</div>
+              <div className="score-bar" style={{ width: 90, marginTop: 6 }}><span style={{ width: `${pct}%` }} /></div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="tabs">
         {TABS.map((t) => (
           <div key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>{t.ico} {t.label}</div>
