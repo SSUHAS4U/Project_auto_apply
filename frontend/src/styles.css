@@ -85,6 +85,14 @@ a:hover { text-decoration: underline; }
 .su-logout { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 16px; padding: 4px 6px; border-radius: 6px; }
 .su-logout:hover { background: var(--bg-card); color: var(--red); }
 
+/* Notifications */
+.notif { display: flex; gap: 13px; align-items: flex-start; background: var(--bg-card); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+.notif:hover { background: var(--bg-card-hover); }
+.notif.read { border-left-color: var(--border-strong); opacity: 0.62; cursor: default; }
+.notif-ico { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); display: grid; place-items: center; font-size: 16px; flex: none; }
+.notif-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 8px; vertical-align: middle; }
+
 /* Auth screen */
 .auth-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 20px;
   background: radial-gradient(800px 500px at 50% -10%, rgba(99,102,241,0.16), transparent 60%), var(--bg); }
