@@ -27,4 +27,17 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
               and not exists (select 1 from saved_job s where s.promoted_job_id = j.id)
             """, nativeQuery = true)
     int deleteStaleUnreferenced(@Param("cutoff") Instant cutoff);
+
+    /** Remove non-tech listings (sales/VKYC/ops/etc.) that the user hasn't acted on. */
+    @Modifying
+    @Query(value = """
+            delete from job j
+            where not exists (select 1 from application a where a.job_id = j.id)
+              and not exists (select 1 from saved_job s where s.promoted_job_id = j.id)
+              and (
+                j.title ~* '(vkyc|v-kyc|\\mkyc\\M|telecall|tele caller|\\mbpo\\M|business development|relationship manager|collection|recovery|field (executive|sales)|\\mdriver\\M|warehouse|\\mnurse\\M|accountant|recruit(er|ment)|talent acquisition|content writer|customer care|voice process|non.?voice|data entry|back office|cashier|teller|\\mbde\\M|inside sales|territory|store manager|beautician|chef|security guard|housekeeping)'
+                OR j.title !~* '(developer|engineer|software|programmer|\\msde\\M|\\msdet\\M|devops|\\msre\\M|data scien|data engineer|data analyst|machine learning|full ?stack|front ?end|back ?end|\\mjava\\M|python|javascript|typescript|react|angular|node|golang|kotlin|swift|android|\\mios\\M|flutter|\\mqa\\M|automation|cloud|kubernetes|docker|database|\\mdba\\M|web developer|technical|computer|architect|platform|security engineer|firmware|embedded|analytics|systems engineer|network engineer|solutions engineer|\\mui\\M|\\mux\\M|infrastructure|\\mapi\\M|microservice)'
+              )
+            """, nativeQuery = true)
+    int deleteNonTechUnreferenced();
 }

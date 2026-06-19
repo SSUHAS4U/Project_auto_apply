@@ -32,9 +32,10 @@ public class CleanupService {
     @Transactional
     public int purgeOldJobs() {
         Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
-        int deleted = jobRepo.deleteStaleUnreferenced(cutoff);
-        log.info("Cleanup: purged {} stale jobs older than {} days", deleted, retentionDays);
-        return deleted;
+        int stale = jobRepo.deleteStaleUnreferenced(cutoff);
+        int nonTech = jobRepo.deleteNonTechUnreferenced();
+        log.info("Cleanup: purged {} stale + {} non-tech jobs", stale, nonTech);
+        return stale + nonTech;
     }
 
     /** Safety-net nightly purge (03:30) even if the daily run didn't fire. */

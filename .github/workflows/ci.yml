@@ -19,7 +19,7 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Build & test
-        run: ./mvnw -B verify
+        run: chmod +x mvnw && ./mvnw -B verify
 
   frontend:
     runs-on: ubuntu-latest

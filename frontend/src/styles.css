@@ -374,6 +374,13 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .chat-wrap { height: calc(100dvh - 200px); }
   .chat-row, .chat-jobs { max-width: 100%; }
   .kv-row { grid-template-columns: 1fr 1fr auto; }
+
+  /* Model switcher: keep the menu on-screen and the trigger compact */
+  .model-trigger { padding: 7px 11px; font-size: 12.5px; }
+  .model-meta { display: none; }
+  .model-menu { width: min(260px, calc(100vw - 32px)); right: 0; }
+  .page-head { align-items: flex-start; }
+  .page-head .model-switch { align-self: flex-start; }
 }
 
 @media (max-width: 480px) {

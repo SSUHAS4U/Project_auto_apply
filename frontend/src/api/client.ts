@@ -39,6 +39,7 @@ export interface JobFilters {
   minScore?: number;
   applyType?: string;
   region?: string;
+  postedWithin?: number;
   since?: string;
   page?: number;
   size?: number;

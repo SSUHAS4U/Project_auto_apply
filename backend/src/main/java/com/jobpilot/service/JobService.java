@@ -49,11 +49,13 @@ public class JobService {
 
     public Page<Job> search(String role, String location, Integer minScore,
                             String applyType, Instant since, int page, int size) {
-        return search(role, location, minScore, applyType, null, since, page, size);
+        return search(role, location, minScore, applyType, null, since, null, page, size);
     }
 
     public Page<Job> search(String role, String location, Integer minScore, String applyType,
-                            String region, Instant since, int page, int size) {
+                            String region, Instant since, Integer postedWithinDays, int page, int size) {
+        final Instant freshCutoff = (postedWithinDays != null && postedWithinDays > 0)
+                ? Instant.now().minus(java.time.Duration.ofDays(postedWithinDays)) : null;
         Specification<Job> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (role != null && !role.isBlank()) {
@@ -69,15 +71,15 @@ public class JobService {
                 ps.add(cb.equal(root.get("applyType"), applyType));
             }
             if (region != null && !region.isBlank()) {
-                // "india" tab includes remote roles (relevant to an India-based seeker).
-                if (region.equals("india")) {
-                    ps.add(root.get("region").in("india", "remote"));
-                } else {
-                    ps.add(cb.equal(root.get("region"), region));
-                }
+                ps.add(cb.equal(root.get("region"), region)); // india / remote / outside are now distinct
             }
             if (since != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("fetchedAt"), since));
+            }
+            if (freshCutoff != null) {
+                // Hide dated jobs older than the window; keep undated (most ATS) jobs visible.
+                ps.add(cb.or(cb.isNull(root.get("postedAt")),
+                        cb.greaterThanOrEqualTo(root.get("postedAt"), freshCutoff)));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };

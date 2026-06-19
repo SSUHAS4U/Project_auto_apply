@@ -143,4 +143,31 @@ public class NormalizeService {
     }
 
     public record ApplyClassification(String type, String email) {}
+
+    private static final Pattern TECH = Pattern.compile(
+            "(developer|engineer|software|programmer|\\bsde\\b|\\bsdet\\b|devops|\\bsre\\b|" +
+            "data scien|data engineer|data analyst|machine learning|\\bml\\b|\\bai\\b|\\bnlp\\b|" +
+            "full ?stack|front ?end|back ?end|\\bjava\\b|python|javascript|typescript|react|angular|" +
+            "node|golang|\\bgo\\b|kotlin|swift|android|\\bios\\b|flutter|\\bqa\\b|automation|test engineer|" +
+            "cloud|kubernetes|docker|database|\\bdba\\b|web developer|technical|computer|architect|" +
+            "platform|security engineer|firmware|embedded|blockchain|\\bml ?ops\\b|analytics|" +
+            "site reliability|systems engineer|network engineer|solutions engineer|game developer|" +
+            "\\bui\\b|\\bux\\b|product engineer|infrastructure|\\bapi\\b|microservice)",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern NON_TECH = Pattern.compile(
+            "(vkyc|v-kyc|\\bkyc\\b|telecall|tele-call|tele caller|\\bbpo\\b|business development|" +
+            "relationship manager|collection|recovery|field executive|field sales|delivery (boy|partner|executive)|" +
+            "\\bdriver\\b|warehouse|\\bnurse\\b|accountant|recruit(er|ment)|talent acquisition|" +
+            "content writer|customer care|voice process|non.?voice|data entry|back office|cashier|teller|" +
+            "\\bbde\\b|inside sales|territory|store manager|beautician|chef|security guard|housekeeping)",
+            Pattern.CASE_INSENSITIVE);
+
+    /** True if the role title looks like a technology/engineering job. */
+    public boolean isTechRole(String title) {
+        if (title == null || title.isBlank()) return false;
+        String t = title.toLowerCase(Locale.ROOT);
+        if (NON_TECH.matcher(t).find()) return false;
+        return TECH.matcher(t).find();
+    }
 }

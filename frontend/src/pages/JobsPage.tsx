@@ -60,6 +60,7 @@ export function JobsPage() {
     ['applyType', filters.applyType && `Apply: ${filters.applyType}`],
     ['minScore', filters.minScore && `Score ≥ ${filters.minScore}`],
     ['region', filters.region && `Region: ${filters.region}`],
+    ['postedWithin', filters.postedWithin && `≤ ${filters.postedWithin}d old`],
   ] as [keyof JobFilters, string | undefined][]).filter(([, v]) => v);
 
   const runIngest = async () => {
@@ -103,8 +104,9 @@ export function JobsPage() {
 
       <div className="tabs">
         {([
-          { k: '', label: 'All jobs' },
-          { k: 'india', label: 'India + Remote' },
+          { k: '', label: 'All' },
+          { k: 'india', label: '🇮🇳 India' },
+          { k: 'remote', label: '🌐 Remote' },
           { k: 'outside', label: 'Outside India' },
         ] as const).map((t) => (
           <div key={t.k} className={`tab ${(filters.region ?? '') === t.k ? 'active' : ''}`}
@@ -135,6 +137,12 @@ export function JobsPage() {
           <option value="50">50+</option>
           <option value="65">65+</option>
           <option value="80">80+</option>
+        </select>
+        <select className="select" value={filters.postedWithin ?? ''} onChange={(e) => apply({ postedWithin: e.target.value ? Number(e.target.value) : undefined })}>
+          <option value="">Any date</option>
+          <option value="1">Last 24h</option>
+          <option value="3">Last 3 days</option>
+          <option value="7">Last week</option>
         </select>
         <div className="segmented" style={{ marginLeft: 'auto' }}>
           <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>

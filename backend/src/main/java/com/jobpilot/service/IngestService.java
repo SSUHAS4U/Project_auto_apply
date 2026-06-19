@@ -172,6 +172,7 @@ public class IngestService {
     @Transactional
     protected int upsert(RawJob r, Profile profile) {
         if (r.getTitle() == null || r.getUrl() == null) return 0;
+        if (!normalize.isTechRole(r.getTitle())) return 0; // tech-only board
         String hash = normalize.contentHash(r.getCompany(), r.getTitle(), r.getLocation());
         Optional<Job> existing = jobRepo.findByContentHash(hash);
         if (existing.isPresent()) {
