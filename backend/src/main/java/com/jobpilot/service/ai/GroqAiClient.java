@@ -56,4 +56,31 @@ public class GroqAiClient implements AiClient {
         }
         return content.asText().strip();
     }
+
+    /**
+     * Raw chat-completions call supporting tool/function calling. Returns the
+     * assistant message node (may contain {@code content} and/or {@code tool_calls}).
+     */
+    public JsonNode chat(List<Map<String, Object>> messages, List<Map<String, Object>> tools) {
+        JobPilotProperties.Groq g = props.getGroq();
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("model", g.getModel());
+        body.put("temperature", 0.7);
+        body.put("max_tokens", 1500);
+        body.put("messages", messages);
+        if (tools != null && !tools.isEmpty()) {
+            body.put("tools", tools);
+            body.put("tool_choice", "auto");
+        }
+        JsonNode resp = http.post().uri(g.getUrl())
+                .header("Authorization", "Bearer " + g.getApiKey())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+        if (resp == null) throw new IllegalStateException("groq returned no response");
+        JsonNode msg = resp.path("choices").path(0).path("message");
+        if (msg.isMissingNode()) throw new IllegalStateException("groq returned no message: " + resp);
+        return msg;
+    }
 }

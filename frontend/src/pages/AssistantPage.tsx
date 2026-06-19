@@ -8,13 +8,14 @@ interface Msg { role: 'user' | 'assistant'; content: string; jobs?: AssistantJob
 
 const GREETING: Msg = {
   role: 'assistant',
-  content: "Hi Suhas 👋 I'm your JobPilot assistant. Tell me what you're after and I'll pull matches from your job database, or ask me to help fill your profile.",
+  content: "Hi Suhas 👋 I'm your JobPilot agent. I can search your job database and actually edit your profile — try \"find fresher java jobs in India\" or \"add Kafka to my skills and set notice period to 30 days\".",
 };
 const SUGGESTIONS = [
-  'Show me fresher java jobs in India',
-  'Remote react developer roles',
-  'Which of my tracked jobs should I prioritise?',
-  'Help me improve my profile summary',
+  'Find fresher java backend jobs in India',
+  'Remote react roles posted this week',
+  'Add Docker & Kafka to my skills',
+  'Set my expected CTC to 8 LPA',
+  'How many jobs have I applied to?',
 ];
 
 export function AssistantPage() {
