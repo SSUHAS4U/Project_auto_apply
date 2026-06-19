@@ -57,6 +57,11 @@ public class ProfileService {
         p.setState(in.getState());
         p.setCountry(in.getCountry());
         p.setPostalCode(in.getPostalCode());
+        p.setAddress2(in.getAddress2());
+        p.setCity2(in.getCity2());
+        p.setState2(in.getState2());
+        p.setCountry2(in.getCountry2());
+        p.setPostalCode2(in.getPostalCode2());
         p.setDateOfBirth(in.getDateOfBirth());
         p.setGender(in.getGender());
         p.setNationality(in.getNationality());

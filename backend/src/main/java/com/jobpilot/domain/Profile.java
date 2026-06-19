@@ -61,6 +61,15 @@ public class Profile {
     @Column(name = "postal_code")
     private String postalCode;
 
+    // --- Second / permanent address ---
+    private String address2;
+    private String city2;
+    private String state2;
+    private String country2;
+
+    @Column(name = "postal_code2")
+    private String postalCode2;
+
     @Column(name = "date_of_birth")
     private String dateOfBirth;
 

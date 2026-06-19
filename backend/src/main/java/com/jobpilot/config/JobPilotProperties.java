@@ -92,6 +92,10 @@ public class JobPilotProperties {
     public static class Ollama {
         private String url = "http://localhost:11434";
         private String model = "llama3.1";
+        /** Optional header to authenticate against a secured tunnel (e.g. a Cloudflare
+         *  service token or a shared secret), so the public Ollama URL isn't open. */
+        private String authHeader = "";
+        private String authValue = "";
     }
 
     @Data

@@ -116,15 +116,25 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="📍" title="Location">
+          <Section ico="📍" title="Current address">
             <div className="grid3">
-              <Field label="Current location"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
-              <Field label="Secondary / home location"><input className="input" value={p.location2 ?? ''} onChange={(e) => set({ location2: e.target.value })} placeholder="home town / preferred city" /></Field>
-              <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} /></Field>
-              <Field label="State / Province"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} /></Field>
-              <Field label="Country"><input className="input" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} /></Field>
-              <Field label="Postal / ZIP"><input className="input" value={p.postalCode ?? ''} onChange={(e) => set({ postalCode: e.target.value })} /></Field>
-              <Field label="Address" full><input className="input" value={p.address ?? ''} onChange={(e) => set({ address: e.target.value })} /></Field>
+              <Field label="Current location (short)"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
+              <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} placeholder="Bengaluru" /></Field>
+              <Field label="State / Province"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} placeholder="Karnataka" /></Field>
+              <Field label="Country"><input className="input" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} placeholder="India" /></Field>
+              <Field label="Postal / PIN code"><input className="input" value={p.postalCode ?? ''} onChange={(e) => set({ postalCode: e.target.value })} placeholder="560001" /></Field>
+              <Field label="Street address" full><input className="input" value={p.address ?? ''} onChange={(e) => set({ address: e.target.value })} placeholder="Flat / street / area" /></Field>
+            </div>
+          </Section>
+
+          <Section ico="🏠" title="Permanent / alternate address" sub="used when a form asks for a second address">
+            <div className="grid3">
+              <Field label="Location (short)"><input className="input" value={p.location2 ?? ''} onChange={(e) => set({ location2: e.target.value })} placeholder="home town" /></Field>
+              <Field label="City"><input className="input" value={p.city2 ?? ''} onChange={(e) => set({ city2: e.target.value })} /></Field>
+              <Field label="State / Province"><input className="input" value={p.state2 ?? ''} onChange={(e) => set({ state2: e.target.value })} /></Field>
+              <Field label="Country"><input className="input" value={p.country2 ?? ''} onChange={(e) => set({ country2: e.target.value })} /></Field>
+              <Field label="Postal / PIN code"><input className="input" value={p.postalCode2 ?? ''} onChange={(e) => set({ postalCode2: e.target.value })} /></Field>
+              <Field label="Street address" full><input className="input" value={p.address2 ?? ''} onChange={(e) => set({ address2: e.target.value })} /></Field>
             </div>
           </Section>
 

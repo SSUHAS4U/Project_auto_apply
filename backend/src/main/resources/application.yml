@@ -70,6 +70,8 @@ jobpilot:
   ollama:
     url: ${JOBPILOT_OLLAMA_URL:http://localhost:11434}
     model: ${JOBPILOT_OLLAMA_MODEL:llama3.1}
+    auth-header: ${JOBPILOT_OLLAMA_AUTH_HEADER:}
+    auth-value: ${JOBPILOT_OLLAMA_AUTH_VALUE:}
   gemini:
     api-key: ${JOBPILOT_GEMINI_API_KEY:}
     model: ${JOBPILOT_GEMINI_MODEL:gemini-2.5-flash}

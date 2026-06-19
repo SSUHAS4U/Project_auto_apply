@@ -73,6 +73,11 @@ export interface Profile {
   state?: string;
   country?: string;
   postalCode?: string;
+  address2?: string;
+  city2?: string;
+  state2?: string;
+  country2?: string;
+  postalCode2?: string;
   dateOfBirth?: string;
   gender?: string;
   nationality?: string;
