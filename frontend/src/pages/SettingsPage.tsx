@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, getToken, setToken } from '../api/client';
+import { api, getAdminToken, setAdminToken } from '../api/client';
 import { useToast } from '../lib/ui';
 
 type AiStatus = { enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] };
 
 export function SettingsPage() {
   const toast = useToast();
-  const [token, setTok] = useState(getToken());
+  const [token, setTok] = useState(getAdminToken());
   const [checking, setChecking] = useState(false);
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
@@ -15,9 +15,9 @@ export function SettingsPage() {
   const loadAi = () => api.aiStatus().then(setAi).catch(() => {});
   useEffect(() => { loadAi(); }, []);
 
-  const save = () => { setToken(token.trim()); toast('Token saved locally', 'success'); };
+  const save = () => { setAdminToken(token.trim()); toast('Token saved locally', 'success'); };
   const test = async () => {
-    setToken(token.trim()); setChecking(true);
+    setAdminToken(token.trim()); setChecking(true);
     try { await api.health(); toast('Connected — token works ✓', 'success'); }
     catch (e) { toast(`Failed: ${(e as Error).message}`, 'error'); }
     finally { setChecking(false); }

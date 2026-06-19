@@ -4,6 +4,7 @@ import com.jobpilot.domain.Job;
 import com.jobpilot.domain.SavedJob;
 import com.jobpilot.repository.JobRepository;
 import com.jobpilot.repository.SavedJobRepository;
+import com.jobpilot.security.UserContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.HtmlUtils;
@@ -30,7 +31,7 @@ public class SavedJobService {
     }
 
     public List<SavedJob> list() {
-        return savedRepo.findAllByOrderByCreatedAtDesc();
+        return savedRepo.findByUserIdOrderByCreatedAtDesc(UserContext.require());
     }
 
     /** Persist a DOM-extracted listing. All text fields are escaped first. */
@@ -41,6 +42,7 @@ public class SavedJobService {
             throw new IllegalArgumentException("url is required");
         }
         SavedJob s = new SavedJob();
+        s.setUserId(UserContext.require());
         s.setTitle(clean(title));
         s.setCompany(clean(company));
         s.setLocation(clean(location));
@@ -53,7 +55,9 @@ public class SavedJobService {
     /** Turn a saved listing into a real job + tracked application. */
     @Transactional
     public Job promote(UUID savedId) {
+        UUID userId = UserContext.require();
         SavedJob s = savedRepo.findById(savedId)
+                .filter(x -> userId.equals(x.getUserId()))
                 .orElseThrow(() -> new NotFoundException("saved job not found: " + savedId));
         String hash = normalize.contentHash(s.getCompany(), s.getTitle(), s.getLocation());
         Job job = jobRepo.findByContentHash(hash).orElseGet(() -> {

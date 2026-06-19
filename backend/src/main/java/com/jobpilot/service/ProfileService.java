@@ -2,10 +2,12 @@ package com.jobpilot.service;
 
 import com.jobpilot.domain.Profile;
 import com.jobpilot.repository.ProfileRepository;
+import com.jobpilot.security.UserContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 public class ProfileService {
@@ -16,16 +18,30 @@ public class ProfileService {
         this.repo = repo;
     }
 
-    /** The single owner profile (seeded by V1). Falls back to a blank one. */
-    @Transactional(readOnly = true)
+    /** The current (logged-in) user's profile; created blank if missing. */
+    @Transactional
     public Profile get() {
+        UUID userId = UserContext.require();
+        return repo.findByUserId(userId).orElseGet(() -> {
+            Profile p = new Profile();
+            p.setUserId(userId);
+            p.setFullName("Your Name");
+            p.setEmail("");
+            p.setUpdatedAt(Instant.now());
+            return repo.save(p);
+        });
+    }
+
+    /** The owner/first profile — for cron/ingest contexts that have no logged-in user. */
+    @Transactional(readOnly = true)
+    public Profile getOwner() {
         return repo.findFirstByOrderByUpdatedAtAsc()
-                .orElseThrow(() -> new NotFoundException("profile not initialized"));
+                .orElseThrow(() -> new NotFoundException("no profile yet — register an account first"));
     }
 
     @Transactional
     public Profile save(Profile in) {
-        Profile p = repo.findFirstByOrderByUpdatedAtAsc().orElseGet(Profile::new);
+        Profile p = get();
         // Personal
         p.setFullName(in.getFullName());
         p.setFirstName(in.getFirstName());

@@ -20,6 +20,14 @@ public class JobPilotProperties {
     private Mail mail = new Mail();
     private Digest digest = new Digest();
     private Schedule schedule = new Schedule();
+    private Jwt jwt = new Jwt();
+
+    @Data
+    public static class Jwt {
+        /** HMAC secret for signing auth tokens. Set a strong value in production. */
+        private String secret = "change-me-jobpilot-dev-jwt-secret";
+        private long ttlSeconds = 60L * 60 * 24 * 30; // 30 days
+    }
 
     @Data
     public static class Schedule {

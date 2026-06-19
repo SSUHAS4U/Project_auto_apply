@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, clearJwt } from '../api/client';
 
 const NAV = [
   { to: '/', label: 'Jobs', ico: '🧭', end: true },
@@ -17,7 +17,12 @@ const NAV = [
 export function Layout() {
   const [unread, setUnread] = useState(0);
   const [drawer, setDrawer] = useState(false);
+  const [email, setEmail] = useState('');
   const location = useLocation();
+  const nav = useNavigate();
+
+  useEffect(() => { api.me().then((u) => setEmail(u.email)).catch(() => {}); }, []);
+  const logout = () => { clearJwt(); nav('/login'); };
 
   useEffect(() => {
     let active = true;
@@ -48,7 +53,11 @@ export function Layout() {
           {n.badge && unread > 0 && <span className="nav-badge">{unread}</span>}
         </NavLink>
       ))}
-      <div className="sidebar-foot">v0.1 · single-user</div>
+      <div className="sidebar-user">
+        <div className="su-avatar">{(email[0] || 'U').toUpperCase()}</div>
+        <div className="su-email" title={email}>{email || 'account'}</div>
+        <button className="su-logout" onClick={logout} title="Sign out">⎋</button>
+      </div>
     </aside>
   );
 

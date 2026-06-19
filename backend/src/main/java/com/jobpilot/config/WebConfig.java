@@ -1,6 +1,7 @@
 package com.jobpilot.config;
 
-import com.jobpilot.security.ApiTokenFilter;
+import com.jobpilot.security.AuthFilter;
+import com.jobpilot.security.JwtService;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,11 +32,11 @@ public class WebConfig {
                 .build();
     }
 
-    /** Register the static-token filter for /api/** only. */
+    /** Auth filter for /api/**: public /auth, admin token for ops, JWT for user routes. */
     @Bean
-    public FilterRegistrationBean<ApiTokenFilter> apiTokenFilter() {
-        FilterRegistrationBean<ApiTokenFilter> reg = new FilterRegistrationBean<>();
-        reg.setFilter(new ApiTokenFilter(props.getApiToken()));
+    public FilterRegistrationBean<AuthFilter> authFilter(JwtService jwt) {
+        FilterRegistrationBean<AuthFilter> reg = new FilterRegistrationBean<>();
+        reg.setFilter(new AuthFilter(props.getApiToken(), jwt));
         reg.addUrlPatterns("/api/*");
         reg.setOrder(1);
         return reg;

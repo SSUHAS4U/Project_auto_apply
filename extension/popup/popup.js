@@ -22,7 +22,7 @@ async function loadProfile(force) {
   if (!resp || !resp.ok) {
     conn.textContent = 'not connected'; conn.className = 'sub err';
     $('profile').innerHTML = `<div class="muted">${resp ? resp.error : 'background unavailable'}</div>
-      <div class="muted" style="margin-top:6px">Set backend &amp; token in Options.</div>`;
+      <div class="muted" style="margin-top:6px">Sign in via Options.</div>`;
     return;
   }
   conn.textContent = 'connected'; conn.className = 'sub ok';

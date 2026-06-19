@@ -117,14 +117,11 @@ public class DailyService {
         return out;
     }
 
-    /** The current Daily Picks (curated jobs + briefing) for the dedicated page. */
+    /** Daily Picks for the CURRENT user: their top recent high-match jobs + the latest briefing. */
     @Transactional(readOnly = true)
     public Map<String, Object> picks() {
-        List<DailyPick> picks = pickRepo.findAllByOrderByRankAsc();
-        List<Job> jobs = picks.stream()
-                .map(p -> jobRepo.findById(p.getJobId()).orElse(null))
-                .filter(j -> j != null)
-                .toList();
+        int threshold = Math.max(40, props.getDigest().getMinScore() - 10);
+        List<Job> jobs = jobService.search(null, null, threshold, null, null, null, 14, 0, 12).getContent();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("briefing", settings.get(K_BRIEFING).orElse(""));
         out.put("generatedAt", settings.getInstant(K_RUN_AT).map(Instant::toString).orElse(null));
@@ -145,7 +142,7 @@ public class DailyService {
         }
         if (!ai.isEnabled()) return "Today's top matches:\n" + list;
         try {
-            String name = profileService.get().getFullName();
+            String name = profileService.getOwner().getFullName();
             return ai.complete(SYSTEM, "CANDIDATE: " + name + "\nTOP MATCHES TODAY:\n" + list, false);
         } catch (Exception e) {
             log.warn("AI briefing failed ({}); using plain list", e.getMessage());

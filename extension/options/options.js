@@ -1,27 +1,31 @@
 const $ = (id) => document.getElementById(id);
 
-chrome.storage.local.get(['backendUrl', 'token'], (c) => {
+chrome.storage.local.get(['backendUrl', 'jwt'], (c) => {
   $('backendUrl').value = c.backendUrl || 'http://localhost:8080';
-  $('token').value = c.token || '';
+  if (c.jwt) $('who').textContent = '✓ Signed in';
 });
 
 function setStatus(msg, kind = '') { $('status').textContent = msg; $('status').className = 'status ' + kind; }
 
-$('save').addEventListener('click', () => {
+$('login').addEventListener('click', () => {
   const backendUrl = $('backendUrl').value.trim().replace(/\/$/, '');
-  const token = $('token').value.trim();
-  chrome.storage.local.set({ backendUrl, token, profile: null, profileAt: 0 }, () => setStatus('Saved ✓', 'ok'));
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if (!email || !password) { setStatus('Enter email and password', 'err'); return; }
+  setStatus('Signing in…');
+  chrome.runtime.sendMessage({ type: 'LOGIN', backendUrl, email, password }, (resp) => {
+    if (resp && resp.ok) {
+      setStatus('Signed in ✓', 'ok');
+      $('who').textContent = '✓ Signed in as ' + (resp.data.email || email);
+      $('password').value = '';
+    } else {
+      setStatus('Failed: ' + (resp ? resp.error : 'no response'), 'err');
+    }
+  });
 });
 
-$('test').addEventListener('click', async () => {
-  const backendUrl = $('backendUrl').value.trim().replace(/\/$/, '');
-  const token = $('token').value.trim();
-  setStatus('Testing…');
-  try {
-    const res = await fetch(`${backendUrl}/api/health`, { headers: { 'X-Api-Token': token } });
-    if (res.ok) setStatus('Connected — token works ✓', 'ok');
-    else setStatus(`Failed: ${res.status} ${res.statusText}`, 'err');
-  } catch (e) {
-    setStatus('Failed: ' + e.message, 'err');
-  }
+$('logout').addEventListener('click', () => {
+  chrome.runtime.sendMessage({ type: 'LOGOUT' }, () => {
+    setStatus('Signed out', 'ok'); $('who').textContent = '';
+  });
 });

@@ -5,33 +5,36 @@
   <title>JobPilot — Options</title>
   <style>
     :root { color-scheme: dark; }
-    body { font-family: system-ui, sans-serif; background: #0b0d12; color: #e7e9ee; max-width: 480px; margin: 40px auto; padding: 0 20px; }
+    body { font-family: system-ui, sans-serif; background: #0b0d12; color: #e7e9ee; max-width: 420px; margin: 36px auto; padding: 0 20px; }
     h1 { font-size: 20px; }
-    label { display: block; margin: 18px 0 6px; font-size: 13px; color: #9aa1b1; }
-    input { width: 100%; padding: 10px 12px; background: #12151c; border: 1px solid #2e3548; border-radius: 9px; color: #e7e9ee; font-size: 14px; }
+    label { display: block; margin: 16px 0 6px; font-size: 13px; color: #9aa1b1; }
+    input { width: 100%; padding: 10px 12px; background: #12151c; border: 1px solid #2e3548; border-radius: 9px; color: #e7e9ee; font-size: 14px; box-sizing: border-box; }
     input:focus { outline: none; border-color: #6366f1; }
-    .row { display: flex; gap: 10px; margin-top: 20px; }
+    .row { display: flex; gap: 10px; margin-top: 18px; }
     button { padding: 10px 16px; border-radius: 9px; border: 1px solid #2e3548; background: #161a23; color: #e7e9ee; font-weight: 600; cursor: pointer; font-size: 13px; }
     button.primary { background: linear-gradient(135deg, #6366f1, #4f46e5); border: none; color: #fff; }
     .status { margin-top: 16px; font-size: 13px; min-height: 18px; }
     .ok { color: #34d399; } .err { color: #f87171; }
     .hint { font-size: 12px; color: #6b7280; margin-top: 4px; }
+    .who { font-size: 13px; color: #34d399; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>JobPilot — Options</h1>
+  <h1>JobPilot — Sign in</h1>
   <label>Backend URL</label>
   <input id="backendUrl" placeholder="http://localhost:8080" />
-  <div class="hint">Where your Spring Boot API runs.</div>
+  <div class="hint">Where your JobPilot API runs (same account as the dashboard).</div>
 
-  <label>API token (X-Api-Token)</label>
-  <input id="token" type="password" placeholder="matches backend JOBPILOT_API_TOKEN" />
-  <div class="hint">Stored only in this browser's extension storage.</div>
+  <label>Email</label>
+  <input id="email" type="email" placeholder="you@example.com" />
+  <label>Password</label>
+  <input id="password" type="password" placeholder="your account password" />
 
   <div class="row">
-    <button class="primary" id="save">Save</button>
-    <button id="test">Test connection</button>
+    <button class="primary" id="login">Sign in</button>
+    <button id="logout">Sign out</button>
   </div>
+  <div class="who" id="who"></div>
   <div class="status" id="status"></div>
   <script src="options.js"></script>
 </body>

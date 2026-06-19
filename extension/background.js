@@ -1,19 +1,19 @@
 // JobPilot MV3 service worker — owns config, backend calls, profile cache.
 
-const DEFAULTS = { backendUrl: 'http://localhost:8080', token: '' };
+const DEFAULTS = { backendUrl: 'http://localhost:8080', jwt: '' };
 
 async function getConfig() {
-  const c = await chrome.storage.local.get(['backendUrl', 'token']);
-  return { backendUrl: c.backendUrl || DEFAULTS.backendUrl, token: c.token || DEFAULTS.token };
+  const c = await chrome.storage.local.get(['backendUrl', 'jwt']);
+  return { backendUrl: c.backendUrl || DEFAULTS.backendUrl, jwt: c.jwt || DEFAULTS.jwt };
 }
 
 async function apiFetch(path, init = {}) {
-  const { backendUrl, token } = await getConfig();
-  if (!token) throw new Error('No API token set. Open the extension Options.');
+  const { backendUrl, jwt } = await getConfig();
+  if (!jwt) throw new Error('Not signed in. Open the extension Options and log in.');
   const res = await fetch(`${backendUrl}${path}`, {
     ...init,
     headers: {
-      'X-Api-Token': token,
+      Authorization: `Bearer ${jwt}`,
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init.headers || {}),
     },
@@ -25,6 +25,22 @@ async function apiFetch(path, init = {}) {
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
+}
+
+// Login (no auth header needed) — stores the JWT for subsequent calls.
+async function login(backendUrl, email, password) {
+  const res = await fetch(`${backendUrl}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    let msg = 'login failed';
+    try { const b = await res.json(); if (b.message) msg = b.message; } catch (_) {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  await chrome.storage.local.set({ backendUrl, jwt: data.token, profile: null, profileAt: 0 });
+  return data.user;
 }
 
 // Profile cache (5 min TTL) so fillers don't hit the backend every page.
@@ -43,6 +59,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       switch (msg.type) {
         case 'GET_CONFIG':
           sendResponse({ ok: true, data: await getConfig() });
+          break;
+        case 'LOGIN': {
+          const user = await login(msg.backendUrl, msg.email, msg.password);
+          sendResponse({ ok: true, data: user });
+          break;
+        }
+        case 'LOGOUT':
+          await chrome.storage.local.set({ jwt: '', profile: null, profileAt: 0 });
+          sendResponse({ ok: true });
           break;
         case 'GET_PROFILE':
           sendResponse({ ok: true, data: await getProfile(msg.force) });

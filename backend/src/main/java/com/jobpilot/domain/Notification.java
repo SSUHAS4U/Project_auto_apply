@@ -19,6 +19,9 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     /** new_jobs | digest | reminder */
     @Column(nullable = false)
     private String type;

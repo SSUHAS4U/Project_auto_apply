@@ -7,6 +7,7 @@ import com.jobpilot.domain.Job;
 import com.jobpilot.repository.ApplicationEventRepository;
 import com.jobpilot.repository.ApplicationRepository;
 import com.jobpilot.repository.JobRepository;
+import com.jobpilot.security.UserContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,9 +37,10 @@ public class ApplicationService {
     }
 
     public List<Application> list(String status) {
+        UUID userId = UserContext.require();
         return (status == null || status.isBlank())
-                ? appRepo.findAllByOrderByUpdatedAtDesc()
-                : appRepo.findByStatusOrderByUpdatedAtDesc(status);
+                ? appRepo.findByUserIdOrderByUpdatedAtDesc(userId)
+                : appRepo.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status);
     }
 
     /** Applications enriched with their linked job summary, for the dashboard. */
@@ -51,15 +53,20 @@ public class ApplicationService {
     }
 
     public Application get(UUID id) {
-        return appRepo.findById(id).orElseThrow(() -> new NotFoundException("application not found: " + id));
+        UUID userId = UserContext.require();
+        return appRepo.findById(id)
+                .filter(a -> userId.equals(a.getUserId()))
+                .orElseThrow(() -> new NotFoundException("application not found: " + id));
     }
 
     /** Track a job: create (or return existing) application in 'interested'. */
     @Transactional
     public Application track(UUID jobId) {
+        UUID userId = UserContext.require();
         Job job = jobRepo.findById(jobId).orElseThrow(() -> new NotFoundException("job not found: " + jobId));
-        return appRepo.findFirstByJobId(job.getId()).orElseGet(() -> {
+        return appRepo.findFirstByUserIdAndJobId(userId, job.getId()).orElseGet(() -> {
             Application a = new Application();
+            a.setUserId(userId);
             a.setJobId(job.getId());
             a.setStatus("interested");
             a.setMethod("manual");
@@ -73,6 +80,7 @@ public class ApplicationService {
     @Transactional
     public Application create(UUID jobId, String status, String notes) {
         Application a = new Application();
+        a.setUserId(UserContext.require());
         a.setJobId(jobId);
         a.setStatus(validStatus(status, "interested"));
         a.setMethod("manual");
@@ -112,8 +120,10 @@ public class ApplicationService {
     /** Used by the email-apply engine to mark a tracked application sent. */
     @Transactional
     public Application markEmailApplied(UUID jobId, String coverLetter) {
-        Application a = appRepo.findFirstByJobId(jobId).orElseGet(() -> {
+        UUID userId = UserContext.require();
+        Application a = appRepo.findFirstByUserIdAndJobId(userId, jobId).orElseGet(() -> {
             Application n = new Application();
+            n.setUserId(userId);
             n.setJobId(jobId);
             return n;
         });

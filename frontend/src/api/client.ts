@@ -4,22 +4,31 @@ import type {
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
 
-const TOKEN_KEY = 'jobpilot_api_token';
+const JWT_KEY = 'jobpilot_jwt';        // user auth (Bearer)
+const ADMIN_KEY = 'jobpilot_admin_token'; // ops/cron admin token (X-Api-Token)
 
-export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? import.meta.env.VITE_API_TOKEN ?? '';
+export function getJwt(): string { return localStorage.getItem(JWT_KEY) ?? ''; }
+export function setJwt(t: string): void { localStorage.setItem(JWT_KEY, t); }
+export function clearJwt(): void { localStorage.removeItem(JWT_KEY); }
+export function isLoggedIn(): boolean { return !!getJwt(); }
+
+export function getAdminToken(): string {
+  return localStorage.getItem(ADMIN_KEY) ?? import.meta.env.VITE_API_TOKEN ?? '';
 }
-export function setToken(t: string): void {
-  localStorage.setItem(TOKEN_KEY, t);
-}
+export function setAdminToken(t: string): void { localStorage.setItem(ADMIN_KEY, t); }
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
-    'X-Api-Token': getToken(),
+    ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}),
+    ...(getAdminToken() ? { 'X-Api-Token': getAdminToken() } : {}),
     ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string> | undefined),
   };
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    clearJwt();
+    if (!location.pathname.startsWith('/login')) location.href = '/login';
+  }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
     try {
@@ -32,6 +41,8 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
+
+export interface AuthResult { token: string; user: { id: string; email: string; fullName: string }; }
 
 export interface JobFilters {
   role?: string;
@@ -47,6 +58,12 @@ export interface JobFilters {
 
 export const api = {
   health: () => req<{ status: string }>('/api/health'),
+
+  login: (email: string, password: string) =>
+    req<AuthResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  register: (email: string, password: string, fullName: string) =>
+    req<AuthResult>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, fullName }) }),
+  me: () => req<{ id: string; email: string; fullName: string }>('/api/auth/me'),
 
   jobs: (f: JobFilters = {}) => {
     const q = new URLSearchParams();

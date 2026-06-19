@@ -19,6 +19,9 @@ public class SavedJob {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     private String title;
     private String company;
     private String location;

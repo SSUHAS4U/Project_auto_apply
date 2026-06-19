@@ -25,6 +25,9 @@ public class Profile {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     // --- Personal -----------------------------------------------------------
     @Column(name = "full_name", nullable = false)
     private String fullName;

@@ -85,7 +85,8 @@ public class EmailApplyService {
     private void enforceDailyLimit() {
         int limit = props.getMail().getDailyLimit();
         Instant since = Instant.now().minus(1, ChronoUnit.DAYS);
-        long sentToday = appRepo.countByMethodAndAppliedAtAfter("email", since);
+        long sentToday = appRepo.countByUserIdAndMethodAndAppliedAtAfter(
+                com.jobpilot.security.UserContext.require(), "email", since);
         if (sentToday >= limit) {
             throw new IllegalStateException("daily email-apply limit reached (" + limit + ")");
         }
