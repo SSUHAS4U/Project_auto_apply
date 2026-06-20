@@ -1,25 +1,30 @@
 name: ingest
 
-# Wakes the (possibly sleeping) backend and triggers a job-ingest run.
-# Configure repo secrets: BACKEND_URL (e.g. https://jobpilot.onrender.com) and API_TOKEN.
+# Refreshes jobs 3x/day (sync) + purges non-tech/stale, so the board stays current.
+# Repo secrets: BACKEND_URL (e.g. https://jobpilot.onrender.com) and API_TOKEN.
 on:
   schedule:
-    - cron: '0 */6 * * *'   # every 6 hours
+    - cron: '30 1 * * *'    # ~07:00 IST
+    - cron: '30 8 * * *'    # ~14:00 IST
+    - cron: '30 14 * * *'   # ~20:00 IST
   workflow_dispatch: {}
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
     steps:
-      - name: POST /api/ingest
+      - name: Ingest (sync) + cleanup
         run: |
           echo "Triggering ingest on $BACKEND_URL"
-          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
-            --retry 5 --retry-all-errors --retry-delay 15 --max-time 180 \
-            -X POST "$BACKEND_URL/api/ingest" \
-            -H "X-Api-Token: $API_TOKEN")
-          echo "HTTP $code"; cat /tmp/out.json || true
-          test "$code" = "200"
+          ic=$(curl -sS -o /tmp/ingest.json -w "%{http_code}" \
+            --retry 6 --retry-all-errors --retry-delay 20 --max-time 300 \
+            -X POST "$BACKEND_URL/api/ingest/sync" -H "X-Api-Token: $API_TOKEN")
+          echo "ingest HTTP $ic"; cat /tmp/ingest.json || true
+          # Purge non-tech + stale so the deployed board stays clean.
+          cc=$(curl -sS -o /tmp/clean.json -w "%{http_code}" --max-time 180 \
+            -X POST "$BACKEND_URL/api/maintenance/cleanup" -H "X-Api-Token: $API_TOKEN")
+          echo "cleanup HTTP $cc"; cat /tmp/clean.json || true
+          test "$ic" = "200"
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           API_TOKEN: ${{ secrets.API_TOKEN }}

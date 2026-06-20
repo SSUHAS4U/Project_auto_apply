@@ -51,10 +51,10 @@ jobs:
       - name: Build backend
         run: |
           cd backend
-          ./mvnw clean package -DskipTests
+          chmod +x mvnw && ./mvnw clean package -DskipTests
 
       - name: Upload jar to artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: backend-jar
           path: backend/target/jobpilot-backend-*.jar

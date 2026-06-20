@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { SavedJob } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
+import { Modal } from '../components/Modal';
 
 export function SavedJobsPage() {
   const toast = useToast();
   const [saved, setSaved] = useState<SavedJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [guide, setGuide] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -26,7 +28,26 @@ export function SavedJobsPage() {
           <h1 className="page-title">Saved jobs</h1>
           <div className="page-sub">Listings you captured with the browser extension</div>
         </div>
+        <button className="btn btn-primary" onClick={() => setGuide(true)}>🧩 Set up the extension</button>
       </div>
+
+      {guide && (
+        <Modal title="Set up the JobPilot extension" onClose={() => setGuide(false)} wide
+          footer={<button className="btn btn-primary" onClick={() => setGuide(false)}>Got it</button>}>
+          <ol style={{ lineHeight: 1.8, fontSize: 14, paddingLeft: 18, margin: 0 }}>
+            <li><b>Get the extension folder:</b> from the project repo, the <code>extension/</code> folder.</li>
+            <li>Open Chrome/Edge/Brave → go to <code>chrome://extensions</code>.</li>
+            <li>Turn on <b>Developer mode</b> (top-right toggle).</li>
+            <li>Click <b>Load unpacked</b> → select the <code>extension/</code> folder.</li>
+            <li>Click the JobPilot icon → <b>Options</b> → enter the backend URL, your <b>email & password</b> → <b>Sign in</b>.</li>
+            <li><b>Autofill a form:</b> open a Google/MS Form or job application → click the extension → <b>⚡ Fill this form</b> (it fills, you review &amp; submit).</li>
+            <li><b>Save a job:</b> on a LinkedIn/Naukri/Indeed posting, click the floating <b>🔖 Save to JobPilot</b> button — it appears here, ready to <b>Promote</b>.</li>
+          </ol>
+          <div className="faint" style={{ fontSize: 12, marginTop: 12 }}>
+            The extension needs the same account as the dashboard. It fills forms but never auto-submits to LinkedIn/Naukri (keeps your accounts safe).
+          </div>
+        </Modal>
+      )}
 
       <div className="card card-pad" style={{ marginBottom: 18, display: 'flex', gap: 14, alignItems: 'flex-start', borderLeft: '3px solid var(--accent)' }}>
         <span style={{ fontSize: 22 }}>🔖</span>

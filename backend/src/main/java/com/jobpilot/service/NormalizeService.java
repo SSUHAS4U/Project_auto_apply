@@ -144,26 +144,37 @@ public class NormalizeService {
 
     public record ApplyClassification(String type, String email) {}
 
+    // Software-development roles we want.
     private static final Pattern TECH = Pattern.compile(
-            "(developer|engineer|software|programmer|\\bsde\\b|\\bsdet\\b|devops|\\bsre\\b|" +
-            "data scien|data engineer|data analyst|machine learning|\\bml\\b|\\bai\\b|\\bnlp\\b|" +
-            "full ?stack|front ?end|back ?end|\\bjava\\b|python|javascript|typescript|react|angular|" +
-            "node|golang|\\bgo\\b|kotlin|swift|android|\\bios\\b|flutter|\\bqa\\b|automation|test engineer|" +
-            "cloud|kubernetes|docker|database|\\bdba\\b|web developer|technical|computer|architect|" +
-            "platform|security engineer|firmware|embedded|blockchain|\\bml ?ops\\b|analytics|" +
-            "site reliability|systems engineer|network engineer|solutions engineer|game developer|" +
-            "\\bui\\b|\\bux\\b|product engineer|infrastructure|\\bapi\\b|microservice)",
+            "(software (engineer|developer)|\\bsde\\b|\\bsdet\\b|backend|back.?end|frontend|front.?end|" +
+            "full.?stack|web developer|application (developer|engineer)|mobile (developer|engineer)|" +
+            "android (developer|engineer)|ios (developer|engineer)|\\bdeveloper\\b|programmer|" +
+            "devops|\\bsre\\b|site reliability|platform engineer|cloud engineer|infrastructure engineer|" +
+            "data (engineer|scientist)|machine learning engineer|\\bml engineer\\b|mlops|ai engineer|" +
+            "security engineer|qa engineer|test (engineer|automation)|automation engineer|embedded|firmware|" +
+            "blockchain (developer|engineer)|game (developer|engineer)|" +
+            "\\bjava\\b|python|javascript|typescript|\\breact\\b|angular|node\\.?js|golang|kotlin|" +
+            "\\.net|c\\+\\+|\\brust\\b|\\bscala\\b|spring boot|\\bml\\b/ai|engineer.{0,12}(software|backend|frontend|data|cloud|devops|platform))",
             Pattern.CASE_INSENSITIVE);
 
+    // Roles to drop even if a tech word slips in (support/ops/sales/design/mgmt/etc.).
     private static final Pattern NON_TECH = Pattern.compile(
-            "(vkyc|v-kyc|\\bkyc\\b|telecall|tele-call|tele caller|\\bbpo\\b|business development|" +
-            "relationship manager|collection|recovery|field executive|field sales|delivery (boy|partner|executive)|" +
+            "(vkyc|v-kyc|\\bkyc\\b|telecall|tele.?caller|\\bbpo\\b|business development|\\bbde\\b|" +
+            "relationship manager|collection|recovery|field (executive|sales|officer)|delivery (boy|partner|executive)|" +
             "\\bdriver\\b|warehouse|\\bnurse\\b|accountant|recruit(er|ment)|talent acquisition|" +
-            "content writer|customer care|voice process|non.?voice|data entry|back office|cashier|teller|" +
-            "\\bbde\\b|inside sales|territory|store manager|beautician|chef|security guard|housekeeping)",
+            "content writer|voice process|non.?voice|data entry|back office|cashier|teller|inside sales|" +
+            "territory|store manager|beautician|chef|security guard|housekeeping|" +
+            // support / operations / design / management / sales / analyst (non-SWE)
+            "support (engineer|associate|specialist|analyst|operations|technician|representative)|" +
+            "(customer|technical|product|designated|application) support|support (operations|engineer)|" +
+            "\\boperations\\b|operations associate|service delivery|" +
+            "\\bdesigner\\b|product designer|ux designer|ui designer|graphic designer|visual designer|" +
+            "product manager|program manager|project manager|scrum master|delivery manager|account manager|" +
+            "business analyst|customer success|\\bmarketing\\b|\\bsales\\b|presales|pre.?sales|" +
+            "consultant|implementation|solution(s)? consultant)",
             Pattern.CASE_INSENSITIVE);
 
-    /** True if the role title looks like a technology/engineering job. */
+    /** True if the role title looks like a software-development job (drops support/ops/sales/design). */
     public boolean isTechRole(String title) {
         if (title == null || title.isBlank()) return false;
         String t = title.toLowerCase(Locale.ROOT);
