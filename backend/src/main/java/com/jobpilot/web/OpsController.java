@@ -94,6 +94,12 @@ public class OpsController {
         return Map.of("purged", cleanup.purgeOldJobs());
     }
 
+    /** Wipe the whole job catalogue (keeps tracked jobs). For a fresh re-ingest. */
+    @PostMapping("/maintenance/wipe-jobs")
+    public Map<String, Object> wipeJobs() {
+        return Map.of("deleted", cleanup.wipeJobs());
+    }
+
     /**
      * Diagnostic endpoint to verify mail environment variables are reaching Spring Boot.
      * Token-protected — only accessible with X-Api-Token.

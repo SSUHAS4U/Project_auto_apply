@@ -40,4 +40,13 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
               )
             """, nativeQuery = true)
     int deleteNonTechUnreferenced();
+
+    /** Wipe the whole job catalogue except jobs the user has tracked/promoted. */
+    @Modifying
+    @Query(value = """
+            delete from job j
+            where not exists (select 1 from application a where a.job_id = j.id)
+              and not exists (select 1 from saved_job s where s.promoted_job_id = j.id)
+            """, nativeQuery = true)
+    int deleteAllUnreferenced();
 }

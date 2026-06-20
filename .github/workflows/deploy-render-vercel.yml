@@ -21,18 +21,27 @@ jobs:
   deploy-frontend:
     runs-on: ubuntu-latest
     name: Deploy Frontend to Vercel
+    # Uses the Vercel CLI (vercel@latest) instead of a version-pinned third-party
+    # action, so it never breaks on "unable to resolve action @vXX" again.
+    # NOTE: if your Vercel project is already linked to this GitHub repo in the Vercel
+    # dashboard, Vercel auto-deploys on push and this job is just a redundant safety net.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Deploy to Vercel
-        uses: vercel/actions/deploy-production@v21
-        if: github.ref == 'refs/heads/master'
+      - uses: actions/setup-node@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./frontend
+          node-version: '20'
+      - name: Deploy to Vercel
+        working-directory: ./frontend
+        run: |
+          npm i -g vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
   build-test:
     runs-on: ubuntu-latest

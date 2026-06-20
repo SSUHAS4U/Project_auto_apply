@@ -38,6 +38,14 @@ public class CleanupService {
         return stale + nonTech;
     }
 
+    /** Wipe the entire job catalogue (keeps jobs the user has tracked/promoted). */
+    @Transactional
+    public int wipeJobs() {
+        int n = jobRepo.deleteAllUnreferenced();
+        log.info("Wipe: deleted {} unreferenced jobs", n);
+        return n;
+    }
+
     /** Safety-net nightly purge (03:30) even if the daily run didn't fire. */
     @Scheduled(cron = "${jobpilot.cleanup.cron:0 30 3 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
     public void scheduledPurge() {
