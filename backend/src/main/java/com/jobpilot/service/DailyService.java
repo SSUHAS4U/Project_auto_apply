@@ -4,7 +4,6 @@ import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.domain.DailyPick;
 import com.jobpilot.domain.Job;
 import com.jobpilot.repository.DailyPickRepository;
-import com.jobpilot.repository.JobRepository;
 import com.jobpilot.service.ai.AiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,7 @@ public class DailyService {
 
     private final IngestService ingest;
     private final JobService jobService;
-    private final JobRepository jobRepo;
+
     private final DailyPickRepository pickRepo;
     private final AiService ai;
     private final NotificationService notifications;
@@ -50,13 +49,12 @@ public class DailyService {
     private final ProfileService profileService;
     private final JobPilotProperties props;
 
-    public DailyService(IngestService ingest, JobService jobService, JobRepository jobRepo,
+    public DailyService(IngestService ingest, JobService jobService,
                         DailyPickRepository pickRepo, AiService ai, NotificationService notifications,
                         DigestService digest, CleanupService cleanup, SettingsService settings,
                         ProfileService profileService, JobPilotProperties props) {
         this.ingest = ingest;
         this.jobService = jobService;
-        this.jobRepo = jobRepo;
         this.pickRepo = pickRepo;
         this.ai = ai;
         this.notifications = notifications;
