@@ -6,6 +6,8 @@ import com.jobpilot.domain.Notification;
 import com.jobpilot.repository.AppUserRepository;
 import com.jobpilot.repository.NotificationRepository;
 import com.jobpilot.security.UserContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,8 @@ import java.util.UUID;
 
 @Service
 public class NotificationService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
     private final NotificationRepository repo;
     private final AppUserRepository users;
@@ -50,6 +54,10 @@ public class NotificationService {
     @Transactional
     public Notification create(String type, String title, String body, Map<String, Object> payload) {
         UUID owner = users.findAll(PageRequest.of(0, 1)).stream().findFirst().map(AppUser::getId).orElse(null);
+        if (owner == null) {
+            log.warn("No users in the database — notification '{}' will be created with null userId. "
+                    + "Register at least one user so cron notifications become visible.", title);
+        }
         return create(owner, type, title, body, payload);
     }
 

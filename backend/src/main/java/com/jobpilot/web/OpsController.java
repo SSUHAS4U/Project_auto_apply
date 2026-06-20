@@ -1,15 +1,18 @@
 package com.jobpilot.web;
 
+import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.service.BackgroundRunner;
 import com.jobpilot.service.CleanupService;
 import com.jobpilot.service.DailyService;
 import com.jobpilot.service.DigestService;
 import com.jobpilot.service.IngestService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Cron-only operational endpoints (token protected like the rest of /api). */
@@ -22,14 +25,21 @@ public class OpsController {
     private final DailyService daily;
     private final CleanupService cleanup;
     private final BackgroundRunner runner;
+    private final JobPilotProperties props;
+
+    @Value("${spring.mail.host:}") private String mailHost;
+    @Value("${spring.mail.port:}") private String mailPort;
+    @Value("${spring.mail.username:}") private String mailUsername;
+    @Value("${spring.mail.password:}") private String mailPassword;
 
     public OpsController(IngestService ingest, DigestService digest, DailyService daily,
-                         CleanupService cleanup, BackgroundRunner runner) {
+                         CleanupService cleanup, BackgroundRunner runner, JobPilotProperties props) {
         this.ingest = ingest;
         this.digest = digest;
         this.daily = daily;
         this.cleanup = cleanup;
         this.runner = runner;
+        this.props = props;
     }
 
     /** Kick off ingest in the background (returns immediately). */
@@ -82,5 +92,38 @@ public class OpsController {
     @PostMapping("/maintenance/cleanup")
     public Map<String, Object> cleanup() {
         return Map.of("purged", cleanup.purgeOldJobs());
+    }
+
+    /**
+     * Diagnostic endpoint to verify mail environment variables are reaching Spring Boot.
+     * Token-protected — only accessible with X-Api-Token.
+     * Masks the SMTP password for security.
+     */
+    @GetMapping("/ops/mail-config")
+    public Map<String, Object> mailConfig() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("spring.mail.host", mailHost);
+        m.put("spring.mail.port", mailPort);
+        m.put("spring.mail.username", blankOrSet(mailUsername));
+        m.put("spring.mail.password", blankOrSet(mailPassword));
+        m.put("jobpilot.mail.from", blankOrSet(props.getMail().getFrom()));
+        m.put("jobpilot.mail.digestTo", blankOrSet(props.getMail().getDigestTo()));
+        m.put("jobpilot.mail.dailyLimit", props.getMail().getDailyLimit());
+        boolean ready = isSet(mailUsername) && isSet(mailPassword)
+                && isSet(props.getMail().getFrom()) && isSet(props.getMail().getDigestTo());
+        m.put("mailReady", ready);
+        if (!ready) {
+            m.put("problem", "One or more mail env vars are blank — emails will not send. "
+                    + "Set SPRING_MAIL_USERNAME, SPRING_MAIL_PASSWORD, JOBPILOT_MAIL_FROM, JOBPILOT_MAIL_DIGEST_TO in Render.");
+        }
+        return m;
+    }
+
+    private static String blankOrSet(String v) {
+        return (v == null || v.isBlank()) ? "*** BLANK / NOT SET ***" : "SET (" + v.length() + " chars)";
+    }
+
+    private static boolean isSet(String v) {
+        return v != null && !v.isBlank();
     }
 }

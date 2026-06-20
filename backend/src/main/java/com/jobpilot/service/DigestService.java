@@ -75,11 +75,19 @@ public class DigestService {
         String to = props.getMail().getDigestTo();
         if (to != null && !to.isBlank()) {
             try {
+                log.info("Sending digest email to {} ({} jobs, from={})", to, matches.size(),
+                        props.getMail().getFrom());
                 mail.sendHtml(to, "JobPilot digest — " + matches.size() + " new matches", html);
                 sent = true;
+                log.info("Digest email sent successfully to {}", to);
             } catch (Exception e) {
-                log.warn("Digest email failed: {}", e.getMessage());
+                log.error("Digest email failed to={}: {}", to, e.getMessage(), e);
+                result.put("emailError", e.getMessage());
             }
+        } else {
+            log.warn("Digest email skipped — JOBPILOT_MAIL_DIGEST_TO is blank/null. "
+                    + "Set the env var so the digest has a recipient.");
+            result.put("emailError", "JOBPILOT_MAIL_DIGEST_TO is not configured");
         }
         settings.setInstant("last_digest_at", Instant.now());
         result.put("sent", sent);

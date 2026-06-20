@@ -1,10 +1,12 @@
 name: digest
 
-# Sends the daily high-match digest email.
-# Configure repo secrets: BACKEND_URL and API_TOKEN.
+# Safety-net digest — runs 30 min AFTER the daily pipeline (which already includes
+# digest internally). If the daily run succeeded, this will find 0 new jobs and
+# skip sending. If the daily run failed, this ensures the digest email still goes out.
+# Repo secrets required: BACKEND_URL, API_TOKEN.
 on:
   schedule:
-    - cron: '30 2 * * *'   # 02:30 UTC = 08:00 IST daily
+    - cron: '0 3 * * *'     # 03:00 UTC = 08:30 IST (30 min after daily.yml)
   workflow_dispatch: {}
 
 jobs:

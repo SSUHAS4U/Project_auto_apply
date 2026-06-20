@@ -100,7 +100,7 @@ public class DailyService {
         try {
             digestResult = digest.run();
         } catch (Exception e) {
-            log.warn("Daily digest email failed: {}", e.getMessage());
+            log.error("Daily digest email failed: {}", e.getMessage(), e);
             digestResult = Map.of("sent", false, "error", e.getMessage());
         }
 
