@@ -135,6 +135,7 @@ export const api = {
     req<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
 
   ingest: () => req<{ status: string; message: string }>('/api/ingest', { method: 'POST' }),
+  wipeJobs: () => req<{ deleted: number }>('/api/maintenance/wipe-jobs', { method: 'POST' }),
   digest: () => req<{ count: number; sent: boolean }>('/api/digest', { method: 'POST' }),
 
   dailyRun: () => req<{ status: string; message: string }>('/api/daily/run', { method: 'POST' }),

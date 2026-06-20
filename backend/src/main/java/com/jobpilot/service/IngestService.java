@@ -42,6 +42,7 @@ public class IngestService {
     private final ProfileRepository profileRepo;
     private final NormalizeService normalize;
     private final MatchScorer scorer;
+    private final CleanupService cleanup;
     private final JobPilotProperties props;
 
     public IngestService(List<JobConnector> connectors,
@@ -50,6 +51,7 @@ public class IngestService {
                          ProfileRepository profileRepo,
                          NormalizeService normalize,
                          MatchScorer scorer,
+                         CleanupService cleanup,
                          JobPilotProperties props) {
         this.connectors = connectors;
         this.atsRepo = atsRepo;
@@ -57,6 +59,7 @@ public class IngestService {
         this.profileRepo = profileRepo;
         this.normalize = normalize;
         this.scorer = scorer;
+        this.cleanup = cleanup;
         this.props = props;
     }
 
@@ -104,6 +107,14 @@ public class IngestService {
         for (RawJob r : all) {
             int code = upsert(r, profile);
             if (code == 1) inserted++; else if (code == 2) updated++;
+        }
+
+        // Collapse any duplicate listings (same company+title+city) left after upsert.
+        try {
+            int dupes = cleanup.dedupJobs();
+            if (dupes > 0) log.info("Ingest dedup: removed {} duplicate jobs", dupes);
+        } catch (Exception e) {
+            log.warn("Dedup pass failed: {}", e.getMessage());
         }
 
         log.info("Ingest complete: fetched={} inserted={} updated={}", fetched, inserted, updated);

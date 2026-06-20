@@ -19,9 +19,14 @@ public class NormalizeService {
     private static final Pattern EMAIL =
             Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}");
 
-    /** content_hash = sha256(lower(trim(company)) | lower(trim(title)) | lower(trim(location))) */
+    /**
+     * Dedup key = sha256(normCompany | normTitle | city). Normalisation strips
+     * punctuation/parentheticals and reduces the location to its city, so the same
+     * role posted as "Bengaluru" / "Bengaluru, India" or "SDE (Remote)" / "SDE"
+     * collapses to a single job.
+     */
     public String contentHash(String company, String title, String location) {
-        String basis = norm(company) + "|" + norm(title) + "|" + norm(location);
+        String basis = normKey(company) + "|" + normTitle(title) + "|" + normLoc(location);
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(basis.getBytes(StandardCharsets.UTF_8));
@@ -31,8 +36,28 @@ public class NormalizeService {
         }
     }
 
-    private static String norm(String s) {
-        return s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
+    /** Company key: lowercase, drop suffixes, then remove ALL non-alphanumerics. */
+    private static String normKey(String s) {
+        if (s == null) return "";
+        return s.toLowerCase(Locale.ROOT)
+                .replaceAll("\\b(inc|llc|ltd|llp|pvt|private limited|limited|corp|co)\\b", "")
+                .replaceAll("[^a-z0-9]", "");
+    }
+
+    /** Title key: drop parentheticals, then remove ALL non-alphanumerics (whitespace too). */
+    private static String normTitle(String s) {
+        if (s == null) return "";
+        return s.toLowerCase(Locale.ROOT)
+                .replaceAll("\\(.*?\\)", "")
+                .replaceAll("[^a-z0-9]", "");
+    }
+
+    /** City key: first comma segment, all non-alphanumerics removed; remote variants -> "remote". */
+    private static String normLoc(String s) {
+        if (s == null || s.isBlank()) return "";
+        String low = s.toLowerCase(Locale.ROOT);
+        if (low.contains("remote") || low.contains("anywhere") || low.contains("worldwide")) return "remote";
+        return low.split(",")[0].replaceAll("[^a-z0-9]", "");
     }
 
     /** Fresh Job from a RawJob (no id). Caller decides insert vs. update. */

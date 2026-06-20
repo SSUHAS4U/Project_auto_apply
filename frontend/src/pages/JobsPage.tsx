@@ -63,6 +63,28 @@ export function JobsPage() {
     ['postedWithin', filters.postedWithin && `≤ ${filters.postedWithin}d old`],
   ] as [keyof JobFilters, string | undefined][]).filter(([, v]) => v);
 
+  const wipeAndReingest = async () => {
+    if (!window.confirm('Delete ALL jobs from the database and pull a fresh set?\n\nYour tracked/saved jobs are kept. This cannot be undone.')) return;
+    setIngesting(true);
+    try {
+      const w = await api.wipeJobs();
+      toast(`Deleted ${w.deleted} jobs — starting fresh ingest…`, 'success');
+      load(filters);
+      await runIngestInternal();
+    } catch (e) { toast((e as Error).message, 'error'); setIngesting(false); }
+  };
+
+  const runIngestInternal = async () => {
+    const r = await api.ingest();
+    if (r.status === 'busy') { toast('A run is already in progress…', 'info'); }
+    const poll = setInterval(async () => {
+      try {
+        const st = await api.opsStatus();
+        if (!st.running) { clearInterval(poll); setIngesting(false); load(filters); toast(st.last, 'success'); }
+      } catch { clearInterval(poll); setIngesting(false); }
+    }, 5000);
+  };
+
   const runIngest = async () => {
     setIngesting(true);
     try {
@@ -97,9 +119,14 @@ export function JobsPage() {
           <h1 className="page-title">Jobs</h1>
           <div className="page-sub">Aggregated from Greenhouse, Lever, Ashby, Adzuna & Jooble</div>
         </div>
-        <button className="btn btn-primary" onClick={runIngest} disabled={ingesting}>
-          {ingesting ? <span className="spinner" /> : '⟳'} Run ingest
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn-danger" onClick={wipeAndReingest} disabled={ingesting} title="Wipe all jobs and pull a fresh set">
+            🗑 Reset DB
+          </button>
+          <button className="btn btn-primary" onClick={runIngest} disabled={ingesting}>
+            {ingesting ? <span className="spinner" /> : '⟳'} Run ingest
+          </button>
+        </div>
       </div>
 
       <div className="tabs">

@@ -34,8 +34,15 @@ public class CleanupService {
         Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
         int stale = jobRepo.deleteStaleUnreferenced(cutoff);
         int nonTech = jobRepo.deleteNonTechUnreferenced();
-        log.info("Cleanup: purged {} stale + {} non-tech jobs", stale, nonTech);
-        return stale + nonTech;
+        int dupes = jobRepo.deleteDuplicates();
+        log.info("Cleanup: purged {} stale + {} non-tech + {} duplicate jobs", stale, nonTech, dupes);
+        return stale + nonTech + dupes;
+    }
+
+    /** Remove duplicate listings (same company+title+city). */
+    @Transactional
+    public int dedupJobs() {
+        return jobRepo.deleteDuplicates();
     }
 
     /** Wipe the entire job catalogue (keeps jobs the user has tracked/promoted). */

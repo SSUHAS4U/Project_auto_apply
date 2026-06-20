@@ -41,6 +41,27 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
             """, nativeQuery = true)
     int deleteNonTechUnreferenced();
 
+    /** Remove duplicate jobs (same normalized company+title+city), keeping the newest unreferenced. */
+    @Modifying
+    @Query(value = """
+            delete from job
+            where id in (
+              select id from (
+                select id, row_number() over (
+                  partition by
+                    regexp_replace(lower(coalesce(company,'')), '[^a-z0-9]', '', 'g'),
+                    regexp_replace(lower(coalesce(title,'')),   '[^a-z0-9]', '', 'g'),
+                    regexp_replace(lower(split_part(coalesce(location,''), ',', 1)), '[^a-z0-9]', '', 'g')
+                  order by fetched_at desc, id
+                ) rn
+                from job
+              ) t where t.rn > 1
+            )
+            and not exists (select 1 from application a where a.job_id = job.id)
+            and not exists (select 1 from saved_job s where s.promoted_job_id = job.id)
+            """, nativeQuery = true)
+    int deleteDuplicates();
+
     /** Wipe the whole job catalogue except jobs the user has tracked/promoted. */
     @Modifying
     @Query(value = """
