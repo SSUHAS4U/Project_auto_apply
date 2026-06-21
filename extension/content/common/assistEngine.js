@@ -130,18 +130,154 @@
     });
   }
 
-  // AI-answer every empty question field on the page (popup "auto-answer").
-  async function autoAnswerAll() {
-    const fields = [...document.querySelectorAll('textarea, input, [contenteditable="true"]')]
-      .filter(isQuestionField).filter((el) => !readValue(el).trim());
-    let done = 0;
-    for (const el of fields) {
-      const question = deriveQuestion(el);
-      if (!question) continue;
-      try { const r = await msg('ASSIST_ANSWER', { question }); writeValue(el, r.answer); done++; }
-      catch (_) { /* skip and continue */ }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const looksLikeQuestion = (q) => q.length > 40 || /\?/.test(q);
+  const labelOf = (o) => (o.getAttribute('aria-label') || o.getAttribute('data-value') || o.textContent || '').replace(/\s+/g, ' ').trim();
+
+  // Group the page into question units (Google/MS Forms listitems, or generic fields).
+  function questionUnits() {
+    const items = [...document.querySelectorAll('[role="listitem"]')].filter((el) => el.offsetParent !== null);
+    if (items.length) {
+      return items.map((el) => ({ container: el, q: unitQuestion(el) })).filter((u) => u.q);
     }
-    return { done, total: fields.length };
+    // Generic HTML forms: one unit per field / radio-checkbox group.
+    const units = [];
+    const seenNames = new Set();
+    document.querySelectorAll('input, textarea, select, [contenteditable="true"]').forEach((el) => {
+      if (el.offsetParent === null || el.disabled) return;
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      if (['hidden', 'submit', 'button', 'reset', 'image', 'file', 'password'].includes(type)) return;
+      if ((type === 'radio' || type === 'checkbox') && el.name) {
+        if (seenNames.has(type + el.name)) return;
+        seenNames.add(type + el.name);
+      }
+      const container = el.closest('fieldset, .form-group, li, div, p, section') || el.parentElement;
+      units.push({ container, q: deriveQuestion(el), field: el });
+    });
+    return units.filter((u) => u.q);
+  }
+
+  function unitQuestion(item) {
+    const head = item.querySelector('[role="heading"], .M7eMe');
+    let q = (head && head.textContent) ? head.textContent : deriveQuestion(item);
+    return q.replace(/\s+/g, ' ').replace(/\*\s*$/, '').trim();
+  }
+
+  function ariaOptions(item, role) {
+    return [...item.querySelectorAll(`[role="${role}"]`)].filter((o) => o.offsetParent !== null);
+  }
+
+  // Answer one question unit using the right strategy for its control type.
+  async function answerUnit(u) {
+    const item = u.container, q = u.q;
+    if (!q) return false;
+
+    // --- single choice: ARIA radios (incl. linear scale) or native radios ---
+    let radios = ariaOptions(item, 'radio');
+    let native = !radios.length ? [...item.querySelectorAll('input[type="radio"]')].filter((r) => r.offsetParent !== null) : [];
+    if (radios.length || native.length) {
+      const els = radios.length ? radios : native;
+      const options = els.map((e) => radios.length ? labelOf(e) : nativeLabel(e)).filter(Boolean);
+      if (!options.length) return false;
+      const r = await msg('ASSIST_CHOOSE', { question: q, options, multi: false });
+      const pick = norm((r.selected || [])[0] || '');
+      const el = els.find((e) => norm(radios.length ? labelOf(e) : nativeLabel(e)) === pick)
+        || els.find((e) => { const l = norm(radios.length ? labelOf(e) : nativeLabel(e)); return l && (l.includes(pick) || pick.includes(l)); });
+      if (el) { clickInput(el); window.JobPilot.highlight(el); return true; }
+      return false;
+    }
+
+    // --- multi choice: ARIA checkboxes or native checkboxes ---
+    let checks = ariaOptions(item, 'checkbox');
+    let nchecks = !checks.length ? [...item.querySelectorAll('input[type="checkbox"]')].filter((c) => c.offsetParent !== null) : [];
+    if (checks.length || nchecks.length) {
+      const els = checks.length ? checks : nchecks;
+      const options = els.map((e) => checks.length ? labelOf(e) : nativeLabel(e)).filter(Boolean);
+      if (!options.length) return false;
+      const r = await msg('ASSIST_CHOOSE', { question: q, options, multi: true });
+      const want = (r.selected || []).map(norm);
+      let any = false;
+      els.forEach((e) => {
+        const l = norm(checks.length ? labelOf(e) : nativeLabel(e));
+        const isOn = checks.length ? e.getAttribute('aria-checked') === 'true' : e.checked;
+        if (want.includes(l) && !isOn) { clickInput(e); window.JobPilot.highlight(e); any = true; }
+      });
+      return any;
+    }
+
+    // --- dropdown (Google Forms listbox or native select) ---
+    const listbox = item.querySelector('[role="listbox"]');
+    if (listbox) {
+      listbox.click();
+      await sleep(180);
+      let opts = [...document.querySelectorAll('[role="option"]')].filter((o) => o.offsetParent !== null);
+      const options = opts.map(labelOf).filter((l) => l && !/^choose$|^select$/i.test(l));
+      if (options.length) {
+        const r = await msg('ASSIST_CHOOSE', { question: q, options, multi: false });
+        const pick = norm((r.selected || [])[0] || '');
+        opts = [...document.querySelectorAll('[role="option"]')];
+        const el = opts.find((o) => norm(labelOf(o)) === pick);
+        if (el) { el.click(); return true; }
+      }
+      listbox.click(); // close if nothing matched
+      return false;
+    }
+    const select = item.querySelector('select');
+    if (select) {
+      const options = [...select.options].map((o) => o.text.trim()).filter((t) => t && !/^choose$|^select$/i.test(t));
+      const r = await msg('ASSIST_CHOOSE', { question: q, options, multi: false });
+      const pick = norm((r.selected || [])[0] || '');
+      const opt = [...select.options].find((o) => norm(o.text) === pick);
+      if (opt) { select.value = opt.value; select.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(select); return true; }
+      return false;
+    }
+
+    // --- date ---
+    const dateInput = item.querySelector('input[type="date"]');
+    if (dateInput && !dateInput.value) { fillDate(dateInput); return true; }
+
+    // --- free text / paragraph ---
+    const textEl = item.querySelector('textarea, [contenteditable="true"], input[type="text"], input[type="url"], input:not([type])');
+    if (textEl && !readValue(textEl).trim()) {
+      const isPara = textEl.tagName === 'TEXTAREA' || textEl.getAttribute('contenteditable') === 'true';
+      if (!isPara && !looksLikeQuestion(q)) return false; // leave short profile fields to "Fill this form"
+      const r = await msg('ASSIST_ANSWER', { question: q });
+      writeValue(textEl, r.answer);
+      return true;
+    }
+    return false;
+  }
+
+  function nativeLabel(input) {
+    if (input.id) {
+      const l = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+      if (l) return l.textContent.replace(/\s+/g, ' ').trim();
+    }
+    const w = input.closest('label');
+    if (w) return w.textContent.replace(/\s+/g, ' ').trim();
+    return (input.value || input.getAttribute('aria-label') || '').trim();
+  }
+
+  function clickInput(el) {
+    el.click();
+    if (el.tagName === 'INPUT') { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+  }
+
+  function fillDate(el) {
+    const d = new Date(Date.now() + 14 * 86400000); // a safe "soon" default — review before submit
+    window.JobPilot.setNativeValue(el, d.toISOString().slice(0, 10));
+    window.JobPilot.highlight(el);
+  }
+
+  // AI-answer/choose every question on the page (popup "AI-answer questions").
+  async function autoAnswerAll() {
+    const units = questionUnits();
+    let done = 0;
+    for (const u of units) {
+      try { if (await answerUnit(u)) done++; } catch (_) { /* skip and continue */ }
+    }
+    return { done, total: units.length };
   }
 
   // ---- cover letter: generate → minimal PDF → attach to file input --------
@@ -224,6 +360,29 @@
 
   // ---- bootstrap ----------------------------------------------------------
 
+  // Scan the current page for a job listing and save it (generic pages only —
+  // LinkedIn/Naukri/Indeed have their own richer extractors).
+  function scanListing() {
+    const meta = (sel, attr) => document.querySelector(sel)?.getAttribute(attr) || '';
+    const title = (document.querySelector('h1')?.textContent
+      || meta('meta[property="og:title"]', 'content')
+      || document.title || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const company = (meta('meta[property="og:site_name"]', 'content')
+      || location.hostname.replace(/^www\./, '').split('.')[0] || '').trim();
+    return { title, company, location: '', url: location.href, sourceSite: location.hostname, raw: null };
+  }
+
+  function saveListing() {
+    return new Promise((resolve, reject) => {
+      const payload = scanListing();
+      if (!payload.title) return reject(new Error('No job title found on this page'));
+      chrome.runtime.sendMessage({ type: 'SAVE_JOB', payload }, (resp) => {
+        if (!resp) return reject(new Error('extension background not reachable'));
+        resp.ok ? resolve(resp.data) : reject(new Error(resp.error));
+      });
+    });
+  }
+
   // Popup-triggered actions (works on any page since this script loads everywhere).
   chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
     if (m.type === 'AUTO_ANSWER') {
@@ -233,6 +392,12 @@
     }
     if (m.type === 'ATTACH_COVER_LETTER') {
       attachCoverLetter().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    // Generic save — only when no site-specific filler claimed this page.
+    if (m.type === 'SAVE_CURRENT' && !window.__jobpilotHandled) {
+      saveListing().then((d) => sendResponse({ ok: true, data: d }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }

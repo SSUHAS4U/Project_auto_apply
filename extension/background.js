@@ -97,6 +97,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'ASSIST_CHOOSE': {
+          const data = await apiFetch('/api/assist/choose', {
+            method: 'POST',
+            body: JSON.stringify({ question: msg.question, options: msg.options, multi: msg.multi }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'SAVE_QA': {
           const data = await apiFetch('/api/assist/qa', {
             method: 'POST', body: JSON.stringify({ question: msg.question, answer: msg.answer }),

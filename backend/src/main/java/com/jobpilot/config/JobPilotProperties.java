@@ -58,8 +58,9 @@ public class JobPilotProperties {
     public static class Ai {
         /** groq | ollama | gemini | template */
         private String provider = "template";
-        /** Hard cap on AI completions per rolling day (cost guardrail). */
-        private int dailyLimit = 80;
+        /** Optional cap on AI completions per rolling day. 0 (or less) = unlimited.
+         *  Groq/Gemini free tiers already rate-limit, so this is off by default. */
+        private int dailyLimit = 0;
     }
 
     @Data

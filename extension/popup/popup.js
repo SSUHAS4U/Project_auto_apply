@@ -19,19 +19,19 @@ function status(msg, kind = '') { const s = $('status'); s.textContent = msg; s.
 async function loadProfile(force) {
   const resp = await send('GET_PROFILE', { force });
   const conn = $('conn');
+  const opts = $('opts');
   if (!resp || !resp.ok) {
     conn.textContent = 'not connected'; conn.className = 'sub err';
     $('profile').innerHTML = `<div class="muted">${resp ? resp.error : 'background unavailable'}</div>
       <div class="muted" style="margin-top:6px">Sign in via Options.</div>`;
+    if (opts) opts.textContent = '⚙ Options — sign in';
     return;
   }
+  // Signed in: keep it minimal — just the name. Footer drops the "sign in" wording.
   conn.textContent = 'connected'; conn.className = 'sub ok';
   const p = resp.data;
-  $('profile').innerHTML = `
-    <div class="pname">${p.full_name || '—'}</div>
-    <div class="row">${p.email || ''}</div>
-    <div class="row">${p.phone || ''} ${p.location ? '· ' + p.location : ''}</div>
-    <div class="row">${(p.skills || []).slice(0, 6).join(', ')}</div>`;
+  $('profile').innerHTML = `<div class="pname">${p.full_name || 'Signed in'}</div>`;
+  if (opts) opts.textContent = '⚙ Options';
 }
 
 $('fill').addEventListener('click', async () => {

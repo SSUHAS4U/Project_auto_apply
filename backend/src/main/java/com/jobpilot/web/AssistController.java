@@ -28,6 +28,15 @@ public class AssistController {
         return assist.answer(body.get("question"));
     }
 
+    @PostMapping("/choose")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> choose(@RequestBody Map<String, Object> body) {
+        String question = (String) body.get("question");
+        List<String> options = (List<String>) body.get("options");
+        boolean multi = Boolean.TRUE.equals(body.get("multi"));
+        return assist.choose(question, options, multi);
+    }
+
     @GetMapping("/qa")
     public List<QaPair> listQa() {
         return assist.listQa();

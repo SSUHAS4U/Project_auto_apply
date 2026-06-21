@@ -70,6 +70,46 @@ public class AssistService {
         return Map.of("answer", generated, "source", "ai");
     }
 
+    /**
+     * Pick the best option(s) for a multiple-choice / dropdown / rating question,
+     * grounded in the candidate's profile. Returns option labels exactly as given.
+     */
+    public Map<String, Object> choose(String question, List<String> options, boolean multi) {
+        if (question == null || question.isBlank() || options == null || options.isEmpty()) {
+            throw new IllegalArgumentException("question and options are required");
+        }
+        Profile p = profiles.get();
+        StringBuilder opts = new StringBuilder();
+        for (int i = 0; i < options.size(); i++) {
+            opts.append(i + 1).append(". ").append(options.get(i)).append("\n");
+        }
+        String system = """
+                You help a candidate answer an application form. Choose the option(s) that
+                best fit the candidate's real background. Prefer truthful, eligibility-friendly
+                answers (e.g. willing to relocate / can start soon) when the profile doesn't
+                contradict them. For rating scales, pick a number that matches the candidate's
+                stated skills honestly. Reply with ONLY the option number(s); if multiple are
+                allowed and several apply, separate with commas. No words, just numbers.""";
+        String prompt = "Candidate background:\n" + profileContext(p)
+                + "\n\nQuestion: " + question.trim()
+                + "\n\nOptions:\n" + opts
+                + "\n" + (multi ? "Select all that apply." : "Select exactly one.")
+                + " Reply with the number(s) only:";
+        String raw = ai.complete(system, prompt, true, false);
+
+        List<String> selected = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(raw == null ? "" : raw);
+        while (m.find()) {
+            int idx = Integer.parseInt(m.group()) - 1;
+            if (idx >= 0 && idx < options.size() && !selected.contains(options.get(idx))) {
+                selected.add(options.get(idx));
+                if (!multi) break;
+            }
+        }
+        if (selected.isEmpty() && !multi) selected.add(options.get(0)); // safe fallback
+        return Map.of("selected", selected);
+    }
+
     @Transactional
     public QaPair saveQa(String question, String answer) {
         if (question == null || question.isBlank() || answer == null || answer.isBlank()) {
