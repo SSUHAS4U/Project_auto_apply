@@ -36,6 +36,10 @@ public class IngestService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestService.class);
 
+    /** Don't store dated jobs older than this many days (keeps the board fresh + small). */
+    @org.springframework.beans.factory.annotation.Value("${jobpilot.cleanup.retention-days:7}")
+    private int maxAgeDays;
+
     private final List<JobConnector> connectors;
     private final AtsSourceRepository atsRepo;
     private final JobRepository jobRepo;
@@ -87,26 +91,32 @@ public class IngestService {
             }
         }
 
-        // Fetch all sources concurrently (I/O bound) — much faster than serial.
-        List<RawJob> all = new ArrayList<>();
+        // Memory-light: fetch concurrently but UPSERT each source's batch as it
+        // completes, then let it be GC'd. Avoids holding 10k+ jobs in a 256MB heap (OOM).
+        int fetched = 0, inserted = 0, updated = 0;
         ExecutorService pool = Executors.newFixedThreadPool(Math.min(props.getIngestConcurrency(), Math.max(1, tasks.size())));
+        java.util.concurrent.CompletionService<List<RawJob>> ecs =
+                new java.util.concurrent.ExecutorCompletionService<>(pool);
         try {
-            for (Future<List<RawJob>> f : pool.invokeAll(tasks, 4, TimeUnit.MINUTES)) {
+            for (Callable<List<RawJob>> t : tasks) ecs.submit(t);
+            for (int i = 0; i < tasks.size(); i++) {
+                List<RawJob> batch;
                 try {
-                    all.addAll(f.get());
-                } catch (Exception ignored) { /* cancelled/failed fetch */ }
+                    Future<List<RawJob>> f = ecs.poll(4, TimeUnit.MINUTES);
+                    if (f == null) break; // overall timeout
+                    batch = f.get();
+                } catch (Exception e) { continue; }
+                fetched += batch.size();
+                for (RawJob r : batch) {
+                    int code = upsert(r, profile);
+                    if (code == 1) inserted++; else if (code == 2) updated++;
+                }
+                batch.clear(); // release memory before the next source
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("Ingest interrupted: {}", e.getMessage());
         } finally {
             pool.shutdownNow();
-        }
-
-        // Upsert sequentially (DB writes); scoring runs on new rows.
-        int fetched = all.size(), inserted = 0, updated = 0;
-        for (RawJob r : all) {
-            int code = upsert(r, profile);
-            if (code == 1) inserted++; else if (code == 2) updated++;
         }
 
         // Collapse any duplicate listings (same company+title+city) left after upsert.
@@ -184,6 +194,12 @@ public class IngestService {
     protected int upsert(RawJob r, Profile profile) {
         if (r.getTitle() == null || r.getUrl() == null) return 0;
         if (!normalize.isTechRole(r.getTitle())) return 0; // tech-only board
+        // Freshness: skip dated jobs older than the retention window (keep undated ATS jobs).
+        if (r.getPostedAt() != null
+                && r.getPostedAt().isBefore(java.time.Instant.now().minus(java.time.Duration.ofDays(maxAgeDays)))) {
+            return 0;
+        }
+        r.setRaw(null); // don't store the heavy raw payload (memory + DB)
         String hash = normalize.contentHash(r.getCompany(), r.getTitle(), r.getLocation());
         Optional<Job> existing = jobRepo.findByContentHash(hash);
         if (existing.isPresent()) {

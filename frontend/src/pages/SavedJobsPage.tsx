@@ -34,11 +34,13 @@ export function SavedJobsPage() {
       {guide && (
         <Modal title="Set up the JobPilot extension" onClose={() => setGuide(false)} wide
           footer={<button className="btn btn-primary" onClick={() => setGuide(false)}>Got it</button>}>
+          <a className="btn btn-primary" href="/jobpilot-extension.zip" download="jobpilot-extension.zip"
+            style={{ marginBottom: 14 }}>⬇ Download extension (.zip)</a>
           <ol style={{ lineHeight: 1.8, fontSize: 14, paddingLeft: 18, margin: 0 }}>
-            <li><b>Get the extension folder:</b> from the project repo, the <code>extension/</code> folder.</li>
+            <li><b>Download</b> the zip above and <b>unzip</b> it to a folder you'll keep.</li>
             <li>Open Chrome/Edge/Brave → go to <code>chrome://extensions</code>.</li>
             <li>Turn on <b>Developer mode</b> (top-right toggle).</li>
-            <li>Click <b>Load unpacked</b> → select the <code>extension/</code> folder.</li>
+            <li>Click <b>Load unpacked</b> → select the unzipped <b>jobpilot-extension</b> folder.</li>
             <li>Click the JobPilot icon → <b>Options</b> → enter the backend URL, your <b>email & password</b> → <b>Sign in</b>.</li>
             <li><b>Autofill a form:</b> open a Google/MS Form or job application → click the extension → <b>⚡ Fill this form</b> (it fills, you review &amp; submit).</li>
             <li><b>Save a job:</b> on a LinkedIn/Naukri/Indeed posting, click the floating <b>🔖 Save to JobPilot</b> button — it appears here, ready to <b>Promote</b>.</li>

@@ -10,7 +10,8 @@ function loadStoredFilters(): JobFilters {
     const raw = localStorage.getItem(FILTER_KEY);
     if (raw) return { page: 0, size: 25, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  return { page: 0, size: 25 };
+  // Default to fresh jobs only (last 7 days) — older listings aren't useful.
+  return { page: 0, size: 25, postedWithin: 7 };
 }
 
 export function JobsPage() {

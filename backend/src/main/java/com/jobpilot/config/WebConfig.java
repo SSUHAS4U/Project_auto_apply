@@ -61,6 +61,10 @@ public class WebConfig {
     private List<String> buildPatterns() {
         List<String> patterns = new java.util.ArrayList<>(props.getCorsOrigins());
         patterns.add("chrome-extension://*");
+        patterns.add("https://*.vercel.app");   // any Vercel deployment of this app
+        // Auth is via the Authorization/X-Api-Token header (no cookies), so allowing
+        // all origins is safe and avoids per-deploy CORS breakage.
+        patterns.add("*");
         return patterns;
     }
 }
