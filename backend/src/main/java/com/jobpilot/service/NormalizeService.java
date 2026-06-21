@@ -36,6 +36,11 @@ public class NormalizeService {
         }
     }
 
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max);
+    }
+
     /** Company key: lowercase, drop suffixes, then remove ALL non-alphanumerics. */
     private static String normKey(String s) {
         if (s == null) return "";
@@ -81,7 +86,7 @@ public class NormalizeService {
         j.setCompany(r.getCompany());
         j.setLocation(r.getLocation());
         j.setRemote(r.isRemote());
-        j.setDescription(r.getDescription());
+        j.setDescription(truncate(r.getDescription(), 1500)); // cap memory + DB size
         j.setUrl(r.getUrl());
         j.setSalaryText(r.getSalaryText());
         j.setPostedAt(r.getPostedAt());

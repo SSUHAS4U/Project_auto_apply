@@ -54,7 +54,6 @@ public class LeverConnector implements JobConnector {
                         .url(j.path("hostedUrl").asText(j.path("applyUrl").asText()))
                         .applyType("ats")
                         .postedAt(posted)
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

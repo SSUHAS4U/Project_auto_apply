@@ -45,7 +45,6 @@ public class ArbeitnowConnector implements JobConnector {
                         .url(j.path("url").asText())
                         .applyType("url")
                         .postedAt(posted)
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

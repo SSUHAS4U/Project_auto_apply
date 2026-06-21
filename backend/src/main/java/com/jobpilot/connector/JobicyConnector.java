@@ -49,7 +49,6 @@ public class JobicyConnector implements JobConnector {
                         .url(j.path("url").asText())
                         .applyType("url")
                         .postedAt(parse(j.path("pubDate").asText(null)))
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

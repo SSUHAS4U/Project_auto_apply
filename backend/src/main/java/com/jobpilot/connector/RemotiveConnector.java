@@ -45,7 +45,6 @@ public class RemotiveConnector implements JobConnector {
                         .applyType("url")
                         .salaryText(emptyToNull(j.path("salary").asText(null)))
                         .postedAt(parse(j.path("publication_date").asText(null)))
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

@@ -49,7 +49,6 @@ public class RemoteOkConnector implements JobConnector {
                         .applyType("url")
                         .salaryText(salary(j))
                         .postedAt(parse(j.path("date").asText(null)))
-                        .raw(j.toString())
                         .build());
                 if (out.size() >= 60) break;
             }

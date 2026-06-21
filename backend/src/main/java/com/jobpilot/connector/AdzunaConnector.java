@@ -70,7 +70,6 @@ public class AdzunaConnector implements JobConnector {
                         .applyType("url")
                         .salaryText(salary(j))
                         .postedAt(parse(j.path("created").asText(null)))
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

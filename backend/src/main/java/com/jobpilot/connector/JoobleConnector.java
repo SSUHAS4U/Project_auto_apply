@@ -65,7 +65,6 @@ public class JoobleConnector implements JobConnector {
                         .applyType("url")
                         .salaryText(emptyToNull(j.path("salary").asText(null)))
                         .postedAt(parseDate(j.path("updated").asText(null)))
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

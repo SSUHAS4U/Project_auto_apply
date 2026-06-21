@@ -69,7 +69,6 @@ public class GoogleCseConnector implements JobConnector {
                         .description(it.path("snippet").asText(""))
                         .url(it.path("link").asText())
                         .applyType("url")
-                        .raw(it.toString())
                         .build());
             }
         } catch (Exception e) {

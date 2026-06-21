@@ -53,7 +53,6 @@ public class AshbyConnector implements JobConnector {
                         .url(j.path("jobUrl").asText(j.path("applyUrl").asText()))
                         .applyType("ats")
                         .salaryText(j.path("compensation").path("compensationTierSummary").asText(null))
-                        .raw(j.toString())
                         .build());
             }
         } catch (Exception e) {

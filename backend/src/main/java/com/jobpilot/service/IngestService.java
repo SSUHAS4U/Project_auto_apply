@@ -91,30 +91,32 @@ public class IngestService {
             }
         }
 
-        // Memory-light: fetch concurrently but UPSERT each source's batch as it
-        // completes, then let it be GC'd. Avoids holding 10k+ jobs in a 256MB heap (OOM).
+        // Memory-light: process sources in small WAVES. Each wave fetches a few
+        // sources concurrently, upserts them, then releases the memory before the next
+        // wave. This bounds heap use (no holding 10k jobs at once → no OOM on 256MB).
         int fetched = 0, inserted = 0, updated = 0;
-        ExecutorService pool = Executors.newFixedThreadPool(Math.min(props.getIngestConcurrency(), Math.max(1, tasks.size())));
-        java.util.concurrent.CompletionService<List<RawJob>> ecs =
-                new java.util.concurrent.ExecutorCompletionService<>(pool);
+        int wave = Math.max(1, props.getIngestConcurrency());
+        ExecutorService pool = Executors.newFixedThreadPool(wave);
         try {
-            for (Callable<List<RawJob>> t : tasks) ecs.submit(t);
-            for (int i = 0; i < tasks.size(); i++) {
-                List<RawJob> batch;
+            for (int start = 0; start < tasks.size(); start += wave) {
+                List<Callable<List<RawJob>>> chunk = tasks.subList(start, Math.min(start + wave, tasks.size()));
+                List<Future<List<RawJob>>> futures;
                 try {
-                    Future<List<RawJob>> f = ecs.poll(4, TimeUnit.MINUTES);
-                    if (f == null) break; // overall timeout
-                    batch = f.get();
-                } catch (Exception e) { continue; }
-                fetched += batch.size();
-                for (RawJob r : batch) {
-                    int code = upsert(r, profile);
-                    if (code == 1) inserted++; else if (code == 2) updated++;
+                    futures = pool.invokeAll(chunk, 3, TimeUnit.MINUTES);
+                } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+                for (Future<List<RawJob>> f : futures) {
+                    List<RawJob> batch;
+                    try { batch = f.get(); } catch (Exception e) { continue; }
+                    fetched += batch.size();
+                    for (RawJob r : batch) {
+                        int code = upsert(r, profile);
+                        if (code == 1) inserted++; else if (code == 2) updated++;
+                    }
+                    batch.clear(); // free this source before moving on
                 }
-                batch.clear(); // release memory before the next source
             }
         } catch (Exception e) {
-            log.warn("Ingest interrupted: {}", e.getMessage());
+            log.warn("Ingest error: {}", e.getMessage());
         } finally {
             pool.shutdownNow();
         }
