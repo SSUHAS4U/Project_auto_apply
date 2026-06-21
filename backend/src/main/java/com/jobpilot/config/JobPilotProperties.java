@@ -13,6 +13,8 @@ import java.util.List;
 public class JobPilotProperties {
 
     private String apiToken = "dev-token";
+    /** Email auto-granted ADMIN on register/login (the app owner). */
+    private String adminEmail = "ssuhas4u@gmail.com";
     private List<String> corsOrigins = List.of("http://localhost:5173");
     private int ingestConcurrency = 3;
     private String resumeDir = "./uploads";

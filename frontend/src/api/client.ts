@@ -7,13 +7,22 @@ const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
 const JWT_KEY = 'jobpilot_jwt';        // user auth (Bearer)
 const ADMIN_KEY = 'jobpilot_admin_token'; // ops/cron admin token (X-Api-Token)
 
+const ROLE_KEY = 'jobpilot_is_admin';   // cached UI hint only — server re-checks every admin request
+
 export function getJwt(): string { return localStorage.getItem(JWT_KEY) ?? ''; }
 export function setJwt(t: string): void { localStorage.setItem(JWT_KEY, t); }
-export function clearJwt(): void { localStorage.removeItem(JWT_KEY); }
+export function clearJwt(): void { localStorage.removeItem(JWT_KEY); localStorage.removeItem(ROLE_KEY); }
 export function isLoggedIn(): boolean { return !!getJwt(); }
 
+/** UI convenience only — the backend authoritatively enforces ADMIN on every admin route. */
+export function isAdminUI(): boolean { return localStorage.getItem(ROLE_KEY) === '1'; }
+export function setAdminUI(v: boolean): void { localStorage.setItem(ROLE_KEY, v ? '1' : '0'); }
+
+// NOTE: never fall back to a build-time token — that would bake the machine secret
+// into the public JS bundle. Ops/admin actions are authorized by the ADMIN-role JWT.
+// This only returns a token the user explicitly pasted in Settings (kept local).
 export function getAdminToken(): string {
-  return localStorage.getItem(ADMIN_KEY) ?? import.meta.env.VITE_API_TOKEN ?? '';
+  return localStorage.getItem(ADMIN_KEY) ?? '';
 }
 export function setAdminToken(t: string): void { localStorage.setItem(ADMIN_KEY, t); }
 
@@ -42,7 +51,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
-export interface AuthResult { token: string; user: { id: string; email: string; fullName: string }; }
+export interface AuthResult { token: string; user: { id: string; email: string; fullName: string; role?: string; isAdmin?: boolean }; }
 
 export interface JobFilters {
   role?: string;
@@ -63,7 +72,7 @@ export const api = {
     req<AuthResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, fullName: string) =>
     req<AuthResult>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, fullName }) }),
-  me: () => req<{ id: string; email: string; fullName: string }>('/api/auth/me'),
+  me: () => req<{ id: string; email: string; fullName: string; role: string; isAdmin: boolean }>('/api/auth/me'),
 
   jobs: (f: JobFilters = {}) => {
     const q = new URLSearchParams();
@@ -141,4 +150,20 @@ export const api = {
   dailyRun: () => req<{ status: string; message: string }>('/api/daily/run', { method: 'POST' }),
   dailyPicks: () => req<{ briefing: string; generatedAt?: string; jobs: Job[] }>('/api/daily/picks'),
   opsStatus: () => req<{ running: boolean; last: string }>('/api/ops/status'),
+
+  // Saved autofill answers (Q&A bank) — the extension writes these; manage them here.
+  qaList: () => req<QaPair[]>('/api/assist/qa'),
+  qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
+
+  // Admin (server enforces ADMIN role on these routes).
+  adminUsers: (q = '') => req<AdminUser[]>(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  adminDeleteUser: (id: string) => req<{ deleted: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
+  adminSetRole: (id: string, role: 'ADMIN' | 'USER') =>
+    req<AdminUser>(`/api/admin/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
+};
+
+export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
+export type AdminUser = {
+  id: string; email: string; fullName: string; role: string; isAdmin: boolean;
+  createdAt?: string; applications: number; savedJobs: number;
 };

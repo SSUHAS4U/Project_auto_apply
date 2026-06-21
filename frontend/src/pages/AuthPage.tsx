@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, setJwt } from '../api/client';
+import { api, setJwt, setAdminUI } from '../api/client';
 import { useToast } from '../lib/ui';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
@@ -18,6 +18,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     try {
       const r = register ? await api.register(email, password, fullName) : await api.login(email, password);
       setJwt(r.token);
+      setAdminUI(!!r.user?.isAdmin);
       toast(register ? 'Account created — welcome!' : 'Welcome back!', 'success');
       nav('/');
     } catch (err) { toast((err as Error).message, 'error'); }

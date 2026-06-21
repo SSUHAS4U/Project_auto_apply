@@ -1,5 +1,6 @@
 package com.jobpilot.service;
 
+import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.domain.AppUser;
 import com.jobpilot.domain.Profile;
 import com.jobpilot.repository.*;
@@ -25,17 +26,24 @@ public class AuthService {
     private final SavedJobRepository savedJobs;
     private final NotificationRepository notifications;
     private final JwtService jwt;
+    private final JobPilotProperties props;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public AuthService(AppUserRepository users, ProfileRepository profiles,
                        ApplicationRepository applications, SavedJobRepository savedJobs,
-                       NotificationRepository notifications, JwtService jwt) {
+                       NotificationRepository notifications, JwtService jwt, JobPilotProperties props) {
         this.users = users;
         this.profiles = profiles;
         this.applications = applications;
         this.savedJobs = savedJobs;
         this.notifications = notifications;
         this.jwt = jwt;
+        this.props = props;
+    }
+
+    private boolean isOwnerEmail(String email) {
+        String admin = props.getAdminEmail();
+        return admin != null && !admin.isBlank() && admin.trim().equalsIgnoreCase(email);
     }
 
     @Transactional
@@ -53,6 +61,7 @@ public class AuthService {
         u.setEmail(e);
         u.setPasswordHash(encoder.encode(password));
         u.setFullName(fullName);
+        if (isOwnerEmail(e)) u.setRole("ADMIN"); // the configured owner is always admin
         u = users.saveAndFlush(u); // flush so FK references resolve in the bulk claim updates below
 
         if (firstUser) {
@@ -75,26 +84,35 @@ public class AuthService {
         return token(u);
     }
 
+    @Transactional
     public Map<String, Object> login(String email, String password) {
         AppUser u = users.findByEmailIgnoreCase(normalize(email))
                 .orElseThrow(() -> new IllegalArgumentException("invalid email or password"));
         if (!encoder.matches(password == null ? "" : password, u.getPasswordHash())) {
             throw new IllegalArgumentException("invalid email or password");
         }
+        // Self-heal: the configured owner is always admin (e.g. account created before this feature).
+        if (isOwnerEmail(u.getEmail()) && !u.isAdmin()) {
+            u.setRole("ADMIN");
+            users.save(u);
+        }
         return token(u);
     }
 
     public Map<String, Object> me(UUID userId) {
         AppUser u = users.findById(userId).orElseThrow(() -> new NotFoundException("user not found"));
-        return Map.of("id", u.getId().toString(), "email", u.getEmail(),
-                "fullName", u.getFullName() == null ? "" : u.getFullName());
+        return userMap(u);
     }
 
     private Map<String, Object> token(AppUser u) {
-        return Map.of(
-                "token", jwt.issue(u.getId(), u.getEmail()),
-                "user", Map.of("id", u.getId().toString(), "email", u.getEmail(),
-                        "fullName", u.getFullName() == null ? "" : u.getFullName()));
+        return Map.of("token", jwt.issue(u.getId(), u.getEmail()), "user", userMap(u));
+    }
+
+    private Map<String, Object> userMap(AppUser u) {
+        return Map.of("id", u.getId().toString(), "email", u.getEmail(),
+                "fullName", u.getFullName() == null ? "" : u.getFullName(),
+                "role", u.getRole() == null ? "USER" : u.getRole(),
+                "isAdmin", u.isAdmin());
     }
 
     private String normalize(String email) {

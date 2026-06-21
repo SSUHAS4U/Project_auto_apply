@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public interface SavedJobRepository extends JpaRepository<SavedJob, UUID> {
     List<SavedJob> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    long countByUserId(UUID userId);
 
     @Modifying
     @Query("update SavedJob s set s.userId = :userId where s.userId is null")

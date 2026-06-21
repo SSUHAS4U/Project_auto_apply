@@ -26,6 +26,14 @@ public class AppUser {
     @Column(name = "full_name")
     private String fullName;
 
+    /** USER or ADMIN. Authoritative authorization source — checked server-side, never from a token. */
+    @Column(nullable = false)
+    private String role = "USER";
+
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
+
+    public boolean isAdmin() {
+        return "ADMIN".equalsIgnoreCase(role);
+    }
 }

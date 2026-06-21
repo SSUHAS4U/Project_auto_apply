@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type JobFilters } from '../api/client';
+import { api, isAdminUI, type JobFilters } from '../api/client';
 import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
@@ -120,14 +120,16 @@ export function JobsPage() {
           <h1 className="page-title">Jobs</h1>
           <div className="page-sub">Aggregated from Greenhouse, Lever, Ashby, Adzuna & Jooble</div>
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn-danger" onClick={wipeAndReingest} disabled={ingesting} title="Wipe all jobs and pull a fresh set">
-            🗑 Reset DB
-          </button>
-          <button className="btn btn-primary" onClick={runIngest} disabled={ingesting}>
-            {ingesting ? <span className="spinner" /> : '⟳'} Run ingest
-          </button>
-        </div>
+        {isAdminUI() && (
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn btn-danger" onClick={wipeAndReingest} disabled={ingesting} title="Wipe all jobs and pull a fresh set">
+              🗑 Reset DB
+            </button>
+            <button className="btn btn-primary" onClick={runIngest} disabled={ingesting}>
+              {ingesting ? <span className="spinner" /> : '⟳'} Run ingest
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="tabs">

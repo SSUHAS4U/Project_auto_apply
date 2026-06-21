@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { api, clearJwt } from '../api/client';
+import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 
 const NAV = [
   { to: '/', label: 'Jobs', ico: '🧭', end: true },
@@ -9,20 +9,28 @@ const NAV = [
   { to: '/compose', label: 'Compose & send', ico: '✍️' },
   { to: '/applications', label: 'Applications', ico: '📋' },
   { to: '/saved', label: 'Saved', ico: '🔖' },
+  { to: '/answers', label: 'Autofill answers', ico: '💬' },
   { to: '/notifications', label: 'Notifications', ico: '🔔', badge: true },
   { to: '/profile', label: 'Profile', ico: '👤' },
   { to: '/settings', label: 'Settings', ico: '⚙️' },
 ];
+const ADMIN_NAV = { to: '/admin', label: 'Admin', ico: '🛡️' };
 
 export function Layout() {
   const [unread, setUnread] = useState(0);
   const [drawer, setDrawer] = useState(false);
   const [email, setEmail] = useState('');
+  const [admin, setAdmin] = useState(isAdminUI());
   const location = useLocation();
   const nav = useNavigate();
 
-  useEffect(() => { api.me().then((u) => setEmail(u.email)).catch(() => {}); }, []);
+  // Re-check role from the server (handles grants/revokes + sessions predating roles).
+  useEffect(() => {
+    api.me().then((u) => { setEmail(u.email); setAdmin(!!u.isAdmin); setAdminUI(!!u.isAdmin); }).catch(() => {});
+  }, []);
   const logout = () => { clearJwt(); nav('/login'); };
+
+  const navItems = admin ? [...NAV, ADMIN_NAV] : NAV;
 
   useEffect(() => {
     let active = true;
@@ -45,12 +53,12 @@ export function Layout() {
           <div className="brand-sub">personal job copilot</div>
         </div>
       </div>
-      {NAV.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.end}
+      {navItems.map((n) => (
+        <NavLink key={n.to} to={n.to} end={(n as { end?: boolean }).end}
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <span className="ico">{n.ico}</span>
           <span>{n.label}</span>
-          {n.badge && unread > 0 && <span className="nav-badge">{unread}</span>}
+          {(n as { badge?: boolean }).badge && unread > 0 && <span className="nav-badge">{unread}</span>}
         </NavLink>
       ))}
       <div className="sidebar-user">

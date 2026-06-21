@@ -17,6 +17,7 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
     List<Application> findByUserIdAndStatusOrderByUpdatedAtDesc(UUID userId, String status);
     Optional<Application> findFirstByUserIdAndJobId(UUID userId, UUID jobId);
     long countByUserIdAndMethodAndAppliedAtAfter(UUID userId, String method, Instant after);
+    long countByUserId(UUID userId);
 
     @Modifying
     @Query("update Application a set a.userId = :userId where a.userId is null")

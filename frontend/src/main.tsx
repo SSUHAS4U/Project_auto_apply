@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import './styles.css';
 import { ToastProvider } from './lib/ui';
-import { isLoggedIn } from './api/client';
+import { isLoggedIn, isAdminUI } from './api/client';
 import { Layout } from './components/Layout';
 import { JobsPage } from './pages/JobsPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
@@ -14,10 +14,17 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ComposePage } from './pages/ComposePage';
 import { AssistantPage } from './pages/AssistantPage';
 import { DailyPicksPage } from './pages/DailyPicksPage';
+import { AnswersPage } from './pages/AnswersPage';
+import { AdminPage } from './pages/AdminPage';
 import { AuthPage } from './pages/AuthPage';
 
 function Guard({ children }: { children: React.ReactNode }) {
   return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+// Client-side hint only — the backend enforces ADMIN on every /api/admin route.
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  return isAdminUI() ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 const router = createBrowserRouter([
@@ -33,9 +40,11 @@ const router = createBrowserRouter([
       { path: 'compose', element: <ComposePage /> },
       { path: 'applications', element: <ApplicationsPage /> },
       { path: 'saved', element: <SavedJobsPage /> },
+      { path: 'answers', element: <AnswersPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'admin', element: <AdminGuard><AdminPage /></AdminGuard> },
     ],
   },
 ]);
