@@ -26,6 +26,11 @@ public class AdminController {
         return admin.listUsers(q);
     }
 
+    @GetMapping("/users/{id}")
+    public Map<String, Object> user(@PathVariable UUID id) {
+        return admin.userDetail(id);
+    }
+
     @DeleteMapping("/users/{id}")
     public Map<String, Object> deleteUser(@PathVariable UUID id) {
         admin.deleteUser(id);

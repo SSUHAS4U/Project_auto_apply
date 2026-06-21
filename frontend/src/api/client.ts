@@ -161,6 +161,7 @@ export const api = {
 
   // Admin (server enforces ADMIN role on these routes).
   adminUsers: (q = '') => req<AdminUser[]>(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  adminUser: (id: string) => req<AdminUserDetail>(`/api/admin/users/${id}`),
   adminDeleteUser: (id: string) => req<{ deleted: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
   adminSetRole: (id: string, role: 'ADMIN' | 'USER') =>
     req<AdminUser>(`/api/admin/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
@@ -180,4 +181,9 @@ export type QaPair = { id: string; question: string; answer: string; source: str
 export type AdminUser = {
   id: string; email: string; fullName: string; role: string; isAdmin: boolean;
   createdAt?: string; applications: number; savedJobs: number;
+};
+export type AdminUserDetail = AdminUser & {
+  phone?: string; location?: string; headline?: string; currentTitle?: string;
+  currentCompany?: string; yearsExperience?: string; skills?: string[];
+  summary?: string; resumeFilename?: string;
 };

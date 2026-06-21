@@ -9,7 +9,6 @@ const NAV = [
   { to: '/compose', label: 'Compose & send', ico: '✍️' },
   { to: '/applications', label: 'Applications', ico: '📋' },
   { to: '/saved', label: 'Saved', ico: '🔖' },
-  { to: '/answers', label: 'Autofill answers', ico: '💬' },
   { to: '/notifications', label: 'Notifications', ico: '🔔', badge: true },
   { to: '/profile', label: 'Profile', ico: '👤' },
   { to: '/settings', label: 'Settings', ico: '⚙️' },

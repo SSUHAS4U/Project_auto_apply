@@ -14,7 +14,6 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ComposePage } from './pages/ComposePage';
 import { AssistantPage } from './pages/AssistantPage';
 import { DailyPicksPage } from './pages/DailyPicksPage';
-import { AnswersPage } from './pages/AnswersPage';
 import { AdminPage } from './pages/AdminPage';
 import { AuthPage } from './pages/AuthPage';
 
@@ -40,7 +39,6 @@ const router = createBrowserRouter([
       { path: 'compose', element: <ComposePage /> },
       { path: 'applications', element: <ApplicationsPage /> },
       { path: 'saved', element: <SavedJobsPage /> },
-      { path: 'answers', element: <AnswersPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'settings', element: <SettingsPage /> },

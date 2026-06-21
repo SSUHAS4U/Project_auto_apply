@@ -78,6 +78,8 @@ public class JobPilotProperties {
         private String from = "";
         private String digestTo = "";
         private int dailyLimit = 25;
+        private String brevoApiKey = "";
+        private String fromName = "JobPilot";
     }
 
     @Data

@@ -141,7 +141,25 @@
     if (el.parentNode) el.parentNode.insertBefore(bar, el.nextSibling);
   }
 
+  // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
+  const DENY_HOSTS = /(^|\.)(chat\.openai|chatgpt|claude\.ai|gemini\.google|bard\.google|copilot\.microsoft|bing|perplexity|you|poe|phind|google|duckduckgo|youtube|x|twitter|facebook|instagram|reddit|whatsapp|telegram|discord|slack|notion|figma|stackoverflow|github|gitlab)\.com/i;
+  // Sites that ARE application/recruiting forms — always allow.
+  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com)/i;
+
+  function looksLikeApplicationForm() {
+    const host = location.hostname;
+    if (ALLOW_HOSTS.test(host)) return true;
+    if (DENY_HOSTS.test(host)) return false;
+    // Generic page: only treat it as an application if the URL/title says so AND it has a form.
+    const hay = (location.href + ' ' + document.title).toLowerCase();
+    const jobby = /(apply|application|career|job|recruit|vacancy|opening|hiring|candidate|position)/.test(hay);
+    const hasUpload = !!document.querySelector('input[type="file"]');
+    const fields = document.querySelectorAll('form textarea, form input[type="text"], form input[type="email"], [role="listitem"]').length;
+    return (jobby && (hasUpload || fields >= 3));
+  }
+
   function enhance() {
+    if (!looksLikeApplicationForm()) return; // don't litter chat/search pages with buttons
     document.querySelectorAll('textarea, input, [contenteditable="true"]').forEach((el) => {
       if (isQuestionField(el)) {
         try { toolbar(el); } catch (_) { /* keep scanning */ }

@@ -52,6 +52,10 @@ jobpilot:
     from: ${JOBPILOT_MAIL_FROM:}
     digest-to: ${JOBPILOT_MAIL_DIGEST_TO:}
     daily-limit: ${JOBPILOT_MAIL_DAILY_LIMIT:25}
+    # Brevo transactional email over HTTPS — set this to bypass SMTP-port blocking
+    # on Render/cloud hosts. When present it's used instead of SMTP.
+    brevo-api-key: ${JOBPILOT_BREVO_API_KEY:}
+    from-name: ${JOBPILOT_MAIL_FROM_NAME:JobPilot}
   digest:
     min-score: ${JOBPILOT_DIGEST_MIN_SCORE:60}
   schedule:

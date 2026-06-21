@@ -234,7 +234,14 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .faint { color: var(--text-faint); }
 .empty { text-align: center; color: var(--text-dim); padding: 50px 20px; }
 .empty .big { font-size: 38px; margin-bottom: 10px; }
-.spinner { width: 18px; height: 18px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+/* inline-block is essential: a bare inline element ignores width/height and renders
+   as a thin sliver instead of a circle. */
+.spinner {
+  display: inline-block; vertical-align: middle; box-sizing: border-box;
+  width: 18px; height: 18px; border: 2px solid var(--border-strong);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite;
+}
+.empty .spinner { width: 30px; height: 30px; border-width: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; bottom: 22px; right: 22px; background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 13px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 80; max-width: 360px; animation: slideIn .25s ease; }
 .toast.error { border-left-color: var(--red); }

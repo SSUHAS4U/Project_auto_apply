@@ -61,12 +61,12 @@ public class AssistService {
         if (similar != null) {
             return Map.of("answer", similar.getAnswer(), "source", "saved");
         }
-        // 3. Generate with AI, grounded in the profile, then persist for reuse.
+        // 3. Generate with AI, grounded in the profile. Do NOT auto-save — only the
+        //    user's explicit "Save" should add an answer to the reusable bank.
         Profile p = profiles.get();
         String prompt = "Candidate background:\n" + profileContext(p)
                 + "\n\nApplication question: " + question.trim() + "\n\nAnswer:";
         String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
-        save(userId, question, generated, "ai");
         return Map.of("answer", generated, "source", "ai");
     }
 

@@ -1,7 +1,47 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, type QaPair } from '../api/client';
 import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
-import { useToast } from '../lib/ui';
+import { fmtDate, useToast } from '../lib/ui';
+
+/** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
+function SavedAnswers() {
+  const toast = useToast();
+  const [items, setItems] = useState<QaPair[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = () => api.qaList().then(setItems).catch(() => setItems([]));
+  useEffect(() => { load(); }, []);
+  const remove = async (it: QaPair) => {
+    if (!window.confirm('Delete this saved answer?')) return;
+    setBusy(it.id);
+    try { await api.qaDelete(it.id); setItems((x) => (x ?? []).filter((i) => i.id !== it.id)); }
+    catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+  return (
+    <Section ico="💬" title="Saved from the extension" sub="questions you clicked “Save” on while applying — reused to autofill matching forms">
+      {items === null ? <div className="empty"><span className="spinner" /></div>
+        : items.length === 0 ? (
+          <div className="faint" style={{ fontSize: 13 }}>
+            Nothing saved yet. On an application form, click the extension's <b>💾 Save</b> under a question to keep its answer here.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {items.map((it) => (
+              <div key={it.id} className="repeat-row" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{it.question}</div>
+                  <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
+                    style={{ color: 'var(--danger,#ef4444)', flexShrink: 0 }}>🗑</button>
+                </div>
+                <div className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{it.answer}</div>
+                {it.updatedAt && <div className="faint" style={{ fontSize: 11 }}>Saved {fmtDate(it.updatedAt)}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+    </Section>
+  );
+}
 
 type Tab = 'personal' | 'professional' | 'experience' | 'education' | 'autofill' | 'resume';
 const TABS: { id: Tab; label: string; ico: string }[] = [
@@ -286,6 +326,7 @@ export function ProfilePage() {
               These take priority over the built-in field matching.
             </div>
           </Section>
+          <SavedAnswers />
         </div>
       )}
 

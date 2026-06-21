@@ -18,18 +18,25 @@ public class MailService {
     private static final Logger log = LoggerFactory.getLogger(MailService.class);
 
     private final JavaMailSender sender;
+    private final BrevoMailClient brevo;
     private final JobPilotProperties props;
 
-    public MailService(JavaMailSender sender, JobPilotProperties props) {
+    public MailService(JavaMailSender sender, BrevoMailClient brevo, JobPilotProperties props) {
         this.sender = sender;
+        this.brevo = brevo;
         this.props = props;
         // Log mail configuration at startup so Render logs show whether it's wired up.
-        log.info("MailService initialised — from='{}', digestTo='{}'",
+        log.info("MailService initialised — transport={}, from='{}', digestTo='{}'",
+                brevo.isConfigured() ? "Brevo (HTTPS API)" : "SMTP",
                 props.getMail().getFrom(), props.getMail().getDigestTo());
     }
 
     public void sendWithAttachment(String to, String subject, String textBody,
                                    Path attachment, String attachmentName) {
+        if (brevo.isConfigured()) {
+            brevo.send(to, subject, textBody, false, attachment, attachmentName);
+            return;
+        }
         try {
             log.info("Sending email (attachment) to={} subject='{}'", to, subject);
             MimeMessage msg = sender.createMimeMessage();
@@ -50,6 +57,10 @@ public class MailService {
     }
 
     public void sendHtml(String to, String subject, String htmlBody) {
+        if (brevo.isConfigured()) {
+            brevo.send(to, subject, htmlBody, true, null, null);
+            return;
+        }
         try {
             log.info("Sending HTML email to={} subject='{}'", to, subject);
             MimeMessage msg = sender.createMimeMessage();

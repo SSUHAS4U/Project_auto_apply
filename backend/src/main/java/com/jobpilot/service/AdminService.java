@@ -18,11 +18,32 @@ public class AdminService {
     private final AppUserRepository users;
     private final ApplicationRepository applications;
     private final SavedJobRepository savedJobs;
+    private final ProfileRepository profiles;
 
-    public AdminService(AppUserRepository users, ApplicationRepository applications, SavedJobRepository savedJobs) {
+    public AdminService(AppUserRepository users, ApplicationRepository applications,
+                        SavedJobRepository savedJobs, ProfileRepository profiles) {
         this.users = users;
         this.applications = applications;
         this.savedJobs = savedJobs;
+        this.profiles = profiles;
+    }
+
+    /** Full detail for the admin "view user" panel: account + profile snapshot + counts. */
+    public Map<String, Object> userDetail(UUID id) {
+        AppUser u = users.findById(id).orElseThrow(() -> new NotFoundException("user not found"));
+        Map<String, Object> m = new LinkedHashMap<>(toDto(u));
+        profiles.findByUserId(id).ifPresent(p -> {
+            m.put("phone", p.getPhone());
+            m.put("location", p.getLocation());
+            m.put("headline", p.getHeadline());
+            m.put("currentTitle", p.getCurrentTitle());
+            m.put("currentCompany", p.getCurrentCompany());
+            m.put("yearsExperience", p.getYearsExperience());
+            m.put("skills", p.getSkills());
+            m.put("summary", p.getSummary());
+            m.put("resumeFilename", p.getResumeFilename());
+        });
+        return m;
     }
 
     public List<Map<String, Object>> listUsers(String query) {
