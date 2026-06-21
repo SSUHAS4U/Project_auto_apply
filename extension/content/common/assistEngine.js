@@ -1,0 +1,251 @@
+// JobPilot assist engine — AI answers for free-text application questions,
+// a "save to autofill questions" button, and one-click cover-letter attach.
+// Depends on window.JobPilot (fieldEngine.js) for setNativeValue/getProfile.
+(function () {
+  if (window.JobPilotAssist) return;
+
+  function msg(type, extra) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type, ...extra }, (resp) => {
+        if (!resp) return reject(new Error('extension background not reachable'));
+        resp.ok ? resolve(resp.data) : reject(new Error(resp.error));
+      });
+    });
+  }
+
+  // ---- question detection -------------------------------------------------
+
+  // A free-text question field worth AI-answering: a textarea, a contenteditable
+  // textbox, or a long-answer text input whose label reads like a question.
+  function isQuestionField(el) {
+    if (!el || el.disabled || el.readOnly || el.offsetParent === null) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') return true;
+    if (el.tagName === 'INPUT') {
+      const t = (el.getAttribute('type') || 'text').toLowerCase();
+      if (!['text', ''].includes(t)) return false;
+      const label = deriveQuestion(el);
+      return label.length > 30 || /\?\s*\*?\s*$/.test(label);
+    }
+    return false;
+  }
+
+  // Original-case question text (unlike fieldEngine's normalized label).
+  function deriveQuestion(el) {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    if (el.getAttribute && el.getAttribute('aria-label')) return clean(el.getAttribute('aria-label'));
+    const lb = el.getAttribute && el.getAttribute('aria-labelledby');
+    if (lb) {
+      const ref = document.getElementById(lb);
+      if (ref) return clean(ref.textContent);
+    }
+    if (el.id) {
+      const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (lbl) return clean(lbl.textContent);
+    }
+    // Walk up to a question container (Google/MS Forms use role=listitem / headings).
+    const item = el.closest('[role="listitem"], li, .freebirdFormviewerComponentsQuestionBaseRoot, fieldset, .form-group, div');
+    if (item) {
+      const head = item.querySelector('[role="heading"], h1, h2, h3, label, legend, .question, [class*="title"]');
+      if (head && clean(head.textContent).length > 8) return clean(head.textContent).slice(0, 400);
+    }
+    const prev = el.previousElementSibling;
+    if (prev && clean(prev.textContent).length > 8) return clean(prev.textContent).slice(0, 400);
+    if (el.placeholder) return clean(el.placeholder);
+    return clean(el.name || '');
+  }
+
+  function readValue(el) {
+    return el.getAttribute && el.getAttribute('contenteditable') === 'true'
+      ? (el.textContent || '') : (el.value || '');
+  }
+
+  function writeValue(el, val) {
+    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
+      el.textContent = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      window.JobPilot.setNativeValue(el, val);
+    }
+    window.JobPilot.highlight(el);
+  }
+
+  // ---- per-field toolbar (✨ AI answer · 💾 save) --------------------------
+
+  function toolbar(el) {
+    if (el.dataset.jobpilotAssist) return;
+    el.dataset.jobpilotAssist = '1';
+
+    const bar = document.createElement('div');
+    bar.className = 'jobpilot-assistbar';
+    bar.style.cssText = 'display:inline-flex;gap:6px;margin:6px 0;z-index:2147483646;font:600 12px system-ui,sans-serif';
+
+    const mk = (label, title, bg) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label; b.title = title;
+      b.style.cssText = `border:none;border-radius:8px;padding:5px 10px;cursor:pointer;color:#fff;background:${bg};box-shadow:0 2px 8px rgba(0,0,0,.25)`;
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      return b;
+    };
+
+    const ai = mk('✨ AI answer', 'Generate an answer from your profile', 'linear-gradient(135deg,#6366f1,#4f46e5)');
+    const save = mk('💾 Save', 'Add this Q&A to your autofill questions', '#0f766e');
+    const note = document.createElement('span');
+    note.style.cssText = 'align-self:center;color:#6b7280;font-weight:500';
+
+    ai.addEventListener('click', async () => {
+      const question = deriveQuestion(el);
+      if (!question) { note.textContent = 'no question detected'; return; }
+      ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
+      try {
+        const r = await msg('ASSIST_ANSWER', { question });
+        writeValue(el, r.answer);
+        note.textContent = r.source === 'saved' ? '↺ from saved' : '✓ AI · saved';
+      } catch (e) {
+        note.textContent = '⚠ ' + e.message;
+      } finally { ai.disabled = false; ai.textContent = old; }
+    });
+
+    save.addEventListener('click', async () => {
+      const question = deriveQuestion(el);
+      const answer = readValue(el).trim();
+      if (!question) { note.textContent = 'no question detected'; return; }
+      if (!answer) { note.textContent = 'type an answer first'; return; }
+      save.disabled = true;
+      try { await msg('SAVE_QA', { question, answer }); note.textContent = '✓ saved to autofill'; }
+      catch (e) { note.textContent = '⚠ ' + e.message; }
+      finally { save.disabled = false; }
+    });
+
+    bar.append(ai, save, note);
+    // Place the bar right after the field (works across form layouts).
+    if (el.parentNode) el.parentNode.insertBefore(bar, el.nextSibling);
+  }
+
+  function enhance() {
+    document.querySelectorAll('textarea, input, [contenteditable="true"]').forEach((el) => {
+      if (isQuestionField(el)) {
+        try { toolbar(el); } catch (_) { /* keep scanning */ }
+      }
+    });
+  }
+
+  // AI-answer every empty question field on the page (popup "auto-answer").
+  async function autoAnswerAll() {
+    const fields = [...document.querySelectorAll('textarea, input, [contenteditable="true"]')]
+      .filter(isQuestionField).filter((el) => !readValue(el).trim());
+    let done = 0;
+    for (const el of fields) {
+      const question = deriveQuestion(el);
+      if (!question) continue;
+      try { const r = await msg('ASSIST_ANSWER', { question }); writeValue(el, r.answer); done++; }
+      catch (_) { /* skip and continue */ }
+    }
+    return { done, total: fields.length };
+  }
+
+  // ---- cover letter: generate → minimal PDF → attach to file input --------
+
+  function pageRole() {
+    return (document.querySelector('h1, [role="heading"]')?.textContent || document.title || '').trim().slice(0, 140);
+  }
+  function pageCompany() {
+    const og = document.querySelector('meta[property="og:site_name"]')?.content;
+    if (og) return og.trim();
+    return (location.hostname.replace(/^www\./, '').split('.')[0] || 'the company');
+  }
+
+  function findFileInput() {
+    const inputs = [...document.querySelectorAll('input[type="file"]')].filter((i) => i.offsetParent !== null);
+    if (!inputs.length) return null;
+    const pref = inputs.find((i) => /cover|letter/i.test((i.name || '') + (i.id || '') + (deriveQuestion(i) || '')));
+    return pref || inputs[0];
+  }
+
+  // Tiny dependency-free text PDF (Helvetica, wrapped). Good enough for uploads.
+  function textToPdf(text) {
+    const lines = [];
+    text.replace(/\r/g, '').split('\n').forEach((para) => {
+      if (!para.trim()) { lines.push(''); return; }
+      let cur = '';
+      para.split(/\s+/).forEach((w) => {
+        if ((cur + ' ' + w).trim().length > 92) { lines.push(cur.trim()); cur = w; }
+        else cur += ' ' + w;
+      });
+      if (cur.trim()) lines.push(cur.trim());
+    });
+    const esc = (s) => s.replace(/[^\x20-\x7E]/g, '').replace(/([()\\])/g, '\\$1');
+    let body = 'BT /F1 11 Tf 64 760 Td 15 TL\n';
+    lines.forEach((l) => { body += `(${esc(l)}) Tj T*\n`; });
+    body += 'ET';
+
+    const objs = [
+      '<</Type/Catalog/Pages 2 0 R>>',
+      '<</Type/Pages/Kids[3 0 R]/Count 1>>',
+      '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>',
+      '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
+      `<</Length ${body.length}>>\nstream\n${body}\nendstream`,
+    ];
+    let pdf = '%PDF-1.4\n';
+    const offsets = [];
+    objs.forEach((o, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+    offsets.forEach((off) => { pdf += String(off).padStart(10, '0') + ' 00000 n \n'; });
+    pdf += `trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+    const bytes = new Uint8Array(pdf.length);
+    for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
+    return new Blob([bytes], { type: 'application/pdf' });
+  }
+
+  async function attachCoverLetter() {
+    const input = findFileInput();
+    const role = pageRole();
+    const company = pageCompany();
+    const r = await msg('GEN_COVER_LETTER', { company, role, jobText: pageRole() });
+    const blob = textToPdf(r.text);
+    const name = `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.pdf`;
+    if (!input) {
+      // No upload field on the page — download it so the user can attach manually.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return { attached: false, downloaded: true };
+    }
+    const file = new File([blob], name, { type: 'application/pdf' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    window.JobPilot.highlight(input);
+    return { attached: true };
+  }
+
+  // ---- bootstrap ----------------------------------------------------------
+
+  // Popup-triggered actions (works on any page since this script loads everywhere).
+  chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
+    if (m.type === 'AUTO_ANSWER') {
+      autoAnswerAll().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    if (m.type === 'ATTACH_COVER_LETTER') {
+      attachCoverLetter().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    return false;
+  });
+
+  let timer = null;
+  function scheduleEnhance() { clearTimeout(timer); timer = setTimeout(enhance, 600); }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleEnhance);
+  } else { scheduleEnhance(); }
+  const obs = new MutationObserver(scheduleEnhance);
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  window.JobPilotAssist = { enhance, autoAnswerAll, attachCoverLetter, deriveQuestion, isQuestionField };
+})();

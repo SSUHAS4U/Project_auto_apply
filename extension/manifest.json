@@ -3,7 +3,12 @@
   "name": "JobPilot Assistant",
   "version": "0.1.0",
   "description": "Autofill job forms (Google/MS Forms, ATS) and save listings to your JobPilot tracker. You always review & submit.",
-  "permissions": ["storage", "activeTab", "scripting", "notifications"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "notifications"
+  ],
   "host_permissions": [
     "https://jobpilot-backend-owb0.onrender.com/*",
     "http://localhost:8080/*",
@@ -14,43 +19,91 @@
     "https://*.naukri.com/*",
     "https://*.indeed.com/*"
   ],
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
-  "background": { "service_worker": "background.js" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "JobPilot",
-    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "options_page": "options/options.html",
   "content_scripts": [
     {
-      "matches": ["https://docs.google.com/forms/*", "https://forms.gle/*"],
-      "js": ["content/common/fieldEngine.js", "content/sites/googleForms.js"],
+      "matches": [
+        "https://docs.google.com/forms/*",
+        "https://forms.gle/*"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/googleForms.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://forms.office.com/*"],
-      "js": ["content/common/fieldEngine.js", "content/sites/msForms.js"],
+      "matches": [
+        "https://forms.office.com/*"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/msForms.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.linkedin.com/jobs/*", "https://*.linkedin.com/jobs/view/*"],
-      "js": ["content/common/fieldEngine.js", "content/sites/linkedin.js"],
+      "matches": [
+        "https://*.linkedin.com/jobs/*",
+        "https://*.linkedin.com/jobs/view/*"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/linkedin.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.naukri.com/*"],
-      "js": ["content/common/fieldEngine.js", "content/sites/naukri.js"],
+      "matches": [
+        "https://*.naukri.com/*"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/naukri.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.indeed.com/*"],
-      "js": ["content/common/fieldEngine.js", "content/sites/indeed.js"],
+      "matches": [
+        "https://*.indeed.com/*"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/indeed.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["content/common/fieldEngine.js", "content/sites/generic.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/common/fieldEngine.js",
+        "content/common/assistEngine.js",
+        "content/sites/generic.js"
+      ],
       "run_at": "document_idle"
     }
   ]

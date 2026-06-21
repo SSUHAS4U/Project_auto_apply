@@ -51,6 +51,20 @@ $('save').addEventListener('click', async () => {
   if (r.ok) status('Saved to tracker ✓', 'ok'); else status(r.error, 'err');
 });
 
+$('answer').addEventListener('click', async () => {
+  status('Generating answers…');
+  const r = await tabSend('AUTO_ANSWER');
+  if (r.ok) status(r.total ? `Answered ${r.done} of ${r.total} questions — review them` : 'No question fields found here', 'ok');
+  else status(r.error, 'err');
+});
+
+$('cover').addEventListener('click', async () => {
+  status('Writing cover letter…');
+  const r = await tabSend('ATTACH_COVER_LETTER');
+  if (r.ok) status(r.attached ? 'Cover letter attached ✓ — review & submit' : 'No upload field — downloaded the PDF instead', 'ok');
+  else status(r.error, 'err');
+});
+
 $('refresh').addEventListener('click', () => { status('Refreshing…'); loadProfile(true).then(() => status('Profile refreshed', 'ok')); });
 $('opts').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
 

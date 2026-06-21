@@ -90,6 +90,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'ASSIST_ANSWER': {
+          const data = await apiFetch('/api/assist/answer', {
+            method: 'POST', body: JSON.stringify({ question: msg.question }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'SAVE_QA': {
+          const data = await apiFetch('/api/assist/qa', {
+            method: 'POST', body: JSON.stringify({ question: msg.question, answer: msg.answer }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'LIST_QA': {
+          const data = await apiFetch('/api/assist/qa');
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'GEN_COVER_LETTER': {
+          const data = await apiFetch('/api/assist/cover-letter', {
+            method: 'POST',
+            body: JSON.stringify({ company: msg.company, role: msg.role, jobText: msg.jobText }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         default:
           sendResponse({ ok: false, error: 'unknown message ' + msg.type });
       }

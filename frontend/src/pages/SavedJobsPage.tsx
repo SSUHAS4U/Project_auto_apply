@@ -43,6 +43,9 @@ export function SavedJobsPage() {
             <li>Click <b>Load unpacked</b> → select the unzipped <b>jobpilot-extension</b> folder.</li>
             <li>Click the JobPilot icon → <b>Options</b> → enter the backend URL, your <b>email & password</b> → <b>Sign in</b>.</li>
             <li><b>Autofill a form:</b> open a Google/MS Form or job application → click the extension → <b>⚡ Fill this form</b> (it fills, you review &amp; submit).</li>
+            <li><b>AI-answer questions:</b> for open-ended questions ("Why do you want to join…?"), a <b>✨ AI answer</b> button appears under each field — or click <b>✨ AI-answer questions</b> in the popup to do them all. Answers are saved so the same question autofills next time.</li>
+            <li><b>Save your own answers:</b> type an answer and hit <b>💾 Save</b> under the field to add it to your autofill questions.</li>
+            <li><b>Cover letter:</b> click <b>📄 Attach cover letter</b> — it writes one from your profile and attaches the PDF to the upload field (or downloads it if there isn't one).</li>
             <li><b>Save a job:</b> on a LinkedIn/Naukri/Indeed posting, click the floating <b>🔖 Save to JobPilot</b> button — it appears here, ready to <b>Promote</b>.</li>
           </ol>
           <div className="faint" style={{ fontSize: 12, marginTop: 12 }}>
