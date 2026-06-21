@@ -409,9 +409,10 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .chat-row, .chat-jobs { max-width: 100%; }
   .kv-row { grid-template-columns: 1fr 1fr auto; }
 
-  /* Model switcher: keep the menu on-screen and the trigger compact */
+  /* Model switcher: the trigger sits at the left on mobile, so the menu must grow
+     RIGHTWARD (left:0) — anchoring it to right:0 pushed it off the left edge. */
   .model-trigger { padding: 7px 11px; font-size: 12.5px; }
-  .model-menu { width: min(260px, calc(100vw - 32px)); right: 0; left: auto; }
+  .model-menu { width: min(280px, calc(100vw - 24px)); left: 0; right: auto; max-width: calc(100vw - 24px); }
   /* Stack the page header so the model switcher / actions are always visible */
   .page-head { flex-direction: column; align-items: stretch; }
   .page-head .model-switch { align-self: flex-start; }

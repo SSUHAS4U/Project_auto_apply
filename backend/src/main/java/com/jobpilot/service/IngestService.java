@@ -47,6 +47,7 @@ public class IngestService {
     private final NormalizeService normalize;
     private final MatchScorer scorer;
     private final CleanupService cleanup;
+    private final IngestProgress progress;
     private final JobPilotProperties props;
 
     public IngestService(List<JobConnector> connectors,
@@ -56,6 +57,7 @@ public class IngestService {
                          NormalizeService normalize,
                          MatchScorer scorer,
                          CleanupService cleanup,
+                         IngestProgress progress,
                          JobPilotProperties props) {
         this.connectors = connectors;
         this.atsRepo = atsRepo;
@@ -64,6 +66,7 @@ public class IngestService {
         this.normalize = normalize;
         this.scorer = scorer;
         this.cleanup = cleanup;
+        this.progress = progress;
         this.props = props;
     }
 
@@ -94,6 +97,7 @@ public class IngestService {
         // Memory-light: process sources in small WAVES. Each wave fetches a few
         // sources concurrently, upserts them, then releases the memory before the next
         // wave. This bounds heap use (no holding 10k jobs at once → no OOM on 256MB).
+        progress.begin(tasks.size());
         int fetched = 0, inserted = 0, updated = 0;
         int wave = Math.max(1, props.getIngestConcurrency());
         ExecutorService pool = Executors.newFixedThreadPool(wave);
@@ -107,29 +111,39 @@ public class IngestService {
                 for (Future<List<RawJob>> f : futures) {
                     List<RawJob> batch;
                     try { batch = f.get(); } catch (Exception e) { continue; }
-                    fetched += batch.size();
+                    String source = batch.isEmpty() ? null : batch.get(0).getSource();
+                    int size = batch.size();
+                    fetched += size;
                     for (RawJob r : batch) {
                         int code = upsert(r, profile);
                         if (code == 1) inserted++; else if (code == 2) updated++;
                     }
                     batch.clear(); // free this source before moving on
+                    progress.source(source, size);
+                    progress.counts(fetched, inserted, updated);
                 }
             }
         } catch (Exception e) {
             log.warn("Ingest error: {}", e.getMessage());
+            progress.note("Warning during fetch: " + e.getMessage());
         } finally {
             pool.shutdownNow();
         }
 
         // Collapse any duplicate listings (same company+title+city) left after upsert.
         try {
+            progress.note("Removing duplicate listings…");
             int dupes = cleanup.dedupJobs();
-            if (dupes > 0) log.info("Ingest dedup: removed {} duplicate jobs", dupes);
+            if (dupes > 0) {
+                log.info("Ingest dedup: removed {} duplicate jobs", dupes);
+                progress.note("Removed " + dupes + " duplicate listing" + (dupes == 1 ? "" : "s") + ".");
+            }
         } catch (Exception e) {
             log.warn("Dedup pass failed: {}", e.getMessage());
         }
 
         log.info("Ingest complete: fetched={} inserted={} updated={}", fetched, inserted, updated);
+        progress.finish(fetched, inserted, updated, (int) jobRepo.count());
         return new IngestResult(fetched, inserted, updated);
     }
 

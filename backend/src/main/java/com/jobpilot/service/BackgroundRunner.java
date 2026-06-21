@@ -23,6 +23,7 @@ public class BackgroundRunner {
     private final IngestService ingest;
     private final DailyService daily;
     private final NotificationService notifications;
+    private final IngestProgress progress;
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "jobpilot-bg");
@@ -32,19 +33,26 @@ public class BackgroundRunner {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicReference<String> last = new AtomicReference<>("idle");
 
-    public BackgroundRunner(IngestService ingest, DailyService daily, NotificationService notifications) {
+    public BackgroundRunner(IngestService ingest, DailyService daily,
+                            NotificationService notifications, IngestProgress progress) {
         this.ingest = ingest;
         this.daily = daily;
         this.notifications = notifications;
+        this.progress = progress;
     }
 
     public Map<String, Object> startIngest() {
         return submit("ingest", () -> {
-            IngestService.IngestResult r = ingest.run();
-            notifications.create("ingest", "Ingest complete",
-                    r.inserted() + " new jobs, " + r.updated() + " refreshed.",
-                    Map.of("inserted", r.inserted(), "updated", r.updated(), "fetched", r.fetched()));
-            return "ingest: +" + r.inserted() + " new";
+            try {
+                IngestService.IngestResult r = ingest.run();
+                notifications.create("ingest", "Ingest complete",
+                        r.inserted() + " new jobs, " + r.updated() + " refreshed.",
+                        Map.of("inserted", r.inserted(), "updated", r.updated(), "fetched", r.fetched()));
+                return "ingest: +" + r.inserted() + " new";
+            } catch (RuntimeException e) {
+                progress.fail(e.getMessage());
+                throw e;
+            }
         });
     }
 

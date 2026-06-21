@@ -45,7 +45,7 @@ export function ModelSwitcher({ onChange }: { onChange?: (provider: string) => v
       <button className="model-trigger" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}>
         <span className="model-dot" style={{ background: m.dot }} />
         <span className="model-name">{m.label}</span>
-        {status && <span className="model-meta">{status.remainingToday} left</span>}
+        {status && <span className="model-meta">{status.remainingToday < 0 ? '∞' : `${status.remainingToday} left`}</span>}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (

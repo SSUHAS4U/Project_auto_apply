@@ -5,6 +5,7 @@ import com.jobpilot.service.BackgroundRunner;
 import com.jobpilot.service.CleanupService;
 import com.jobpilot.service.DailyService;
 import com.jobpilot.service.DigestService;
+import com.jobpilot.service.IngestProgress;
 import com.jobpilot.service.IngestService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +26,7 @@ public class OpsController {
     private final DailyService daily;
     private final CleanupService cleanup;
     private final BackgroundRunner runner;
+    private final IngestProgress progress;
     private final JobPilotProperties props;
 
     @Value("${spring.mail.host:}") private String mailHost;
@@ -33,13 +35,21 @@ public class OpsController {
     @Value("${spring.mail.password:}") private String mailPassword;
 
     public OpsController(IngestService ingest, DigestService digest, DailyService daily,
-                         CleanupService cleanup, BackgroundRunner runner, JobPilotProperties props) {
+                         CleanupService cleanup, BackgroundRunner runner,
+                         IngestProgress progress, JobPilotProperties props) {
         this.ingest = ingest;
         this.digest = digest;
         this.daily = daily;
         this.cleanup = cleanup;
         this.runner = runner;
+        this.progress = progress;
         this.props = props;
+    }
+
+    /** Detailed live ingest metrics (admin-only via /api/ops): status, log, per-board, memory. */
+    @GetMapping("/ops/ingest")
+    public Map<String, Object> ingestMetrics() {
+        return progress.snapshot();
     }
 
     /** Kick off ingest in the background (returns immediately). */

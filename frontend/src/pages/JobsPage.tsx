@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { api, isAdminUI, type JobFilters } from '../api/client';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, isAdminUI, type JobFilters, type IngestSummary, type IngestMetrics } from '../api/client';
 import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
@@ -28,6 +28,38 @@ export function JobsPage() {
     () => (localStorage.getItem('jobpilot_jobs_view') as 'table' | 'cards')
       || (typeof window !== 'undefined' && window.innerWidth < 860 ? 'cards' : 'table'));
   const chooseView = (v: 'table' | 'cards') => { localStorage.setItem('jobpilot_jobs_view', v); setView(v); };
+
+  const [summary, setSummary] = useState<IngestSummary | null>(null);
+  const [metrics, setMetrics] = useState<IngestMetrics | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const admin = isAdminUI();
+
+  const refreshSummary = () => { api.ingestSummary().then(setSummary).catch(() => {}); };
+  useEffect(() => {
+    refreshSummary();
+    const t = setInterval(refreshSummary, 60000);
+    return () => { clearInterval(t); if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  // While an ingest runs (admin), poll the detailed metrics so the panel streams live.
+  const pollMetrics = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    let sawRunning = false;
+    const stop = () => { if (pollRef.current) clearInterval(pollRef.current); pollRef.current = null; };
+    pollRef.current = setInterval(async () => {
+      try {
+        const m = await api.ingestMetrics();
+        setMetrics(m);
+        if (m.running) sawRunning = true;
+        if (sawRunning && !m.running) {
+          stop(); setIngesting(false); refreshSummary(); load(filters);
+          toast(m.status === 'error' ? 'Ingest failed — see metrics' : 'Ingest complete ✓', m.status === 'error' ? 'error' : 'success');
+        }
+      } catch { stop(); setIngesting(false); }
+    }, 2000);
+    setTimeout(stop, 10 * 60 * 1000); // safety cap
+  };
 
   const load = (f: JobFilters) => {
     setLoading(true);
@@ -67,40 +99,28 @@ export function JobsPage() {
   const wipeAndReingest = async () => {
     if (!window.confirm('Delete ALL jobs from the database and pull a fresh set?\n\nYour tracked/saved jobs are kept. This cannot be undone.')) return;
     setIngesting(true);
+    setShowMetrics(true);
     try {
       const w = await api.wipeJobs();
       toast(`Deleted ${w.deleted} jobs — starting fresh ingest…`, 'success');
       load(filters);
-      await runIngestInternal();
+      await api.ingest();
+      pollMetrics();
     } catch (e) { toast((e as Error).message, 'error'); setIngesting(false); }
-  };
-
-  const runIngestInternal = async () => {
-    const r = await api.ingest();
-    if (r.status === 'busy') { toast('A run is already in progress…', 'info'); }
-    const poll = setInterval(async () => {
-      try {
-        const st = await api.opsStatus();
-        if (!st.running) { clearInterval(poll); setIngesting(false); load(filters); toast(st.last, 'success'); }
-      } catch { clearInterval(poll); setIngesting(false); }
-    }, 5000);
   };
 
   const runIngest = async () => {
     setIngesting(true);
+    setShowMetrics(true);
     try {
       const r = await api.ingest();
-      if (r.status === 'busy') { toast('A run is already in progress…', 'info'); }
-      else { toast('Ingest started in the background — jobs will refresh shortly', 'success'); }
-      // Poll until the background run finishes, then reload.
-      const poll = setInterval(async () => {
-        try {
-          const st = await api.opsStatus();
-          if (!st.running) { clearInterval(poll); setIngesting(false); load(filters); toast(st.last, 'success'); }
-        } catch { clearInterval(poll); setIngesting(false); }
-      }, 5000);
+      if (r.status === 'busy') toast('A run is already in progress…', 'info');
+      else toast('Ingest started — watch it live below', 'success');
+      pollMetrics();
     } catch (e) { toast((e as Error).message, 'error'); setIngesting(false); }
   };
+
+  const openMetrics = () => { setShowMetrics(true); api.ingestMetrics().then(setMetrics).catch((e) => toast(e.message, 'error')); };
 
   const track = async (j: Job) => {
     try { await api.trackJob(j.id); toast(`Tracking “${j.title}”`, 'success'); }
@@ -120,8 +140,9 @@ export function JobsPage() {
           <h1 className="page-title">Jobs</h1>
           <div className="page-sub">Aggregated from Greenhouse, Lever, Ashby, Adzuna & Jooble</div>
         </div>
-        {isAdminUI() && (
-          <div className="row" style={{ gap: 8 }}>
+        {admin && (
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" onClick={openMetrics} title="Ingest metrics & live log">📊 Metrics</button>
             <button className="btn btn-danger" onClick={wipeAndReingest} disabled={ingesting} title="Wipe all jobs and pull a fresh set">
               🗑 Reset DB
             </button>
@@ -131,6 +152,18 @@ export function JobsPage() {
           </div>
         )}
       </div>
+
+      {/* Last-ingest summary — shown to everyone at the top of the board. */}
+      {summary?.lastRun && (
+        <div className="card card-pad" style={{ marginBottom: 14, fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 16 }}>📈</span>
+          <span>
+            Last ingest <b>{fmtDate(summary.lastRun.finishedAt)}</b> · <b style={{ color: 'var(--accent)' }}>+{summary.lastRun.inserted}</b> new ·
+            {' '}<b>{summary.lastRun.updated}</b> unchanged · <b>{summary.totalJobs.toLocaleString()}</b> jobs on the board
+          </span>
+          {summary.running && <span className="row" style={{ gap: 6, color: 'var(--accent)' }}><span className="spinner" /> ingest running…</span>}
+        </div>
+      )}
 
       <div className="tabs">
         {([
@@ -264,7 +297,82 @@ export function JobsPage() {
           onApply={() => { setDetailJob(null); setApplyJob(detailJob); }}
         />
       )}
+      {showMetrics && admin && <MetricsModal m={metrics} running={ingesting} onClose={() => setShowMetrics(false)} />}
     </>
+  );
+}
+
+function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; running: boolean; onClose: () => void }) {
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [m?.log?.length]);
+
+  const statusColor = m?.status === 'error' ? 'var(--danger,#ef4444)' : m?.running ? 'var(--accent)' : 'var(--muted)';
+  const mem = m?.memory;
+  return (
+    <Modal title="Ingest metrics" onClose={onClose} wide
+      footer={<button className="btn btn-primary" onClick={onClose}>Close</button>}>
+      {!m ? <div className="empty"><span className="spinner" /></div> : (
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <span className="badge" style={{ background: statusColor, color: '#fff' }}>
+              {running || m.running ? 'running' : m.status}
+            </span>
+            <span className="faint" style={{ fontSize: 12 }}>
+              {m.startedAt ? `started ${new Date(m.startedAt).toLocaleTimeString()}` : ''}
+              {m.finishedAt ? ` · finished ${new Date(m.finishedAt).toLocaleTimeString()}` : ''}
+            </span>
+          </div>
+
+          <div className="grid2" style={{ gap: 10 }}>
+            <Stat label="New jobs added" value={m.inserted} accent />
+            <Stat label="Refreshed (unchanged)" value={m.updated} />
+            <Stat label="Listings scanned" value={m.fetched} />
+            <Stat label="Sources" value={`${m.sourcesDone} / ${m.sources}`} />
+            <Stat label="Jobs on board" value={m.totalJobs} />
+            {mem && <Stat label="Memory" value={`${mem.usedMb} / ${mem.maxMb} MB (${mem.usedPct}%)`} />}
+          </div>
+
+          {mem && (
+            <div>
+              <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>Heap memory</div>
+              <div style={{ height: 8, background: 'var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, mem.usedPct)}%`, height: '100%', background: mem.usedPct > 85 ? 'var(--danger,#ef4444)' : 'var(--accent)' }} />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="section-title" style={{ fontSize: 13 }}>What's happening</div>
+            <div ref={logRef} style={{
+              maxHeight: 220, overflowY: 'auto', background: '#0c0f15', borderRadius: 8, padding: 10,
+              fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+            }}>
+              {m.log.length ? m.log.join('\n') : 'No activity yet. Click “Run ingest” to start.'}
+            </div>
+          </div>
+
+          {m.boards.length > 0 && (
+            <div>
+              <div className="section-title" style={{ fontSize: 13 }}>Collected per source</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {m.boards.map((b) => (
+                  <span key={b.source} className="chip">{b.source}: <b>{b.count}</b></span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Stat({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
+  return (
+    <div className="card card-pad" style={{ padding: 12 }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: accent ? 'var(--accent)' : undefined }}>{value}</div>
+      <div className="faint" style={{ fontSize: 12 }}>{label}</div>
+    </div>
   );
 }
 

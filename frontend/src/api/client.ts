@@ -151,6 +151,10 @@ export const api = {
   dailyPicks: () => req<{ briefing: string; generatedAt?: string; jobs: Job[] }>('/api/daily/picks'),
   opsStatus: () => req<{ running: boolean; last: string }>('/api/ops/status'),
 
+  // Ingest metrics — summary is for everyone (top of board); detailed is admin-only.
+  ingestSummary: () => req<IngestSummary>('/api/metrics/ingest'),
+  ingestMetrics: () => req<IngestMetrics>('/api/ops/ingest'),
+
   // Saved autofill answers (Q&A bank) — the extension writes these; manage them here.
   qaList: () => req<QaPair[]>('/api/assist/qa'),
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
@@ -160,6 +164,16 @@ export const api = {
   adminDeleteUser: (id: string) => req<{ deleted: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
   adminSetRole: (id: string, role: 'ADMIN' | 'USER') =>
     req<AdminUser>(`/api/admin/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
+};
+
+export type LastRun = { finishedAt: string; inserted: number; updated: number; fetched: number; totalJobs: number; durationSec: number };
+export type IngestSummary = { running: boolean; totalJobs: number; lastRun: LastRun | null };
+export type IngestMetrics = {
+  status: string; running: boolean; startedAt?: string; finishedAt?: string;
+  fetched: number; inserted: number; updated: number; sources: number; sourcesDone: number;
+  log: string[]; boards: { source: string; count: number }[]; totalJobs: number;
+  memory: { usedMb: number; committedMb: number; maxMb: number; usedPct: number };
+  lastRun: LastRun | null;
 };
 
 export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
