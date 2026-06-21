@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
 chrome.storage.local.get(['backendUrl', 'jwt'], (c) => {
-  $('backendUrl').value = c.backendUrl || 'http://localhost:8080';
+  $('backendUrl').value = c.backendUrl || 'https://jobpilot-backend-owb0.onrender.com';
   if (c.jwt) $('who').textContent = '✓ Signed in';
 });
 

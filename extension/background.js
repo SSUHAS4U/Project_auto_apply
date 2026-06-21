@@ -1,6 +1,8 @@
 // JobPilot MV3 service worker — owns config, backend calls, profile cache.
 
-const DEFAULTS = { backendUrl: 'http://localhost:8080', jwt: '' };
+// Defaults to the deployed backend so the extension works out-of-the-box.
+// Override in Options only if you run the backend locally (http://localhost:8080).
+const DEFAULTS = { backendUrl: 'https://jobpilot-backend-owb0.onrender.com', jwt: '' };
 
 async function getConfig() {
   const c = await chrome.storage.local.get(['backendUrl', 'jwt']);
