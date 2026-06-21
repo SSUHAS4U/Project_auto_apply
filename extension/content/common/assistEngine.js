@@ -30,28 +30,47 @@
     return false;
   }
 
+  // Generic placeholder labels that are NOT the real question (Google/MS Forms etc.).
+  const GENERIC_LABEL = /^(your answer|answer|response|short answer|long answer|paragraph text|text|enter your answer|type here|untitled question|required question)\b/i;
+
   // Original-case question text (unlike fieldEngine's normalized label).
   function deriveQuestion(el) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    if (el.getAttribute && el.getAttribute('aria-label')) return clean(el.getAttribute('aria-label'));
+    const strip = (s) => clean(s).replace(/\s*\*\s*$/, '').replace(/\s*Required question\s*$/i, '').trim();
+
+    // 1. The enclosing question heading (Google/MS Forms put the real question here, while
+    //    the field's own aria-label is just "Your answer" — so this MUST come first).
+    const item = el.closest && el.closest('[role="listitem"], .freebirdFormviewerComponentsQuestionBaseRoot');
+    if (item) {
+      const head = item.querySelector('[role="heading"], .M7eMe, .freebirdFormviewerComponentsQuestionBaseTitle');
+      if (head && strip(head.textContent).length > 4) return strip(head.textContent).slice(0, 500);
+    }
+    // 2. aria-label — but ignore the generic placeholder ones.
+    const al = el.getAttribute && el.getAttribute('aria-label');
+    if (al && !GENERIC_LABEL.test(clean(al))) return strip(al);
+    // 3. aria-labelledby → referenced element.
     const lb = el.getAttribute && el.getAttribute('aria-labelledby');
     if (lb) {
       const ref = document.getElementById(lb);
-      if (ref) return clean(ref.textContent);
+      if (ref && strip(ref.textContent).length > 4) return strip(ref.textContent).slice(0, 500);
     }
+    // 4. <label for=id> or wrapping label.
     if (el.id) {
       const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (lbl) return clean(lbl.textContent);
+      if (lbl && strip(lbl.textContent).length > 4) return strip(lbl.textContent).slice(0, 500);
     }
-    // Walk up to a question container (Google/MS Forms use role=listitem / headings).
-    const item = el.closest('[role="listitem"], li, .freebirdFormviewerComponentsQuestionBaseRoot, fieldset, .form-group, div');
-    if (item) {
-      const head = item.querySelector('[role="heading"], h1, h2, h3, label, legend, .question, [class*="title"]');
-      if (head && clean(head.textContent).length > 8) return clean(head.textContent).slice(0, 400);
+    const wrap = el.closest && el.closest('label');
+    if (wrap && strip(wrap.textContent).length > 4) return strip(wrap.textContent).slice(0, 500);
+    // 5. A heading/label/legend in a nearby container.
+    const box = el.closest && el.closest('li, fieldset, .form-group, .field, div, section');
+    if (box) {
+      const head = box.querySelector('[role="heading"], h1, h2, h3, h4, label, legend, [class*="title"], [class*="question"]');
+      if (head && strip(head.textContent).length > 8) return strip(head.textContent).slice(0, 500);
     }
+    // 6. Last resorts.
     const prev = el.previousElementSibling;
-    if (prev && clean(prev.textContent).length > 8) return clean(prev.textContent).slice(0, 400);
-    if (el.placeholder) return clean(el.placeholder);
+    if (prev && strip(prev.textContent).length > 8) return strip(prev.textContent).slice(0, 500);
+    if (el.placeholder && !GENERIC_LABEL.test(clean(el.placeholder))) return strip(el.placeholder);
     return clean(el.name || '');
   }
 
