@@ -72,7 +72,8 @@ public class EmailApplyService {
         String body = buildBody(profile, letter);
         String attachName = profile.getResumeFilename() == null ? "resume.pdf" : profile.getResumeFilename();
 
-        mail.sendWithAttachmentBytes(job.getApplyEmail(), subject, body, resumeBytes, attachName);
+        // BCC the applicant on their own email so they keep a copy / paper trail.
+        mail.sendWithAttachmentBytes(job.getApplyEmail(), subject, body, resumeBytes, attachName, profile.getEmail());
 
         Application app = applications.markEmailApplied(job.getId(), letter);
         return new ApplyResult(app.getId(), job.getApplyEmail(), subject);

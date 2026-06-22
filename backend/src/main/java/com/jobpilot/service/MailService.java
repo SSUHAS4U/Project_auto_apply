@@ -56,11 +56,17 @@ public class MailService {
         }
     }
 
-    /** Send with an in-memory attachment (resume bytes live in the DB, not on disk). */
     public void sendWithAttachmentBytes(String to, String subject, String textBody,
                                         byte[] attachment, String attachmentName) {
+        sendWithAttachmentBytes(to, subject, textBody, attachment, attachmentName, null);
+    }
+
+    /** Send with an in-memory attachment (resume bytes live in the DB, not on disk),
+     *  optionally BCC'ing the sender so they keep a copy of every application email. */
+    public void sendWithAttachmentBytes(String to, String subject, String textBody,
+                                        byte[] attachment, String attachmentName, String bcc) {
         if (brevo.isConfigured()) {
-            brevo.sendBytes(to, subject, textBody, false, attachment, attachmentName);
+            brevo.sendBytes(to, subject, textBody, false, attachment, attachmentName, bcc);
             return;
         }
         try {
@@ -69,6 +75,7 @@ public class MailService {
             MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
             helper.setFrom(from());
             helper.setTo(to);
+            if (bcc != null && !bcc.isBlank() && !bcc.equalsIgnoreCase(to)) helper.setBcc(bcc);
             helper.setSubject(subject);
             helper.setText(textBody, false);
             if (attachment != null && attachment.length > 0) {

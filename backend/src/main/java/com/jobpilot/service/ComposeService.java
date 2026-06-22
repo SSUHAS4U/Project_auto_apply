@@ -151,11 +151,12 @@ public class ComposeService {
 
         byte[] resumeBytes = p.getResumeData();
         boolean hasResume = attachResume && resumeBytes != null && resumeBytes.length > 0;
+        String bcc = p.getEmail(); // keep a copy in the sender's own inbox
         if (hasResume) {
             String name = p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename();
-            mail.sendWithAttachmentBytes(to, subj, body.toString(), resumeBytes, name);
+            mail.sendWithAttachmentBytes(to, subj, body.toString(), resumeBytes, name, bcc);
         } else {
-            mail.sendWithAttachmentBytes(to, subj, body.toString(), null, null);
+            mail.sendWithAttachmentBytes(to, subj, body.toString(), null, null, bcc);
         }
         incrementMail();
         return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume);

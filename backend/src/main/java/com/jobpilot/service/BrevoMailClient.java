@@ -41,15 +41,19 @@ public class BrevoMailClient {
             try { data = Files.readAllBytes(attachment); }
             catch (Exception e) { log.warn("Brevo: could not read attachment {} ({})", attachmentName, e.getMessage()); }
         }
-        sendBytes(to, subject, html, isHtml, data, attachmentName);
+        sendBytes(to, subject, html, isHtml, data, attachmentName, null);
     }
 
-    public void sendBytes(String to, String subject, String html, boolean isHtml, byte[] attachment, String attachmentName) {
+    public void sendBytes(String to, String subject, String html, boolean isHtml,
+                          byte[] attachment, String attachmentName, String bcc) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("sender", Map.of(
                 "email", props.getMail().getFrom(),
                 "name", props.getMail().getFromName() == null ? "JobPilot" : props.getMail().getFromName()));
         body.put("to", List.of(Map.of("email", to)));
+        if (bcc != null && !bcc.isBlank() && !bcc.equalsIgnoreCase(to)) {
+            body.put("bcc", List.of(Map.of("email", bcc)));
+        }
         body.put("subject", subject);
         if (isHtml) body.put("htmlContent", html);
         else body.put("textContent", html);
