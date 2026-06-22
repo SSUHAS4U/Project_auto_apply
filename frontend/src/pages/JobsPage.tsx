@@ -154,13 +154,17 @@ export function JobsPage() {
       </div>
 
       {/* Last-ingest summary — shown to everyone at the top of the board. */}
-      {summary?.lastRun && (
+      {summary && (
         <div className="card card-pad" style={{ marginBottom: 14, fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16 }}>📈</span>
-          <span>
-            Last ingest <b>{fmtDate(summary.lastRun.finishedAt)}</b> · <b style={{ color: 'var(--accent)' }}>+{summary.lastRun.inserted}</b> new ·
-            {' '}<b>{summary.lastRun.updated}</b> unchanged · <b>{summary.totalJobs.toLocaleString()}</b> jobs on the board
-          </span>
+          {summary.lastRun ? (
+            <span>
+              Last ingest <b>{fmtDate(summary.lastRun.finishedAt)}</b> · <b style={{ color: 'var(--accent)' }}>+{summary.lastRun.inserted}</b> new ·
+              {' '}<b>{summary.lastRun.updated}</b> unchanged · <b>{summary.totalJobs.toLocaleString()}</b> jobs on the board
+            </span>
+          ) : (
+            <span><b>{summary.totalJobs.toLocaleString()}</b> jobs on the board · last ingest time will show after the next run</span>
+          )}
           {summary.running && <span className="row" style={{ gap: 6, color: 'var(--accent)' }}><span className="spinner" /> ingest running…</span>}
         </div>
       )}

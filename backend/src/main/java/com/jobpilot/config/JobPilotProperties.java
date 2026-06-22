@@ -15,6 +15,8 @@ public class JobPilotProperties {
     private String apiToken = "dev-token";
     /** Email auto-granted ADMIN on register/login (the app owner). */
     private String adminEmail = "ssuhas4u@gmail.com";
+    /** Master key for at-rest document encryption (falls back to the JWT secret if blank). */
+    private String docKey = "";
     private List<String> corsOrigins = List.of("http://localhost:5173");
     private int ingestConcurrency = 3;
     private String resumeDir = "./uploads";

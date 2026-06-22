@@ -156,6 +156,28 @@ export const api = {
   ingestMetrics: () => req<IngestMetrics>('/api/ops/ingest'),
   testEmail: (to?: string) => req<{ ok: boolean; sentTo?: string; error?: string }>('/api/ops/test-email', { method: 'POST', body: JSON.stringify({ to: to ?? '' }) }),
 
+  // Document vault (encrypted at rest; download needs the account password).
+  docList: () => req<DocItem[]>('/api/documents'),
+  docUpload: (file: File, name: string, type: string) => {
+    const fd = new FormData();
+    fd.append('file', file); fd.append('name', name); fd.append('type', type);
+    return req<DocItem>('/api/documents', { method: 'POST', body: fd });
+  },
+  docDelete: (id: string) => req<{ deleted: boolean }>(`/api/documents/${id}`, { method: 'DELETE' }),
+  docDownload: async (id: string, password: string): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/documents/${id}/download`, {
+      method: 'POST',
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      let msg = res.status === 401 ? 'Incorrect password' : `${res.status}`;
+      try { const b = await res.json(); if (b?.message) msg = b.message; } catch { /* ignore */ }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+
   // Saved autofill answers (Q&A bank) — the extension writes these; manage them here.
   qaList: () => req<QaPair[]>('/api/assist/qa'),
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
@@ -177,6 +199,8 @@ export type IngestMetrics = {
   memory: { usedMb: number; committedMb: number; maxMb: number; usedPct: number };
   lastRun: LastRun | null;
 };
+
+export type DocItem = { id: string; name: string; type: string; filename: string; contentType?: string; sizeBytes?: number; createdAt?: string };
 
 export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
 export type AdminUser = {

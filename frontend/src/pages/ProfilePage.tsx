@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, type QaPair } from '../api/client';
+import { api, type QaPair, type DocItem } from '../api/client';
 import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
+import { Modal } from '../components/Modal';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
 function SavedAnswers() {
@@ -307,13 +308,17 @@ export function ProfilePage() {
             ico="📜" title="Certifications"
             items={p.certifications ?? []}
             onChange={(items) => set({ certifications: items })}
-            empty={{ name: '', issuer: '', year: '' }}
+            empty={{ name: '', issuer: '', year: '', link: '' }}
             render={(item, upd) => (
-              <div className="grid3">
-                <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
-                <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
-                <Field label="Year"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
-              </div>
+              <>
+                <div className="grid3">
+                  <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
+                  <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
+                  <Field label="Year"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
+                </div>
+                <Field label="Credential link"><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
+                <div className="faint" style={{ fontSize: 12 }}>Upload the certificate file in the <b>Resume → Document vault</b> tab.</div>
+              </>
             )}
           />
         </div>
@@ -353,9 +358,102 @@ export function ProfilePage() {
               </label>
             </div>
           </Section>
+          <DocumentsVault />
         </div>
       )}
     </>
+  );
+}
+
+const DOC_TYPES = ['certificate', 'transcript', 'id-proof', 'offer-letter', 'experience-letter', 'cover-letter', 'other'];
+
+/** Encrypted document vault: upload, list, password-gated download, delete. */
+function DocumentsVault() {
+  const toast = useToast();
+  const [docs, setDocs] = useState<DocItem[] | null>(null);
+  const [type, setType] = useState('certificate');
+  const [busy, setBusy] = useState(false);
+  const [pwFor, setPwFor] = useState<DocItem | null>(null);
+  const [pw, setPw] = useState('');
+
+  const load = () => api.docList().then(setDocs).catch(() => setDocs([]));
+  useEffect(() => { load(); }, []);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    try { await api.docUpload(file, file.name, type); toast('Uploaded & encrypted ✓', 'success'); load(); }
+    catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (d: DocItem) => {
+    if (!window.confirm(`Delete "${d.name}"? This can't be undone.`)) return;
+    try { await api.docDelete(d.id); toast('Deleted', 'success'); setDocs((x) => (x ?? []).filter((i) => i.id !== d.id)); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  };
+
+  const doDownload = async () => {
+    if (!pwFor || !pw) return;
+    setBusy(true);
+    try {
+      const blob = await api.docDownload(pwFor.id, pw);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = pwFor.filename || pwFor.name; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Download started ✓', 'success');
+      setPwFor(null); setPw('');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const kb = (n?: number) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '');
+
+  return (
+    <Section ico="🔐" title="Document vault" sub="encrypted at rest · download asks for your password">
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <select className="select" value={type} onChange={(e) => setType(e.target.value)} style={{ maxWidth: 200 }}>
+          {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <label className="btn btn-primary btn-sm">
+          {busy ? <span className="spinner" /> : '⬆'} Upload document
+          <input type="file" style={{ display: 'none' }} disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
+        </label>
+      </div>
+
+      {docs === null ? <div className="empty"><span className="spinner" /></div>
+        : docs.length === 0 ? <div className="faint" style={{ fontSize: 13 }}>No documents yet. Upload certificates, transcripts, ID proofs, etc.</div>
+        : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {docs.map((d) => (
+              <div key={d.id} className="repeat-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
+                  <div className="faint" style={{ fontSize: 12 }}>{d.type} · {kb(d.sizeBytes)}{d.createdAt ? ` · ${fmtDate(d.createdAt)}` : ''}</div>
+                </div>
+                <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+                  <button className="btn btn-sm" onClick={() => { setPwFor(d); setPw(''); }}>⬇ Download</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} style={{ color: 'var(--danger,#ef4444)' }}>🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      {pwFor && (
+        <Modal title="Confirm your password to download" onClose={() => setPwFor(null)}
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setPwFor(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={doDownload} disabled={busy || !pw}>{busy ? <span className="spinner" /> : '⬇'} Download</button>
+          </>}>
+          <div className="faint" style={{ fontSize: 13, marginBottom: 10 }}>
+            “{pwFor.name}” is encrypted. Enter your account password to decrypt and download it.
+          </div>
+          <input className="input" type="password" autoFocus value={pw} placeholder="Account password"
+            onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') doDownload(); }} />
+        </Modal>
+      )}
+    </Section>
   );
 }
 
