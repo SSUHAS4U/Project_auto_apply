@@ -19,16 +19,21 @@ const MENU_H = 280; // ~6 rows + padding
  *  positioning so it floats above the table instead of being clipped by its overflow. */
 export function StatusSelect({ value, onChange }: { value: ApplicationStatus; onChange: (s: ApplicationStatus) => void }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const openMenu = () => {
     const r = triggerRef.current!.getBoundingClientRect();
     const spaceBelow = window.innerHeight - r.bottom;
-    const top = (spaceBelow < MENU_H + 12 && r.top > MENU_H) ? r.top - MENU_H - 6 : r.bottom + 6;
-    const left = Math.min(r.left, window.innerWidth - MENU_W - 10);
-    setPos({ left: Math.max(8, left), top });
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - MENU_W - 10));
+    // If there isn't room below, open UPWARD anchored by the menu's BOTTOM edge (just above
+    // the trigger) so it hugs the clicked row regardless of how tall the menu actually is.
+    if (spaceBelow < MENU_H + 12 && r.top > spaceBelow) {
+      setPos({ left, bottom: Math.max(8, window.innerHeight - r.top + 6) });
+    } else {
+      setPos({ left, top: r.bottom + 6 });
+    }
     setOpen(true);
   };
 
@@ -66,7 +71,7 @@ export function StatusSelect({ value, onChange }: { value: ApplicationStatus; on
       </button>
       {open && pos && createPortal(
         <div ref={menuRef} className="status-menu" role="listbox"
-          style={{ position: 'fixed', left: pos.left, top: pos.top, width: MENU_W }}>
+          style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom, width: MENU_W }}>
           {ALL.map((s) => (
             <button key={s} type="button" role="option" aria-selected={s === value}
               className={`status-opt ${s === value ? 'sel' : ''}`} onClick={(e) => pick(s, e)}>

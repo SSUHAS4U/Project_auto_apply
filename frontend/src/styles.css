@@ -308,7 +308,8 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; box-shadow: 0 0 7px currentColor; }
 .status-label { text-transform: capitalize; }
 .status-menu {
-  position: absolute; left: 0; top: calc(100% + 6px); z-index: 60; min-width: 172px;
+  /* position is set inline (fixed, portalled to body) — see StatusSelect.tsx */
+  z-index: 200; min-width: 172px;
   background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 12px;
   box-shadow: var(--shadow); padding: 6px; animation: pop .12s ease;
 }
