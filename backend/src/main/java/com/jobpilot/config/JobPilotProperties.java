@@ -38,8 +38,10 @@ public class JobPilotProperties {
         /** Spring cron for the in-app daily run; "-" disables it. */
         private String dailyCron = "-";
         private String zone = "Asia/Kolkata";
-        /** UTC times the GitHub Actions ingest cron fires (mirror of ingest.yml) — used to
-         *  show "next ingest" on the board. Comma-separated HH:mm. */
+        /** Server-side ingest schedule (runs ON the backend — reliable as long as it's awake,
+         *  unlike GitHub Actions cron). Default 3x/day at 07:00 / 14:00 / 20:00 IST. "-" disables. */
+        private String ingestCron = "0 0 7,14,20 * * *";
+        /** UTC times the ingest fires (mirror of the cron) — used to show "next ingest". */
         private String ingestTimesUtc = "01:30,08:30,14:30";
     }
     private CoverLetter coverletter = new CoverLetter();

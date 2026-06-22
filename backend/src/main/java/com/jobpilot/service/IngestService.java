@@ -130,16 +130,17 @@ public class IngestService {
             pool.shutdownNow();
         }
 
-        // Collapse any duplicate listings (same company+title+city) left after upsert.
+        // Clean the board: remove stale, non-tech and duplicate listings (keeps it lean
+        // without needing a separate maintenance call).
         try {
-            progress.note("Removing duplicate listings…");
-            int dupes = cleanup.dedupJobs();
-            if (dupes > 0) {
-                log.info("Ingest dedup: removed {} duplicate jobs", dupes);
-                progress.note("Removed " + dupes + " duplicate listing" + (dupes == 1 ? "" : "s") + ".");
+            progress.note("Cleaning up stale & duplicate listings…");
+            int purged = cleanup.purgeOldJobs();
+            if (purged > 0) {
+                log.info("Ingest cleanup: purged {} stale/non-tech/duplicate jobs", purged);
+                progress.note("Removed " + purged + " stale / duplicate listing" + (purged == 1 ? "" : "s") + ".");
             }
         } catch (Exception e) {
-            log.warn("Dedup pass failed: {}", e.getMessage());
+            log.warn("Cleanup pass failed: {}", e.getMessage());
         }
 
         log.info("Ingest complete: fetched={} inserted={} updated={}", fetched, inserted, updated);
