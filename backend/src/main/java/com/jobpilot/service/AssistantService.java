@@ -51,10 +51,10 @@ public class AssistantService {
         }
         Profile p = profileService.get();
 
-        // Groq has reliable function-calling, so the assistant always uses it as the
-        // tool-runner when configured (independent of the global model switch, which
-        // still controls cover letters / compose). Otherwise a grounded, tool-free chat.
-        if (groq.isConfigured()) {
+        // Intent routing: only job-search / profile-edit / applications messages need the
+        // Groq function-calling agent (its tool calls are the most reliable). PLAIN
+        // conversation uses whichever model you picked in the switcher (Gemini/Ollama/Groq).
+        if (groq.isConfigured() && needsTools(history)) {
             try {
                 return runAgent(systemPrompt(p, true), history);
             } catch (Exception e) {
@@ -62,6 +62,24 @@ public class AssistantService {
             }
         }
         return groundedChat(systemPrompt(p, false), history);
+    }
+
+    // Does the latest message actually need a tool (search jobs / edit profile / read apps)?
+    private boolean needsTools(List<Map<String, String>> history) {
+        String m = lastUser(history).toLowerCase();
+        if (m.isBlank()) return false;
+        boolean wantsJobs = m.matches(".*\\b(job|jobs|role|roles|opening|openings|position|positions|vacanc\\w*|internship|hiring)\\b.*")
+                || m.matches(".*\\b(find|search|show|list|recommend|suggest|looking for)\\b.*\\b(java|python|react|node|backend|frontend|fullstack|remote|fresher|developer|engineer|sde)\\b.*");
+        boolean wantsEdit = m.matches(".*\\b(add|set|update|change|remove|make)\\b.*")
+                && m.matches(".*\\b(skill|skills|ctc|salary|package|notice|headline|summary|experience|relocat\\w*|location|company|title|profile|expected|current)\\b.*");
+        boolean wantsApps = (m.contains("application") || m.contains("applied"))
+                && (m.contains("how many") || m.contains(" my ") || m.startsWith("my ") || m.contains("track"));
+        return wantsJobs || wantsEdit || wantsApps;
+    }
+
+    private boolean wantsJobs(String msg) {
+        String m = msg.toLowerCase();
+        return m.matches(".*\\b(job|jobs|role|roles|opening|openings|position|positions|vacanc\\w*|internship|hiring)\\b.*");
     }
 
     // ---- Agent loop (Groq tool-calling) -----------------------------------
@@ -203,20 +221,29 @@ public class AssistantService {
         return List.of();
     }
 
-    // ---- Fallback grounded chat (no tools) --------------------------------
+    // ---- Conversational chat (uses the SELECTED model: Gemini/Ollama/Groq) -----
+    // Only pulls in jobs when the message is actually about jobs, so greetings and
+    // general questions get a clean, natural answer rather than forced recommendations.
     private Map<String, Object> groundedChat(String system, List<Map<String, String>> history) {
         String last = lastUser(history);
-        List<Job> jobs = jobService.keywordSearch(last, 6);
-        StringBuilder ctx = new StringBuilder("MATCHING JOBS:\n");
-        jobs.forEach(j -> ctx.append("- ").append(j.getTitle()).append(" @ ").append(nz(j.getCompany()))
-                .append(" (").append(nz(j.getLocation())).append(", score ").append(j.getMatchScore()).append(")\n"));
+        List<Job> jobs = wantsJobs(last) ? jobService.keywordSearch(last, 6) : List.of();
+
+        StringBuilder ctx = new StringBuilder();
+        if (!jobs.isEmpty()) {
+            ctx.append("RELEVANT JOBS FROM THEIR DATABASE (recommend the best 2-3 with a short reason):\n");
+            jobs.forEach(j -> ctx.append("- ").append(j.getTitle()).append(" @ ").append(nz(j.getCompany()))
+                    .append(" (").append(nz(j.getLocation())).append(", match ").append(j.getMatchScore()).append(")\n"));
+            ctx.append("\n");
+        }
         StringBuilder convo = new StringBuilder();
         history.forEach(m -> convo.append(m.getOrDefault("role", "user").toUpperCase()).append(": ")
                 .append(m.getOrDefault("content", "")).append("\n"));
-        String reply = ai.complete(system, ctx + "\nCONVERSATION:\n" + convo + "\nASSISTANT:", false);
+
+        String reply = ai.complete(system,
+                ctx + "CONVERSATION:\n" + convo + "\nReply as the assistant — natural, concise, and to the point:", false);
         List<Map<String, Object>> cards = new ArrayList<>();
         jobs.forEach(j -> cards.add(jobCard(j)));
-        return Map.of("reply", reply, "jobs", cards);
+        return Map.of("reply", reply == null ? "" : reply.strip(), "jobs", cards);
     }
 
     // ---- Helpers ----------------------------------------------------------
