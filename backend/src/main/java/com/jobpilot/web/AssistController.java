@@ -37,6 +37,13 @@ public class AssistController {
         return assist.choose(question, options, multi);
     }
 
+    @PostMapping("/autofill")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> autofill(@RequestBody Map<String, Object> body) {
+        List<String> fields = (List<String>) body.get("fields");
+        return Map.of("answers", assist.autofill(fields));
+    }
+
     @GetMapping("/qa")
     public List<QaPair> listQa() {
         return assist.listQa();

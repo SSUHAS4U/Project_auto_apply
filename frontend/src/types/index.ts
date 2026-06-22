@@ -86,6 +86,7 @@ export interface Profile {
   currentTitle?: string;
   currentCompany?: string;
   yearsExperience?: string;
+  college?: string;
   currentCtc?: string;
   expectedCtc?: string;
   noticePeriod?: string;

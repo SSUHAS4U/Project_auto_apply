@@ -37,7 +37,19 @@ async function loadProfile(force) {
 $('fill').addEventListener('click', async () => {
   status('Filling…');
   const r = await tabSend('FILL');
-  if (r.ok) status(`Filled ${r.filled} of ${r.total} fields — review & submit`, 'ok');
+  if (!r.ok) { status(r.error, 'err'); return; }
+  let filled = r.filled || 0;
+  // Second pass: AI fills the factual fields the synonym engine missed (CTC, college, etc.).
+  status(`Filled ${filled} — checking remaining fields with AI…`);
+  const ai = await tabSend('AI_FILL');
+  if (ai.ok) filled += ai.filled || 0;
+  status(`Filled ${filled} fields — review & submit`, 'ok');
+});
+
+$('resume').addEventListener('click', async () => {
+  status('Attaching resume…');
+  const r = await tabSend('UPLOAD_RESUME');
+  if (r.ok) status(`Resume attached (${r.filename}) ✓`, 'ok');
   else status(r.error, 'err');
 });
 

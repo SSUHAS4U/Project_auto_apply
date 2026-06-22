@@ -13,12 +13,14 @@
     phone: ['phone', 'mobile', 'contact number', 'phone number', 'telephone', 'cell', 'whatsapp'],
     linkedin: ['linkedin'],
     github: ['github'],
+    leetcode: ['leetcode', 'dsa profile', 'dsa coding', 'coding profile', 'competitive programming', 'codeforces', 'hackerrank', 'codechef', 'geeksforgeeks', 'gfg'],
     portfolio: ['portfolio', 'personal website', 'personal site', 'website url', 'website'],
     current_title: ['current title', 'current role', 'current designation', 'job title', 'present role'],
     current_company: ['current company', 'current employer', 'present company', 'organization', 'employer'],
     years_experience: ['years of experience', 'total experience', 'work experience', 'experience in years', 'years exp'],
-    current_ctc: ['current ctc', 'current salary', 'current compensation'],
-    expected_ctc: ['expected ctc', 'expected salary', 'salary expectation', 'expected compensation', 'desired salary'],
+    current_ctc: ['current ctc', 'present ctc', 'current salary', 'present salary', 'current compensation', 'current package', 'present package'],
+    expected_ctc: ['expected ctc', 'expected salary', 'salary expectation', 'expected compensation', 'desired salary', 'expected package'],
+    college: ['college', 'university', 'institution', 'institute', 'school name', 'college/university', 'university name', 'college name', 'alma mater'],
     notice_period: ['notice period', 'notice', 'availability to join'],
     available_from: ['available from', 'start date', 'available to start', 'earliest start', 'joining date'],
     work_authorization: ['work authorization', 'work permit', 'authorized to work', 'visa status', 'work status'],
@@ -73,7 +75,9 @@
       case 'date_of_birth': return profile.date_of_birth || '';
       case 'linkedin': return links.linkedin || '';
       case 'github': return links.github || '';
+      case 'leetcode': return links.leetcode || links.coding || links.codeforces || '';
       case 'portfolio': return links.portfolio || '';
+      case 'college': return profile.college || '';
       case 'seniority': return profile.seniority || '';
       case 'current_title': return profile.current_title || '';
       case 'current_company': return profile.current_company || '';

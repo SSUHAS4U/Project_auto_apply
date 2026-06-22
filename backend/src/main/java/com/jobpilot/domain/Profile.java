@@ -88,6 +88,9 @@ public class Profile {
     @Column(name = "years_experience")
     private String yearsExperience;
 
+    @Column(name = "college")
+    private String college;
+
     @Column(name = "current_ctc")
     private String currentCtc;
 

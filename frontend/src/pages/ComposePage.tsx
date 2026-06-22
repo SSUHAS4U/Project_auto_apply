@@ -13,6 +13,7 @@ export function ComposePage() {
   const [coverLetter, setCoverLetter] = useState('');
   const [coldEmail, setColdEmail] = useState('');
   const [attachResume, setAttachResume] = useState(true);
+  const [mode, setMode] = useState<'both' | 'email' | 'cover'>('both');
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
   const [ai, setAi] = useState<{ enabled: boolean; provider: string; remainingToday: number } | null>(null);
@@ -41,9 +42,13 @@ export function ComposePage() {
   const send = async () => {
     if (!to) { toast('Recipient email required', 'error'); return; }
     if (!coldEmail && !coverLetter) { toast('Generate the content first', 'error'); return; }
+    // Send mode decides which parts go out.
+    const sendEmail = mode === 'both' || mode === 'email' ? coldEmail : '';
+    const sendCover = mode === 'both' || mode === 'cover' ? coverLetter : '';
+    if (!sendEmail && !sendCover) { toast('Nothing to send for this mode', 'error'); return; }
     setSending(true);
     try {
-      const r = await api.composeSend({ to, subject, coldEmail, coverLetter, attachResume });
+      const r = await api.composeSend({ to, subject, coldEmail: sendEmail, coverLetter: sendCover, attachResume });
       toast(`Sent to ${r.sentTo}${r.resumeAttached ? ' (resume attached)' : ''}`, 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setSending(false); }
@@ -81,11 +86,18 @@ export function ComposePage() {
             <label className="field">Recipient email<input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recruiter@company.com" /></label>
             <label className="field">Subject<input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} /></label>
           </div>
+          <div className="field" style={{ marginTop: 10 }}>What to send
+            <div className="tabs" style={{ marginTop: 6 }}>
+              {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, label]) => (
+                <div key={k} className={`tab ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{label}</div>
+              ))}
+            </div>
+          </div>
           <label className="row" style={{ marginTop: 10, gap: 8 }}>
             <input type="checkbox" checked={attachResume} onChange={(e) => setAttachResume(e.target.checked)} /> Attach my resume
           </label>
           <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={send} disabled={sending}>
-            {sending ? <span className="spinner" /> : '✉'} Send to {to || 'recipient'}
+            {sending ? <span className="spinner" /> : '✉'} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'both'} to {to || 'recipient'}
           </button>
           <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Sends from your configured Gmail. Counts against the daily mail limit.</div>
         </div>

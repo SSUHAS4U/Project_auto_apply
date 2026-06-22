@@ -20,18 +20,26 @@ import java.util.Map;
 public class ComposeService {
 
     private static final String SYSTEM = """
-            You are an expert job-application writer. Given a candidate profile, the candidate's
-            preferred TEMPLATES, and a target job, produce three things tailored to THIS company/role:
-              1. subject     — a crisp email subject line based on the role + company + candidate
-                               (e.g. "Application for Software Engineer Role - Suhas S | CSE 2026 | Nokia Intern").
-              2. coldEmail   — rewrite the candidate's EMAIL TEMPLATE for this specific company and role,
-                               keeping its structure, bullet snapshot, and signature; fill [Company Name]/
-                               [Recruiter Name] (use "Hiring Team" if unknown). Keep all real facts.
-              3. coverLetter — rewrite the candidate's COVER LETTER TEMPLATE for this company/role,
-                               keeping structure and real facts; fill placeholders.
-            Use ONLY facts from the profile/templates. Never invent experience. No leftover [brackets]
-            except a name you genuinely cannot know. Respond with STRICT JSON only:
-            {"subject": "...", "coldEmail": "...", "coverLetter": "..."}""";
+            You are an expert job-application writer. Given a candidate profile, preferred TEMPLATES,
+            and a target job, produce three things tailored to THIS company/role:
+              1. subject     — a crisp subject line (role + company + candidate),
+                               e.g. "Application for Software Engineer - Suhas S | CSE 2026 | Nokia Intern".
+              2. coldEmail   — a substantive outreach email (130-180 words). Greet "Hi Hiring Team," then:
+                               a strong opening tying the candidate to THIS role/product; a short paragraph
+                               connecting 2-3 of the candidate's real skills to specific things the JOB DETAILS
+                               ask for; a compact bullet snapshot (education, current role, key projects/links,
+                               core skills); a closing line offering to talk. Mention the resume is attached.
+              3. coverLetter — a full cover letter (150-200 words) grounded in the JOB DETAILS: name concrete
+                               responsibilities and tie them to the candidate's real strengths; 2 short paragraphs.
+
+            HARD RULES:
+            - Use ONLY facts from the profile/templates. NEVER invent years of experience, employers, titles,
+              or technologies. If early-career, be honest and lead with projects/skills + eagerness.
+            - BANNED filler (never use): "highly motivated", "detail-oriented", "quick learner",
+              "strong work ethic", "passion for technology", "thrive in", "fast-paced environment",
+              "team player", "make me an ideal fit".
+            - Be specific to the company/role — never generic. No leftover [brackets].
+            Respond with STRICT JSON only: {"subject": "...", "coldEmail": "...", "coverLetter": "..."}""";
 
     private final AiService ai;
     private final ProfileService profileService;
@@ -137,11 +145,13 @@ public class ComposeService {
         enforceMailLimit();
         Profile p = profileService.get();
 
+        // Send mode is controlled by which parts the caller passes (email only / cover only / both).
+        String email = coldEmail == null ? "" : coldEmail.strip();
+        String cover = coverLetter == null ? "" : coverLetter.strip();
         StringBuilder body = new StringBuilder();
-        body.append(coldEmail == null ? "" : coldEmail.strip());
-        if (coverLetter != null && !coverLetter.isBlank()) {
-            body.append("\n\n---\n\n").append(coverLetter.strip());
-        }
+        if (!email.isBlank() && !cover.isBlank()) body.append(email).append("\n\n---\n\n").append(cover);
+        else if (!email.isBlank()) body.append(email);
+        else body.append(cover);
         body.append("\n\n").append(nz(p.getFullName()));
         if (notBlank(p.getEmail())) body.append("\n").append(p.getEmail());
         if (notBlank(p.getPhone())) body.append("\n").append(p.getPhone());

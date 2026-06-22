@@ -29,6 +29,17 @@ public class ExtensionController {
                 req.url(), req.sourceSite(), req.raw());
     }
 
+    /** Extension pulls the resume bytes (base64) to attach to application file inputs. */
+    @GetMapping("/resume")
+    public Map<String, Object> resume() {
+        Profile p = profile.get();
+        byte[] data = p.getResumeData();
+        if (data == null || data.length == 0) return Map.of("hasResume", false);
+        return Map.of("hasResume", true,
+                "filename", p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename(),
+                "contentBase64", java.util.Base64.getEncoder().encodeToString(data));
+    }
+
     /** Extension pulls profile + a flattened answer map for autofill. */
     @GetMapping("/profile-export")
     public Map<String, Object> profileExport() {
@@ -50,6 +61,7 @@ public class ExtensionController {
         out.put("links", p.getLinks());
         out.put("skills", p.getSkills());
         out.put("seniority", p.getSeniority());
+        out.put("college", p.getCollege());
         out.put("current_title", p.getCurrentTitle());
         out.put("current_company", p.getCurrentCompany());
         out.put("years_experience", p.getYearsExperience());

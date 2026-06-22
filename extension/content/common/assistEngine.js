@@ -420,10 +420,62 @@
     });
   }
 
+  // AI-fill short factual inputs the synonym engine missed (CTC, college, coding-profile
+  // links, etc.) by sending each field's label to the backend, which maps it to the profile.
+  async function aiFillFields() {
+    const candidates = [];
+    document.querySelectorAll('input').forEach((el) => {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (!['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
+      if (el.disabled || el.readOnly || el.offsetParent === null) return;
+      if ((el.value || '').trim()) return;
+      const label = deriveQuestion(el);
+      if (label && label.length >= 3) candidates.push({ el, label });
+    });
+    if (!candidates.length) return { filled: 0, total: 0 };
+    const labels = [...new Set(candidates.map((c) => c.label))];
+    const r = await msg('ASSIST_AUTOFILL', { fields: labels });
+    const answers = (r && r.answers) || {};
+    let filled = 0;
+    candidates.forEach(({ el, label }) => {
+      const v = answers[label];
+      if (v && String(v).trim() && !(el.value || '').trim()) { writeValue(el, String(v)); filled++; }
+    });
+    return { filled, total: candidates.length };
+  }
+
+  // Attach the user's stored resume to the page's file-upload field.
+  async function uploadResume() {
+    const r = await msg('GET_RESUME');
+    if (!r || !r.hasResume) throw new Error('No resume on file — upload one in your JobPilot profile first');
+    const inputs = [...document.querySelectorAll('input[type="file"]')].filter((i) => i.offsetParent !== null);
+    if (!inputs.length) throw new Error('No file-upload field found on this page');
+    const pref = inputs.find((i) => /resume|cv|curriculum/i.test((i.name || '') + (i.id || '') + (deriveQuestion(i) || ''))) || inputs[0];
+    const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0));
+    const file = new File([new Blob([bytes], { type: 'application/pdf' })], r.filename || 'resume.pdf', { type: 'application/pdf' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    pref.files = dt.files;
+    pref.dispatchEvent(new Event('input', { bubbles: true }));
+    pref.dispatchEvent(new Event('change', { bubbles: true }));
+    window.JobPilot.highlight(pref);
+    return { attached: true, filename: r.filename };
+  }
+
   // Popup-triggered actions (works on any page since this script loads everywhere).
   chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
     if (m.type === 'AUTO_ANSWER') {
       autoAnswerAll().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    if (m.type === 'AI_FILL') {
+      aiFillFields().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    if (m.type === 'UPLOAD_RESUME') {
+      uploadResume().then((r) => sendResponse({ ok: true, ...r }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }

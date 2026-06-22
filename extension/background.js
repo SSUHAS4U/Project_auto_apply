@@ -105,6 +105,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'ASSIST_AUTOFILL': {
+          const data = await apiFetch('/api/assist/autofill', {
+            method: 'POST', body: JSON.stringify({ fields: msg.fields }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'GET_RESUME': {
+          const data = await apiFetch('/api/extension/resume');
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'SAVE_QA': {
           const data = await apiFetch('/api/assist/qa', {
             method: 'POST', body: JSON.stringify({ question: msg.question, answer: msg.answer }),

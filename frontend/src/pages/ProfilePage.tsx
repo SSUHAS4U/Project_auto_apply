@@ -210,6 +210,7 @@ export function ProfilePage() {
               <Field label="GitHub"><input className="input" value={p.links?.github ?? ''} onChange={(e) => setLink('github', e.target.value)} /></Field>
               <Field label="LinkedIn"><input className="input" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
               <Field label="Portfolio"><input className="input" value={p.links?.portfolio ?? ''} onChange={(e) => setLink('portfolio', e.target.value)} /></Field>
+              <Field label="LeetCode / DSA profile"><input className="input" placeholder="https://leetcode.com/username/" value={p.links?.leetcode ?? ''} onChange={(e) => setLink('leetcode', e.target.value)} /></Field>
             </div>
           </Section>
         </div>
@@ -227,6 +228,7 @@ export function ProfilePage() {
                 </select>
               </Field>
               <Field label="Total experience (yrs)"><input className="input" placeholder="3.5" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
+              <Field label="College / University"><input className="input" placeholder="KL University" value={p.college ?? ''} onChange={(e) => set({ college: e.target.value })} /></Field>
               <Field label="Current CTC"><input className="input" value={p.currentCtc ?? ''} onChange={(e) => set({ currentCtc: e.target.value })} /></Field>
               <Field label="Expected CTC"><input className="input" value={p.expectedCtc ?? ''} onChange={(e) => set({ expectedCtc: e.target.value })} /></Field>
               <Field label="Notice period"><input className="input" placeholder="30 days" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} /></Field>

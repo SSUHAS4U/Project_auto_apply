@@ -70,6 +70,7 @@ public class ProfileService {
         p.setCurrentTitle(in.getCurrentTitle());
         p.setCurrentCompany(in.getCurrentCompany());
         p.setYearsExperience(in.getYearsExperience());
+        p.setCollege(in.getCollege());
         p.setCurrentCtc(in.getCurrentCtc());
         p.setExpectedCtc(in.getExpectedCtc());
         p.setNoticePeriod(in.getNoticePeriod());
