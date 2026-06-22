@@ -30,3 +30,4 @@ backend/uploads/
 .vscode/
 *.iml
 .DS_Store
+.playwright-mcp/

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { Job } from '../types';
-import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
+import { ApplyBadge, fmtDate, useToast } from '../lib/ui';
 
 export function DailyPicksPage() {
   const toast = useToast();
@@ -70,32 +70,37 @@ export function DailyPicksPage() {
             No picks yet. They generate every morning at 9:00, or click <b>Run now</b>.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {jobs.map((j, i) => (
-              <div key={j.id} className="card card-pad">
-                <div className="row" style={{ alignItems: 'flex-start' }}>
-                  <div className="grow">
-                    <div className="row" style={{ gap: 8 }}>
-                      <span className="chip">#{i + 1}</span>
-                      <span className="job-title" style={{ cursor: 'pointer' }} onClick={() => setOpenId(openId === j.id ? null : j.id)}>{j.title}</span>
+              <div key={j.id} className="card card-pad pick-card">
+                <div className="pick-rank">{i + 1}</div>
+                <div className="pick-body">
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="pick-title" onClick={() => setOpenId(openId === j.id ? null : j.id)}>{j.title}</div>
+                      <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
+                        {j.company ?? '—'} · {j.location ?? (j.remote ? 'Remote' : '—')} · <span className="faint">{j.source}</span>
+                      </div>
                     </div>
-                    <div className="job-company" style={{ marginTop: 4 }}>
-                      {j.company ?? '—'} · {j.location ?? (j.remote ? 'Remote' : '—')} · <span className="faint">{j.source}</span>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div className="score" style={{ fontSize: 18 }}>{j.matchScore}</div>
+                      <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.04em' }}>MATCH</div>
                     </div>
                   </div>
-                  <div style={{ minWidth: 70 }}><ScoreBar score={j.matchScore} /></div>
-                  <ApplyBadge type={j.applyType} />
-                </div>
-                {openId === j.id && j.description && (
-                  <div className="job-desc" style={{ marginTop: 12 }}>{j.description}</div>
-                )}
-                <div className="row" style={{ marginTop: 12, gap: 8 }}>
-                  <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open & apply ↗</a>
-                  <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setOpenId(openId === j.id ? null : j.id)}>
-                    {openId === j.id ? 'Hide' : 'Details'}
-                  </button>
-                  {j.applyType === 'email' && j.applyEmail && <span className="faint" style={{ fontSize: 12 }}>✉ {j.applyEmail}</span>}
+                  <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                    <ApplyBadge type={j.applyType} />
+                    {j.applyType === 'email' && j.applyEmail && <span className="faint" style={{ fontSize: 12 }}>✉ {j.applyEmail}</span>}
+                  </div>
+                  {openId === j.id && j.description && (
+                    <div className="job-desc" style={{ marginTop: 12 }}>{j.description}</div>
+                  )}
+                  <div className="row" style={{ marginTop: 14, gap: 8 }}>
+                    <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
+                    <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setOpenId(openId === j.id ? null : j.id)}>
+                      {openId === j.id ? 'Hide' : 'Details'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

@@ -54,63 +54,88 @@ export function ComposePage() {
     finally { setSending(false); }
   };
 
+  const hasContent = !!(coldEmail || coverLetter);
+
   return (
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Compose & send</h1>
-          <div className="page-sub">Generate a cover letter + cold email from any job, review, and send with your resume</div>
+          <h1 className="page-title">Compose &amp; send</h1>
+          <div className="page-sub">Generate a tailored cold email + cover letter from any job, review, then send with your resume.</div>
         </div>
         <ModelSwitcher />
       </div>
 
-      <div className="grid2" style={{ alignItems: 'start' }}>
-        <div className="card card-pad section">
-          <div className="section-title"><span className="si">📥</span>Job details</div>
+      <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* Step 1 — Job details */}
+        <div className="card card-pad">
+          <div className="step-head">
+            <span className="step-num">1</span>
+            <div><div className="step-title">Job details</div><div className="step-sub">What you're applying to — the more detail, the more tailored the writing.</div></div>
+          </div>
           <div className="grid2">
             <label className="field">Role / title<input className="input" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Backend Engineer" /></label>
             <label className="field">Company<input className="input" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" /></label>
           </div>
-          <label className="field" style={{ marginTop: 12 }}>Paste the job description / details
-            <textarea className="input" rows={8} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Responsibilities, requirements, anything you want the letter to address…" />
+          <label className="field" style={{ marginTop: 14 }}>Job description / details
+            <textarea className="input" rows={7} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Paste responsibilities, requirements, anything you want the letter to address…" />
           </label>
-          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={generate} disabled={generating || (ai !== null && !ai.enabled)}>
-            {generating ? <span className="spinner" /> : '✨'} Generate cover letter + cold email
-          </button>
-          {ai !== null && !ai.enabled && <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Set an AI provider + key in <code>.env</code> to enable generation.</div>}
+          <div className="row" style={{ marginTop: 14, justifyContent: 'space-between' }}>
+            <button className="btn btn-primary" onClick={generate} disabled={generating || (ai !== null && !ai.enabled)}>
+              {generating ? <span className="spinner" /> : '✨'} {hasContent ? 'Regenerate' : 'Generate'}
+            </button>
+            {ai !== null && !ai.enabled && <span className="faint" style={{ fontSize: 12 }}>Set an AI provider + key in Settings to enable.</span>}
+          </div>
         </div>
 
-        <div className="card card-pad section">
-          <div className="section-title"><span className="si">📤</span>Send</div>
-          <div className="grid2">
-            <label className="field">Recipient email<input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recruiter@company.com" /></label>
-            <label className="field">Subject<input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} /></label>
+        {/* Step 2 — Review & edit */}
+        <div className="card card-pad">
+          <div className="step-head">
+            <span className="step-num">2</span>
+            <div><div className="step-title">Review &amp; edit</div><div className="step-sub">Tweak anything before it goes out — these are editable.</div></div>
           </div>
-          <div className="field" style={{ marginTop: 10 }}>What to send
-            <div className="tabs" style={{ marginTop: 6 }}>
+          {!hasContent ? (
+            <div className="empty" style={{ padding: '28px 20px' }}>
+              <div className="big">📝</div>
+              Your cold email and cover letter will appear here after you generate.
+            </div>
+          ) : (
+            <div className="grid2" style={{ alignItems: 'start' }}>
+              <div className="panel">
+                <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
+                <textarea rows={12} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
+              </div>
+              <div className="panel">
+                <div className="panel-head">📄 Cover letter <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button></div>
+                <textarea rows={12} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Step 3 — Send */}
+        <div className="card card-pad">
+          <div className="step-head">
+            <span className="step-num">3</span>
+            <div><div className="step-title">Send</div><div className="step-sub">Goes out via your configured mail. A copy is BCC'd to you.</div></div>
+          </div>
+          <div className="grid2">
+            <label className="field">Recipient email<input className="input" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recruiter@company.com" /></label>
+            <label className="field">Subject<input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Application for…" /></label>
+          </div>
+          <div className="field" style={{ marginTop: 14 }}>What to send
+            <div className="seg" style={{ marginTop: 6 }}>
               {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, label]) => (
-                <div key={k} className={`tab ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{label}</div>
+                <button key={k} type="button" className={`seg-btn ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{label}</button>
               ))}
             </div>
           </div>
-          <label className="row" style={{ marginTop: 10, gap: 8 }}>
+          <label className="row" style={{ marginTop: 14, gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={attachResume} onChange={(e) => setAttachResume(e.target.checked)} /> Attach my resume
           </label>
-          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={send} disabled={sending}>
-            {sending ? <span className="spinner" /> : '✉'} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'both'} to {to || 'recipient'}
+          <button className="btn btn-primary" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={send} disabled={sending || !hasContent}>
+            {sending ? <span className="spinner" /> : '✉'} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'email + cover letter'} to {to || 'recipient'}
           </button>
-          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Sends from your configured Gmail. Counts against the daily mail limit.</div>
-        </div>
-      </div>
-
-      <div className="grid2" style={{ marginTop: 16, alignItems: 'start' }}>
-        <div className="panel">
-          <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
-          <textarea rows={11} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
-        </div>
-        <div className="panel">
-          <div className="panel-head">📄 Cover letter <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button></div>
-          <textarea rows={11} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
         </div>
       </div>
     </>
