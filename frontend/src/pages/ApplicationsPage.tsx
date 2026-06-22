@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { Application, ApplicationEvent, ApplicationStatus } from '../types';
+import { StatusSelect } from '../components/StatusSelect';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 
@@ -87,10 +88,7 @@ export function ApplicationsPage() {
                       <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
                       <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
                       <td>
-                        <select className="status-pill" value={a.status} onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
-                          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                        <StatusSelect value={a.status} onChange={(s) => move(a, s)} />
                       </td>
                       <td className="muted">{a.method ?? '—'}</td>
                       <td className="muted">{a.appliedAt ? fmtDate(a.appliedAt) : '—'}</td>
@@ -125,9 +123,7 @@ export function ApplicationsPage() {
                     <span>↻ {fmtDate(a.updatedAt)}</span>
                   </div>
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <select className="status-pill" value={a.status} onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
-                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <StatusSelect value={a.status} onChange={(s) => move(a, s)} />
                     <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
                     {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗ Open</a>}
                   </div>
@@ -173,11 +169,9 @@ function ApplicationModal({ app, onClose, onChanged }: { app: Application; onClo
           <dt>Created</dt><dd>{fmtDate(app.createdAt)}</dd>
         </dl>
       )}
-      <label className="field">Status
-        <select className="select" value={status} onChange={(e) => setStatus(e.target.value as ApplicationStatus)}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </label>
+      <div className="field">Status
+        <div style={{ marginTop: 4 }}><StatusSelect value={status} onChange={setStatus} /></div>
+      </div>
       <label className="field">Notes<textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
       {app.coverLetter && <label className="field">Cover letter sent<div className="pre">{app.coverLetter}</div></label>}
       <div>
