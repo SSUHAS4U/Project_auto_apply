@@ -8,34 +8,57 @@ final class CoverLetterPrompt {
 
     private CoverLetterPrompt() {}
 
-    static String build(Job job, Profile profile) {
+    static String build(Job job, Profile profile, String description) {
         String skills = profile.getSkills() == null ? "" : String.join(", ", profile.getSkills());
-        String descExcerpt = excerpt(job.getDescription(), 1200);
+        String descExcerpt = excerpt(description, 2200);
+        String summary = excerpt(profile.getSummary(), 400);
         return """
-                Write a concise, professional cover letter (150-220 words) for the role below.
-                Use a confident first-person voice. Do not invent facts not implied by the candidate's
-                skills. No placeholders, no "[Your Name]" — sign off with the candidate's real name.
+                Write a cover letter for THIS specific role. It must read differently from a generic
+                template — ground every claim in the actual job description below.
 
                 ROLE: %s
                 COMPANY: %s
                 LOCATION: %s
 
-                JOB DESCRIPTION (excerpt):
+                JOB DESCRIPTION:
                 %s
 
-                CANDIDATE: %s
-                SKILLS: %s
+                === THE ONLY FACTS YOU MAY USE ABOUT THE CANDIDATE ===
+                NAME: %s
+                EXPERIENCE: %s
+                HEADLINE: %s
+                SUMMARY: %s
+                SKILLS (the ONLY technologies you may claim): %s
                 SENIORITY: %s
+                =====================================================
 
-                Return ONLY the letter body, no preamble or subject line.
+                Do not state any number of years, employer, title, or technology not listed above.
+                Return ONLY the letter body (no subject line, no "Dear...", no sign-off block beyond the name).
                 """.formatted(
                 nullSafe(job.getTitle()),
                 nullSafe(job.getCompany()),
                 nullSafe(job.getLocation()),
-                descExcerpt,
+                descExcerpt.isBlank() ? "(not available — infer what this role needs from its title)" : descExcerpt,
                 nullSafe(profile.getFullName()),
+                experience(profile),
+                nullSafe(profile.getHeadline()),
+                summary,
                 skills,
                 nullSafe(profile.getSeniority()));
+    }
+
+    /** A factual, hard-to-misread experience line so the model can't invent tenure. */
+    private static String experience(Profile p) {
+        String years = p.getYearsExperience();
+        String yearsPart = (years == null || years.isBlank() || years.equals("0"))
+                ? "early-career / fresher (no full-time years yet)"
+                : years + " year(s) of experience";
+        String role = p.getCurrentTitle();
+        String company = p.getCurrentCompany();
+        if (role != null && !role.isBlank()) {
+            yearsPart += " — currently " + role + (company != null && !company.isBlank() ? " at " + company : "");
+        }
+        return yearsPart;
     }
 
     static String excerpt(String s, int max) {
