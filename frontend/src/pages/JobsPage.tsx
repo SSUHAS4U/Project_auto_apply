@@ -323,6 +323,13 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
             </span>
           </div>
 
+          {m.lastRun && (
+            <div className="card card-pad" style={{ padding: 12, fontSize: 13, background: 'var(--accent-soft)' }}>
+              🕑 <b>Last completed ingest:</b> {fmtDate(m.lastRun.finishedAt)} —
+              {' '}+{m.lastRun.inserted} new, {m.lastRun.updated} refreshed, {m.lastRun.fetched} scanned in {m.lastRun.durationSec}s.
+            </div>
+          )}
+
           <div className="grid2" style={{ gap: 10 }}>
             <Stat label="New jobs added" value={m.inserted} accent />
             <Stat label="Refreshed (unchanged)" value={m.updated} />

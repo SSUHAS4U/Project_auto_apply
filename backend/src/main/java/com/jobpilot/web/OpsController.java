@@ -10,6 +10,7 @@ import com.jobpilot.service.IngestService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,6 +28,7 @@ public class OpsController {
     private final CleanupService cleanup;
     private final BackgroundRunner runner;
     private final IngestProgress progress;
+    private final com.jobpilot.service.MailService mailService;
     private final JobPilotProperties props;
 
     @Value("${spring.mail.host:}") private String mailHost;
@@ -36,14 +38,35 @@ public class OpsController {
 
     public OpsController(IngestService ingest, DigestService digest, DailyService daily,
                          CleanupService cleanup, BackgroundRunner runner,
-                         IngestProgress progress, JobPilotProperties props) {
+                         IngestProgress progress, com.jobpilot.service.MailService mailService,
+                         JobPilotProperties props) {
         this.ingest = ingest;
         this.digest = digest;
         this.daily = daily;
         this.cleanup = cleanup;
         this.runner = runner;
         this.progress = progress;
+        this.mailService = mailService;
         this.props = props;
+    }
+
+    /** Send a test email to verify the mail transport (Brevo/SMTP) is working. Admin-only. */
+    @PostMapping("/ops/test-email")
+    public Map<String, Object> testEmail(@RequestBody(required = false) Map<String, String> body) {
+        String to = body != null && body.get("to") != null && !body.get("to").isBlank()
+                ? body.get("to").trim()
+                : props.getMail().getDigestTo();
+        if (to == null || to.isBlank()) {
+            return Map.of("ok", false, "error", "No recipient — set JOBPILOT_MAIL_DIGEST_TO or pass 'to'.");
+        }
+        try {
+            mailService.sendHtml(to, "JobPilot — test email ✓",
+                    "<h2>It works 🎉</h2><p>Your JobPilot mail transport is configured correctly. "
+                    + "Application emails and digests will send from here.</p>");
+            return Map.of("ok", true, "sentTo", to);
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
     }
 
     /** Detailed live ingest metrics (admin-only via /api/ops): status, log, per-board, memory. */

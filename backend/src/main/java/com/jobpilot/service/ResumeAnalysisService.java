@@ -28,15 +28,13 @@ public class ResumeAnalysisService {
               "certifications":[{"name","issuer","year"}]
             }""";
 
-    private final ResumeStorageService storage;
     private final ResumeTextExtractor extractor;
     private final ProfileService profileService;
     private final AiService ai;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public ResumeAnalysisService(ResumeStorageService storage, ResumeTextExtractor extractor,
+    public ResumeAnalysisService(ResumeTextExtractor extractor,
                                  ProfileService profileService, AiService ai) {
-        this.storage = storage;
         this.extractor = extractor;
         this.profileService = profileService;
         this.ai = ai;
@@ -44,9 +42,13 @@ public class ResumeAnalysisService {
 
     /** Store the resume, parse it with AI, merge into profile, save, and return it. */
     public Profile analyzeAndFill(org.springframework.web.multipart.MultipartFile file) {
-        // 1. Persist the file and link it to the profile.
-        ResumeStorageService.Stored stored = storage.store(file);
-        profileService.setResume(stored.path(), stored.filename());
+        // 1. Persist the resume bytes in the DB (survives restarts) + link the filename.
+        String name = file.getOriginalFilename() == null ? "resume.pdf" : file.getOriginalFilename();
+        try {
+            profileService.setResumeData(file.getBytes(), name);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("failed to read resume: " + e.getMessage(), e);
+        }
 
         // 2. Extract text + ask the model to structure it.
         if (!ai.isEnabled()) {

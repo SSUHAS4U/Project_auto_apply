@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getAdminToken, setAdminToken } from '../api/client';
+import { api, getAdminToken, setAdminToken, isAdminUI } from '../api/client';
 import { useToast } from '../lib/ui';
 
 type AiStatus = { enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] };
@@ -15,12 +15,25 @@ export function SettingsPage() {
   const loadAi = () => api.aiStatus().then(setAi).catch(() => {});
   useEffect(() => { loadAi(); }, []);
 
+  const [emailTo, setEmailTo] = useState('');
+  const [emailing, setEmailing] = useState(false);
+
   const save = () => { setAdminToken(token.trim()); toast('Token saved locally', 'success'); };
   const test = async () => {
     setAdminToken(token.trim()); setChecking(true);
     try { await api.health(); toast('Connected — token works ✓', 'success'); }
     catch (e) { toast(`Failed: ${(e as Error).message}`, 'error'); }
     finally { setChecking(false); }
+  };
+
+  const sendTestEmail = async () => {
+    setEmailing(true);
+    try {
+      const r = await api.testEmail(emailTo.trim());
+      if (r.ok) toast(`Test email sent to ${r.sentTo} ✓ — check your inbox`, 'success');
+      else toast(`Email failed: ${r.error}`, 'error');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setEmailing(false); }
   };
 
   const switchModel = async (provider: string) => {
@@ -60,6 +73,27 @@ export function SettingsPage() {
           <button className="btn" onClick={test} disabled={checking}>{checking ? <span className="spinner" /> : '🔌'} Test connection</button>
         </div>
       </div>
+
+      {isAdminUI() && (
+        <div className="card card-pad section" style={{ maxWidth: 720 }}>
+          <div className="section-title"><span className="si">✉️</span>Email
+            <span className="section-sub">verify the mail transport (Brevo / SMTP) works end-to-end</span>
+          </div>
+          <label className="field">Send a test email to
+            <input className="input" type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)}
+              placeholder="leave blank to use your digest address" />
+          </label>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={sendTestEmail} disabled={emailing}>
+              {emailing ? <span className="spinner" /> : '✉️'} Send test email
+            </button>
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+            On Render set <code>JOBPILOT_BREVO_API_KEY</code> + <code>JOBPILOT_MAIL_FROM</code> to send over HTTPS
+            (Render blocks SMTP). If it fails, check Brevo → Authorised IPs and that your sender is verified.
+          </div>
+        </div>
+      )}
 
       <div className="card card-pad section" style={{ maxWidth: 720 }}>
         <div className="section-title"><span className="si">🧠</span>AI model

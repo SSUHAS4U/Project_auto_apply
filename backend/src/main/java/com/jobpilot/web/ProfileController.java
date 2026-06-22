@@ -3,7 +3,6 @@ package com.jobpilot.web;
 import com.jobpilot.domain.Profile;
 import com.jobpilot.service.ProfileService;
 import com.jobpilot.service.ResumeAnalysisService;
-import com.jobpilot.service.ResumeStorageService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,13 +13,10 @@ import java.util.Map;
 public class ProfileController {
 
     private final ProfileService service;
-    private final ResumeStorageService resume;
     private final ResumeAnalysisService analysis;
 
-    public ProfileController(ProfileService service, ResumeStorageService resume,
-                             ResumeAnalysisService analysis) {
+    public ProfileController(ProfileService service, ResumeAnalysisService analysis) {
         this.service = service;
-        this.resume = resume;
         this.analysis = analysis;
     }
 
@@ -36,9 +32,14 @@ public class ProfileController {
 
     @PostMapping("/resume")
     public Map<String, Object> uploadResume(@RequestParam("file") MultipartFile file) {
-        ResumeStorageService.Stored stored = resume.store(file);
-        service.setResume(stored.path(), stored.filename());
-        return Map.of("filename", stored.filename(), "stored", true);
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("resume file is empty");
+        String name = file.getOriginalFilename() == null ? "resume.pdf" : file.getOriginalFilename();
+        try {
+            service.setResumeData(file.getBytes(), name); // store in DB so it persists across restarts
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("failed to read resume: " + e.getMessage(), e);
+        }
+        return Map.of("filename", name, "stored", true);
     }
 
     /** Upload + AI-parse a resume, auto-filling and saving the profile. */

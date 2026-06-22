@@ -100,4 +100,15 @@ public class ProfileService {
         p.setUpdatedAt(Instant.now());
         repo.save(p);
     }
+
+    /** Persist the resume bytes in the DB (survives restarts) + its filename. */
+    @Transactional
+    public void setResumeData(byte[] data, String filename) {
+        Profile p = get();
+        p.setResumeData(data);
+        p.setResumeFilename(filename);
+        p.setResumePath("db"); // marker; real bytes live in resume_data
+        p.setUpdatedAt(Instant.now());
+        repo.save(p);
+    }
 }

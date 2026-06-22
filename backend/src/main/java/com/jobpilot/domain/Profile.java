@@ -156,6 +156,12 @@ public class Profile {
     @Column(name = "resume_filename")
     private String resumeFilename;
 
+    /** Resume bytes stored in the DB so they persist across restarts (ephemeral disk safe).
+     *  JsonIgnore so the large blob never goes over the wire in the profile API. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(name = "resume_data")
+    private byte[] resumeData;
+
     @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
 }

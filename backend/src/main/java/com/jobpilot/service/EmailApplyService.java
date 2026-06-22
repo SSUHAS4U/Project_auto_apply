@@ -9,7 +9,6 @@ import com.jobpilot.repository.JobRepository;
 import com.jobpilot.service.cover.CoverLetterService;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -24,7 +23,6 @@ public class EmailApplyService {
     private final JobRepository jobRepo;
     private final ApplicationRepository appRepo;
     private final ProfileService profileService;
-    private final ResumeStorageService resume;
     private final CoverLetterService coverLetters;
     private final MailService mail;
     private final ApplicationService applications;
@@ -33,7 +31,6 @@ public class EmailApplyService {
     public EmailApplyService(JobRepository jobRepo,
                              ApplicationRepository appRepo,
                              ProfileService profileService,
-                             ResumeStorageService resume,
                              CoverLetterService coverLetters,
                              MailService mail,
                              ApplicationService applications,
@@ -41,7 +38,6 @@ public class EmailApplyService {
         this.jobRepo = jobRepo;
         this.appRepo = appRepo;
         this.profileService = profileService;
-        this.resume = resume;
         this.coverLetters = coverLetters;
         this.mail = mail;
         this.applications = applications;
@@ -63,8 +59,9 @@ public class EmailApplyService {
                     + job.getApplyType() + ")");
         }
         enforceDailyLimit();
-        if (!resume.exists(profile.getResumePath())) {
-            throw new IllegalStateException("no resume on file — upload one before applying");
+        byte[] resumeBytes = profile.getResumeData();
+        if (resumeBytes == null || resumeBytes.length == 0) {
+            throw new IllegalStateException("no resume on file — upload one in Profile before applying");
         }
 
         String letter = (coverLetterOverride != null && !coverLetterOverride.isBlank())
@@ -73,10 +70,9 @@ public class EmailApplyService {
 
         String subject = "Application: " + job.getTitle() + " — " + profile.getFullName();
         String body = buildBody(profile, letter);
-        Path attachment = resume.resolve(profile.getResumePath());
         String attachName = profile.getResumeFilename() == null ? "resume.pdf" : profile.getResumeFilename();
 
-        mail.sendWithAttachment(job.getApplyEmail(), subject, body, attachment, attachName);
+        mail.sendWithAttachmentBytes(job.getApplyEmail(), subject, body, resumeBytes, attachName);
 
         Application app = applications.markEmailApplied(job.getId(), letter);
         return new ApplyResult(app.getId(), job.getApplyEmail(), subject);

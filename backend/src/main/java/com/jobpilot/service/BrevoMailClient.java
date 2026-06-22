@@ -36,6 +36,15 @@ public class BrevoMailClient {
     }
 
     public void send(String to, String subject, String html, boolean isHtml, Path attachment, String attachmentName) {
+        byte[] data = null;
+        if (attachment != null) {
+            try { data = Files.readAllBytes(attachment); }
+            catch (Exception e) { log.warn("Brevo: could not read attachment {} ({})", attachmentName, e.getMessage()); }
+        }
+        sendBytes(to, subject, html, isHtml, data, attachmentName);
+    }
+
+    public void sendBytes(String to, String subject, String html, boolean isHtml, byte[] attachment, String attachmentName) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("sender", Map.of(
                 "email", props.getMail().getFrom(),
@@ -45,13 +54,9 @@ public class BrevoMailClient {
         if (isHtml) body.put("htmlContent", html);
         else body.put("textContent", html);
 
-        if (attachment != null) {
-            try {
-                String b64 = Base64.getEncoder().encodeToString(Files.readAllBytes(attachment));
-                body.put("attachment", List.of(Map.of("content", b64, "name", attachmentName)));
-            } catch (Exception e) {
-                log.warn("Brevo: could not attach {} ({}) — sending without attachment", attachmentName, e.getMessage());
-            }
+        if (attachment != null && attachment.length > 0) {
+            String b64 = Base64.getEncoder().encodeToString(attachment);
+            body.put("attachment", List.of(Map.of("content", b64, "name", attachmentName)));
         }
 
         try {

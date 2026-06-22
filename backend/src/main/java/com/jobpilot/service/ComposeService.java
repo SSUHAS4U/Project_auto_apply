@@ -7,7 +7,6 @@ import com.jobpilot.domain.Profile;
 import com.jobpilot.service.ai.AiService;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Map;
@@ -36,17 +35,15 @@ public class ComposeService {
 
     private final AiService ai;
     private final ProfileService profileService;
-    private final ResumeStorageService resume;
     private final MailService mail;
     private final SettingsService settings;
     private final JobPilotProperties props;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public ComposeService(AiService ai, ProfileService profileService, ResumeStorageService resume,
+    public ComposeService(AiService ai, ProfileService profileService,
                           MailService mail, SettingsService settings, JobPilotProperties props) {
         this.ai = ai;
         this.profileService = profileService;
-        this.resume = resume;
         this.mail = mail;
         this.settings = settings;
         this.props = props;
@@ -152,16 +149,16 @@ public class ComposeService {
         String subj = (subject == null || subject.isBlank())
                 ? "Application — " + nz(p.getFullName()) : subject;
 
-        if (attachResume && resume.exists(p.getResumePath())) {
-            Path att = resume.resolve(p.getResumePath());
+        byte[] resumeBytes = p.getResumeData();
+        boolean hasResume = attachResume && resumeBytes != null && resumeBytes.length > 0;
+        if (hasResume) {
             String name = p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename();
-            mail.sendWithAttachment(to, subj, body.toString(), att, name);
+            mail.sendWithAttachmentBytes(to, subj, body.toString(), resumeBytes, name);
         } else {
-            mail.sendWithAttachment(to, subj, body.toString(), null, null);
+            mail.sendWithAttachmentBytes(to, subj, body.toString(), null, null);
         }
         incrementMail();
-        return Map.of("sentTo", to, "subject", subj, "resumeAttached",
-                attachResume && resume.exists(p.getResumePath()));
+        return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume);
     }
 
     private void enforceMailLimit() {

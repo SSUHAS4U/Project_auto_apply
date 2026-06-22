@@ -154,6 +154,7 @@ export const api = {
   // Ingest metrics — summary is for everyone (top of board); detailed is admin-only.
   ingestSummary: () => req<IngestSummary>('/api/metrics/ingest'),
   ingestMetrics: () => req<IngestMetrics>('/api/ops/ingest'),
+  testEmail: (to?: string) => req<{ ok: boolean; sentTo?: string; error?: string }>('/api/ops/test-email', { method: 'POST', body: JSON.stringify({ to: to ?? '' }) }),
 
   // Saved autofill answers (Q&A bank) — the extension writes these; manage them here.
   qaList: () => req<QaPair[]>('/api/assist/qa'),

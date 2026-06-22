@@ -56,6 +56,32 @@ public class MailService {
         }
     }
 
+    /** Send with an in-memory attachment (resume bytes live in the DB, not on disk). */
+    public void sendWithAttachmentBytes(String to, String subject, String textBody,
+                                        byte[] attachment, String attachmentName) {
+        if (brevo.isConfigured()) {
+            brevo.sendBytes(to, subject, textBody, false, attachment, attachmentName);
+            return;
+        }
+        try {
+            log.info("Sending email (attachment bytes) to={} subject='{}'", to, subject);
+            MimeMessage msg = sender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
+            helper.setFrom(from());
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(textBody, false);
+            if (attachment != null && attachment.length > 0) {
+                helper.addAttachment(attachmentName, new org.springframework.core.io.ByteArrayResource(attachment));
+            }
+            sender.send(msg);
+            log.info("Email sent successfully to={}", to);
+        } catch (Exception e) {
+            log.error("Failed to send email to={} from={}: {}", to, from(), e.getMessage(), e);
+            throw new IllegalStateException("failed to send email to " + to + ": " + e.getMessage(), e);
+        }
+    }
+
     public void sendHtml(String to, String subject, String htmlBody) {
         if (brevo.isConfigured()) {
             brevo.send(to, subject, htmlBody, true, null, null);
