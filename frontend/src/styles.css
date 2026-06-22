@@ -380,9 +380,15 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .chat-input .input:focus { border: none; }
 .ai-suggest-btn { font-size: 11px; padding: 3px 8px; }
 
+/* Responsive show/hide helpers (desktop table vs mobile cards). */
+.only-mobile { display: none; }
+.only-desktop { display: block; }
+
 @media (max-width: 860px) {
   .grid2, .grid3 { grid-template-columns: 1fr; }
   .app { grid-template-columns: 1fr; }
+  .only-desktop { display: none !important; }
+  .only-mobile { display: grid !important; grid-template-columns: 1fr; }
 
   /* Sticky top bar */
   .topbar {
@@ -408,6 +414,9 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .board { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
   .modal { width: 100%; max-height: 92dvh; }
+  .modal-foot { flex-wrap: wrap; }
+  .modal-foot .btn { flex: 1 1 auto; justify-content: center; min-width: 0; }
+  .cell-actions { flex-wrap: wrap; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar .input, .toolbar .select { width: 100%; }
   .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }

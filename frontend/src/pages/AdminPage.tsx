@@ -57,7 +57,7 @@ export function AdminPage() {
       {loading ? <div className="empty"><span className="spinner" /></div>
         : users.length === 0 ? <div className="card card-pad empty"><div className="big">👤</div>No users found.</div>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 14 }}>
             {users.map((u) => (
               <div key={u.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -79,10 +79,16 @@ export function AdminPage() {
 
                 <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 6 }}>
                   <button className="btn btn-sm" onClick={() => openView(u)}>👁 View</button>
-                  {u.isAdmin
-                    ? <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'USER')}>Revoke admin</button>
-                    : <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'ADMIN')}>Grant admin</button>}
-                  <button className="btn btn-ghost btn-sm" disabled={busy === u.id} onClick={() => remove(u)} style={{ color: 'var(--danger,#ef4444)' }}>Delete</button>
+                  {u.owner ? (
+                    <span className="chip" title="The owner account is protected">🔒 owner</span>
+                  ) : (
+                    <>
+                      {u.isAdmin
+                        ? <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'USER')}>Revoke admin</button>
+                        : <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'ADMIN')}>Grant admin</button>}
+                      <button className="btn btn-ghost btn-sm" disabled={busy === u.id} onClick={() => remove(u)} style={{ color: 'var(--danger,#ef4444)' }}>Delete</button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

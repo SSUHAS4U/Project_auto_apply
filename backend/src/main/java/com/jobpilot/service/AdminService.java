@@ -19,13 +19,21 @@ public class AdminService {
     private final ApplicationRepository applications;
     private final SavedJobRepository savedJobs;
     private final ProfileRepository profiles;
+    private final com.jobpilot.config.JobPilotProperties props;
 
     public AdminService(AppUserRepository users, ApplicationRepository applications,
-                        SavedJobRepository savedJobs, ProfileRepository profiles) {
+                        SavedJobRepository savedJobs, ProfileRepository profiles,
+                        com.jobpilot.config.JobPilotProperties props) {
         this.users = users;
         this.applications = applications;
         this.savedJobs = savedJobs;
         this.profiles = profiles;
+        this.props = props;
+    }
+
+    private boolean isOwner(String email) {
+        String admin = props.getAdminEmail();
+        return admin != null && !admin.isBlank() && admin.trim().equalsIgnoreCase(email);
     }
 
     /** Full detail for the admin "view user" panel: account + profile snapshot + counts. */
@@ -60,6 +68,9 @@ public class AdminService {
         }
         AppUser target = users.findById(targetId)
                 .orElseThrow(() -> new NotFoundException("user not found"));
+        if (isOwner(target.getEmail())) {
+            throw new IllegalStateException("The owner account can't be deleted.");
+        }
         users.delete(target); // child rows (profile/application/saved_job/notification/qa_pair) cascade
     }
 
@@ -75,6 +86,9 @@ public class AdminService {
         }
         AppUser u = users.findById(targetId)
                 .orElseThrow(() -> new NotFoundException("user not found"));
+        if (isOwner(u.getEmail()) && r.equals("USER")) {
+            throw new IllegalStateException("The owner account can't be demoted.");
+        }
         u.setRole(r);
         users.save(u);
         return toDto(u);
@@ -87,6 +101,7 @@ public class AdminService {
         m.put("fullName", u.getFullName() == null ? "" : u.getFullName());
         m.put("role", u.getRole() == null ? "USER" : u.getRole());
         m.put("isAdmin", u.isAdmin());
+        m.put("owner", isOwner(u.getEmail()));
         m.put("createdAt", u.getCreatedAt() == null ? null : u.getCreatedAt().toString());
         m.put("applications", applications.countByUserId(u.getId()));
         m.put("savedJobs", savedJobs.countByUserId(u.getId()));

@@ -205,7 +205,7 @@ export type DocItem = { id: string; name: string; type: string; filename: string
 
 export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
 export type AdminUser = {
-  id: string; email: string; fullName: string; role: string; isAdmin: boolean;
+  id: string; email: string; fullName: string; role: string; isAdmin: boolean; owner?: boolean;
   createdAt?: string; applications: number; savedJobs: number;
 };
 export type AdminUserDetail = AdminUser & {

@@ -66,44 +66,75 @@ export function ApplicationsPage() {
         : rows.length === 0 ? (
           <div className="card card-pad empty"><div className="big">📋</div>No applications in this view. Track a job from the Jobs or Daily picks page.</div>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Role</th><th>Location</th><th>Match</th><th>Apply</th>
-                  <th>Status</th><th>Method</th><th>Applied</th><th>Updated</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => (
-                  <tr key={a.id}>
-                    <td>
-                      <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setSelected(a)}>{title(a)}</div>
-                      <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
-                    </td>
-                    <td className="muted">{a.job?.location ?? '—'}</td>
-                    <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
-                    <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
-                    <td>
-                      <select className="status-pill" value={a.status} onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
-                        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="muted">{a.method ?? '—'}</td>
-                    <td className="muted">{a.appliedAt ? fmtDate(a.appliedAt) : '—'}</td>
-                    <td className="muted">{fmtDate(a.updatedAt)}</td>
-                    <td>
-                      <div className="cell-actions">
-                        <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
-                        {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗</a>}
-                      </div>
-                    </td>
+          <>
+            {/* Desktop: table */}
+            <div className="table-wrap only-desktop">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Role</th><th>Location</th><th>Match</th><th>Apply</th>
+                    <th>Status</th><th>Method</th><th>Applied</th><th>Updated</th><th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setSelected(a)}>{title(a)}</div>
+                        <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
+                      </td>
+                      <td className="muted">{a.job?.location ?? '—'}</td>
+                      <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
+                      <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
+                      <td>
+                        <select className="status-pill" value={a.status} onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
+                          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="muted">{a.method ?? '—'}</td>
+                      <td className="muted">{a.appliedAt ? fmtDate(a.appliedAt) : '—'}</td>
+                      <td className="muted">{fmtDate(a.updatedAt)}</td>
+                      <td>
+                        <div className="cell-actions">
+                          <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
+                          {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗</a>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: cards */}
+            <div className="only-mobile" style={{ gap: 12 }}>
+              {rows.map((a) => (
+                <div key={a.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="job-title" onClick={() => setSelected(a)} style={{ cursor: 'pointer' }}>{title(a)}</div>
+                      <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
+                    </div>
+                    {typeof a.job?.matchScore === 'number' && <span className="chip">{a.job.matchScore}</span>}
+                  </div>
+                  <div className="row" style={{ gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--muted)' }}>
+                    {a.job?.location && <span>📍 {a.job.location}</span>}
+                    {a.job?.applyType && <ApplyBadge type={a.job.applyType} />}
+                    {a.appliedAt && <span>✉ {fmtDate(a.appliedAt)}</span>}
+                    <span>↻ {fmtDate(a.updatedAt)}</span>
+                  </div>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <select className="status-pill" value={a.status} onChange={(e) => move(a, e.target.value as ApplicationStatus)}>
+                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
+                    {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗ Open</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
       {selected && <ApplicationModal app={selected} onClose={() => setSelected(null)} onChanged={load} />}
