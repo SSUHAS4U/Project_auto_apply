@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ApplicationStatus } from '../types';
 
@@ -13,10 +13,10 @@ const DOT: Record<ApplicationStatus, string> = {
 };
 
 const MENU_W = 180;
-const MENU_H = 280; // ~6 rows + padding
 
-/** Fully-themed status dropdown. The menu is portalled to <body> with fixed
- *  positioning so it floats above the table instead of being clipped by its overflow. */
+/** Fully-themed status dropdown. Menu is portalled to <body> (so the table overflow
+ *  never clips it) and opens DOWNWARD by default, flipping up only when it truly
+ *  doesn't fit below — measured from the real rendered height. */
 export function StatusSelect({ value, onChange }: { value: ApplicationStatus; onChange: (s: ApplicationStatus) => void }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
@@ -25,17 +25,25 @@ export function StatusSelect({ value, onChange }: { value: ApplicationStatus; on
 
   const openMenu = () => {
     const r = triggerRef.current!.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - r.bottom;
     const left = Math.max(8, Math.min(r.left, window.innerWidth - MENU_W - 10));
-    // If there isn't room below, open UPWARD anchored by the menu's BOTTOM edge (just above
-    // the trigger) so it hugs the clicked row regardless of how tall the menu actually is.
-    if (spaceBelow < MENU_H + 12 && r.top > spaceBelow) {
-      setPos({ left, bottom: Math.max(8, window.innerHeight - r.top + 6) });
-    } else {
-      setPos({ left, top: r.bottom + 6 });
-    }
+    setPos({ left, top: r.bottom + 6 }); // default: open downward
     setOpen(true);
   };
+
+  // After the menu renders, measure its real height and flip up only if needed.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const mh = menuRef.current.offsetHeight;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - MENU_W - 10));
+    const fitsBelow = r.bottom + 6 + mh <= window.innerHeight - 4;
+    const fitsAbove = r.top - 6 - mh >= 4;
+    if (!fitsBelow && fitsAbove) {
+      setPos({ left, bottom: window.innerHeight - r.top + 6 }); // flip up, hugging the trigger
+    } else {
+      setPos({ left, top: r.bottom + 6 }); // open down (room below, or no room above either)
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
