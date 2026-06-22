@@ -74,9 +74,13 @@ public class AssistantService {
 
         List<Map<String, Object>> collectedJobs = new ArrayList<>();
         String finalReply = null;
+        final int maxRounds = 4;
 
-        for (int round = 0; round < 4; round++) {
-            JsonNode aiMsg = groq.chat(messages, TOOLS);
+        for (int round = 0; round < maxRounds; round++) {
+            // On the final round, drop the tools so the model MUST answer in words
+            // (prevents an endless tool loop on greetings/chitchat).
+            boolean allowTools = round < maxRounds - 1;
+            JsonNode aiMsg = groq.chat(messages, allowTools ? TOOLS : null);
             JsonNode toolCalls = aiMsg.path("tool_calls");
             if (!toolCalls.isArray() || toolCalls.isEmpty()) {
                 finalReply = aiMsg.path("content").asText("");
@@ -102,7 +106,21 @@ public class AssistantService {
                 messages.add(toolMsg);
             }
         }
-        if (finalReply == null) finalReply = "Done — anything else?";
+
+        // Safety net: if the model only ever called tools (never produced text), force
+        // one tool-free completion so the user ALWAYS gets a real, natural reply.
+        if (finalReply == null || finalReply.isBlank()) {
+            try {
+                finalReply = groq.chat(messages, null).path("content").asText("");
+            } catch (Exception e) {
+                log.warn("forced final completion failed: {}", e.getMessage());
+            }
+        }
+        if (finalReply == null || finalReply.isBlank()) {
+            finalReply = collectedJobs.isEmpty()
+                    ? "I'm your job assistant — ask me to find roles (e.g. \"fresher Java jobs in India\") or to update your profile."
+                    : "Here are the closest matches I found. Want me to narrow it down?";
+        }
         return Map.of("reply", finalReply.strip(), "jobs", collectedJobs);
     }
 
@@ -204,22 +222,28 @@ public class AssistantService {
     // ---- Helpers ----------------------------------------------------------
     private String systemPrompt(Profile p, boolean withTools) {
         String base = """
-                You are JobPilot's assistant for %s — an early-career software engineer in India.
-                Be warm, concise, specific, and varied — never repeat a canned greeting; answer the actual question.
-                Candidate: %s, headline "%s", %s yrs experience, location: %s.
-                Skills: %s.
+                You are JobPilot's assistant — a friendly, conversational helper for %s, an
+                early-career software engineer in India. Talk like a helpful person: warm, concise,
+                specific. Answer the ACTUAL message. If they just say "hi"/"thanks"/ask a general
+                question, reply naturally in 1-2 sentences — do not dump a canned script.
+                Candidate context — name: %s, headline: "%s", experience: %s yrs, location: %s,
+                skills: %s.
                 """.formatted(nz(p.getFullName()), nz(p.getFullName()), nz(p.getHeadline()),
                 nz(p.getYearsExperience()), nz(p.getLocation()),
                 p.getSkills() == null ? "" : String.join(", ", p.getSkills()));
-        if (!withTools) return base + "\nRecommend the best matches from the provided jobs by title + company.";
+        if (!withTools) return base + "\nUse the provided jobs to recommend the best matches by title + company when relevant.";
         return base + """
 
-                You have tools:
-                - search_jobs: find relevant tech roles from their database (prefer region india/remote, fresher-friendly).
-                - update_profile: change their details when asked (skills are ADDED to existing; keep CTC in their wording e.g. "9 LPA").
-                - get_profile / get_applications: read their current state.
-                Call a tool whenever it helps. After searching, summarise the 2-3 best matches and why.
-                Only state a profile change as done AFTER the update_profile tool returns updated:true.""";
+                You have tools — but use them ONLY when the message clearly needs them:
+                - search_jobs: ONLY when the user asks to find / search / show jobs.
+                - update_profile: ONLY when the user asks to change/add/set something on their profile
+                  (skills are ADDED to existing; keep CTC in their words, e.g. "9 LPA").
+                - get_profile / get_applications: ONLY when they ask about their own profile/applications.
+
+                For greetings, thanks, or general chat, DO NOT call any tool — just reply naturally.
+                After a tool runs, ALWAYS write a natural-language reply: summarise the 2-3 best job
+                matches (title, company, why) or confirm exactly what changed. Never reply empty, and
+                never claim a profile change is done until update_profile returns updated:true.""";
     }
 
     private Map<String, Object> profileSummary(Profile p) {
