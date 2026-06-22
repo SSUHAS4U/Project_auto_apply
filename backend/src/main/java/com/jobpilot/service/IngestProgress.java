@@ -25,6 +25,7 @@ public class IngestProgress {
 
     private final SettingsService settings;
     private final JobRepository jobs;
+    private final com.jobpilot.config.JobPilotProperties props;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final AtomicReference<String> status = new AtomicReference<>("idle"); // idle|running|done|error
@@ -34,9 +35,31 @@ public class IngestProgress {
     private final Map<String, Integer> boards = new ConcurrentHashMap<>();
     private volatile int fetched, inserted, updated, sources, sourcesDone;
 
-    public IngestProgress(SettingsService settings, JobRepository jobs) {
+    public IngestProgress(SettingsService settings, JobRepository jobs,
+                          com.jobpilot.config.JobPilotProperties props) {
         this.settings = settings;
         this.jobs = jobs;
+        this.props = props;
+    }
+
+    /** Next scheduled automatic ingest (UTC) from the configured cron times. */
+    private String nextScheduledRun() {
+        try {
+            java.time.Instant now = java.time.Instant.now();
+            java.time.Instant best = null;
+            for (String t : props.getSchedule().getIngestTimesUtc().split(",")) {
+                String[] hm = t.trim().split(":");
+                int h = Integer.parseInt(hm[0]), m = Integer.parseInt(hm[1]);
+                java.time.ZonedDateTime today = now.atZone(java.time.ZoneOffset.UTC)
+                        .withHour(h).withMinute(m).withSecond(0).withNano(0);
+                java.time.Instant cand = today.toInstant();
+                if (!cand.isAfter(now)) cand = today.plusDays(1).toInstant();
+                if (best == null || cand.isBefore(best)) best = cand;
+            }
+            return best == null ? null : best.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void begin(int totalSources) {
@@ -107,6 +130,7 @@ public class IngestProgress {
         m.put("totalJobs", safeCount());
         m.put("memory", memory());
         m.put("lastRun", lastSummary());
+        m.put("nextRun", nextScheduledRun());
         return m;
     }
 
@@ -116,6 +140,7 @@ public class IngestProgress {
         m.put("running", "running".equals(status.get()));
         m.put("totalJobs", safeCount());
         m.put("lastRun", lastSummary());
+        m.put("nextRun", nextScheduledRun());
         return m;
     }
 

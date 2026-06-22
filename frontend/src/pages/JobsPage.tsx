@@ -4,6 +4,18 @@ import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 
+// Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
+function fmtNext(iso: string): string {
+  const d = new Date(iso);
+  const mins = Math.round((d.getTime() - Date.now()) / 60000);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (mins <= 0) return `due now`;
+  if (mins < 90) return `in ${mins}m (${time})`;
+  const hrs = Math.round(mins / 60);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? `in ${hrs}h (${time})` : `tomorrow ${time}`;
+}
+
 const FILTER_KEY = 'jobpilot_job_filters';
 function loadStoredFilters(): JobFilters {
   try {
@@ -164,6 +176,9 @@ export function JobsPage() {
             </span>
           ) : (
             <span><b>{summary.totalJobs.toLocaleString()}</b> jobs on the board · last ingest time will show after the next run</span>
+          )}
+          {summary.nextRun && (
+            <span className="faint" style={{ marginLeft: 'auto' }}>⏭ next auto-ingest {fmtNext(summary.nextRun)}</span>
           )}
           {summary.running && <span className="row" style={{ gap: 6, color: 'var(--accent)' }}><span className="spinner" /> ingest running…</span>}
         </div>
@@ -332,6 +347,9 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
               🕑 <b>Last completed ingest:</b> {fmtDate(m.lastRun.finishedAt)} —
               {' '}+{m.lastRun.inserted} new, {m.lastRun.updated} refreshed, {m.lastRun.fetched} scanned in {m.lastRun.durationSec}s.
             </div>
+          )}
+          {m.nextRun && (
+            <div className="faint" style={{ fontSize: 12.5 }}>⏭ Next automatic ingest: {fmtNext(m.nextRun)} ({fmtDate(m.nextRun)})</div>
           )}
 
           <div className="grid2" style={{ gap: 10 }}>

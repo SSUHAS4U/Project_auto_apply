@@ -191,13 +191,14 @@ export const api = {
 };
 
 export type LastRun = { finishedAt: string; inserted: number; updated: number; fetched: number; totalJobs: number; durationSec: number };
-export type IngestSummary = { running: boolean; totalJobs: number; lastRun: LastRun | null };
+export type IngestSummary = { running: boolean; totalJobs: number; lastRun: LastRun | null; nextRun?: string | null };
 export type IngestMetrics = {
   status: string; running: boolean; startedAt?: string; finishedAt?: string;
   fetched: number; inserted: number; updated: number; sources: number; sourcesDone: number;
   log: string[]; boards: { source: string; count: number }[]; totalJobs: number;
   memory: { usedMb: number; committedMb: number; maxMb: number; usedPct: number };
   lastRun: LastRun | null;
+  nextRun?: string | null;
 };
 
 export type DocItem = { id: string; name: string; type: string; filename: string; contentType?: string; sizeBytes?: number; createdAt?: string };
