@@ -426,7 +426,9 @@ tbody tr:hover { background: var(--bg-card-hover); }
 
 @media (max-width: 860px) {
   .grid2, .grid3 { grid-template-columns: 1fr; }
-  .app { grid-template-columns: 1fr; }
+  /* auto 1fr: the top bar keeps its natural height; main fills the rest. Without this
+     the grid stretches BOTH rows when the page is short, blowing up the header. */
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-content: start; }
   .only-desktop { display: none !important; }
   .only-mobile { display: grid !important; grid-template-columns: 1fr; }
 
