@@ -23,11 +23,18 @@ import java.util.stream.Collectors;
 public class AssistService {
 
     private static final String ANSWER_SYSTEM = """
-            You help a job candidate fill out an application form. Write a first-person
-            answer to the application question using ONLY the candidate's real background
-            below. Be specific, genuine and concise — 2 to 5 sentences unless the question
-            clearly needs more. Never invent employers, degrees or facts not given. No
-            placeholders, no markdown, no preamble — output ONLY the answer text.""";
+            You are a career coach helping a candidate answer job-application questions in the
+            BEST HONEST LIGHT. Write a confident first-person answer grounded in the candidate's
+            background below.
+            - For questions about a skill/tool the candidate may not have explicitly listed
+              (e.g. "describe your exposure to PyTorch", "experience with Kubernetes"), do NOT
+              say they have none. Give a constructive, basic-but-confident answer: connect their
+              real foundation (programming, CS fundamentals, related tools) to the topic and show
+              genuine eagerness and fast-learning. Claim FOUNDATIONAL / working familiarity — not
+              deep expertise — so it stays believable.
+            - Be specific, genuine and concise (2-5 sentences unless more is clearly needed).
+            - Don't fabricate specific employers, degrees, projects or year counts — keep it about
+              capability and approach. No placeholders, no markdown, no preamble — output ONLY the answer.""";
 
     private final QaPairRepository qaRepo;
     private final ProfileService profiles;
@@ -84,12 +91,17 @@ public class AssistService {
             opts.append(i + 1).append(". ").append(options.get(i)).append("\n");
         }
         String system = """
-                You help a candidate answer an application form. Choose the option(s) that
-                best fit the candidate's real background. Prefer truthful, eligibility-friendly
-                answers (e.g. willing to relocate / can start soon) when the profile doesn't
-                contradict them. For rating scales, pick a number that matches the candidate's
-                stated skills honestly. Reply with ONLY the option number(s); if multiple are
-                allowed and several apply, separate with commas. No words, just numbers.""";
+                You help a candidate answer multiple-choice / rating questions to PASS screening
+                while staying broadly truthful — like a career coach.
+                - For SKILL exposure / familiarity / "do you have knowledge of X" questions, prefer
+                  the AFFIRMATIVE option (Yes, or a mid-to-high rating). A software engineer can
+                  honestly claim basic working familiarity with common technologies and is a fast
+                  learner — avoid "No" / "None of the above" unless an option is clearly impossible.
+                - For rating scales (1-10), pick a solid mid-to-high number (around 6-8) reflecting
+                  transferable ability — never the lowest.
+                - For hard eligibility facts (location, relocation, start date, work authorization),
+                  stay honest and eligibility-friendly (e.g. willing to relocate / can start soon).
+                Reply with ONLY the option number(s); separate multiple with commas. Just numbers.""";
         String prompt = "Candidate background:\n" + profileContext(p)
                 + "\n\nQuestion: " + question.trim()
                 + "\n\nOptions:\n" + opts
@@ -167,8 +179,11 @@ public class AssistService {
                 - Answer to paste:{"action":"answer","value":"<concise, honest answer>"}
                 - Save a Q&A:     {"action":"save","question":"<question>","answer":"<answer>"}
                 - Plain reply:    {"action":"reply","message":"<short reply>"}
-                Use the profile for facts; never invent experience. For skill questions
-                ("Exposure to PyTorch?"), answer honestly based on the listed skills.""";
+                Use the profile for facts. Act as a career coach: present the candidate in the
+                best honest light. For skill questions ("Exposure to PyTorch?"), do NOT say "no" —
+                claim basic/foundational familiarity and eagerness to learn (a software engineer
+                can plausibly claim working familiarity with common tech). Never fabricate
+                employers, degrees or year counts.""";
         String prompt = "PROFILE:\n" + fullProfileContext(p)
                 + "\n\nFIELDS ON PAGE:\n" + (list.isBlank() ? "(none detected)" : list)
                 + "\nUSER INSTRUCTION: " + instruction.trim() + "\n\nJSON:";
