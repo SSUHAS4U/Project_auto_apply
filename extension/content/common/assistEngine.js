@@ -425,34 +425,66 @@
     || el.getAttribute('aria-autocomplete')
     || el.getAttribute('aria-haspopup') === 'listbox';
 
-  // AI-fill short factual inputs the synonym engine missed (CTC, college, coding-profile
-  // links, etc.) by sending each field's label to the backend, which maps it to the profile.
-  // Searches inside open Shadow DOM and drives custom typeahead/combobox inputs.
+  // Comprehensive AI fill: text inputs, native <select>, AND custom dropdowns the
+  // synonym engine can't touch. Sends each field's label to the backend (which maps it
+  // to the profile), then fills by control type. Searches inside open Shadow DOM.
   async function aiFillFields() {
     const smart = window.JobPilotSmart;
-    const all = smart ? smart.deepQueryAll('input') : [...document.querySelectorAll('input')];
+    const q = (sel) => (smart ? smart.deepQueryAll(sel) : [...document.querySelectorAll(sel)]);
     const candidates = [];
-    all.forEach((el) => {
+
+    // 1. text-like inputs + textareas
+    q('input, textarea').forEach((el) => {
       const type = (el.getAttribute('type') || 'text').toLowerCase();
-      if (!['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
+      if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
       if (el.disabled || el.readOnly || el.offsetParent === null) return;
       if ((el.value || '').trim()) return;
       const label = deriveQuestion(el);
-      if (label && label.length >= 3) candidates.push({ el, label });
+      if (label && label.length >= 2) candidates.push({ el, label, kind: (smart && (smart.isCustomDropdown(el) || isCombobox(el))) ? 'combo' : 'text' });
     });
+    // 2. native selects (still on default/empty option)
+    q('select').forEach((el) => {
+      if (el.disabled || el.offsetParent === null) return;
+      const cur = (el.options[el.selectedIndex]?.text || '').trim().toLowerCase();
+      if (cur && !/^(select|choose|—|-|please select)/.test(cur)) return;
+      const label = deriveQuestion(el);
+      if (label && label.length >= 2) candidates.push({ el, label, kind: 'select' });
+    });
+    // 3. custom dropdown triggers (div/button widgets)
+    if (smart) {
+      q('[role="combobox"], [role="listbox"], [aria-haspopup="listbox"], [class*="select__control" i], [class*="dropdown" i][role]').forEach((el) => {
+        if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.offsetParent === null) return;
+        if (!smart.isCustomDropdown(el)) return;
+        const label = deriveQuestion(el);
+        if (label && label.length >= 2 && !candidates.some((c) => c.el === el)) candidates.push({ el, label, kind: 'custom' });
+      });
+    }
+
     if (!candidates.length) return { filled: 0, total: 0 };
     const labels = [...new Set(candidates.map((c) => c.label))];
     const r = await msg('ASSIST_AUTOFILL', { fields: labels });
     const answers = (r && r.answers) || {};
+
     let filled = 0;
-    for (const { el, label } of candidates) {
+    for (const { el, label, kind } of candidates) {
       const v = answers[label];
-      if (!v || !String(v).trim() || (el.value || '').trim()) continue;
-      if (smart && isCombobox(el)) {
-        if (await smart.fillTypeahead(el, String(v))) filled++;
-      } else {
-        writeValue(el, String(v)); filled++;
-      }
+      if (!v || !String(v).trim()) continue;
+      try {
+        if (kind === 'select') {
+          const want = norm(v);
+          const opt = [...el.options].find((o) => norm(o.text) === want) || [...el.options].find((o) => norm(o.text).includes(want));
+          if (opt) { el.value = opt.value; el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(el); filled++; }
+        } else if (kind === 'custom') {
+          if (await smart.fillCustomDropdown(el, String(v))) { window.JobPilot.highlight(el); filled++; }
+        } else if (kind === 'combo') {
+          if ((el.value || '').trim()) continue;
+          if (await smart.fillTypeahead(el, String(v))) { window.JobPilot.highlight(el); filled++; }
+        } else {
+          if ((el.value || '').trim()) continue;
+          writeValue(el, String(v)); filled++;
+        }
+        if (smart) await smart.sleep(120);
+      } catch (_) { /* keep going */ }
     }
     return { filled, total: candidates.length };
   }
@@ -533,10 +565,21 @@
     return [...new Set(out)];
   }
 
+  function allTargets() {
+    const smart = window.JobPilotSmart;
+    const sel = 'input, textarea, select, [role="combobox"], [role="listbox"], [aria-haspopup="listbox"], [class*="select__control" i]';
+    const els = smart ? smart.deepQueryAll(sel) : [...document.querySelectorAll(sel)];
+    return els.filter((el) => {
+      const t = (el.getAttribute('type') || '').toLowerCase();
+      if (['hidden', 'submit', 'button', 'image', 'reset', 'file'].includes(t)) return false;
+      return el.offsetParent !== null && !el.disabled;
+    });
+  }
+
   async function fillFieldByLabel(label, value) {
     const want = norm(label);
     let best = null, bestScore = 0;
-    allFillable().forEach((el) => {
+    allTargets().forEach((el) => {
       const l = norm(deriveQuestion(el));
       if (!l) return;
       let score = 0;
@@ -548,8 +591,10 @@
     if (!best) return { ok: false, error: `No field matching "${label}" on this page.` };
     const smart = window.JobPilotSmart;
     if (best.tagName === 'SELECT') {
-      const opt = [...best.options].find((o) => norm(o.text).includes(want) || norm(o.text) === norm(value));
+      const opt = [...best.options].find((o) => norm(o.text) === norm(value)) || [...best.options].find((o) => norm(o.text).includes(norm(value)));
       if (opt) { best.value = opt.value; best.dispatchEvent(new Event('change', { bubbles: true })); }
+    } else if (smart && smart.isCustomDropdown(best)) {
+      await smart.fillCustomDropdown(best, String(value));
     } else if (smart && isCombobox(best)) {
       await smart.fillTypeahead(best, String(value));
     } else {

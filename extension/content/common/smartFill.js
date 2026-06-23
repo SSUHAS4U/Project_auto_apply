@@ -96,6 +96,53 @@
     return true;
   }
 
+  // --- Drive a CUSTOM dropdown (div/button widget, not an <input> or <select>) ---
+  // Click to open → if a search box appears, type → wait for options → click the match.
+  async function fillCustomDropdown(trigger, value, opts = {}) {
+    const optionSel = opts.optionSelector
+      || '[role="option"], li[role="option"], [data-automation-id="promptOption"], .select__option, [class*="option" i][role], [class*="menu" i] li, [role="menuitem"]';
+    try { trigger.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+    trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    trigger.click();
+    trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    await sleep(160);
+
+    // Many widgets (react-select, Workday) reveal a search input once opened.
+    const search = [...document.querySelectorAll('input[role="combobox"], .select__input input, [role="dialog"] input, [role="listbox"] input, [aria-expanded="true"] input')]
+      .filter((i) => i.offsetParent !== null)[0];
+    if (search) { await typeInto(search, value, 45); await sleep(320); }
+
+    const options = await waitFor(() => {
+      const o = [...document.querySelectorAll(optionSel)].filter((x) => x.offsetParent !== null && norm(x.textContent));
+      return o.length ? o : null;
+    }, { timeout: opts.timeout || 3500 });
+    if (!options || !options.length) {
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return false;
+    }
+    const want = norm(value);
+    const target = options.find((o) => norm(o.textContent) === want)
+      || options.find((o) => norm(o.textContent).includes(want))
+      || options.find((o) => want.includes(norm(o.textContent)))
+      || options[0];
+    try { target.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    target.click();
+    await sleep(140);
+    return true;
+  }
+
+  // Is this element a custom dropdown trigger (not a plain input/select)?
+  function isCustomDropdown(el) {
+    const tag = el.tagName;
+    if (tag === 'SELECT' || (tag === 'INPUT' && !el.getAttribute('aria-haspopup'))) return false;
+    const role = el.getAttribute('role');
+    if (role === 'combobox' || role === 'listbox') return true;
+    if (el.getAttribute('aria-haspopup') === 'listbox' || el.getAttribute('aria-haspopup') === 'menu') return true;
+    const cls = (el.className && el.className.toString ? el.className.toString() : '');
+    return /select__control|dropdown__control|combobox|Select-control/i.test(cls);
+  }
+
   // --- ATS fingerprinting (strategy pattern) --------------------------------
   function detectAts() {
     const h = location.hostname;
@@ -111,5 +158,5 @@
     return 'generic';
   }
 
-  window.JobPilotSmart = { deepQueryAll, setValue, waitFor, typeInto, fillTypeahead, detectAts, sleep, norm };
+  window.JobPilotSmart = { deepQueryAll, setValue, waitFor, typeInto, fillTypeahead, fillCustomDropdown, isCustomDropdown, detectAts, sleep, norm };
 })();
