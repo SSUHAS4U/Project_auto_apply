@@ -16,7 +16,7 @@
     leetcode: ['leetcode', 'dsa profile', 'dsa coding', 'coding profile', 'competitive programming', 'codeforces', 'hackerrank', 'codechef', 'geeksforgeeks', 'gfg'],
     portfolio: ['portfolio', 'personal website', 'personal site', 'website url', 'website'],
     current_title: ['current title', 'current role', 'current designation', 'job title', 'present role'],
-    current_company: ['current company', 'current employer', 'present company', 'organization', 'employer'],
+    current_company: ['current company', 'company name', 'current employer', 'present company', 'organization', 'employer', 'company'],
     years_experience: ['years of experience', 'total experience', 'work experience', 'experience in years', 'years exp'],
     current_ctc: ['current ctc', 'present ctc', 'current salary', 'present salary', 'current compensation', 'current package', 'present package'],
     expected_ctc: ['expected ctc', 'expected salary', 'salary expectation', 'expected compensation', 'desired salary', 'expected package'],
@@ -109,29 +109,45 @@
       const ref = document.getElementById(labelledby);
       if (ref) return norm(ref.textContent);
     }
-    // 3. placeholder / name / nearby text
+    // 3. a label/legend inside the field's OWN small container — covers the very common
+    //    <div><label>Current Company</label><input></div> pattern (label as a sibling).
+    const box = el.closest('div, li, fieldset, .field, .form-group, p, section');
+    if (box && box.querySelectorAll('input, select, textarea').length <= 2) {
+      const lbl = box.querySelector('label, legend, [class*="label"], [class*="Label"]');
+      if (lbl) { const t = norm(lbl.textContent); if (t.length > 1 && t.length < 90) return t; }
+    }
+    // 4. previous-sibling text (a bare label/span before the input)
+    const prev = el.previousElementSibling;
+    if (prev && prev.textContent && prev.textContent.length < 80) {
+      const t = norm(prev.textContent); if (t.length > 1) return t;
+    }
+    // 5. placeholder / name (least reliable — used only as a last resort)
     if (el.placeholder) return norm(el.placeholder);
     if (el.name) return norm(el.name);
-    const prev = el.previousElementSibling;
-    if (prev && prev.textContent && prev.textContent.length < 80) return norm(prev.textContent);
     return '';
   }
 
-  // Match a label string to a profile key + value.
+  // Match a label to the BEST profile key — the longest/most-specific synonym wins, so
+  // "College/University Name" maps to college (via "university name") instead of full_name
+  // (via the greedy "name"), and "Current Company" maps to current_company.
   function match(label, profile) {
     if (!label) return null;
-    // Try field_map custom keys first (exact key contained in label).
+    let best = null, bestLen = 0;
+    // Custom field_map answers take priority, but still by longest match.
     const fieldMap = (profile && profile.field_map) || {};
     for (const k of Object.keys(fieldMap)) {
-      if (label.includes(norm(k))) return { key: k, value: fieldMap[k] };
+      const nk = norm(k);
+      if (nk && fieldMap[k] && label.includes(nk) && nk.length > bestLen) { best = { key: k, value: fieldMap[k] }; bestLen = nk.length; }
     }
     for (const [key, words] of Object.entries(SYNONYMS)) {
-      if (words.some((w) => label.includes(w))) {
-        const value = valueFor(key, profile);
-        if (value) return { key, value };
+      for (const w of words) {
+        if (w.length > bestLen && label.includes(w)) {
+          const value = valueFor(key, profile);
+          if (value) { best = { key, value }; bestLen = w.length; }
+        }
       }
     }
-    return null;
+    return best;
   }
 
   // Set value in a way React/Angular/Vue notice (native setter + events).
