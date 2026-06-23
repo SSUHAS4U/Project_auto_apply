@@ -307,14 +307,108 @@
     window.JobPilot.highlight(el);
   }
 
+  const cleanQ = (s) => (s || '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').replace(/\s*required\s*$/i, '').trim();
+
+  // Find the shared question text for a radio/checkbox group.
+  function groupQuestion(group) {
+    const first = group[0];
+    const fs = first.closest('fieldset');
+    if (fs) { const lg = fs.querySelector('legend'); if (lg && cleanQ(lg.textContent).length > 2) return cleanQ(lg.textContent); }
+    const optionTexts = new Set(group.map((g) => norm(nativeLabel(g))));
+    const box = first.closest('div, li, p, section, fieldset');
+    if (box) {
+      const heads = box.querySelectorAll('[role="heading"], h1, h2, h3, h4, legend, label, [class*="question" i], [class*="title" i], [class*="label" i]');
+      for (const h of heads) {
+        const t = cleanQ(h.textContent);
+        if (t.length > 3 && !optionTexts.has(norm(t))) return t;
+      }
+      let prev = box.previousElementSibling;
+      for (let i = 0; prev && i < 2; i++, prev = prev.previousElementSibling) {
+        const t = cleanQ(prev.textContent);
+        if (t.length > 3 && t.length < 200 && !optionTexts.has(norm(t))) return t;
+      }
+    }
+    return deriveQuestion(first);
+  }
+
   // AI-answer/choose every question on the page (popup "AI-answer questions").
   async function autoAnswerAll() {
-    const units = questionUnits();
-    let done = 0;
-    for (const u of units) {
-      try { if (await answerUnit(u)) done++; } catch (_) { /* skip and continue */ }
+    const items = [...document.querySelectorAll('[role="listitem"]')].filter((el) => el.offsetParent !== null);
+    if (items.length) { // Google / MS Forms
+      let done = 0;
+      for (const el of items) { try { if (await answerUnit({ container: el, q: unitQuestion(el) })) done++; } catch (_) { /* skip */ } }
+      return { done, total: items.length };
     }
-    return { done, total: units.length };
+    return answerGenericForm();
+  }
+
+  // Generic ATS/HTML forms: handle radio groups, checkbox groups, selects and open-ended
+  // text questions directly (no fragile container guessing).
+  async function answerGenericForm() {
+    const smart = window.JobPilotSmart;
+    const q = (sel) => (smart ? smart.deepQueryAll(sel) : [...document.querySelectorAll(sel)]);
+    const vis = (el) => el.offsetParent !== null && !el.disabled;
+    let done = 0, total = 0;
+
+    // 1. radio groups (single choice)
+    const radios = q('input[type="radio"]').filter(vis);
+    const rGroups = {};
+    radios.forEach((r, i) => { (rGroups[r.name || '__r' + i] ||= []).push(r); });
+    for (const k of Object.keys(rGroups)) {
+      const group = rGroups[k]; if (group.length < 2) continue;
+      const question = groupQuestion(group);
+      const options = group.map(nativeLabel).filter(Boolean);
+      if (!question || options.length < 2) continue;
+      total++;
+      const r = await msg('ASSIST_CHOOSE', { question, options, multi: false });
+      const pick = norm((r.selected || [])[0] || '');
+      const el = group.find((g) => norm(nativeLabel(g)) === pick) || (pick && group.find((g) => norm(nativeLabel(g)).includes(pick)));
+      if (el) { clickInput(el); window.JobPilot.highlight(el); done++; }
+    }
+
+    // 2. checkbox groups (multi)
+    const checks = q('input[type="checkbox"]').filter((c) => vis(c) && c.name);
+    const cGroups = {};
+    checks.forEach((c) => { (cGroups[c.name] ||= []).push(c); });
+    for (const k of Object.keys(cGroups)) {
+      const group = cGroups[k]; if (group.length < 2) continue;
+      const question = groupQuestion(group);
+      const options = group.map(nativeLabel).filter(Boolean);
+      if (!question) continue;
+      total++;
+      const r = await msg('ASSIST_CHOOSE', { question, options, multi: true });
+      const want = (r.selected || []).map(norm);
+      let any = false;
+      group.forEach((g) => { if (want.includes(norm(nativeLabel(g))) && !g.checked) { clickInput(g); window.JobPilot.highlight(g); any = true; } });
+      if (any) done++;
+    }
+
+    // 3. native selects (Yes/No, ratings, etc.)
+    for (const sel of q('select').filter(vis)) {
+      const cur = (sel.options[sel.selectedIndex]?.text || '').trim().toLowerCase();
+      if (cur && !/^(select|choose|—|-|please)/.test(cur)) continue;
+      const question = deriveQuestion(sel);
+      const options = [...sel.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
+      if (!question || options.length < 2) continue;
+      total++;
+      const r = await msg('ASSIST_CHOOSE', { question, options, multi: false });
+      const pick = norm((r.selected || [])[0] || '');
+      const opt = [...sel.options].find((o) => norm(o.text) === pick) || (pick && [...sel.options].find((o) => norm(o.text).includes(pick)));
+      if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(sel); done++; }
+    }
+
+    // 4. open-ended text / paragraph questions
+    for (const el of q('textarea, input[type="text"], input:not([type]), [contenteditable="true"]').filter((e) => vis(e) && !e.readOnly)) {
+      if (readValue(el).trim()) continue;
+      const question = deriveQuestion(el);
+      const isPara = el.tagName === 'TEXTAREA' || el.getAttribute('contenteditable') === 'true';
+      if (!question || (!isPara && !looksLikeQuestion(question))) continue;
+      total++;
+      const r = await msg('ASSIST_ANSWER', { question });
+      if (r && r.answer) { writeValue(el, r.answer); window.JobPilot.highlight(el); done++; }
+    }
+
+    return { done, total };
   }
 
   // ---- cover letter: generate → minimal PDF → attach to file input --------
