@@ -145,13 +145,14 @@ public class ComposeService {
         enforceMailLimit();
         Profile p = profileService.get();
 
-        // Send mode is controlled by which parts the caller passes (email only / cover only / both).
+        // The email body is the cold email; the cover letter rides along as a PDF attachment
+        // (not pasted into the body), next to the resume PDF — like a real application.
         String email = coldEmail == null ? "" : coldEmail.strip();
         String cover = coverLetter == null ? "" : coverLetter.strip();
         StringBuilder body = new StringBuilder();
-        if (!email.isBlank() && !cover.isBlank()) body.append(email).append("\n\n---\n\n").append(cover);
-        else if (!email.isBlank()) body.append(email);
-        else body.append(cover);
+        if (!email.isBlank()) body.append(email);
+        else body.append("Dear Hiring Team,\n\nPlease find my cover letter and resume attached for your consideration. "
+                + "I'd welcome the chance to discuss how I can contribute.");
         body.append("\n\n").append(nz(p.getFullName()));
         if (notBlank(p.getEmail())) body.append("\n").append(p.getEmail());
         if (notBlank(p.getPhone())) body.append("\n").append(p.getPhone());
@@ -159,17 +160,41 @@ public class ComposeService {
         String subj = (subject == null || subject.isBlank())
                 ? "Application — " + nz(p.getFullName()) : subject;
 
+        java.util.List<MailAttachment> attachments = new java.util.ArrayList<>();
+        boolean coverAttached = false;
+        if (!cover.isBlank()) {
+            attachments.add(new MailAttachment("CoverLetter_" + safeName(p.getFullName()) + ".pdf",
+                    PdfUtil.textToPdf(coverDocument(p, cover))));
+            coverAttached = true;
+        }
         byte[] resumeBytes = p.getResumeData();
         boolean hasResume = attachResume && resumeBytes != null && resumeBytes.length > 0;
-        String bcc = p.getEmail(); // keep a copy in the sender's own inbox
         if (hasResume) {
-            String name = p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename();
-            mail.sendWithAttachmentBytes(to, subj, body.toString(), resumeBytes, name, bcc);
-        } else {
-            mail.sendWithAttachmentBytes(to, subj, body.toString(), null, null, bcc);
+            attachments.add(new MailAttachment(
+                    p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename(), resumeBytes));
         }
+
+        String bcc = p.getEmail(); // keep a copy in the sender's own inbox
+        mail.sendWithAttachments(to, subj, body.toString(), attachments, bcc);
         incrementMail();
-        return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume);
+        return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume, "coverLetterAttached", coverAttached);
+    }
+
+    /** Build a printable cover-letter document (letterhead + date + body) for the PDF. */
+    private String coverDocument(Profile p, String cover) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(nz(p.getFullName())).append("\n");
+        String contact = (notBlank(p.getEmail()) ? p.getEmail() : "")
+                + (notBlank(p.getPhone()) ? (notBlank(p.getEmail()) ? "  |  " : "") + p.getPhone() : "");
+        if (!contact.isBlank()) sb.append(contact).append("\n");
+        sb.append(LocalDate.now(ZoneOffset.UTC)).append("\n\n");
+        sb.append(cover.replace("[Your Name]", nz(p.getFullName())).replace("[Name]", nz(p.getFullName())));
+        return sb.toString();
+    }
+
+    private static String safeName(String s) {
+        String n = (s == null ? "JobPilot" : s).replaceAll("[^A-Za-z0-9]", "");
+        return n.isBlank() ? "JobPilot" : n;
     }
 
     private void enforceMailLimit() {

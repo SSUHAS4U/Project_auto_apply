@@ -419,14 +419,52 @@
   function pageCompany() {
     const og = document.querySelector('meta[property="og:site_name"]')?.content;
     if (og) return og.trim();
+    const ats = document.querySelector('[data-automation-id="company"], [class*="company" i]')?.textContent;
+    if (ats && ats.trim().length < 60) return ats.trim();
     return (location.hostname.replace(/^www\./, '').split('.')[0] || 'the company');
   }
+  // The job description text on the page, so the AI can tailor the letter.
+  function extractJobText() {
+    const main = document.querySelector('[class*="job-description" i], [class*="description" i], [data-automation-id="jobPostingDescription"], main, article, [role="main"]') || document.body;
+    return (main.innerText || main.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 2800);
+  }
 
-  function findFileInput() {
-    const inputs = [...document.querySelectorAll('input[type="file"]')].filter((i) => i.offsetParent !== null);
+  // All file inputs incl. hidden ones (upload widgets often hide the real <input>
+  // behind a styled button) and those inside open shadow roots.
+  function allFileInputs() {
+    const smart = window.JobPilotSmart;
+    const els = smart ? smart.deepQueryAll('input[type="file"]') : [...document.querySelectorAll('input[type="file"]')];
+    return els.filter((i) => !i.disabled);
+  }
+
+  // Text around a file input — name/id/aria, its derived label, and its wrapper text.
+  function fileInputContext(i) {
+    let txt = `${i.name || ''} ${i.id || ''} ${i.getAttribute('aria-label') || ''} ${deriveQuestion(i) || ''}`;
+    const box = i.closest('div, section, fieldset, li, form');
+    if (box) txt += ' ' + (box.textContent || '').slice(0, 140);
+    return txt.toLowerCase();
+  }
+
+  // Pick the right upload slot for a kind ('resume' | 'cover'), avoiding the other kind's slot.
+  function findFileInput(kind) {
+    const inputs = allFileInputs();
     if (!inputs.length) return null;
-    const pref = inputs.find((i) => /cover|letter/i.test((i.name || '') + (i.id || '') + (deriveQuestion(i) || '')));
-    return pref || inputs[0];
+    const want = kind === 'cover' ? /cover|letter|motivation/i
+      : kind === 'resume' ? /resume|cv|curriculum|biodata|résumé/i : null;
+    if (want) { const m = inputs.find((i) => want.test(fileInputContext(i))); if (m) return m; }
+    const other = kind === 'cover' ? /resume|cv|curriculum/i : kind === 'resume' ? /cover|letter|motivation/i : null;
+    const neutral = other ? inputs.find((i) => !other.test(fileInputContext(i))) : null;
+    return neutral || inputs[0];
+  }
+
+  function attachFileToInput(input, blob, name) {
+    const file = new File([blob], name, { type: 'application/pdf' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    try { window.JobPilot.highlight(input.offsetParent ? input : (input.closest('div, label') || input)); } catch (_) { /* ignore */ }
   }
 
   // Tiny dependency-free text PDF (Helvetica, wrapped). Good enough for uploads.
@@ -466,27 +504,22 @@
   }
 
   async function attachCoverLetter() {
-    const input = findFileInput();
     const role = pageRole();
     const company = pageCompany();
-    const r = await msg('GEN_COVER_LETTER', { company, role, jobText: pageRole() });
+    const r = await msg('GEN_COVER_LETTER', { company, role, jobText: extractJobText() });
+    if (!r || !r.text) throw new Error('Could not generate a cover letter');
     const blob = textToPdf(r.text);
     const name = `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.pdf`;
+    const input = findFileInput('cover');
     if (!input) {
       // No upload field on the page — download it so the user can attach manually.
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = name; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      return { attached: false, downloaded: true };
+      return { attached: false, downloaded: true, role, company };
     }
-    const file = new File([blob], name, { type: 'application/pdf' });
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    input.files = dt.files;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    window.JobPilot.highlight(input);
-    return { attached: true };
+    attachFileToInput(input, blob, name);
+    return { attached: true, role, company };
   }
 
   // ---- bootstrap ----------------------------------------------------------
@@ -587,17 +620,12 @@
   async function uploadResume() {
     const r = await msg('GET_RESUME');
     if (!r || !r.hasResume) throw new Error('No resume on file — upload one in your JobPilot profile first');
-    const inputs = [...document.querySelectorAll('input[type="file"]')].filter((i) => i.offsetParent !== null);
-    if (!inputs.length) throw new Error('No file-upload field found on this page');
-    const pref = inputs.find((i) => /resume|cv|curriculum/i.test((i.name || '') + (i.id || '') + (deriveQuestion(i) || ''))) || inputs[0];
+    const input = findFileInput('resume');
+    if (!input) throw new Error('No file-upload field found on this page');
     const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0));
-    const file = new File([new Blob([bytes], { type: 'application/pdf' })], r.filename || 'resume.pdf', { type: 'application/pdf' });
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    pref.files = dt.files;
-    pref.dispatchEvent(new Event('input', { bubbles: true }));
-    pref.dispatchEvent(new Event('change', { bubbles: true }));
-    window.JobPilot.highlight(pref);
+    const type = r.contentType || 'application/pdf';
+    const blob = new Blob([bytes], { type });
+    attachFileToInput(input, blob, r.filename || 'resume.pdf');
     return { attached: true, filename: r.filename };
   }
 

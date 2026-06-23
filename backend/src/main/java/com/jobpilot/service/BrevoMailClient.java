@@ -63,6 +63,36 @@ public class BrevoMailClient {
             body.put("attachment", List.of(Map.of("content", b64, "name", attachmentName)));
         }
 
+        post(to, subject, body);
+    }
+
+    /** Send with multiple attachments (cover-letter PDF + resume). */
+    public void sendMulti(String to, String subject, String content, boolean isHtml,
+                          java.util.List<MailAttachment> attachments, String bcc) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("sender", Map.of(
+                "email", props.getMail().getFrom(),
+                "name", props.getMail().getFromName() == null ? "JobPilot" : props.getMail().getFromName()));
+        body.put("to", List.of(Map.of("email", to)));
+        if (bcc != null && !bcc.isBlank() && !bcc.equalsIgnoreCase(to)) {
+            body.put("bcc", List.of(Map.of("email", bcc)));
+        }
+        body.put("subject", subject);
+        if (isHtml) body.put("htmlContent", content); else body.put("textContent", content);
+
+        if (attachments != null && !attachments.isEmpty()) {
+            List<Map<String, Object>> atts = new ArrayList<>();
+            for (MailAttachment a : attachments) {
+                if (a != null && a.bytes() != null && a.bytes().length > 0) {
+                    atts.add(Map.of("content", Base64.getEncoder().encodeToString(a.bytes()), "name", a.name()));
+                }
+            }
+            if (!atts.isEmpty()) body.put("attachment", atts);
+        }
+        post(to, subject, body);
+    }
+
+    private void post(String to, String subject, Map<String, Object> body) {
         try {
             http.post().uri(ENDPOINT)
                     .header("api-key", props.getMail().getBrevoApiKey())

@@ -122,7 +122,7 @@ export const api = {
       method: 'POST', body: JSON.stringify({ role, company, jobDetails }),
     }),
   composeSend: (body: { to: string; subject?: string; coldEmail: string; coverLetter: string; attachResume: boolean }) =>
-    req<{ sentTo: string; subject: string; resumeAttached: boolean }>('/api/compose/send', {
+    req<{ sentTo: string; subject: string; resumeAttached: boolean; coverLetterAttached: boolean }>('/api/compose/send', {
       method: 'POST', body: JSON.stringify(body),
     }),
 

@@ -89,6 +89,37 @@ public class MailService {
         }
     }
 
+    /** Send a plain-text email with multiple in-memory attachments (cover-letter PDF + resume). */
+    public void sendWithAttachments(String to, String subject, String textBody,
+                                    java.util.List<MailAttachment> attachments, String bcc) {
+        if (brevo.isConfigured()) {
+            brevo.sendMulti(to, subject, textBody, false, attachments, bcc);
+            return;
+        }
+        try {
+            log.info("Sending email ({} attachments) to={} subject='{}'", attachments == null ? 0 : attachments.size(), to, subject);
+            MimeMessage msg = sender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
+            helper.setFrom(from());
+            helper.setTo(to);
+            if (bcc != null && !bcc.isBlank() && !bcc.equalsIgnoreCase(to)) helper.setBcc(bcc);
+            helper.setSubject(subject);
+            helper.setText(textBody, false);
+            if (attachments != null) {
+                for (MailAttachment a : attachments) {
+                    if (a != null && a.bytes() != null && a.bytes().length > 0) {
+                        helper.addAttachment(a.name(), new org.springframework.core.io.ByteArrayResource(a.bytes()));
+                    }
+                }
+            }
+            sender.send(msg);
+            log.info("Email sent successfully to={}", to);
+        } catch (Exception e) {
+            log.error("Failed to send email to={} from={}: {}", to, from(), e.getMessage(), e);
+            throw new IllegalStateException("failed to send email to " + to + ": " + e.getMessage(), e);
+        }
+    }
+
     public void sendHtml(String to, String subject, String htmlBody) {
         if (brevo.isConfigured()) {
             brevo.send(to, subject, htmlBody, true, null, null);

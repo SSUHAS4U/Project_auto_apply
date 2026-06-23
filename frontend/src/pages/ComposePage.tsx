@@ -65,7 +65,8 @@ export function ComposePage() {
     setSending(true);
     try {
       const r = await api.composeSend({ to, subject, coldEmail: sendEmail, coverLetter: sendCover, attachResume });
-      toast(`Sent to ${r.sentTo}${r.resumeAttached ? ' (resume attached)' : ''}`, 'success');
+      const att = [r.coverLetterAttached && 'cover letter', r.resumeAttached && 'resume'].filter(Boolean).join(' + ');
+      toast(`Sent to ${r.sentTo}${att ? ` (${att} attached as PDF)` : ''}`, 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setSending(false); }
   };
