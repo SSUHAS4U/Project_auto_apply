@@ -3,6 +3,8 @@ import { api, type QaPair, type DocItem } from '../api/client';
 import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { TagInput } from '../components/TagInput';
+import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
 function SavedAnswers() {
@@ -58,39 +60,23 @@ export function ProfilePage() {
   const toast = useToast();
   const [p, setP] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>('personal');
-  const [skillsText, setSkillsText] = useState('');
-  const [prefLocText, setPrefLocText] = useState('');
-  const [langText, setLangText] = useState('');
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
-    api.profile().then((prof) => {
-      setP(prof);
-      setSkillsText((prof.skills ?? []).join(', '));
-      setPrefLocText((prof.preferredLocations ?? []).join(', '));
-      setLangText((prof.languages ?? []).join(', '));
-    }).catch((e) => toast(e.message, 'error'));
+    api.profile().then(setP).catch((e) => toast(e.message, 'error'));
   }, []); // eslint-disable-line
 
   if (!p) return <div className="empty"><span className="spinner" /></div>;
 
   const set = (patch: Partial<Profile>) => setP({ ...p, ...patch });
   const setLink = (k: string, v: string) => setP({ ...p, links: { ...(p.links ?? {}), [k]: v } });
-  const csv = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
 
   const save = async () => {
     setSaving(true);
     try {
-      const body: Profile = {
-        ...p,
-        skills: csv(skillsText),
-        preferredLocations: csv(prefLocText),
-        languages: csv(langText),
-      };
-      const saved = await api.saveProfile(body);
+      const saved = await api.saveProfile(p);
       setP(saved);
-      setSkillsText((saved.skills ?? []).join(', '));
       toast('Profile saved', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setSaving(false); }
@@ -108,9 +94,6 @@ export function ProfilePage() {
     try {
       const saved = await api.analyzeResume(file);
       setP(saved);
-      setSkillsText((saved.skills ?? []).join(', '));
-      setPrefLocText((saved.preferredLocations ?? []).join(', '));
-      setLangText((saved.languages ?? []).join(', '));
       toast('Resume analyzed — fields auto-filled. Review & save.', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setAnalyzing(false); }
@@ -118,7 +101,7 @@ export function ProfilePage() {
 
   const suggest = async (field: string, current: string, apply: (v: string) => void) => {
     try {
-      const ctx = `Name: ${p.fullName}; Headline: ${p.headline ?? ''}; Skills: ${(skillsText)}`;
+      const ctx = `Name: ${p.fullName}; Headline: ${p.headline ?? ''}; Skills: ${(p.skills ?? []).join(', ')}`;
       const r = await api.aiSuggest(field, current, ctx);
       apply(r.suggestion);
       toast('Suggestion applied — edit as needed', 'success');
@@ -178,9 +161,17 @@ export function ProfilePage() {
               <Field label="Email"><input className="input" value={p.email ?? ''} onChange={(e) => set({ email: e.target.value })} /></Field>
               <Field label="Phone"><input className="input" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
               <Field label="Headline"><input className="input" placeholder="Backend Engineer" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} /></Field>
-              <Field label="Date of birth"><input className="input" placeholder="YYYY-MM-DD" value={p.dateOfBirth ?? ''} onChange={(e) => set({ dateOfBirth: e.target.value })} /></Field>
-              <Field label="Gender"><input className="input" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })} /></Field>
-              <Field label="Nationality"><input className="input" value={p.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value })} /></Field>
+              <Field label="Date of birth"><input className="input" type="date" value={p.dateOfBirth ?? ''} onChange={(e) => set({ dateOfBirth: e.target.value })} /></Field>
+              <Field label="Gender">
+                <select className="select" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })}>
+                  <option value="">Select…</option>
+                  {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </Field>
+              <Field label="Nationality">
+                <input className="input" list="nationality-list" value={p.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value })} placeholder="Indian" />
+                <datalist id="nationality-list">{COUNTRY_SUGGESTIONS.map((c) => <option key={c} value={c} />)}</datalist>
+              </Field>
             </div>
           </Section>
 
@@ -189,8 +180,8 @@ export function ProfilePage() {
               <Field label="Current location (short)"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
               <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} placeholder="Bengaluru" /></Field>
               <Field label="State / Province"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} placeholder="Karnataka" /></Field>
-              <Field label="Country"><input className="input" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} placeholder="India" /></Field>
-              <Field label="Postal / PIN code"><input className="input" value={p.postalCode ?? ''} onChange={(e) => set({ postalCode: e.target.value })} placeholder="560001" /></Field>
+              <Field label="Country"><input className="input" list="nationality-list" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} placeholder="India" /></Field>
+              <Field label="Postal / PIN code"><input className="input" inputMode="numeric" value={p.postalCode ?? ''} onChange={(e) => set({ postalCode: e.target.value })} placeholder="560001" /></Field>
               <Field label="Street address" full><input className="input" value={p.address ?? ''} onChange={(e) => set({ address: e.target.value })} placeholder="Flat / street / area" /></Field>
             </div>
           </Section>
@@ -228,30 +219,33 @@ export function ProfilePage() {
                   <option value="">—</option><option value="entry">entry</option><option value="mid">mid</option><option value="senior">senior</option>
                 </select>
               </Field>
-              <Field label="Total experience (yrs)"><input className="input" placeholder="3.5" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
+              <Field label="Total experience (yrs)"><input className="input" type="number" min="0" step="0.5" placeholder="3.5" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
               <Field label="College / University"><input className="input" placeholder="KL University" value={p.college ?? ''} onChange={(e) => set({ college: e.target.value })} /></Field>
-              <Field label="Current CTC"><input className="input" value={p.currentCtc ?? ''} onChange={(e) => set({ currentCtc: e.target.value })} /></Field>
-              <Field label="Expected CTC"><input className="input" value={p.expectedCtc ?? ''} onChange={(e) => set({ expectedCtc: e.target.value })} /></Field>
-              <Field label="Notice period"><input className="input" placeholder="30 days" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} /></Field>
-              <Field label="Available from"><input className="input" placeholder="Immediate / 2026-08-01" value={p.availableFrom ?? ''} onChange={(e) => set({ availableFrom: e.target.value })} /></Field>
+              <Field label="Current CTC"><input className="input" placeholder="4 LPA" value={p.currentCtc ?? ''} onChange={(e) => set({ currentCtc: e.target.value })} /></Field>
+              <Field label="Expected CTC"><input className="input" placeholder="8 LPA" value={p.expectedCtc ?? ''} onChange={(e) => set({ expectedCtc: e.target.value })} /></Field>
+              <Field label="Notice period">
+                <input className="input" list="notice-list" placeholder="30 days" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} />
+                <datalist id="notice-list">{NOTICE_OPTIONS.map((n) => <option key={n} value={n} />)}</datalist>
+              </Field>
+              <Field label="Available from"><input className="input" type="date" value={p.availableFrom ?? ''} onChange={(e) => set({ availableFrom: e.target.value })} /></Field>
             </div>
           </Section>
 
           <Section ico="✅" title="Work eligibility & preferences">
             <div className="grid3">
-              <Field label="Work authorization"><input className="input" placeholder="Indian citizen / H1B" value={p.workAuthorization ?? ''} onChange={(e) => set({ workAuthorization: e.target.value })} /></Field>
+              <Field label="Work authorization">
+                <input className="input" list="workauth-list" placeholder="Indian citizen" value={p.workAuthorization ?? ''} onChange={(e) => set({ workAuthorization: e.target.value })} />
+                <datalist id="workauth-list">{WORK_AUTH_OPTIONS.map((w) => <option key={w} value={w} />)}</datalist>
+              </Field>
               <Field label="Requires sponsorship"><TriSelect value={p.requiresSponsorship} onChange={(v) => set({ requiresSponsorship: v })} /></Field>
               <Field label="Willing to relocate"><TriSelect value={p.willingToRelocate} onChange={(v) => set({ willingToRelocate: v })} /></Field>
-              <Field label="Preferred locations (comma-sep)" full><input className="input" value={prefLocText} onChange={(e) => setPrefLocText(e.target.value)} placeholder="Bengaluru, Remote, Hyderabad" /></Field>
-              <Field label="Languages (comma-sep)" full><input className="input" value={langText} onChange={(e) => setLangText(e.target.value)} placeholder="English, Hindi, Telugu" /></Field>
+              <Field label="Preferred locations" full><TagInput value={p.preferredLocations ?? []} onChange={(v) => set({ preferredLocations: v })} placeholder="Bengaluru, Remote, Hyderabad…" /></Field>
+              <Field label="Languages" full><TagInput value={p.languages ?? []} onChange={(v) => set({ languages: v })} suggestions={LANGUAGE_SUGGESTIONS} placeholder="English, Hindi…" /></Field>
             </div>
           </Section>
 
-          <Section ico="🧩" title="Skills">
-            <input className="input" value={skillsText} onChange={(e) => setSkillsText(e.target.value)} placeholder="java, spring, postgres, react" />
-            <div className="skill-row" style={{ marginTop: 10 }}>
-              {csv(skillsText).map((s) => <span key={s} className="chip">{s}</span>)}
-            </div>
+          <Section ico="🧩" title="Skills" sub="type to search, Enter to add, × to remove">
+            <TagInput value={p.skills ?? []} onChange={(v) => set({ skills: v })} suggestions={SKILL_SUGGESTIONS} placeholder="Start typing a skill — e.g. Java, React, Docker…" />
           </Section>
 
           <Section ico="📝" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
@@ -278,8 +272,8 @@ export function ProfilePage() {
                 <div className="grid2">
                   <Field label="Company"><input className="input" value={item.company ?? ''} onChange={(e) => upd({ company: e.target.value })} /></Field>
                   <Field label="Title"><input className="input" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
-                  <Field label="Start"><input className="input" placeholder="2022-01" value={item.start ?? ''} onChange={(e) => upd({ start: e.target.value })} /></Field>
-                  <Field label="End"><input className="input" placeholder="Present" value={item.end ?? ''} onChange={(e) => upd({ end: e.target.value })} /></Field>
+                  <Field label="Start"><input className="input" type="month" value={item.start ?? ''} onChange={(e) => upd({ start: e.target.value })} /></Field>
+                  <Field label="End (blank = present)"><input className="input" type="month" value={item.end ?? ''} onChange={(e) => upd({ end: e.target.value })} /></Field>
                 </div>
                 <Field label="Description" full><textarea className="input" rows={2} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })} /></Field>
               </>
