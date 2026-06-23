@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Assistant",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Autofill job forms (Google/MS Forms, ATS) and save listings to your JobPilot tracker. You always review & submit.",
   "permissions": [
     "storage",
@@ -44,6 +44,7 @@
         "https://forms.gle/*"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
         "content/sites/googleForms.js"
@@ -55,6 +56,7 @@
         "https://forms.office.com/*"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
         "content/sites/msForms.js"
@@ -67,6 +69,7 @@
         "https://*.linkedin.com/jobs/view/*"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
         "content/sites/linkedin.js"
@@ -78,6 +81,7 @@
         "https://*.naukri.com/*"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
         "content/sites/naukri.js"
@@ -89,6 +93,7 @@
         "https://*.indeed.com/*"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
         "content/sites/indeed.js"
@@ -100,8 +105,10 @@
         "<all_urls>"
       ],
       "js": [
+        "content/common/smartFill.js",
         "content/common/fieldEngine.js",
         "content/common/assistEngine.js",
+        "content/sites/workday.js",
         "content/sites/generic.js"
       ],
       "run_at": "document_idle"

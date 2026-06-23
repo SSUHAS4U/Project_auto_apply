@@ -420,11 +420,19 @@
     });
   }
 
+  const isCombobox = (el) =>
+    el.getAttribute('role') === 'combobox'
+    || el.getAttribute('aria-autocomplete')
+    || el.getAttribute('aria-haspopup') === 'listbox';
+
   // AI-fill short factual inputs the synonym engine missed (CTC, college, coding-profile
   // links, etc.) by sending each field's label to the backend, which maps it to the profile.
+  // Searches inside open Shadow DOM and drives custom typeahead/combobox inputs.
   async function aiFillFields() {
+    const smart = window.JobPilotSmart;
+    const all = smart ? smart.deepQueryAll('input') : [...document.querySelectorAll('input')];
     const candidates = [];
-    document.querySelectorAll('input').forEach((el) => {
+    all.forEach((el) => {
       const type = (el.getAttribute('type') || 'text').toLowerCase();
       if (!['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
       if (el.disabled || el.readOnly || el.offsetParent === null) return;
@@ -437,10 +445,15 @@
     const r = await msg('ASSIST_AUTOFILL', { fields: labels });
     const answers = (r && r.answers) || {};
     let filled = 0;
-    candidates.forEach(({ el, label }) => {
+    for (const { el, label } of candidates) {
       const v = answers[label];
-      if (v && String(v).trim() && !(el.value || '').trim()) { writeValue(el, String(v)); filled++; }
-    });
+      if (!v || !String(v).trim() || (el.value || '').trim()) continue;
+      if (smart && isCombobox(el)) {
+        if (await smart.fillTypeahead(el, String(v))) filled++;
+      } else {
+        writeValue(el, String(v)); filled++;
+      }
+    }
     return { filled, total: candidates.length };
   }
 

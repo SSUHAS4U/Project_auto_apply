@@ -150,8 +150,10 @@
     return best;
   }
 
-  // Set value in a way React/Angular/Vue notice (native setter + events).
+  // Set value in a way React/Angular/Vue notice. Delegates to the smart-fill engine
+  // (richer trusted-event sequence) when available, else a native setter + events.
   function setNativeValue(el, value) {
+    if (window.JobPilotSmart) { window.JobPilotSmart.setValue(el, value); return; }
     const proto = el.tagName === 'TEXTAREA'
       ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
@@ -167,11 +169,10 @@
     setTimeout(() => { el.style.outlineColor = 'rgba(99,102,241,0.35)'; }, 700);
   }
 
-  // Fill all standard text-like inputs/textareas on the page.
+  // Fill all standard text-like inputs/textareas on the page (incl. inside open Shadow DOM).
   function fillTextInputs(profile) {
-    const controls = document.querySelectorAll(
-      'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input:not([type]), textarea'
-    );
+    const sel = 'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), textarea';
+    const controls = window.JobPilotSmart ? window.JobPilotSmart.deepQueryAll(sel) : document.querySelectorAll(sel);
     let filled = 0, total = 0;
     controls.forEach((el) => {
       if (el.disabled || el.readOnly || el.offsetParent === null) return;
