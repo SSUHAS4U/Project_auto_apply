@@ -44,6 +44,14 @@ public class AssistController {
         return Map.of("answers", assist.autofill(fields));
     }
 
+    @PostMapping("/command")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> command(@RequestBody Map<String, Object> body) {
+        String instruction = (String) body.get("instruction");
+        List<String> fields = (List<String>) body.get("fields");
+        return assist.command(instruction, fields);
+    }
+
     @GetMapping("/qa")
     public List<QaPair> listQa() {
         return assist.listQa();

@@ -34,6 +34,13 @@ public class SavedJobService {
         return savedRepo.findByUserIdOrderByCreatedAtDesc(UserContext.require());
     }
 
+    /** Delete a saved listing (only the owner's own). */
+    @Transactional
+    public void delete(UUID id) {
+        UUID userId = UserContext.require();
+        savedRepo.findById(id).filter(s -> userId.equals(s.getUserId())).ifPresent(savedRepo::delete);
+    }
+
     /** Persist a DOM-extracted listing. All text fields are escaped first. */
     @Transactional
     public SavedJob capture(String title, String company, String location,

@@ -21,6 +21,12 @@ export function SavedJobsPage() {
     catch (e) { toast((e as Error).message, 'error'); }
   };
 
+  const remove = async (s: SavedJob) => {
+    if (!window.confirm(`Delete saved listing "${s.title ?? 'Untitled'}"?`)) return;
+    try { await api.deleteSaved(s.id); toast('Deleted', 'success'); setSaved((x) => x.filter((j) => j.id !== s.id)); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  };
+
   return (
     <>
       <div className="page-head">
@@ -89,6 +95,7 @@ export function SavedJobsPage() {
                     ? <span className="badge badge-ats">✓ Promoted</span>
                     : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
                   <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open ↗</a>
+                  <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}>🗑 Delete</button>
                 </div>
               </div>
             ))}

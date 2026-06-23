@@ -149,6 +149,51 @@ public class AssistService {
         }
     }
 
+    /**
+     * Side-panel copilot: interpret a free-form instruction about the current page and
+     * return a structured action — fill a specific field, answer a question to paste, or reply.
+     */
+    public Map<String, Object> command(String instruction, List<String> fields) {
+        if (instruction == null || instruction.isBlank()) throw new IllegalArgumentException("instruction is required");
+        Profile p = profiles.get();
+        String list = fields == null ? "" : fields.stream().filter(f -> f != null && !f.isBlank())
+                .map(String::trim).distinct().limit(60).map(f -> "- " + f).reduce("", (a, b) -> a + b + "\n");
+
+        String system = """
+                You are a form-filling copilot inside a browser side panel. Given the user's
+                instruction, the fields visible on the current page, and the candidate's profile,
+                respond with STRICT JSON only (no prose), choosing ONE action:
+                - Fill a field:   {"action":"fill","field":"<EXACT label from the field list>","value":"<value>"}
+                - Answer to paste:{"action":"answer","value":"<concise, honest answer>"}
+                - Save a Q&A:     {"action":"save","question":"<question>","answer":"<answer>"}
+                - Plain reply:    {"action":"reply","message":"<short reply>"}
+                Use the profile for facts; never invent experience. For skill questions
+                ("Exposure to PyTorch?"), answer honestly based on the listed skills.""";
+        String prompt = "PROFILE:\n" + fullProfileContext(p)
+                + "\n\nFIELDS ON PAGE:\n" + (list.isBlank() ? "(none detected)" : list)
+                + "\nUSER INSTRUCTION: " + instruction.trim() + "\n\nJSON:";
+
+        try {
+            String raw = ai.complete(system, prompt, false, false);
+            com.fasterxml.jackson.databind.JsonNode j = new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            String action = j.path("action").asText("reply");
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("action", action);
+            if (j.has("field")) out.put("field", j.path("field").asText(""));
+            if (j.has("value")) out.put("value", j.path("value").asText(""));
+            if (j.has("question")) out.put("question", j.path("question").asText(""));
+            if (j.has("answer")) out.put("answer", j.path("answer").asText(""));
+            if (j.has("message")) out.put("message", j.path("message").asText(""));
+            // Auto-persist a save action.
+            if ("save".equals(action) && j.has("question") && j.has("answer")) {
+                saveQa(j.path("question").asText(), j.path("answer").asText());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of("action", "reply", "message", "Sorry, I couldn't process that: " + e.getMessage());
+        }
+    }
+
     private static String stripFence(String s) {
         if (s == null) return "{}";
         String t = s.trim();

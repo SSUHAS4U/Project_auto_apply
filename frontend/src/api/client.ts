@@ -137,6 +137,7 @@ export const api = {
 
   savedJobs: () => req<SavedJob[]>('/api/saved-jobs'),
   promoteSaved: (id: string) => req<Job>(`/api/saved-jobs/${id}/promote`, { method: 'POST' }),
+  deleteSaved: (id: string) => req<{ deleted: boolean }>(`/api/saved-jobs/${id}`, { method: 'DELETE' }),
 
   notifications: (unread = false) =>
     req<{ items: Notification[]; unreadCount: number }>(`/api/notifications?unread=${unread}`),

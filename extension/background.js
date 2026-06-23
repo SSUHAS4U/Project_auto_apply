@@ -1,5 +1,10 @@
 // JobPilot MV3 service worker — owns config, backend calls, profile cache.
 
+// Clicking the toolbar icon opens the side panel (a tall right-side copilot) instead of a popup.
+try {
+  chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+} catch (_) { /* older Chrome */ }
+
 // Defaults to the deployed backend so the extension works out-of-the-box.
 // Override in Options only if you run the backend locally (http://localhost:8080).
 const DEFAULTS = { backendUrl: 'https://jobpilot-backend-owb0.onrender.com', jwt: '' };
@@ -108,6 +113,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case 'ASSIST_AUTOFILL': {
           const data = await apiFetch('/api/assist/autofill', {
             method: 'POST', body: JSON.stringify({ fields: msg.fields }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'ASSIST_COMMAND': {
+          const data = await apiFetch('/api/assist/command', {
+            method: 'POST', body: JSON.stringify({ instruction: msg.instruction, fields: msg.fields }),
           });
           sendResponse({ ok: true, data });
           break;

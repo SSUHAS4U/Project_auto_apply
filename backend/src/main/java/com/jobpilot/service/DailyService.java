@@ -115,19 +115,33 @@ public class DailyService {
         return out;
     }
 
-    /** Daily Picks for the CURRENT user: their top recent high-match jobs + the latest briefing. */
+    /** Daily Picks for the CURRENT user: their top recent high-match jobs + a briefing
+     *  addressed to THEM (cached per user + per run so it greets the logged-in user, not the owner). */
     @Transactional(readOnly = true)
     public Map<String, Object> picks() {
         int threshold = Math.max(40, props.getDigest().getMinScore() - 10);
         List<Job> jobs = jobService.search(null, null, threshold, null, null, null, 14, 0, 12).getContent();
+        com.jobpilot.domain.Profile me = profileService.get();
+        String runAt = settings.getInstant(K_RUN_AT).map(Instant::toString).orElse("none");
+        String key = K_BRIEFING + "_" + me.getUserId() + "_" + runAt.replaceAll("[^0-9]", "");
+        String briefing = settings.get(key).filter(s -> !s.isBlank())
+                .orElseGet(() -> {
+                    String b = buildBriefing(jobs.stream().limit(8).toList(), me.getFullName());
+                    settings.put(key, b);
+                    return b;
+                });
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("briefing", settings.get(K_BRIEFING).orElse(""));
+        out.put("briefing", briefing);
         out.put("generatedAt", settings.getInstant(K_RUN_AT).map(Instant::toString).orElse(null));
         out.put("jobs", jobs);
         return out;
     }
 
     private String buildBriefing(List<Job> top) {
+        return buildBriefing(top, profileService.getOwner().getFullName());
+    }
+
+    private String buildBriefing(List<Job> top, String name) {
         if (top.isEmpty()) {
             return "No new high-match jobs since the last run. Try broadening your skills/queries "
                     + "or adding more company boards.";
@@ -140,8 +154,8 @@ public class DailyService {
         }
         if (!ai.isEnabled()) return "Today's top matches:\n" + list;
         try {
-            String name = profileService.getOwner().getFullName();
-            return ai.complete(SYSTEM, "CANDIDATE: " + name + "\nTOP MATCHES TODAY:\n" + list, false);
+            return ai.complete(SYSTEM, "CANDIDATE: " + (name == null || name.isBlank() ? "there" : name)
+                    + "\nTOP MATCHES TODAY:\n" + list, false);
         } catch (Exception e) {
             log.warn("AI briefing failed ({}); using plain list", e.getMessage());
             return "Today's top matches:\n" + list;

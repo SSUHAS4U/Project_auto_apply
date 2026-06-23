@@ -503,8 +503,61 @@
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }
+    // Side-panel chatbot: report the page's fields, or fill one by label.
+    if (m.type === 'SCAN_FIELDS') {
+      sendResponse({ ok: true, fields: scanFields() });
+      return true;
+    }
+    if (m.type === 'FILL_FIELD') {
+      fillFieldByLabel(m.label, m.value).then((r) => sendResponse(r))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
     return false;
   });
+
+  // --- Field discovery + targeted fill (for the side-panel copilot) ---------
+  function allFillable() {
+    const smart = window.JobPilotSmart;
+    const els = smart ? smart.deepQueryAll('input, textarea, select') : [...document.querySelectorAll('input, textarea, select')];
+    return els.filter((el) => {
+      const t = (el.getAttribute('type') || '').toLowerCase();
+      if (['hidden', 'submit', 'button', 'image', 'reset', 'file'].includes(t)) return false;
+      return el.offsetParent !== null && !el.disabled;
+    });
+  }
+
+  function scanFields() {
+    const out = [];
+    allFillable().forEach((el) => { const l = deriveQuestion(el); if (l && l.length >= 2) out.push(l); });
+    return [...new Set(out)];
+  }
+
+  async function fillFieldByLabel(label, value) {
+    const want = norm(label);
+    let best = null, bestScore = 0;
+    allFillable().forEach((el) => {
+      const l = norm(deriveQuestion(el));
+      if (!l) return;
+      let score = 0;
+      if (l === want) score = 1000;
+      else if (l.includes(want)) score = want.length + 5;
+      else if (want.includes(l)) score = l.length;
+      if (score > bestScore) { bestScore = score; best = el; }
+    });
+    if (!best) return { ok: false, error: `No field matching "${label}" on this page.` };
+    const smart = window.JobPilotSmart;
+    if (best.tagName === 'SELECT') {
+      const opt = [...best.options].find((o) => norm(o.text).includes(want) || norm(o.text) === norm(value));
+      if (opt) { best.value = opt.value; best.dispatchEvent(new Event('change', { bubbles: true })); }
+    } else if (smart && isCombobox(best)) {
+      await smart.fillTypeahead(best, String(value));
+    } else {
+      writeValue(best, String(value));
+    }
+    window.JobPilot.highlight(best);
+    return { ok: true, label: deriveQuestion(best) };
+  }
 
   let timer = null;
   function scheduleEnhance() { clearTimeout(timer); timer = setTimeout(enhance, 600); }

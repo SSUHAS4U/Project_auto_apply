@@ -28,4 +28,10 @@ public class SavedJobController {
     public Job promote(@PathVariable UUID id) {
         return service.promote(id);
     }
+
+    @DeleteMapping("/{id}")
+    public java.util.Map<String, Object> delete(@PathVariable UUID id) {
+        service.delete(id);
+        return java.util.Map.of("deleted", true);
+    }
 }

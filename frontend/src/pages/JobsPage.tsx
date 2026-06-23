@@ -170,9 +170,9 @@ export function JobsPage() {
         <div className="card card-pad" style={{ marginBottom: 14, fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16 }}>📈</span>
           {summary.lastRun ? (
-            <span>
+            <span title="New = first-seen this run · Refreshed = already-listed jobs re-checked · Total = all live jobs on the board (includes earlier runs)">
               Last ingest <b>{fmtDate(summary.lastRun.finishedAt)}</b> · <b style={{ color: 'var(--accent)' }}>+{summary.lastRun.inserted}</b> new ·
-              {' '}<b>{summary.lastRun.updated}</b> unchanged · <b>{summary.totalJobs.toLocaleString()}</b> jobs on the board
+              {' '}<b>{summary.lastRun.updated}</b> refreshed · <b>{summary.totalJobs.toLocaleString()}</b> total on the board
             </span>
           ) : (
             <span><b>{summary.totalJobs.toLocaleString()}</b> jobs on the board · last ingest time will show after the next run</span>

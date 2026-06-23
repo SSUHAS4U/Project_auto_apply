@@ -17,8 +17,24 @@ export function ComposePage() {
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
   const [ai, setAi] = useState<{ enabled: boolean; provider: string; remainingToday: number } | null>(null);
+  const [emailTpl, setEmailTpl] = useState('');
+  const [coverTpl, setCoverTpl] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
 
   useEffect(() => { api.aiStatus().then(setAi).catch(() => {}); }, []);
+  useEffect(() => {
+    api.profile().then((p) => { setEmailTpl(p.emailTemplate ?? ''); setCoverTpl(p.coverLetterTemplate ?? ''); }).catch(() => {});
+  }, []);
+
+  const saveTemplates = async () => {
+    setSavingTpl(true);
+    try {
+      const p = await api.profile();
+      await api.saveProfile({ ...p, emailTemplate: emailTpl, coverLetterTemplate: coverTpl });
+      toast('Templates saved — used as the base for generation', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setSavingTpl(false); }
+  };
 
   const generate = async () => {
     if (!role && !details) { toast('Add a role or job details first', 'error'); return; }
@@ -64,6 +80,25 @@ export function ComposePage() {
           <div className="page-sub">Generate a tailored cold email + cover letter from any job, review, then send with your resume.</div>
         </div>
         <ModelSwitcher />
+      </div>
+
+      <div style={{ maxWidth: 980, margin: '0 auto', marginBottom: 18 }}>
+        <details className="card card-pad">
+          <summary style={{ cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="si">📋</span> My templates <span className="faint" style={{ fontWeight: 400, fontSize: 12.5 }}>— the AI rewrites these for each role</span>
+          </summary>
+          <div className="grid2" style={{ marginTop: 14, alignItems: 'start' }}>
+            <label className="field">Email template
+              <textarea className="input" rows={8} value={emailTpl} onChange={(e) => setEmailTpl(e.target.value)} placeholder="Hi [Hiring Team], I came across the [Role] opening at [Company]…" />
+            </label>
+            <label className="field">Cover-letter template
+              <textarea className="input" rows={8} value={coverTpl} onChange={(e) => setCoverTpl(e.target.value)} placeholder="Dear Hiring Manager, I am writing to express my interest in the [Role] role at [Company]…" />
+            </label>
+          </div>
+          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={saveTemplates} disabled={savingTpl}>
+            {savingTpl ? <span className="spinner" /> : '💾'} Save templates
+          </button>
+        </details>
       </div>
 
       <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>

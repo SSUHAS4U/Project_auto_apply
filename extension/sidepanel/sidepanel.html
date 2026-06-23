@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="sidepanel.css" />
+  <title>JobPilot</title>
+</head>
+<body>
+  <div class="head">
+    <div class="logo">J</div>
+    <div class="head-txt">
+      <div class="name">JobPilot</div>
+      <div class="sub" id="conn">checking…</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="fill">⚡ Fill this form</button>
+    <button class="btn" id="answer">✨ AI-answer questions</button>
+    <div class="actions-row">
+      <button class="btn sm" id="resume">📎 Resume</button>
+      <button class="btn sm" id="cover">📄 Cover letter</button>
+      <button class="btn sm" id="save">🔖 Save</button>
+    </div>
+  </div>
+
+  <div class="chat-head">💬 Copilot — tell me what to do</div>
+  <div class="chat" id="chat">
+    <div class="msg ai">Hi! Ask me to fill a field or answer a question. Try:
+      <div class="hints">
+        <button class="hint">fill current location with Bengaluru</button>
+        <button class="hint">answer: exposure to PyTorch?</button>
+        <button class="hint">fill notice period with 30 days</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer">
+    <input id="input" autocomplete="off" placeholder='Type an instruction…' />
+    <button id="send" title="Send">➤</button>
+  </div>
+
+  <a class="foot" id="opts" href="#">⚙ Options — sign in</a>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
