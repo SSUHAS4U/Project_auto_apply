@@ -17,7 +17,7 @@ shortlist. Runs locally for ₹0.
 # from d:\Project_auto_apply
 powershell -ExecutionPolicy Bypass -File start.ps1
 ```
-Backend → http://localhost:8080 · Dashboard → http://localhost:5173 · token `***REMOVED***`.
+Backend → http://localhost:8080 · Dashboard → http://localhost:5173 · token from your `.env` file.
 The backend uses an in-process Postgres (no Docker needed); data persists in `backend/.embedded-pg`.
 
 ## 3. The screens (left nav)
@@ -67,7 +67,7 @@ to re-score the whole DB. Jobs are tagged `region = india | remote | outside | u
 ## 7. Browser extension (autofill + capture)
 **Install:** Chrome → `chrome://extensions` → Developer mode → **Load unpacked** → select `extension/`.
 **Connect:** click the JobPilot icon → **Options** → Backend `http://localhost:8080`, token
-`***REMOVED***` → **Test connection**.
+your `JOBPILOT_API_TOKEN` from `.env` → **Test connection**.
 
 **Use it:**
 - **Autofill a form** (Google Forms, MS Forms, ATS, generic): open the form → JobPilot icon → **⚡ Fill this

@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = "Stop"
 $base  = if ($env:JOBPILOT_BACKEND_URL) { $env:JOBPILOT_BACKEND_URL } else { "http://localhost:8080" }
-$token = if ($env:JOBPILOT_API_TOKEN)   { $env:JOBPILOT_API_TOKEN }   else { "***REMOVED***" }
+$token = if ($env:JOBPILOT_API_TOKEN) { $env:JOBPILOT_API_TOKEN } else { throw "Set JOBPILOT_API_TOKEN env var" }
 
 Write-Host "JobPilot daily run against $base ..."
 try {
