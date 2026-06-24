@@ -20,17 +20,17 @@ import java.util.Map;
 public class ComposeService {
 
     private static final String SYSTEM = """
-            You are an expert job-application writer. Given a candidate profile, preferred TEMPLATES,
-            and a target job, produce three things tailored to THIS company/role:
-              1. subject     — a crisp subject line (role + company + candidate),
-                               e.g. "Application for Software Engineer - Suhas S | CSE 2026 | Nokia Intern".
-              2. coldEmail   — a substantive outreach email (130-180 words). Greet "Hi Hiring Team," then:
-                               a strong opening tying the candidate to THIS role/product; a short paragraph
-                               connecting 2-3 of the candidate's real skills to specific things the JOB DETAILS
-                               ask for; a compact bullet snapshot (education, current role, key projects/links,
-                               core skills); a closing line offering to talk. Mention the resume is attached.
-              3. coverLetter — a full cover letter (150-200 words) grounded in the JOB DETAILS: name concrete
-                               responsibilities and tie them to the candidate's real strengths; 2 short paragraphs.
+            You are an expert job-application writer. Produce a cold email AND a cover letter tailored
+            to THIS company/role, grounded ONLY in the candidate profile + job details.
+
+            FOLLOW THE CANDIDATE'S SAVED TEMPLATES for structure, layout, tone and section order.
+            Fill EVERY [placeholder] with real profile data — never leave a bracket. If a template line
+            has no matching data, drop that line. Keep the template's headings/letterhead if it has them.
+
+            - subject     — a crisp subject line (role + company + candidate name).
+            - coldEmail   — the email, following the EMAIL TEMPLATE (130-180 words). Mention the resume is attached.
+            - coverLetter — the full cover letter, following the COVER LETTER TEMPLATE, grounded in the JOB DETAILS:
+                            name concrete responsibilities and tie them to the candidate's real strengths.
 
             HARD RULES:
             - Use ONLY facts from the profile/templates. NEVER invent years of experience, employers, titles,
@@ -39,7 +39,14 @@ public class ComposeService {
               "strong work ethic", "passion for technology", "thrive in", "fast-paced environment",
               "team player", "make me an ideal fit".
             - Be specific to the company/role — never generic. No leftover [brackets].
-            Respond with STRICT JSON only: {"subject": "...", "coldEmail": "...", "coverLetter": "..."}""";
+
+            Output EXACTLY in this format — use the delimiter lines verbatim, NO JSON, NO markdown:
+            @@SUBJECT@@
+            <subject line>
+            @@EMAIL@@
+            <cold email body>
+            @@COVER@@
+            <cover letter body>""";
 
     private final AiService ai;
     private final ProfileService profileService;
@@ -98,16 +105,77 @@ public class ComposeService {
                 nz(role), nz(company), nz(jobDetails));
 
         String raw = ai.complete(SYSTEM, user, false, true);
-        JsonNode json = parseJson(raw);
-        String subject = json != null ? json.path("subject").asText("") : "";
-        String cover = json != null ? json.path("coverLetter").asText("") : "";
-        String cold = json != null ? json.path("coldEmail").asText("") : "";
-        if (cover.isBlank() && cold.isBlank()) cover = raw;
-        if (subject.isBlank()) {
+        Map<String, String> parsed = parseSections(raw);
+        String subject = parsed.get("subject");
+        String cover = parsed.get("cover");
+        String cold = parsed.get("email");
+        if (subject == null || subject.isBlank()) {
             subject = "Application for " + nz(role) + (notBlank(company) ? " - " + company : "")
                     + " | " + nz(p.getFullName());
         }
-        return Map.of("subject", subject, "coverLetter", cover, "coldEmail", cold);
+        return Map.of("subject", subject, "coverLetter", nz(cover), "coldEmail", nz(cold));
+    }
+
+    /** Parse the @@SUBJECT@@/@@EMAIL@@/@@COVER@@ format, falling back to JSON, then raw. */
+    private Map<String, String> parseSections(String raw) {
+        Map<String, String> out = new java.util.HashMap<>();
+        if (raw == null) raw = "";
+        if (raw.contains("@@EMAIL@@") || raw.contains("@@COVER@@")) {
+            out.put("subject", between(raw, "@@SUBJECT@@", "@@EMAIL@@"));
+            out.put("email", between(raw, "@@EMAIL@@", "@@COVER@@"));
+            out.put("cover", between(raw, "@@COVER@@", null));
+            return out;
+        }
+        // Fallback: the model emitted JSON after all.
+        JsonNode json = parseJson(raw);
+        if (json != null && (json.has("coverLetter") || json.has("coldEmail"))) {
+            out.put("subject", json.path("subject").asText(""));
+            out.put("email", json.path("coldEmail").asText(""));
+            out.put("cover", json.path("coverLetter").asText(""));
+            return out;
+        }
+        // Last resort: put everything in the cover box so nothing is lost.
+        out.put("subject", "");
+        out.put("email", "");
+        out.put("cover", raw.strip());
+        return out;
+    }
+
+    private static String between(String s, String start, String end) {
+        int i = s.indexOf(start);
+        if (i < 0) return "";
+        i += start.length();
+        int j = end == null ? s.length() : s.indexOf(end, i);
+        if (j < 0) j = s.length();
+        return s.substring(i, j).strip();
+    }
+
+    /** Build a cover-letter PDF for download/preview in the composer. */
+    public byte[] coverPdf(String coverLetter) {
+        if (coverLetter == null || coverLetter.isBlank()) throw new IllegalArgumentException("cover letter is empty");
+        return PdfUtil.textToPdf(coverDocument(profileService.get(), coverLetter.strip()));
+    }
+
+    /** AI-refine the email and/or cover letter per a free-form instruction (composer chat). */
+    public Map<String, String> refine(String coldEmail, String coverLetter, String instruction) {
+        if (instruction == null || instruction.isBlank()) throw new IllegalArgumentException("instruction is required");
+        if (!ai.isEnabled()) throw new IllegalStateException("AI is not configured.");
+        String sys = """
+                You are editing a job application. Apply the user's instruction to the EMAIL and/or COVER
+                LETTER below. Change only what the instruction asks; keep everything else intact. Keep facts
+                truthful and never add [brackets]. Return EXACTLY this format, verbatim delimiters, no markdown:
+                @@EMAIL@@
+                <updated email — unchanged if the instruction doesn't touch it>
+                @@COVER@@
+                <updated cover letter — unchanged if the instruction doesn't touch it>""";
+        String user = "EMAIL:\n" + nz(coldEmail) + "\n\nCOVER LETTER:\n" + nz(coverLetter)
+                + "\n\nINSTRUCTION: " + instruction.strip();
+        String raw = ai.complete(sys, user, false, true);
+        String email = between(raw, "@@EMAIL@@", "@@COVER@@");
+        String cover = between(raw, "@@COVER@@", null);
+        return Map.of(
+                "coldEmail", email.isBlank() ? nz(coldEmail) : email,
+                "coverLetter", cover.isBlank() ? nz(coverLetter) : cover);
     }
 
     private String templateOrDefault(String t, String def) {
@@ -180,15 +248,20 @@ public class ComposeService {
         return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume, "coverLetterAttached", coverAttached);
     }
 
-    /** Build a printable cover-letter document (letterhead + date + body) for the PDF. */
+    /** Build a printable cover-letter document for the PDF. If the letter already carries its own
+     *  letterhead (template starts with the candidate's name), use it as-is; else prepend one. */
     private String coverDocument(Profile p, String cover) {
+        String body = cover.replace("[Your Name]", nz(p.getFullName())).replace("[Name]", nz(p.getFullName()));
+        String name = nz(p.getFullName()).trim();
+        boolean hasLetterhead = !name.isBlank() && body.stripLeading().regionMatches(true, 0, name, 0, name.length());
+        if (hasLetterhead) return body;
         StringBuilder sb = new StringBuilder();
-        sb.append(nz(p.getFullName())).append("\n");
+        sb.append(name).append("\n");
         String contact = (notBlank(p.getEmail()) ? p.getEmail() : "")
                 + (notBlank(p.getPhone()) ? (notBlank(p.getEmail()) ? "  |  " : "") + p.getPhone() : "");
         if (!contact.isBlank()) sb.append(contact).append("\n");
         sb.append(LocalDate.now(ZoneOffset.UTC)).append("\n\n");
-        sb.append(cover.replace("[Your Name]", nz(p.getFullName())).replace("[Name]", nz(p.getFullName())));
+        sb.append(body);
         return sb.toString();
     }
 

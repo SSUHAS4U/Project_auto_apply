@@ -301,6 +301,42 @@
     if (el.tagName === 'INPUT') { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
   }
 
+  // Click an ARIA radio/option widget (no native input behind it).
+  function clickOption(el) {
+    try { el.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    el.click();
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    try { el.setAttribute('aria-checked', 'true'); } catch (_) { /* ignore */ }
+  }
+
+  // Question text for an ARIA radiogroup: aria-label/labelledby, else the nearest
+  // question-looking heading/sibling above the group (excluding the option labels).
+  function ariaGroupQuestion(rg) {
+    const byLabel = rg.getAttribute('aria-label');
+    if (byLabel && cleanQ(byLabel).length > 2) return cleanQ(byLabel);
+    const lblId = rg.getAttribute('aria-labelledby');
+    if (lblId) {
+      const txt = lblId.split(/\s+/).map((id) => document.getElementById(id)?.textContent || '').join(' ');
+      if (cleanQ(txt).length > 2) return cleanQ(txt);
+    }
+    const optTexts = new Set([...rg.querySelectorAll('[role="radio"]')].map((o) => norm(labelOf(o))));
+    let node = rg;
+    for (let up = 0; up < 4 && node; up++, node = node.parentElement) {
+      let prev = node.previousElementSibling;
+      for (let i = 0; prev && i < 3; i++, prev = prev.previousElementSibling) {
+        const t = cleanQ(prev.textContent);
+        if (t.length > 5 && t.length < 300 && !optTexts.has(norm(t))) return t;
+      }
+    }
+    const box = rg.closest('fieldset, [role="group"], li, div, section');
+    if (box) {
+      const heads = box.querySelectorAll('legend, [role="heading"], h1, h2, h3, h4, label, [class*="question" i], [class*="label" i]');
+      for (const h of heads) { const t = cleanQ(h.textContent); if (t.length > 3 && !optTexts.has(norm(t))) return t; }
+    }
+    return cleanQ(rg.textContent);
+  }
+
   function fillDate(el) {
     const d = new Date(Date.now() + 14 * 86400000); // a safe "soon" default — review before submit
     window.JobPilot.setNativeValue(el, d.toISOString().slice(0, 10));
@@ -364,6 +400,21 @@
       const pick = norm((r.selected || [])[0] || '');
       const el = group.find((g) => norm(nativeLabel(g)) === pick) || (pick && group.find((g) => norm(nativeLabel(g)).includes(pick)));
       if (el) { clickInput(el); window.JobPilot.highlight(el); done++; }
+    }
+
+    // 1b. ARIA radio groups (custom radio widgets — Workday, Microsoft, etc.)
+    for (const rg of q('[role="radiogroup"]').filter(vis)) {
+      const opts = [...rg.querySelectorAll('[role="radio"]')].filter((o) => o.offsetParent !== null);
+      if (opts.length < 2) continue;
+      if (opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue; // already answered
+      const question = ariaGroupQuestion(rg);
+      const options = opts.map((o) => labelOf(o)).filter(Boolean);
+      if (!question || options.length < 2) continue;
+      total++;
+      const r = await msg('ASSIST_CHOOSE', { question, options, multi: false });
+      const pick = norm((r.selected || [])[0] || '');
+      const el = opts.find((o) => norm(labelOf(o)) === pick) || (pick && opts.find((o) => norm(labelOf(o)).includes(pick)));
+      if (el) { clickOption(el); window.JobPilot.highlight(el); done++; }
     }
 
     // 2. checkbox groups (multi)

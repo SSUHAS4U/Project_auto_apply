@@ -125,6 +125,19 @@ export const api = {
     req<{ sentTo: string; subject: string; resumeAttached: boolean; coverLetterAttached: boolean }>('/api/compose/send', {
       method: 'POST', body: JSON.stringify(body),
     }),
+  composeRefine: (body: { coldEmail: string; coverLetter: string; instruction: string }) =>
+    req<{ coldEmail: string; coverLetter: string }>('/api/compose/refine', {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  composeCoverPdf: async (coverLetter: string): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/compose/cover-pdf`, {
+      method: 'POST',
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coverLetter }),
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.blob();
+  },
 
   previewCoverLetter: (jobId: string) =>
     req<{ coverLetter: string }>('/api/cover-letter/preview', {

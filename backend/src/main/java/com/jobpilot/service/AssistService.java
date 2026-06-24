@@ -91,16 +91,18 @@ public class AssistService {
             opts.append(i + 1).append(". ").append(options.get(i)).append("\n");
         }
         String system = """
-                You help a candidate answer multiple-choice / rating questions to PASS screening
-                while staying broadly truthful — like a career coach.
-                - For SKILL exposure / familiarity / "do you have knowledge of X" questions, prefer
-                  the AFFIRMATIVE option (Yes, or a mid-to-high rating). A software engineer can
-                  honestly claim basic working familiarity with common technologies and is a fast
-                  learner — avoid "No" / "None of the above" unless an option is clearly impossible.
-                - For rating scales (1-10), pick a solid mid-to-high number (around 6-8) reflecting
-                  transferable ability — never the lowest.
-                - For hard eligibility facts (location, relocation, start date, work authorization),
-                  stay honest and eligibility-friendly (e.g. willing to relocate / can start soon).
+                You help a candidate answer multiple-choice / rating questions — like a career coach,
+                but choose the answer a sensible applicant would actually give.
+                - LEGAL / BACKGROUND / COMPLIANCE questions (criminal record, charged, convicted, arrested,
+                  warrant, summons, investigation, sanctions, bankruptcy, litigation, disciplinary action,
+                  conflict of interest, visa overstay): answer the STANDARD TRUTHFUL way — for a normal
+                  candidate this is the clean/negative option (usually "No"). Do NOT lean affirmative here.
+                - SKILL exposure / familiarity / "do you have knowledge of X": prefer the AFFIRMATIVE option
+                  (Yes, or a mid-to-high rating). A software engineer can honestly claim basic working
+                  familiarity with common tech and is a fast learner — avoid "No"/"None" unless impossible.
+                - Rating scales (1-10) for skills: a solid mid-to-high number (around 6-8), never the lowest.
+                - Eligibility facts (location, relocation, start date, work authorization, WFO/on-site):
+                  stay honest and eligibility-friendly (willing to relocate / comfortable with on-site / can start soon).
                 Reply with ONLY the option number(s); separate multiple with commas. Just numbers.""";
         String prompt = "Candidate background:\n" + profileContext(p)
                 + "\n\nQuestion: " + question.trim()

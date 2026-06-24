@@ -39,14 +39,22 @@ async function loadProfile() {
 }
 
 // --- action buttons -------------------------------------------------------
+// One click = a COMPLETE pass: profile text fields, selects, custom dropdowns, then every
+// radio / checkbox / open-ended question — all in sequence so they never race each other.
 $('fill').onclick = async () => {
   add('me', 'Fill this form');
-  const r = await tabSend('FILL');
-  if (!r.ok) return void add('ai', '⚠ ' + r.error);
-  let n = r.filled || 0;
-  const ai = await tabSend('AI_FILL');
-  if (ai.ok) n += ai.filled || 0;
-  add('ai', `Filled ${n} fields — review & submit.`);
+  const thinking = add('ai', 'Filling everything…');
+  let filled = 0, answered = 0, anyOk = false, firstErr = '';
+  const step = async (type) => { const r = await tabSend(type); if (r.ok) anyOk = true; else firstErr = firstErr || r.error; return r; };
+  const f1 = await step('FILL'); if (f1.ok) filled += f1.filled || 0;
+  const f2 = await step('AI_FILL'); if (f2.ok) filled += f2.filled || 0;
+  const a = await step('AUTO_ANSWER'); if (a.ok) answered += a.done || 0;
+  thinking.remove();
+  if (!anyOk) return void add('ai', '⚠ ' + (firstErr || 'No JobPilot on this page — reload the page and retry'));
+  const parts = [];
+  if (filled) parts.push(`${filled} field${filled === 1 ? '' : 's'}`);
+  if (answered) parts.push(`${answered} question${answered === 1 ? '' : 's'}`);
+  add('ai', parts.length ? `Filled ${parts.join(' + ')} — review & submit.` : 'Everything was already filled — review & submit.');
 };
 $('answer').onclick = async () => {
   add('me', 'AI-answer questions');

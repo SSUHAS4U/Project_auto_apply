@@ -20,6 +20,8 @@ export function ComposePage() {
   const [emailTpl, setEmailTpl] = useState('');
   const [coverTpl, setCoverTpl] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
+  const [refineText, setRefineText] = useState('');
+  const [refining, setRefining] = useState(false);
 
   useEffect(() => { api.aiStatus().then(setAi).catch(() => {}); }, []);
   useEffect(() => {
@@ -53,6 +55,31 @@ export function ComposePage() {
     if (!text) { toast('Nothing to copy yet', 'info'); return; }
     try { await navigator.clipboard.writeText(text); toast(`${label} copied`, 'success'); }
     catch { toast('Copy failed', 'error'); }
+  };
+
+  const refine = async () => {
+    const instruction = refineText.trim();
+    if (!instruction) return;
+    setRefining(true);
+    try {
+      const r = await api.composeRefine({ coldEmail, coverLetter, instruction });
+      setColdEmail(r.coldEmail || '');
+      setCoverLetter(r.coverLetter || '');
+      setRefineText('');
+      toast('Updated — review the changes', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setRefining(false); }
+  };
+
+  const downloadCoverPdf = async () => {
+    if (!coverLetter) { toast('Generate the cover letter first', 'info'); return; }
+    try {
+      const blob = await api.composeCoverPdf(coverLetter);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.pdf`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) { toast((e as Error).message, 'error'); }
   };
 
   const send = async () => {
@@ -136,16 +163,33 @@ export function ComposePage() {
               Your cold email and cover letter will appear here after you generate.
             </div>
           ) : (
-            <div className="grid2" style={{ alignItems: 'start' }}>
-              <div className="panel">
-                <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
-                <textarea rows={12} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
+            <>
+              <div className="grid2" style={{ alignItems: 'start' }}>
+                <div className="panel">
+                  <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
+                  <textarea rows={12} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
+                </div>
+                <div className="panel">
+                  <div className="panel-head">📄 Cover letter
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn copy-btn" onClick={downloadCoverPdf}>⬇ PDF</button>
+                      <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button>
+                    </span>
+                  </div>
+                  <textarea rows={12} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
+                </div>
               </div>
-              <div className="panel">
-                <div className="panel-head">📄 Cover letter <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button></div>
-                <textarea rows={12} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
+              {/* Refine chat — tweak specific words or the whole thing in natural language */}
+              <div className="row" style={{ marginTop: 14, gap: 8 }}>
+                <input className="input" style={{ flex: 1 }} value={refineText}
+                  onChange={(e) => setRefineText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') refine(); }}
+                  placeholder='Tell the AI how to tweak it — e.g. "make the email shorter", "mention my React projects", "more formal tone"' />
+                <button className="btn btn-primary" onClick={refine} disabled={refining}>
+                  {refining ? <span className="spinner" /> : '✨'} Refine
+                </button>
               </div>
-            </div>
+            </>
           )}
         </div>
 
