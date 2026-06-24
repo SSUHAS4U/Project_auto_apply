@@ -52,6 +52,8 @@ public class JobPilotProperties {
     private Adzuna adzuna = new Adzuna();
     private Jooble jooble = new Jooble();
     private GoogleCse googleCse = new GoogleCse();
+    private Careerjet careerjet = new Careerjet();
+    private IndianApi indianApi = new IndianApi();
 
     @Data
     public static class GoogleCse {
@@ -130,5 +132,21 @@ public class JobPilotProperties {
     public static class Jooble {
         private String key = "";
         private String keywords = "java developer";
+    }
+
+    /** Careerjet public search API (free, India locale). Needs an affiliate id (affid). */
+    @Data
+    public static class Careerjet {
+        private String affid = "";
+        private String locale = "en_IN";
+        private String where = "India";
+        private List<String> queries = List.of("software engineer", "java developer", "full stack developer");
+    }
+
+    /** IndianAPI.in jobs feed — India-focused aggregator. Needs an x-api-key. */
+    @Data
+    public static class IndianApi {
+        private String apiKey = "";
+        private String url = "https://jobs.indianapi.in/jobs";
     }
 }

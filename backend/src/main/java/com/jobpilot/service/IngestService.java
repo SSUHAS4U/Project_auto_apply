@@ -183,6 +183,14 @@ public class IngestService {
                     .map(q -> FetchParams.builder().query(q.trim()).build())
                     .collect(Collectors.toList());
         }
+        if ("careerjet".equals(c.source())) {
+            List<String> qs = props.getCareerjet().getQueries();
+            if (qs == null || qs.isEmpty()) return List.of();
+            return qs.stream()
+                    .map(q -> FetchParams.builder().query(q.trim())
+                            .where(props.getCareerjet().getWhere()).build())
+                    .collect(Collectors.toList());
+        }
         return List.of(FetchParams.builder().build());
     }
 

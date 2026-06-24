@@ -43,19 +43,25 @@ async function loadProfile() {
 // radio / checkbox / open-ended question — all in sequence so they never race each other.
 $('fill').onclick = async () => {
   add('me', 'Fill this form');
-  const thinking = add('ai', 'Filling everything…');
+  const prog = add('ai', '⏳ Starting…');
+  const setProg = (t) => { prog.textContent = t; $('chat').scrollTop = $('chat').scrollHeight; };
   await bg('GET_PROFILE', { force: true }); // refresh cache so recent profile edits are used
   let filled = 0, answered = 0, anyOk = false, firstErr = '';
-  const step = async (type) => { const r = await tabSend(type); if (r.ok) anyOk = true; else firstErr = firstErr || r.error; return r; };
-  const f1 = await step('FILL'); if (f1.ok) filled += f1.filled || 0;
-  const f2 = await step('AI_FILL'); if (f2.ok) filled += f2.filled || 0;
-  const a = await step('AUTO_ANSWER'); if (a.ok) answered += a.done || 0;
-  thinking.remove();
+  const step = async (type, label) => {
+    setProg(label);
+    const r = await tabSend(type);
+    if (r.ok) anyOk = true; else firstErr = firstErr || r.error;
+    return r;
+  };
+  const f1 = await step('FILL', '⏳ Filling your details…'); if (f1.ok) filled += f1.filled || 0;
+  const f2 = await step('AI_FILL', `⏳ Filling dropdowns & smart fields… (${filled} so far)`); if (f2.ok) filled += f2.filled || 0;
+  const a = await step('AUTO_ANSWER', `⏳ Answering questions… (${filled} fields filled)`); if (a.ok) answered += a.done || 0;
+  prog.remove();
   if (!anyOk) return void add('ai', '⚠ ' + (firstErr || 'No JobPilot on this page — reload the page and retry'));
   const parts = [];
   if (filled) parts.push(`${filled} field${filled === 1 ? '' : 's'}`);
   if (answered) parts.push(`${answered} question${answered === 1 ? '' : 's'}`);
-  add('ai', parts.length ? `Filled ${parts.join(' + ')} — review & submit.` : 'Everything was already filled — review & submit.');
+  add('ai', parts.length ? `✓ Filled ${parts.join(' + ')} — review & submit.` : '✓ Everything was already filled — review & submit.');
 };
 $('answer').onclick = async () => {
   add('me', 'AI-answer questions');
@@ -113,7 +119,13 @@ async function ask(text) {
   }
 }
 $('send').onclick = () => ask();
-$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask(); });
+// Enter sends; Shift+Enter inserts a new line. Auto-grow the textarea up to its max height.
+const inputEl = $('input');
+const autoGrow = () => { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px'; };
+inputEl.addEventListener('input', autoGrow);
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); inputEl.style.height = 'auto'; }
+});
 document.querySelectorAll('.hint').forEach((h) => h.addEventListener('click', () => ask(h.textContent)));
 
 loadProfile();

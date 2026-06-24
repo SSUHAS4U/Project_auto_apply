@@ -95,6 +95,14 @@ jobpilot:
     api-key: ${JOBPILOT_GOOGLE_CSE_KEY:}
     cx: ${JOBPILOT_GOOGLE_CSE_CX:}
     queries: ${JOBPILOT_GOOGLE_CSE_QUERIES:}
+  careerjet:
+    affid: ${JOBPILOT_CAREERJET_AFFID:}
+    locale: ${JOBPILOT_CAREERJET_LOCALE:en_IN}
+    where: ${JOBPILOT_CAREERJET_WHERE:India}
+    queries: ${JOBPILOT_CAREERJET_QUERIES:software engineer,java developer,full stack developer}
+  indian-api:
+    api-key: ${JOBPILOT_INDIANAPI_KEY:}
+    url: ${JOBPILOT_INDIANAPI_URL:https://jobs.indianapi.in/jobs}
   cleanup:
     retention-days: ${JOBPILOT_RETENTION_DAYS:7}
     cron: ${JOBPILOT_CLEANUP_CRON:0 30 3 * * *}
