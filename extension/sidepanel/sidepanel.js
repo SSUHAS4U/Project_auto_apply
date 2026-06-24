@@ -44,6 +44,7 @@ async function loadProfile() {
 $('fill').onclick = async () => {
   add('me', 'Fill this form');
   const thinking = add('ai', 'Filling everything…');
+  await bg('GET_PROFILE', { force: true }); // refresh cache so recent profile edits are used
   let filled = 0, answered = 0, anyOk = false, firstErr = '';
   const step = async (type) => { const r = await tabSend(type); if (r.ok) anyOk = true; else firstErr = firstErr || r.error; return r; };
   const f1 = await step('FILL'); if (f1.ok) filled += f1.filled || 0;

@@ -132,22 +132,23 @@
   // (via the greedy "name"), and "Current Company" maps to current_company.
   function match(label, profile) {
     if (!label) return null;
-    let best = null, bestLen = 0;
-    // Custom field_map answers take priority, but still by longest match.
+    // Decide the BEST-matching field purely by the longest matching keyword — regardless of
+    // whether that field currently has a value. This stops "Current College Name" (college, via
+    // "college name") from falling through to the greedy "name" of full_name and getting the
+    // person's name; if college is empty we return null and leave it for the AI pass.
+    let bestKey = null, bestLen = 0, bestValue = null;
     const fieldMap = (profile && profile.field_map) || {};
     for (const k of Object.keys(fieldMap)) {
       const nk = norm(k);
-      if (nk && fieldMap[k] && label.includes(nk) && nk.length > bestLen) { best = { key: k, value: fieldMap[k] }; bestLen = nk.length; }
+      if (nk && label.includes(nk) && nk.length > bestLen) { bestKey = k; bestLen = nk.length; bestValue = fieldMap[k]; }
     }
     for (const [key, words] of Object.entries(SYNONYMS)) {
       for (const w of words) {
-        if (w.length > bestLen && label.includes(w)) {
-          const value = valueFor(key, profile);
-          if (value) { best = { key, value }; bestLen = w.length; }
-        }
+        if (w.length > bestLen && label.includes(w)) { bestKey = key; bestLen = w.length; bestValue = valueFor(key, profile); }
       }
     }
-    return best;
+    if (!bestKey || !bestValue) return null; // no match, or the matched field has no value yet
+    return { key: bestKey, value: bestValue };
   }
 
   // Set value in a way React/Angular/Vue notice. Delegates to the smart-fill engine
