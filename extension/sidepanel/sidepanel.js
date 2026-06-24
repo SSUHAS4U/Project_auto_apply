@@ -84,12 +84,17 @@ async function ask(text) {
       const fr = await tabSend('FILL_FIELD', { label: d.field, value: d.value });
       add('ai', fr.ok ? `✓ Filled "${fr.label}" with "${d.value}"` : `⚠ ${fr.error}`);
     } else if (d.action === 'answer') {
+      const cleanQ = d.question || q; // the extracted form question, not the chat instruction
       add('ai', d.value || '(no answer)', [
         ['📋 Copy', () => navigator.clipboard.writeText(d.value || '')],
-        ['💾 Save to autofill', async () => { await bg('SAVE_QA', { question: q, answer: d.value }); add('ai', 'Saved to your autofill answers ✓'); }],
+        ['💾 Save to autofill', async () => { await bg('SAVE_QA', { question: cleanQ, answer: d.value }); add('ai', `Saved "${cleanQ}" ✓`); }],
       ]);
     } else if (d.action === 'save') {
-      add('ai', 'Saved to your autofill answers ✓');
+      // backend already persisted it; show the clean question that was saved
+      add('ai', `Saved ${d.question ? `"${d.question}"` : 'this'} to your autofill answers ✓`);
+    } else if (d.action === 'save_job') {
+      const sr = await tabSend('SAVE_CURRENT');
+      add('ai', sr.ok ? 'Saved this job to your tracker ✓' : '⚠ ' + (sr.error || 'could not save — reload the page and retry'));
     } else {
       add('ai', d.message || 'Done.');
     }

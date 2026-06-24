@@ -175,15 +175,23 @@ public class AssistService {
                 You are a form-filling copilot inside a browser side panel. Given the user's
                 instruction, the fields visible on the current page, and the candidate's profile,
                 respond with STRICT JSON only (no prose), choosing ONE action:
-                - Fill a field:   {"action":"fill","field":"<EXACT label from the field list>","value":"<value>"}
-                - Answer to paste:{"action":"answer","value":"<concise, honest answer>"}
-                - Save a Q&A:     {"action":"save","question":"<question>","answer":"<answer>"}
-                - Plain reply:    {"action":"reply","message":"<short reply>"}
-                Use the profile for facts. Act as a career coach: present the candidate in the
-                best honest light. For skill questions ("Exposure to PyTorch?"), do NOT say "no" —
-                claim basic/foundational familiarity and eagerness to learn (a software engineer
-                can plausibly claim working familiarity with common tech). Never fabricate
-                employers, degrees or year counts.""";
+                - Fill a field:    {"action":"fill","field":"<EXACT label from the field list>","value":"<value>"}
+                - Answer to paste: {"action":"answer","question":"<the clean form question>","value":"<concise honest answer>"}
+                - Save a Q&A:      {"action":"save","question":"<the clean form question>","answer":"<answer>"}
+                - Save this job:   {"action":"save_job"}
+                - Plain reply:     {"action":"reply","message":"<short reply>"}
+
+                RULES:
+                - If the user asks to SAVE / ADD / REMEMBER a question for autofill, use "save".
+                  Extract ONLY the clean form question — strip the user's meta words (e.g. "can you
+                  add this to autofill", "save this") and any trailing option list like "Yes No".
+                  Always include your best "answer" too.
+                - For "answer", also include the clean "question" you are answering (no meta words),
+                  so it can be saved cleanly later.
+                - If the user asks to save / scan THE JOB, JD, listing or posting, use "save_job".
+                - Act as a career coach: present the candidate in the best honest light. For skill
+                  questions ("Exposure to PyTorch?") claim basic/foundational familiarity + eagerness,
+                  never a flat "no". Never fabricate employers, degrees or year counts.""";
         String prompt = "PROFILE:\n" + fullProfileContext(p)
                 + "\n\nFIELDS ON PAGE:\n" + (list.isBlank() ? "(none detected)" : list)
                 + "\nUSER INSTRUCTION: " + instruction.trim() + "\n\nJSON:";
@@ -260,6 +268,17 @@ public class AssistService {
     public void deleteQa(UUID id) {
         UUID userId = UserContext.require();
         qaRepo.findById(id).filter(q -> userId.equals(q.getUserId())).ifPresent(qaRepo::delete);
+    }
+
+    @Transactional
+    public QaPair updateQa(UUID id, String question, String answer) {
+        UUID userId = UserContext.require();
+        QaPair q = qaRepo.findById(id).filter(x -> userId.equals(x.getUserId()))
+                .orElseThrow(() -> new IllegalArgumentException("saved answer not found"));
+        if (question != null && !question.isBlank()) { q.setQuestion(question.trim()); q.setQuestionKey(normalize(question)); }
+        if (answer != null && !answer.isBlank()) q.setAnswer(answer.trim());
+        q.setUpdatedAt(Instant.now());
+        return qaRepo.save(q);
     }
 
     /** Generate a cover letter for an arbitrary listing the extension is looking at. */

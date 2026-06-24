@@ -62,6 +62,11 @@ public class AssistController {
         return assist.saveQa(body.get("question"), body.get("answer"));
     }
 
+    @PutMapping("/qa/{id}")
+    public QaPair updateQa(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        return assist.updateQa(id, body.get("question"), body.get("answer"));
+    }
+
     @DeleteMapping("/qa/{id}")
     public Map<String, Object> deleteQa(@PathVariable UUID id) {
         assist.deleteQa(id);

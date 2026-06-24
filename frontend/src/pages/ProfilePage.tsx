@@ -11,6 +11,9 @@ function SavedAnswers() {
   const toast = useToast();
   const [items, setItems] = useState<QaPair[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftQ, setDraftQ] = useState('');
+  const [draftA, setDraftA] = useState('');
   const load = () => api.qaList().then(setItems).catch(() => setItems([]));
   useEffect(() => { load(); }, []);
   const remove = async (it: QaPair) => {
@@ -18,6 +21,17 @@ function SavedAnswers() {
     setBusy(it.id);
     try { await api.qaDelete(it.id); setItems((x) => (x ?? []).filter((i) => i.id !== it.id)); }
     catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+  const startEdit = (it: QaPair) => { setEditing(it.id); setDraftQ(it.question); setDraftA(it.answer); };
+  const saveEdit = async (it: QaPair) => {
+    if (!draftQ.trim() || !draftA.trim()) { toast('Question and answer are required', 'error'); return; }
+    setBusy(it.id);
+    try {
+      const updated = await api.qaUpdate(it.id, { question: draftQ.trim(), answer: draftA.trim() });
+      setItems((x) => (x ?? []).map((i) => (i.id === it.id ? updated : i)));
+      setEditing(null);
+    } catch (e) { toast((e as Error).message, 'error'); }
     finally { setBusy(null); }
   };
   return (
@@ -30,14 +44,30 @@ function SavedAnswers() {
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {items.map((it) => (
-              <div key={it.id} className="repeat-row" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{it.question}</div>
-                  <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
-                    style={{ color: 'var(--danger,#ef4444)', flexShrink: 0 }}>🗑</button>
-                </div>
-                <div className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{it.answer}</div>
-                {it.updatedAt && <div className="faint" style={{ fontSize: 11 }}>Saved {fmtDate(it.updatedAt)}</div>}
+              <div key={it.id} className="repeat-row" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {editing === it.id ? (
+                  <>
+                    <input className="input" value={draftQ} onChange={(e) => setDraftQ(e.target.value)} placeholder="Question" />
+                    <textarea className="input" rows={2} value={draftA} onChange={(e) => setDraftA(e.target.value)} placeholder="Answer" />
+                    <div className="row" style={{ gap: 8 }}>
+                      <button className="btn btn-primary btn-sm" disabled={busy === it.id} onClick={() => saveEdit(it)}>Save</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{it.question}</div>
+                      <div className="row" style={{ gap: 4, flexShrink: 0 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit">✏️</button>
+                        <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
+                          style={{ color: 'var(--danger,#ef4444)' }} title="Delete">🗑</button>
+                      </div>
+                    </div>
+                    <div className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{it.answer}</div>
+                    {it.updatedAt && <div className="faint" style={{ fontSize: 11 }}>Saved {fmtDate(it.updatedAt)}</div>}
+                  </>
+                )}
               </div>
             ))}
           </div>

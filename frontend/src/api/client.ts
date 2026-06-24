@@ -181,6 +181,8 @@ export const api = {
 
   // Saved autofill answers (Q&A bank) — the extension writes these; manage them here.
   qaList: () => req<QaPair[]>('/api/assist/qa'),
+  qaUpdate: (id: string, body: { question: string; answer: string }) =>
+    req<QaPair>(`/api/assist/qa/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
 
   // Admin (server enforces ADMIN role on these routes).
