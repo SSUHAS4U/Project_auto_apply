@@ -467,6 +467,26 @@
     try { window.JobPilot.highlight(input.offsetParent ? input : (input.closest('div, label') || input)); } catch (_) { /* ignore */ }
   }
 
+  // Google Forms / Drive-picker uploads have no <input type=file> — just an "Add file"
+  // button that opens a cross-origin Drive picker. Find that button (scoped to the kind).
+  function findUploadButton(kind) {
+    const re = kind === 'cover' ? /cover|letter|motivation/i : kind === 'resume' ? /resume|cv|curriculum|biodata/i : null;
+    const btns = [...document.querySelectorAll('[role="button"], button, [aria-label]')]
+      .filter((b) => b.offsetParent !== null && /add file|upload file|upload a file|choose file|attach/i.test((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || '')));
+    if (!btns.length) return null;
+    if (re) {
+      const m = btns.find((b) => { const box = b.closest('[role="listitem"], li, fieldset, section, div'); return box && re.test(box.textContent || ''); });
+      if (m) return m;
+    }
+    return btns[0];
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
   // Tiny dependency-free text PDF (Helvetica, wrapped). Good enough for uploads.
   function textToPdf(text) {
     const lines = [];
@@ -511,15 +531,21 @@
     const blob = textToPdf(r.text);
     const name = `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.pdf`;
     const input = findFileInput('cover');
-    if (!input) {
-      // No upload field on the page — download it so the user can attach manually.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      return { attached: false, downloaded: true, role, company };
+    if (input) {
+      attachFileToInput(input, blob, name);
+      return { attached: true, role, company };
     }
-    attachFileToInput(input, blob, name);
-    return { attached: true, role, company };
+    // No real file input — Drive picker (Google Forms) or no upload field at all.
+    const btn = findUploadButton('cover');
+    downloadBlob(blob, name);
+    if (btn) {
+      btn.scrollIntoView({ block: 'center' });
+      btn.click();
+      return { attached: false, pickerOpened: true, role, company,
+        note: `Generated your cover letter and downloaded "${name}". This form uploads via Google Drive — I opened the picker; choose "Upload" and pick it.` };
+    }
+    return { attached: false, downloaded: true, role, company,
+      note: `No upload field here — I generated and downloaded "${name}" so you can attach it.` };
   }
 
   // ---- bootstrap ----------------------------------------------------------
@@ -620,13 +646,26 @@
   async function uploadResume() {
     const r = await msg('GET_RESUME');
     if (!r || !r.hasResume) throw new Error('No resume on file — upload one in your JobPilot profile first');
-    const input = findFileInput('resume');
-    if (!input) throw new Error('No file-upload field found on this page');
     const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0));
-    const type = r.contentType || 'application/pdf';
-    const blob = new Blob([bytes], { type });
-    attachFileToInput(input, blob, r.filename || 'resume.pdf');
-    return { attached: true, filename: r.filename };
+    const blob = new Blob([bytes], { type: r.contentType || 'application/pdf' });
+    const name = r.filename || 'resume.pdf';
+
+    const input = findFileInput('resume');
+    if (input) {
+      attachFileToInput(input, blob, name);
+      return { attached: true, filename: name };
+    }
+    // No real file input — Google Forms / Drive-picker style. Best we can do: download the
+    // resume locally and open the picker so it's one click for the user.
+    const btn = findUploadButton('resume');
+    if (btn) {
+      downloadBlob(blob, name);
+      btn.scrollIntoView({ block: 'center' });
+      btn.click();
+      return { attached: false, pickerOpened: true, filename: name,
+        note: `This form uploads via Google Drive, which extensions can't fill directly. I downloaded "${name}" and opened the picker — choose "Upload", then drag it in or pick it from Downloads.` };
+    }
+    throw new Error('No file-upload field found on this page');
   }
 
   // Popup-triggered actions (works on any page since this script loads everywhere).

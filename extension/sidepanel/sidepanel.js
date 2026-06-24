@@ -53,8 +53,16 @@ $('answer').onclick = async () => {
   const r = await tabSend('AUTO_ANSWER');
   add('ai', r.ok ? (r.total ? `Answered ${r.done} of ${r.total} questions — review them.` : 'No open-ended question fields found here.') : '⚠ ' + r.error);
 };
-$('resume').onclick = async () => { const r = await tabSend('UPLOAD_RESUME'); add('ai', r.ok ? `Resume attached (${r.filename}) ✓` : '⚠ ' + r.error); };
-$('cover').onclick = async () => { const r = await tabSend('ATTACH_COVER_LETTER'); add('ai', r.ok ? (r.attached ? 'Cover letter attached ✓ — review & submit.' : 'No upload field — downloaded the PDF instead.') : '⚠ ' + r.error); };
+$('resume').onclick = async () => {
+  const r = await tabSend('UPLOAD_RESUME');
+  if (!r.ok) return void add('ai', '⚠ ' + r.error);
+  add('ai', r.attached ? `Resume attached (${r.filename}) ✓` : (r.note || 'Downloaded your resume.'));
+};
+$('cover').onclick = async () => {
+  const r = await tabSend('ATTACH_COVER_LETTER');
+  if (!r.ok) return void add('ai', '⚠ ' + r.error);
+  add('ai', r.attached ? 'Cover letter attached ✓ — review & submit.' : (r.note || 'Downloaded the cover-letter PDF.'));
+};
 $('save').onclick = async () => { const r = await tabSend('SAVE_CURRENT'); add('ai', r.ok ? 'Saved to your tracker ✓' : '⚠ ' + r.error); };
 $('opts').onclick = (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); };
 
