@@ -206,6 +206,17 @@ export const api = {
   adminDeleteUser: (id: string) => req<{ deleted: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
   adminSetRole: (id: string, role: 'ADMIN' | 'USER') =>
     req<AdminUser>(`/api/admin/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
+
+  adminSecrets: () => req<SecretStatus[]>('/api/admin/secrets'),
+  adminSetSecret: (name: string, value: string) =>
+    req<{ saved: boolean }>(`/api/admin/secrets/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ value }) }),
+  adminDeleteSecret: (name: string) =>
+    req<{ deleted: boolean }>(`/api/admin/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+};
+
+export type SecretStatus = {
+  name: string; label: string; group: string;
+  configured: boolean; source: 'saved' | 'env' | 'none'; updatedAt: string | null;
 };
 
 export type LastRun = { finishedAt: string; inserted: number; updated: number; fetched: number; totalJobs: number; durationSec: number };

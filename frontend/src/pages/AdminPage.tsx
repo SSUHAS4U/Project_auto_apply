@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type AdminUser, type AdminUserDetail } from '../api/client';
+import { api, type AdminUser, type AdminUserDetail, type SecretStatus } from '../api/client';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 
@@ -47,6 +47,8 @@ export function AdminPage() {
           <div className="page-sub">{users.length} {users.length === 1 ? 'account' : 'accounts'} · grant admin, view, remove, search</div>
         </div>
       </div>
+
+      <SecretsManager />
 
       <form className="card card-pad" onSubmit={onSearch} style={{ marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <input className="input" placeholder="Search name or email…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
@@ -97,6 +99,84 @@ export function AdminPage() {
 
       {view && <UserModal u={view} onClose={() => setView(null)} />}
     </>
+  );
+}
+
+function SecretsManager() {
+  const toast = useToast();
+  const [secrets, setSecrets] = useState<SecretStatus[] | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = () => api.adminSecrets().then(setSecrets).catch((e) => { toast(e.message, 'error'); setSecrets([]); });
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  const save = async (s: SecretStatus) => {
+    const value = (drafts[s.name] || '').trim();
+    if (!value) { toast('Paste a value first', 'error'); return; }
+    setBusy(s.name);
+    try {
+      await api.adminSetSecret(s.name, value);
+      setDrafts((d) => ({ ...d, [s.name]: '' }));
+      toast(`${s.label} saved (encrypted)`, 'success');
+      load();
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+
+  const remove = async (s: SecretStatus) => {
+    if (!window.confirm(`Delete the saved ${s.label}? It reverts to the environment value (if any).`)) return;
+    setBusy(s.name);
+    try { await api.adminDeleteSecret(s.name); toast(`${s.label} deleted`, 'success'); load(); }
+    catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+
+  const badge = (s: SecretStatus) => {
+    if (s.source === 'saved') return <span className="badge badge-ats" title={s.updatedAt ? `Updated ${fmtDate(s.updatedAt)}` : ''}>🔒 Saved</span>;
+    if (s.source === 'env') return <span className="badge" style={{ background: 'var(--card2,#1a1f2b)' }}>⚙ From env</span>;
+    return <span className="badge" style={{ color: 'var(--text-faint,#7d8595)' }}>Not set</span>;
+  };
+
+  if (secrets === null) return <div className="card card-pad" style={{ marginBottom: 16 }}><span className="spinner" /></div>;
+  const groups = [...new Set(secrets.map((s) => s.group))];
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 18 }}>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🔑 API keys & secrets</div>
+      <div className="faint" style={{ fontSize: 12.5, marginBottom: 14 }}>
+        Stored AES-256 encrypted. Values are <b>write-only</b> — once saved they can’t be viewed, only replaced or deleted.
+        A saved value overrides the matching environment variable.
+      </div>
+      {groups.map((g) => (
+        <div key={g} style={{ marginBottom: 16 }}>
+          <div className="faint" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>{g}</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {secrets.filter((s) => s.group === g).map((s) => (
+              <div key={s.name} className="repeat-row" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.label} <span className="faint" style={{ fontWeight: 400, fontSize: 11.5 }}>({s.name})</span></div>
+                  {badge(s)}
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <input className="input" type="password" autoComplete="new-password" style={{ flex: 1 }}
+                    placeholder={s.configured ? 'Enter a new value to replace…' : 'Paste the key…'}
+                    value={drafts[s.name] || ''} onChange={(e) => setDrafts((d) => ({ ...d, [s.name]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(s); }} />
+                  <button className="btn btn-primary btn-sm" disabled={busy === s.name} onClick={() => save(s)}>
+                    {busy === s.name ? <span className="spinner" /> : 'Save'}
+                  </button>
+                  {s.source === 'saved' && (
+                    <button className="btn btn-ghost btn-sm" disabled={busy === s.name} onClick={() => remove(s)}
+                      style={{ color: 'var(--danger,#ef4444)' }} title="Delete saved value">🗑</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

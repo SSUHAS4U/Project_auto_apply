@@ -1,6 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.service.AdminService;
+import com.jobpilot.service.SecretService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,9 +17,29 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService admin;
+    private final SecretService secrets;
 
-    public AdminController(AdminService admin) {
+    public AdminController(AdminService admin, SecretService secrets) {
         this.admin = admin;
+        this.secrets = secrets;
+    }
+
+    // --- API keys / secrets (values are write-only; never returned) -----------
+    @GetMapping("/secrets")
+    public List<Map<String, Object>> secrets() {
+        return secrets.status();
+    }
+
+    @PutMapping("/secrets/{name}")
+    public Map<String, Object> setSecret(@PathVariable String name, @RequestBody Map<String, String> body) {
+        secrets.set(name, body.get("value"));
+        return Map.of("saved", true);
+    }
+
+    @DeleteMapping("/secrets/{name}")
+    public Map<String, Object> deleteSecret(@PathVariable String name) {
+        secrets.delete(name);
+        return Map.of("deleted", true);
     }
 
     @GetMapping("/users")
