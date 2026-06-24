@@ -124,6 +124,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'SCAN_JOB': {
+          const data = await apiFetch('/api/assist/scan-job', {
+            method: 'POST', body: JSON.stringify({ text: msg.text, title: msg.title, url: msg.url }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'GET_RESUME': {
           const data = await apiFetch('/api/extension/resume');
           sendResponse({ ok: true, data });

@@ -9,6 +9,8 @@ export function SavedJobsPage() {
   const [saved, setSaved] = useState<SavedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [guide, setGuide] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ title: string; company: string; location: string }>({ title: '', company: '', location: '' });
 
   const load = () => {
     setLoading(true);
@@ -25,6 +27,19 @@ export function SavedJobsPage() {
     if (!window.confirm(`Delete saved listing "${s.title ?? 'Untitled'}"?`)) return;
     try { await api.deleteSaved(s.id); toast('Deleted', 'success'); setSaved((x) => x.filter((j) => j.id !== s.id)); }
     catch (e) { toast((e as Error).message, 'error'); }
+  };
+
+  const startEdit = (s: SavedJob) => {
+    setEditId(s.id);
+    setDraft({ title: s.title ?? '', company: s.company ?? '', location: s.location ?? '' });
+  };
+  const saveEdit = async (s: SavedJob) => {
+    try {
+      const updated = await api.updateSaved(s.id, draft);
+      setSaved((x) => x.map((j) => (j.id === s.id ? updated : j)));
+      setEditId(null);
+      toast('Saved', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); }
   };
 
   return (
@@ -84,19 +99,40 @@ export function SavedJobsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 14 }}>
             {saved.map((s) => (
               <div key={s.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <a href={s.url} target="_blank" rel="noreferrer" className="job-title" style={{ fontSize: 15 }}>{s.title ?? 'Untitled listing'}</a>
-                  <span className="chip">{s.sourceSite ?? 'web'}</span>
-                </div>
-                <div className="muted" style={{ fontSize: 13 }}>{s.company ?? '—'}{s.location ? ` · ${s.location}` : ''}</div>
-                <div className="faint" style={{ fontSize: 12 }}>Captured {fmtDate(s.createdAt)}</div>
-                <div className="row" style={{ marginTop: 'auto', paddingTop: 8, gap: 8 }}>
-                  {s.promotedJobId
-                    ? <span className="badge badge-ats">✓ Promoted</span>
-                    : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
-                  <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open ↗</a>
-                  <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}>🗑 Delete</button>
-                </div>
+                {editId === s.id ? (
+                  <>
+                    <label className="field" style={{ fontSize: 12 }}>Job title
+                      <input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Software Engineer Intern" />
+                    </label>
+                    <label className="field" style={{ fontSize: 12 }}>Company
+                      <input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} placeholder="Microsoft" />
+                    </label>
+                    <label className="field" style={{ fontSize: 12 }}>Location
+                      <input className="input" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="India · Remote" />
+                    </label>
+                    <div className="row" style={{ gap: 8, marginTop: 4 }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => saveEdit(s)}>Save</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <a href={s.url} target="_blank" rel="noreferrer" className="job-title" style={{ fontSize: 15 }}>{s.title ?? 'Untitled listing'}</a>
+                      <span className="chip">{s.sourceSite ?? 'web'}</span>
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>{s.company ?? '—'}{s.location ? ` · ${s.location}` : ''}</div>
+                    <div className="faint" style={{ fontSize: 12 }}>Captured {fmtDate(s.createdAt)}</div>
+                    <div className="row" style={{ marginTop: 'auto', paddingTop: 8, gap: 8 }}>
+                      {s.promotedJobId
+                        ? <span className="badge badge-ats">✓ Promoted</span>
+                        : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
+                      <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open ↗</a>
+                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} title="Edit details">✏️</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}>🗑 Delete</button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

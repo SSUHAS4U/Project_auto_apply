@@ -150,6 +150,8 @@ export const api = {
 
   savedJobs: () => req<SavedJob[]>('/api/saved-jobs'),
   promoteSaved: (id: string) => req<Job>(`/api/saved-jobs/${id}/promote`, { method: 'POST' }),
+  updateSaved: (id: string, body: { title?: string; company?: string; location?: string; url?: string }) =>
+    req<SavedJob>(`/api/saved-jobs/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteSaved: (id: string) => req<{ deleted: boolean }>(`/api/saved-jobs/${id}`, { method: 'DELETE' }),
 
   notifications: (unread = false) =>

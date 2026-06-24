@@ -44,6 +44,11 @@ public class AssistController {
         return Map.of("answers", assist.autofill(fields));
     }
 
+    @PostMapping("/scan-job")
+    public Map<String, String> scanJob(@RequestBody Map<String, String> body) {
+        return assist.scanJob(body.get("text"), body.get("title"), body.get("url"));
+    }
+
     @PostMapping("/command")
     @SuppressWarnings("unchecked")
     public Map<String, Object> command(@RequestBody Map<String, Object> body) {

@@ -601,22 +601,64 @@
 
   // ---- bootstrap ----------------------------------------------------------
 
-  // Scan the current page for a job listing and save it (generic pages only —
-  // LinkedIn/Naukri/Indeed have their own richer extractors).
-  function scanListing() {
-    const meta = (sel, attr) => document.querySelector(sel)?.getAttribute(attr) || '';
-    const title = (document.querySelector('h1')?.textContent
-      || meta('meta[property="og:title"]', 'content')
-      || document.title || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-    const company = (meta('meta[property="og:site_name"]', 'content')
-      || location.hostname.replace(/^www\./, '').split('.')[0] || '').trim();
-    return { title, company, location: '', url: location.href, sourceSite: location.hostname, raw: null };
+  // Structured JobPosting data (schema.org JSON-LD) — the most reliable source when present.
+  function jsonLdJob() {
+    const orgName = (o) => (o && (typeof o === 'string' ? o : o.name)) || '';
+    const locOf = (jl) => {
+      const a = Array.isArray(jl) ? jl[0] : jl;
+      const addr = a && a.address;
+      if (!addr) return '';
+      if (typeof addr === 'string') return addr;
+      return [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter(Boolean).join(', ');
+    };
+    for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+      let data; try { data = JSON.parse(s.textContent); } catch (_) { continue; }
+      const nodes = Array.isArray(data) ? data : (data['@graph'] || [data]);
+      for (const n of nodes) {
+        const t = n && n['@type'];
+        if (n && (t === 'JobPosting' || (Array.isArray(t) && t.includes('JobPosting')))) {
+          return {
+            title: (n.title || '').toString().trim(),
+            company: orgName(n.hiringOrganization).toString().trim(),
+            location: locOf(n.jobLocation),
+          };
+        }
+      }
+    }
+    return null;
   }
 
-  function saveListing() {
+  const hostWord = () => location.hostname.replace(/^www\./, '').split('.')[0];
+
+  // Scan the current page for a job listing: prefer JSON-LD, else heuristics, else ask the
+  // AI to read the page text and extract clean { title, company, location }.
+  async function scanListing() {
+    const meta = (sel, attr) => document.querySelector(sel)?.getAttribute(attr) || '';
+    const ld = jsonLdJob();
+    let title = (ld?.title || document.querySelector('h1')?.textContent || meta('meta[property="og:title"]', 'content') || document.title || '')
+      .replace(/\s+/g, ' ').trim();
+    let company = (ld?.company || meta('meta[property="og:site_name"]', 'content') || '').replace(/\s+/g, ' ').trim();
+    let loc = (ld?.location || '').replace(/\s+/g, ' ').trim();
+
+    // Weak extraction (no JSON-LD title/company, or company is just the domain word)? Use AI.
+    const weak = !title || !company || norm(company) === norm(hostWord()) || /^(apply|jobs|careers|www)$/i.test(company);
+    if (weak) {
+      try {
+        const r = await msg('SCAN_JOB', { text: extractJobText(), title: document.title, url: location.href });
+        if (r && r.title) title = r.title;
+        if (r && r.company) company = r.company;
+        if (r && r.location && !loc) loc = r.location;
+      } catch (_) { /* keep heuristics */ }
+    }
+    if (!company) company = hostWord();
+    return { title: (title || '').slice(0, 200), company: company.slice(0, 120), location: loc.slice(0, 120),
+      url: location.href, sourceSite: location.hostname, raw: null };
+  }
+
+  async function saveListing() {
+    const payload = await scanListing();
+    if (!payload.title) throw new Error('No job title found on this page');
     return new Promise((resolve, reject) => {
-      const payload = scanListing();
-      if (!payload.title) return reject(new Error('No job title found on this page'));
       chrome.runtime.sendMessage({ type: 'SAVE_JOB', payload }, (resp) => {
         if (!resp) return reject(new Error('extension background not reachable'));
         resp.ok ? resolve(resp.data) : reject(new Error(resp.error));

@@ -29,6 +29,11 @@ public class SavedJobController {
         return service.promote(id);
     }
 
+    @PutMapping("/{id}")
+    public SavedJob update(@PathVariable UUID id, @RequestBody java.util.Map<String, String> body) {
+        return service.update(id, body.get("title"), body.get("company"), body.get("location"), body.get("url"));
+    }
+
     @DeleteMapping("/{id}")
     public java.util.Map<String, Object> delete(@PathVariable UUID id) {
         service.delete(id);

@@ -230,6 +230,31 @@ public class AssistService {
         }
     }
 
+    /** Extract clean job-posting details from raw page text (used when DOM heuristics are weak). */
+    public Map<String, String> scanJob(String text, String titleHint, String url) {
+        if (!ai.isEnabled() || (text == null && titleHint == null)) return Map.of();
+        String sys = """
+                Extract the JOB POSTING details from the page text. Return STRICT JSON only:
+                {"title":"<job/role title>","company":"<hiring company>","location":"<job location>"}
+                - title is the ROLE (e.g. "Software Engineering Intern"), NOT the website/page name.
+                - company is the employer, NOT the job board / domain.
+                - Use "" for anything not clearly present. Output ONLY the JSON.""";
+        String body = text == null ? "" : text;
+        if (body.length() > 4000) body = body.substring(0, 4000);
+        String prompt = "URL: " + s(url) + "\nPAGE TITLE: " + s(titleHint) + "\n\nPAGE TEXT:\n" + body + "\n\nJSON:";
+        try {
+            com.fasterxml.jackson.databind.JsonNode j = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(stripFence(ai.complete(sys, prompt, true, false)));
+            Map<String, String> out = new LinkedHashMap<>();
+            out.put("title", j.path("title").asText(""));
+            out.put("company", j.path("company").asText(""));
+            out.put("location", j.path("location").asText(""));
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
     private static String stripFence(String s) {
         if (s == null) return "{}";
         String t = s.trim();

@@ -41,6 +41,19 @@ public class SavedJobService {
         savedRepo.findById(id).filter(s -> userId.equals(s.getUserId())).ifPresent(savedRepo::delete);
     }
 
+    /** Edit a saved listing's details (only the owner's own). */
+    @Transactional
+    public SavedJob update(UUID id, String title, String company, String location, String url) {
+        UUID userId = UserContext.require();
+        SavedJob s = savedRepo.findById(id).filter(x -> userId.equals(x.getUserId()))
+                .orElseThrow(() -> new IllegalArgumentException("saved job not found"));
+        if (title != null) s.setTitle(clean(title));
+        if (company != null) s.setCompany(clean(company));
+        if (location != null) s.setLocation(clean(location));
+        if (url != null && !url.isBlank()) s.setUrl(url.trim());
+        return savedRepo.save(s);
+    }
+
     /** Persist a DOM-extracted listing. All text fields are escaped first. */
     @Transactional
     public SavedJob capture(String title, String company, String location,
