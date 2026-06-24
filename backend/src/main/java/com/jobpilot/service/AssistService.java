@@ -144,8 +144,19 @@ public class AssistService {
                 the full profile and a list of field labels. Return a JSON object mapping EACH label
                 (verbatim) to the best answer drawn ONLY from the profile. Rules:
                 - Use the literal value for factual fields (CTC as the number, links as the full URL,
-                  notice period, college name, location, etc.).
-                - If the profile has no data for a field, map it to "" (empty string) — never invent.
+                  notice period, location, etc.).
+                - EDUCATION mapping (use the Education section, NOT the headline/summary):
+                  "School / University / College / Institution" -> the school NAME only;
+                  "Degree / Qualification" -> the degree (e.g. Bachelors Degree);
+                  "Field of study / Major / Discipline / Specialization" -> the field (e.g. Computer Science);
+                  graduation "Year" -> the year.
+                - DATE ranges ("From"/"To"/"Start"/"End") -> use the matching Education year or Work
+                  experience From/To; keep the format the field expects (e.g. MM/YYYY or YYYY-MM).
+                - If the Education section is empty, you MAY infer Degree and Field of study from the
+                  headline/summary (e.g. "Computer Science Engineering graduate" -> Degree "Bachelors
+                  Degree", Field of study "Computer Science"). This is reasonable, not invention.
+                - If the profile genuinely has no basis for a field, map it to "" — never invent
+                  employers, schools, names, numbers or dates.
                 - Keep answers short and form-appropriate. Output ONLY the JSON object.""";
         String prompt = "PROFILE:\n" + fullProfileContext(p) + "\n\nFIELDS:\n" + list + "\nJSON:";
 
@@ -250,9 +261,39 @@ public class AssistService {
         line(sb, "Willing to relocate", p.getWillingToRelocate() == null ? null : (p.getWillingToRelocate() ? "Yes" : "No"));
         if (p.getSkills() != null && !p.getSkills().isEmpty()) line(sb, "Skills", String.join(", ", p.getSkills()));
         if (p.getLinks() != null) p.getLinks().forEach((k, v) -> line(sb, "Link (" + k + ")", v));
+
+        // Structured education — so labels like "School or University", "Degree" and
+        // "Field of Study" map to the right value (not the headline/summary).
+        if (p.getEducation() != null && !p.getEducation().isEmpty()) {
+            sb.append("Education:\n");
+            for (Map<String, Object> e : p.getEducation()) {
+                String school = s(e.get("school"));
+                if (school.isBlank() && s(e.get("degree")).isBlank() && s(e.get("field")).isBlank()) continue;
+                sb.append("  - School/University/College name: ").append(school.isBlank() ? "(unspecified)" : school);
+                if (!s(e.get("degree")).isBlank()) sb.append(" | Degree: ").append(s(e.get("degree")));
+                if (!s(e.get("field")).isBlank()) sb.append(" | Field of study / Major / Discipline: ").append(s(e.get("field")));
+                if (!s(e.get("year")).isBlank()) sb.append(" | Year / graduation: ").append(s(e.get("year")));
+                sb.append("\n");
+            }
+        }
+        // Structured experience — for "From/To" dates, company and title fields.
+        if (p.getExperience() != null && !p.getExperience().isEmpty()) {
+            sb.append("Work experience:\n");
+            for (Map<String, Object> e : p.getExperience()) {
+                String company = s(e.get("company"));
+                if (company.isBlank() && s(e.get("title")).isBlank()) continue;
+                sb.append("  - Company: ").append(company.isBlank() ? "(unspecified)" : company);
+                if (!s(e.get("title")).isBlank()) sb.append(" | Title: ").append(s(e.get("title")));
+                if (!s(e.get("start")).isBlank()) sb.append(" | From: ").append(s(e.get("start")));
+                if (!s(e.get("end")).isBlank()) sb.append(" | To: ").append(s(e.get("end")));
+                sb.append("\n");
+            }
+        }
         line(sb, "Summary", p.getSummary());
         return sb.length() == 0 ? "(no profile details)" : sb.toString();
     }
+
+    private static String s(Object o) { return o == null ? "" : o.toString().trim(); }
 
     @Transactional
     public QaPair saveQa(String question, String answer) {
