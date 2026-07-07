@@ -148,13 +148,13 @@ public class ResumeDocService {
         // block page instead of compiling).
         try {
             return compileViaTexlive(latex, engine);
-        } catch (IllegalStateException first) {
+        } catch (RuntimeException first) {
             // A real LaTeX error is the same on any service — don't retry those.
             if (first.getMessage() != null && first.getMessage().contains("LaTeX Error")) throw first;
             log.warn("texlive.net compile failed ({}), trying latex.ytotech.com", first.getMessage());
             try {
                 return compileViaYtotech(latex, engine);
-            } catch (IllegalStateException second) {
+            } catch (RuntimeException second) {
                 throw new IllegalStateException(second.getMessage() + " [texlive.net also failed: "
                         + first.getMessage() + "]", second);
             }
@@ -201,9 +201,9 @@ public class ResumeDocService {
         if (err.isBlank()) {
             // No log errors and no redirect: the service didn't compile at all (block page,
             // maintenance, etc.) — include what came back so the failure is diagnosable.
-            err = "service returned HTTP " + status + " with "
-                    + (text.isBlank() ? "an empty body" : ("\"" + text.replaceAll("\\s+", " ").trim()
-                    .substring(0, Math.min(160, text.trim().length())) + "\""));
+            String snip = text.replaceAll("\\s+", " ").trim();
+            if (snip.length() > 160) snip = snip.substring(0, 160);
+            err = "service returned HTTP " + status + (snip.isBlank() ? " with an empty body" : " with \"" + snip + "\"");
         }
         throw new IllegalStateException("LaTeX compile failed: " + err);
     }
