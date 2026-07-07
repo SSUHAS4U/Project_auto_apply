@@ -142,14 +142,35 @@ public class ResumeDocService {
 
     byte[] compileLatex(String latex) {
         if (latex == null || latex.isBlank()) throw new IllegalArgumentException("empty LaTeX source");
+        String engine = engineFor(latex);
+        // Two independent free services: texlive.net first, latex.ytotech.com as the
+        // fallback (texlive.net rejects some datacenter IPs — e.g. Render's — with a
+        // block page instead of compiling).
+        try {
+            return compileViaTexlive(latex, engine);
+        } catch (IllegalStateException first) {
+            // A real LaTeX error is the same on any service — don't retry those.
+            if (first.getMessage() != null && first.getMessage().contains("LaTeX Error")) throw first;
+            log.warn("texlive.net compile failed ({}), trying latex.ytotech.com", first.getMessage());
+            try {
+                return compileViaYtotech(latex, engine);
+            } catch (IllegalStateException second) {
+                throw new IllegalStateException(second.getMessage() + " [texlive.net also failed: "
+                        + first.getMessage() + "]", second);
+            }
+        }
+    }
+
+    private byte[] compileViaTexlive(String latex, String engine) {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         form.add("filecontents[]", latex);
         form.add("filename[]", "document.tex");
-        form.add("engine", engineFor(latex));
+        form.add("engine", engine);
         form.add("return", "pdf");
 
         // texlive.net answers 301 → /latexcgi/<doc>.pdf on success or <doc>.log on failure;
         // the redirect must be followed manually (RestClient won't re-issue a POST redirect).
+        int status;
         String location;
         byte[] body;
         try {
@@ -159,10 +180,11 @@ public class ResumeDocService {
                     .exchange((request, response) -> {
                         String loc = response.getHeaders().getFirst("Location");
                         byte[] b = response.getBody().readAllBytes();
-                        return java.util.Map.entry(loc == null ? "" : loc, b);
+                        return new Object[]{response.getStatusCode().value(), loc == null ? "" : loc, b};
                     });
-            location = result.getKey();
-            body = result.getValue();
+            status = (Integer) result[0];
+            location = (String) result[1];
+            body = (byte[]) result[2];
         } catch (Exception e) {
             throw new IllegalStateException("LaTeX compile service unreachable: " + e.getMessage(), e);
         }
@@ -174,7 +196,39 @@ public class ResumeDocService {
             throw new IllegalStateException("LaTeX compile failed" + (err.isBlank() ? "" : ": " + err));
         }
         if (isPdf(body)) return body; // some latexcgi deployments return the PDF inline
-        String err = firstErrorLine(body == null ? "" : new String(body, StandardCharsets.UTF_8));
+        String text = body == null ? "" : new String(body, StandardCharsets.UTF_8);
+        String err = firstErrorLine(text);
+        if (err.isBlank()) {
+            // No log errors and no redirect: the service didn't compile at all (block page,
+            // maintenance, etc.) — include what came back so the failure is diagnosable.
+            err = "service returned HTTP " + status + " with "
+                    + (text.isBlank() ? "an empty body" : ("\"" + text.replaceAll("\\s+", " ").trim()
+                    .substring(0, Math.min(160, text.trim().length())) + "\""));
+        }
+        throw new IllegalStateException("LaTeX compile failed: " + err);
+    }
+
+    /** latex.ytotech.com (latex-on-http) — free JSON API, returns the PDF directly. */
+    private byte[] compileViaYtotech(String latex, String engine) {
+        byte[] body;
+        try {
+            body = http.post().uri("https://latex.ytotech.com/builds/sync")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(java.util.Map.of(
+                            "compiler", engine, // ytotech accepts pdflatex / xelatex / lualatex
+                            "resources", java.util.List.of(java.util.Map.of("main", true, "content", latex))))
+                    .exchange((request, response) -> response.getBody().readAllBytes());
+        } catch (Exception e) {
+            throw new IllegalStateException("LaTeX compile service unreachable: " + e.getMessage(), e);
+        }
+        if (isPdf(body)) return body;
+        String text = body == null ? "" : new String(body, StandardCharsets.UTF_8);
+        // Error responses are JSON with the full compile log inside.
+        String err = firstErrorLine(text.replace("\\n", "\n"));
+        if (err.isBlank() && !text.isBlank()) {
+            err = text.replaceAll("\\s+", " ").trim();
+            err = err.substring(0, Math.min(200, err.length()));
+        }
         throw new IllegalStateException("LaTeX compile failed" + (err.isBlank() ? "" : ": " + err));
     }
 

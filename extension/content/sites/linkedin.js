@@ -3,6 +3,7 @@
   const JP = window.JobPilot;
   if (!JP) return;
   window.__jobpilotHandled = true;
+  window.__jobpilotSaves = true; // this script has its own SAVE_CURRENT handler
 
   function extract() {
     return {

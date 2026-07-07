@@ -119,7 +119,9 @@ export function SavedJobsPage() {
                   <>
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <a href={s.url} target="_blank" rel="noreferrer" className="job-title" style={{ fontSize: 15 }}>{s.title ?? 'Untitled listing'}</a>
-                      <span className="chip">{s.sourceSite ?? 'web'}</span>
+                      <span className="chip" title={s.sourceSite ?? 'web'}>
+                        {/form/.test(s.sourceSite ?? '') ? `📝 via form · ${s.sourceSite}` : `🌐 ${s.sourceSite ?? 'web'}`}
+                      </span>
                     </div>
                     <div className="muted" style={{ fontSize: 13 }}>{s.company ?? '—'}{s.location ? ` · ${s.location}` : ''}</div>
                     <div className="faint" style={{ fontSize: 12 }}>Captured {fmtDate(s.createdAt)}</div>

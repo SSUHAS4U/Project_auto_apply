@@ -701,6 +701,10 @@
     let company = (ld?.company || meta('meta[property="og:site_name"]', 'content') || '').replace(/\s+/g, ' ').trim();
     let loc = (ld?.location || '').replace(/\s+/g, ' ').trim();
 
+    // On form platforms og:site_name is the PLATFORM ("Google Docs"), not the employer —
+    // blank it so the AI extracts the real company from the form's text instead.
+    if (/form/.test(sourceLabel()) && /google|microsoft|office|typeform/i.test(company)) company = '';
+
     // Weak extraction (no JSON-LD title/company, or company is just the domain word)? Use AI.
     const weak = !title || !company || norm(company) === norm(hostWord()) || /^(apply|jobs|careers|www)$/i.test(company);
     if (weak) {
@@ -713,7 +717,24 @@
     }
     if (!company) company = hostWord();
     return { title: (title || '').slice(0, 200), company: company.slice(0, 120), location: loc.slice(0, 120),
-      url: location.href, sourceSite: location.hostname, raw: null };
+      url: location.href, sourceSite: sourceLabel(), raw: null };
+  }
+
+  // Where this save came from — form platforms get an explicit "…form" label so the
+  // Saved page shows "applied via form" vs. a job site.
+  function sourceLabel() {
+    const h = location.hostname;
+    if (h === 'docs.google.com' && location.pathname.startsWith('/forms')) return 'google-form';
+    if (h === 'forms.office.com' || h === 'forms.microsoft.com') return 'ms-form';
+    if (h.endsWith('typeform.com')) return 'typeform';
+    if (h.includes('myworkdayjobs') || h.includes('workday')) return 'workday';
+    if (h.includes('greenhouse.io')) return 'greenhouse';
+    if (h.includes('lever.co')) return 'lever';
+    if (h.includes('ashbyhq.com')) return 'ashby';
+    if (h.includes('smartrecruiters.com')) return 'smartrecruiters';
+    if (h.includes('recruitee.com')) return 'recruitee';
+    if (h.includes('workable.com')) return 'workable';
+    return h.replace(/^www\./, '');
   }
 
   async function saveListing() {
@@ -864,8 +885,10 @@
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }
-    // Generic save — only when no site-specific filler claimed this page.
-    if (m.type === 'SAVE_CURRENT' && !window.__jobpilotHandled) {
+    // Generic save — runs on ANY page. Only LinkedIn/Naukri/Indeed register their own
+    // richer save handler (window.__jobpilotSaves); form fillers (Google/MS Forms,
+    // Workday) claim __jobpilotHandled for FILL but still need this save path.
+    if (m.type === 'SAVE_CURRENT' && !window.__jobpilotSaves) {
       saveListing().then((d) => sendResponse({ ok: true, data: d }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
