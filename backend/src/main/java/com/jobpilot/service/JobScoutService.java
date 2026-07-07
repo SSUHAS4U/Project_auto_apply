@@ -1,7 +1,5 @@
 package com.jobpilot.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.connector.FetchParams;
 import com.jobpilot.connector.JobConnector;
 import com.jobpilot.connector.RawJob;
@@ -32,11 +30,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The automated job scout. Runs 4-5x/day (see DailyScheduler) and fills the
+ * The automated job scout. Runs hourly (see DailyScheduler) and fills the
  * dashboard's "Scout" section with refined, resume-relevant listings from
- * LinkedIn / Naukri / Indeed / Google — found through FREE channels only:
+ * LinkedIn / Naukri / Indeed — found through FREE, keyless channels only:
  *
- *  - Google CSE (100 free queries/day) restricted per job site, last-3-days results;
+ *  - LinkedIn's public guest jobs endpoint (direct /jobs/view links, last 3 days);
  *  - Jooble + Careerjet APIs (both free tiers), which aggregate Naukri/Indeed/
  *    LinkedIn postings and deep-link to the originals.
  *
@@ -66,18 +64,16 @@ public class JobScoutService {
     private final NormalizeService normalize;
     private final MatchScorer scorer;
     private final RestClient http;
-    private final JobPilotProperties props;
 
     public JobScoutService(ScoutedJobRepository scoutRepo, ProfileRepository profileRepo,
                            List<JobConnector> connectors, NormalizeService normalize,
-                           MatchScorer scorer, RestClient http, JobPilotProperties props) {
+                           MatchScorer scorer, RestClient http) {
         this.scoutRepo = scoutRepo;
         this.profileRepo = profileRepo;
         this.connectors = connectors;
         this.normalize = normalize;
         this.scorer = scorer;
         this.http = http;
-        this.props = props;
     }
 
     /** One scout run. @return summary counts per source/channel + totals. */
@@ -92,18 +88,11 @@ public class JobScoutService {
 
         int found = 0, kept = 0;
 
-        // 1. Google CSE — the ONLY channel returning direct linkedin.com / naukri.com /
-        //    indeed.com links, so report loudly when it's missing or erroring.
-        JobPilotProperties.GoogleCse g = props.getGoogleCse();
-        if (isBlank(g.getApiKey()) || isBlank(g.getCx())) {
-            channels.put("googleCse",
-                    "NOT CONFIGURED — LinkedIn/Naukri/Indeed need JOBPILOT_GOOGLE_CSE_KEY + JOBPILOT_GOOGLE_CSE_CX");
-            log.warn("Scout: Google CSE not configured — no direct LinkedIn/Naukri/Indeed results");
-        } else {
-            List<ScoutedJob> cse = fromGoogleCse(keywords, channels);
-            found += cse.size();
-            kept += upsertAll(cse, profile, keywords, bySite);
-        }
+        // 1. LinkedIn guest search — the free public endpoint the logged-out /jobs page
+        //    uses; keyless and returns DIRECT linkedin.com/jobs/view links.
+        List<ScoutedJob> li = fromLinkedIn(keywords, channels);
+        found += li.size();
+        kept += upsertAll(li, profile, keywords, bySite);
 
         // 2. Jooble + Careerjet — aggregate Naukri/Indeed/LinkedIn and deep-link out.
         for (JobConnector c : connectors) {
@@ -148,53 +137,80 @@ public class JobScoutService {
 
     // ---- sources --------------------------------------------------------------
 
-    /**
-     * Search each job site through Google CSE for recently indexed postings. The run uses ONE
-     * keyword (rotating by hour through the whole list), one query per site — 3 calls/run, so
-     * 24 hourly runs use ~72 of the 100 free daily queries and every keyword still gets
-     * covered several times a day.
-     */
-    private List<ScoutedJob> fromGoogleCse(List<String> keywords, Map<String, String> channels) {
-        JobPilotProperties.GoogleCse g = props.getGoogleCse();
-        List<ScoutedJob> out = new ArrayList<>();
+    private static final String BROWSER_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
+    private static final Pattern LI_CARD = Pattern.compile("<li>(.+?)</li>", Pattern.DOTALL);
+    private static final Pattern LI_LINK = Pattern.compile("base-card__full-link[^\"]*\"\\s+href=\"([^\"]+)\"");
+    private static final Pattern LI_TITLE = Pattern.compile("base-search-card__title\">\\s*(.+?)\\s*</h3>", Pattern.DOTALL);
+    private static final Pattern LI_COMPANY = Pattern.compile("hidden-nested-link\"[^>]*>\\s*(.+?)\\s*</a>", Pattern.DOTALL);
+    private static final Pattern LI_LOCATION = Pattern.compile("job-search-card__location\">\\s*(.+?)\\s*</span>", Pattern.DOTALL);
+    private static final Pattern LI_TIME = Pattern.compile("<time[^>]*>\\s*(.+?)\\s*</time>", Pattern.DOTALL);
 
-        String[][] sites = {
-                {"linkedin", "site:linkedin.com/jobs"},
-                {"naukri", "site:naukri.com"},
-                {"indeed", "site:indeed.com"},
-        };
-        String kw = keywords.get(java.time.LocalTime.now().getHour() % keywords.size());
+    /**
+     * LinkedIn's public guest jobs endpoint — the same one the logged-out /jobs page calls.
+     * Free, keyless, direct linkedin.com/jobs/view links, filtered to the last 3 days.
+     * Two keywords per run (rotating by hour through the list) keeps request volume polite;
+     * over a day every keyword gets searched several times. Naukri and Indeed postings
+     * arrive through the Jooble/Careerjet aggregators (their public APIs are captcha-gated).
+     */
+    private List<ScoutedJob> fromLinkedIn(List<String> keywords, Map<String, String> channels) {
+        List<ScoutedJob> out = new ArrayList<>();
+        int hour = java.time.LocalTime.now().getHour();
         String err = null;
-        for (String[] site : sites) {
+        for (int i = 0; i < Math.min(2, keywords.size()); i++) {
+            String kw = keywords.get((hour + i) % keywords.size());
             try {
-                JsonNode root = http.get().uri(uri -> uri
-                                .scheme("https").host("customsearch.googleapis.com").path("/customsearch/v1")
-                                .queryParam("key", g.getApiKey())
-                                .queryParam("cx", g.getCx())
-                                .queryParam("q", site[1] + " " + kw + " India")
-                                .queryParam("num", 10)
-                                .queryParam("dateRestrict", "d7")
-                                .queryParam("gl", "in")
+                String html = http.get().uri(uri -> uri
+                                .scheme("https").host("www.linkedin.com")
+                                .path("/jobs-guest/jobs/api/seeMoreJobPostings/search")
+                                .queryParam("keywords", kw)
+                                .queryParam("location", "India")
+                                .queryParam("f_TPR", "r259200") // posted in the last 3 days
+                                .queryParam("start", 0)
                                 .build())
-                        .retrieve().body(JsonNode.class);
-                if (root == null || !root.has("items")) continue;
-                for (JsonNode it : root.get("items")) {
+                        .header("User-Agent", BROWSER_UA)
+                        .retrieve().body(String.class);
+                if (html == null) continue;
+                Matcher card = LI_CARD.matcher(html);
+                while (card.find()) {
+                    String c = card.group(1);
+                    String url = find(LI_LINK, c);
+                    String title = find(LI_TITLE, c);
+                    if (url == null || title == null) continue;
                     ScoutedJob s = new ScoutedJob();
-                    s.setTitle(clean(it.path("title").asText("")));
-                    s.setUrl(it.path("link").asText(""));
-                    s.setSnippet(clean(it.path("snippet").asText("")));
-                    s.setSourceSite(site[0]);
+                    s.setTitle(htmlText(title));
+                    s.setUrl(htmlText(url).replaceAll("[?#].*$", ""));
+                    s.setCompany(htmlText(find(LI_COMPANY, c)));
+                    s.setLocation(htmlText(find(LI_LOCATION, c)));
+                    s.setPostedHint(htmlText(find(LI_TIME, c)));
+                    s.setSourceSite("linkedin");
+                    // The search itself ran on this keyword; list cards carry no
+                    // description to re-check against, so record it as the match.
+                    s.setMatchedKeywords(kw.replace(" developer", "").trim());
                     out.add(s);
                 }
             } catch (Exception e) {
                 err = e.getMessage();
-                log.warn("Scout CSE '{}' on {} failed: {}", kw, site[0], e.getMessage());
+                log.warn("Scout LinkedIn '{}' failed: {}", kw, e.getMessage());
             }
         }
-        channels.put("googleCse", out.isEmpty() && err != null
-                ? "error: " + err
-                : "ok · " + out.size() + " found (keyword: " + kw + ")");
+        channels.put("linkedin", out.isEmpty() && err != null
+                ? "error: " + err : "ok · " + out.size() + " found");
         return out;
+    }
+
+    private static String find(Pattern p, String text) {
+        Matcher m = p.matcher(text);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** Strip tags and decode the handful of HTML entities these fragments use. */
+    private static String htmlText(String s) {
+        if (s == null) return null;
+        return s.replaceAll("<[^>]+>", " ")
+                .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
+                .replaceAll("\\s+", " ").trim();
     }
 
     private ScoutedJob fromRaw(RawJob r) {
@@ -222,6 +238,7 @@ public class JobScoutService {
 
             String text = (s.getTitle() + " " + (s.getSnippet() == null ? "" : s.getSnippet()));
             String matched = matchedKeywords(text, keywords, profile);
+            if (matched == null) matched = s.getMatchedKeywords(); // e.g. the LinkedIn search keyword
 
             // Resume relevance: score title+snippet like a normal listing. Search-result
             // snippets (~160 chars) are far too thin to hit a full-description threshold,
@@ -396,8 +413,6 @@ public class JobScoutService {
         if (b != null && !b.isBlank()) return b;
         return null;
     }
-
-    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 
     private static String sha256(String s) {
         try {

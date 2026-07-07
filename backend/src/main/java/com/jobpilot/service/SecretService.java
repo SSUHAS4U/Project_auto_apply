@@ -55,11 +55,7 @@ public class SecretService {
                 new Def("indianapi.api_key", "IndianAPI.in key", "Job sources",
                         () -> props.getIndianApi().getApiKey(), v -> props.getIndianApi().setApiKey(v)),
                 new Def("jooble.key", "Jooble API key", "Job sources",
-                        () -> props.getJooble().getKey(), v -> props.getJooble().setKey(v)),
-                new Def("googlecse.api_key", "Google CSE key", "Job sources",
-                        () -> props.getGoogleCse().getApiKey(), v -> props.getGoogleCse().setApiKey(v)),
-                new Def("googlecse.cx", "Google CSE engine id (cx)", "Job sources",
-                        () -> props.getGoogleCse().getCx(), v -> props.getGoogleCse().setCx(v)));
+                        () -> props.getJooble().getKey(), v -> props.getJooble().setKey(v)));
         defs.forEach(d -> byName.put(d.name(), d));
     }
 

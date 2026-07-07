@@ -44,7 +44,7 @@ public class AtsSource {
     @Column(name = "fail_count", nullable = false)
     private int failCount = 0;
 
-    /** seed | probe | google-cse — how this board entered the catalogue. */
+    /** seed | probe — how this board entered the catalogue. */
     @Column(name = "discovered_via")
     private String discoveredVia;
 }

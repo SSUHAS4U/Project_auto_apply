@@ -32,11 +32,9 @@ export function ScoutPage() {
       const r = await api.scoutRun();
       const sites = Object.entries(r.bySite ?? {}).map(([k, v]) => `${k} +${v}`).join(' · ');
       toast(`Scout done — ${r.kept} new of ${r.found} found${sites ? ` (${sites})` : ''}`, 'success');
-      const cse = r.channels?.googleCse ?? '';
-      if (cse.includes('NOT CONFIGURED')) {
-        toast('LinkedIn/Naukri/Indeed are OFF — add the Google CSE key + CX in Admin → API keys, then scout again', 'error');
-      } else if (cse.startsWith('error')) {
-        toast(`Google search channel failed: ${cse.slice(0, 140)}`, 'error');
+      for (const [ch, status] of Object.entries(r.channels ?? {})) {
+        if (status.startsWith('error')) toast(`${ch} channel failed: ${status.slice(0, 140)}`, 'error');
+        else if (status === 'not configured') toast(`${ch} is not configured — add its key in Admin → API keys`, 'error');
       }
       load();
     } catch (e) {

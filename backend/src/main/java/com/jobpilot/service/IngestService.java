@@ -180,13 +180,6 @@ public class IngestService {
                     .map(q -> FetchParams.builder().query(q).where("India").build())
                     .collect(Collectors.toList());
         }
-        if ("google".equals(c.source())) {
-            List<String> qs = props.getGoogleCse().getQueries();
-            if (qs == null || qs.isEmpty()) return List.of();
-            return qs.stream()
-                    .map(q -> FetchParams.builder().query(q.trim()).build())
-                    .collect(Collectors.toList());
-        }
         if ("careerjet".equals(c.source())) {
             List<String> qs = props.getCareerjet().getQueries();
             if (qs == null || qs.isEmpty()) return List.of();
