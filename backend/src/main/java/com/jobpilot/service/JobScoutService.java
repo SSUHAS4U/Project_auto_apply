@@ -80,33 +80,49 @@ public class JobScoutService {
         this.props = props;
     }
 
-    /** One scout run. @return summary counts per source + totals. */
+    /** One scout run. @return summary counts per source/channel + totals. */
     @Transactional
     public Map<String, Object> run() {
         Profile profile = profileRepo.findFirstByOrderByUpdatedAtAsc().orElse(null);
         List<String> keywords = keywords(profile);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("keywords", keywords);
+        Map<String, String> channels = new LinkedHashMap<>();
+        Map<String, Integer> bySite = new LinkedHashMap<>();
 
         int found = 0, kept = 0;
 
-        // 1. Google CSE — per-site fresh results (linkedin / naukri / indeed + open web).
-        List<ScoutedJob> cse = fromGoogleCse(keywords);
-        found += cse.size();
-        kept += upsertAll(cse, profile, keywords);
+        // 1. Google CSE — the ONLY channel returning direct linkedin.com / naukri.com /
+        //    indeed.com links, so report loudly when it's missing or erroring.
+        JobPilotProperties.GoogleCse g = props.getGoogleCse();
+        if (isBlank(g.getApiKey()) || isBlank(g.getCx())) {
+            channels.put("googleCse",
+                    "NOT CONFIGURED — LinkedIn/Naukri/Indeed need JOBPILOT_GOOGLE_CSE_KEY + JOBPILOT_GOOGLE_CSE_CX");
+            log.warn("Scout: Google CSE not configured — no direct LinkedIn/Naukri/Indeed results");
+        } else {
+            List<ScoutedJob> cse = fromGoogleCse(keywords, channels);
+            found += cse.size();
+            kept += upsertAll(cse, profile, keywords, bySite);
+        }
 
         // 2. Jooble + Careerjet — aggregate Naukri/Indeed/LinkedIn and deep-link out.
         for (JobConnector c : connectors) {
-            if (!("jooble".equals(c.source()) || "careerjet".equals(c.source())) || !c.isConfigured()) continue;
+            if (!("jooble".equals(c.source()) || "careerjet".equals(c.source()))) continue;
+            if (!c.isConfigured()) { channels.put(c.source(), "not configured"); continue; }
+            int chFound = 0;
+            String err = null;
             for (String kw : keywords) {
                 try {
                     List<RawJob> batch = c.fetch(FetchParams.builder().query(kw).where("India").build());
-                    found += batch.size();
-                    kept += upsertAll(batch.stream().map(this::fromRaw).toList(), profile, keywords);
+                    chFound += batch.size();
+                    kept += upsertAll(batch.stream().map(this::fromRaw).toList(), profile, keywords, bySite);
                 } catch (Exception e) {
-                    log.debug("Scout {} query '{}' failed: {}", c.source(), kw, e.getMessage());
+                    err = e.getMessage();
+                    log.warn("Scout {} query '{}' failed: {}", c.source(), kw, e.getMessage());
                 }
             }
+            found += chFound;
+            channels.put(c.source(), chFound == 0 && err != null ? "error: " + err : "ok · " + chFound + " found");
         }
 
         int purged = scoutRepo.deleteOlderThan(Instant.now().minus(Duration.ofDays(retentionDays)));
@@ -114,6 +130,8 @@ public class JobScoutService {
         summary.put("kept", kept);
         summary.put("purged", purged);
         summary.put("total", scoutRepo.count());
+        summary.put("bySite", bySite);
+        summary.put("channels", channels);
         log.info("Scout run complete: {}", summary);
         return summary;
     }
@@ -130,46 +148,52 @@ public class JobScoutService {
 
     // ---- sources --------------------------------------------------------------
 
-    /** Search each job site through Google CSE for postings indexed in the last 3 days. */
-    private List<ScoutedJob> fromGoogleCse(List<String> keywords) {
+    /**
+     * Search each job site through Google CSE for recently indexed postings. The run uses ONE
+     * keyword (rotating by hour through the whole list), one query per site — 3 calls/run, so
+     * 24 hourly runs use ~72 of the 100 free daily queries and every keyword still gets
+     * covered several times a day.
+     */
+    private List<ScoutedJob> fromGoogleCse(List<String> keywords, Map<String, String> channels) {
         JobPilotProperties.GoogleCse g = props.getGoogleCse();
         List<ScoutedJob> out = new ArrayList<>();
-        if (isBlank(g.getApiKey()) || isBlank(g.getCx())) return out;
 
         String[][] sites = {
                 {"linkedin", "site:linkedin.com/jobs"},
                 {"naukri", "site:naukri.com"},
                 {"indeed", "site:indeed.com"},
         };
-        // Budget: 3 sites x up to 3 keywords = 9 calls/run, 5 runs/day = 45 of the 100 free.
-        List<String> kws = keywords.subList(0, Math.min(3, keywords.size()));
+        String kw = keywords.get(java.time.LocalTime.now().getHour() % keywords.size());
+        String err = null;
         for (String[] site : sites) {
-            for (String kw : kws) {
-                try {
-                    JsonNode root = http.get().uri(uri -> uri
-                                    .scheme("https").host("customsearch.googleapis.com").path("/customsearch/v1")
-                                    .queryParam("key", g.getApiKey())
-                                    .queryParam("cx", g.getCx())
-                                    .queryParam("q", site[1] + " " + kw + " India")
-                                    .queryParam("num", 10)
-                                    .queryParam("dateRestrict", "d3")
-                                    .queryParam("gl", "in")
-                                    .build())
-                            .retrieve().body(JsonNode.class);
-                    if (root == null || !root.has("items")) continue;
-                    for (JsonNode it : root.get("items")) {
-                        ScoutedJob s = new ScoutedJob();
-                        s.setTitle(clean(it.path("title").asText("")));
-                        s.setUrl(it.path("link").asText(""));
-                        s.setSnippet(clean(it.path("snippet").asText("")));
-                        s.setSourceSite(site[0]);
-                        out.add(s);
-                    }
-                } catch (Exception e) {
-                    log.debug("Scout CSE '{}' on {} failed: {}", kw, site[0], e.getMessage());
+            try {
+                JsonNode root = http.get().uri(uri -> uri
+                                .scheme("https").host("customsearch.googleapis.com").path("/customsearch/v1")
+                                .queryParam("key", g.getApiKey())
+                                .queryParam("cx", g.getCx())
+                                .queryParam("q", site[1] + " " + kw + " India")
+                                .queryParam("num", 10)
+                                .queryParam("dateRestrict", "d7")
+                                .queryParam("gl", "in")
+                                .build())
+                        .retrieve().body(JsonNode.class);
+                if (root == null || !root.has("items")) continue;
+                for (JsonNode it : root.get("items")) {
+                    ScoutedJob s = new ScoutedJob();
+                    s.setTitle(clean(it.path("title").asText("")));
+                    s.setUrl(it.path("link").asText(""));
+                    s.setSnippet(clean(it.path("snippet").asText("")));
+                    s.setSourceSite(site[0]);
+                    out.add(s);
                 }
+            } catch (Exception e) {
+                err = e.getMessage();
+                log.warn("Scout CSE '{}' on {} failed: {}", kw, site[0], e.getMessage());
             }
         }
+        channels.put("googleCse", out.isEmpty() && err != null
+                ? "error: " + err
+                : "ok · " + out.size() + " found (keyword: " + kw + ")");
         return out;
     }
 
@@ -188,28 +212,34 @@ public class JobScoutService {
     // ---- refine + persist -------------------------------------------------------
 
     /** Filter to fresh, tech, resume-relevant results; mine contacts; upsert by URL. */
-    private int upsertAll(List<ScoutedJob> batch, Profile profile, List<String> keywords) {
+    private int upsertAll(List<ScoutedJob> batch, Profile profile, List<String> keywords,
+                          Map<String, Integer> bySite) {
         int kept = 0;
         for (ScoutedJob s : batch) {
             if (s.getUrl() == null || s.getUrl().isBlank() || s.getTitle().isBlank()) continue;
             String titleForCheck = s.getTitle().replaceAll("\\s*[|·–-]\\s*(LinkedIn|Naukri(\\.com)?|Indeed(\\.com)?).*$", "");
             if (!normalize.isTechRole(titleForCheck)) continue;
 
-            // Resume relevance: score title+snippet like a normal job listing.
+            String text = (s.getTitle() + " " + (s.getSnippet() == null ? "" : s.getSnippet()));
+            String matched = matchedKeywords(text, keywords, profile);
+
+            // Resume relevance: score title+snippet like a normal listing. Search-result
+            // snippets (~160 chars) are far too thin to hit a full-description threshold,
+            // so for those a title/skill keyword hit is enough to keep the listing.
             if (profile != null && profile.getSkills() != null && !profile.getSkills().isEmpty()) {
                 Job tmp = new Job();
                 tmp.setTitle(titleForCheck);
                 tmp.setDescription(s.getSnippet());
                 tmp.setLocation(s.getLocation());
                 int score = scorer.score(tmp, profile);
-                if (score < minScore) continue;
                 s.setMatchScore(score);
+                boolean thin = text.length() < 300;
+                if (thin ? (matched == null && score < minScore / 2) : score < minScore) continue;
             }
 
-            String text = (s.getTitle() + " " + (s.getSnippet() == null ? "" : s.getSnippet()));
             s.setEmails(joinMatches(EMAIL, text, 3));
             s.setPhones(joinMatches(PHONE, text, 3));
-            s.setMatchedKeywords(matchedKeywords(text, keywords));
+            s.setMatchedKeywords(matched);
             if (s.getSourceSite() == null) s.setSourceSite(hostSite(s.getUrl()));
             if (s.getPostedHint() == null) s.setPostedHint(postedHintFrom(s.getSnippet()));
 
@@ -226,6 +256,7 @@ public class JobScoutService {
             try {
                 scoutRepo.save(s);
                 kept++;
+                bySite.merge(s.getSourceSite() == null ? "other" : s.getSourceSite(), 1, Integer::sum);
             } catch (org.springframework.dao.DataIntegrityViolationException dup) {
                 // raced with a concurrent run — skip
             }
@@ -235,25 +266,72 @@ public class JobScoutService {
 
     // ---- keyword derivation ------------------------------------------------------
 
-    /** Resume-driven search phrases: top skills as "<skill> developer", plus the role itself. */
+    /**
+     * Search phrases scanned from the WHOLE profile, most specific first:
+     *  1. current role title / headline, qualified with the experience level;
+     *  2. role titles from the profile's experience entries;
+     *  3. the top-two-skills combo ("react node.js developer") then single-skill phrases;
+     *  4. a level-qualified generic ("fresher software developer").
+     * The experience level (fresher/junior/senior) comes from years_experience or seniority.
+     */
     List<String> keywords(Profile p) {
-        Set<String> out = new LinkedHashSet<>();
+        LinkedHashSet<String> out = new LinkedHashSet<>();
         if (p != null) {
-            String title = firstNonBlank(p.getCurrentTitle(), p.getHeadline());
-            if (title != null) {
-                // Keep the first role-looking phrase, e.g. "Java backend developer".
-                String t = title.split("[|,•]")[0].trim();
-                if (t.length() > 3 && t.length() < 60) out.add(t.toLowerCase(Locale.ROOT));
-            }
-            if (p.getSkills() != null) {
-                for (String s : p.getSkills()) {
-                    if (out.size() >= 5) break;
-                    if (s != null && !s.isBlank()) out.add(s.toLowerCase(Locale.ROOT).trim() + " developer");
+            String level = experienceLevel(p);
+            addRolePhrase(out, firstNonBlank(p.getCurrentTitle(), p.getHeadline()), level);
+            if (p.getExperience() != null) {
+                for (Map<String, Object> e : p.getExperience()) {
+                    if (out.size() >= 3) break;
+                    addRolePhrase(out, firstString(e.get("title"), e.get("role"), e.get("position")), null);
                 }
             }
+            List<String> skills = new ArrayList<>();
+            if (p.getSkills() != null) {
+                for (String s : p.getSkills()) {
+                    if (s != null && !s.isBlank()) skills.add(s.toLowerCase(Locale.ROOT).trim());
+                }
+            }
+            if (skills.size() >= 2) out.add(skills.get(0) + " " + skills.get(1) + " developer");
+            for (String s : skills) {
+                if (out.size() >= 7) break;
+                out.add(s + " developer");
+            }
+            if (level != null && out.size() < 8) out.add(level + " software developer");
         }
         if (out.isEmpty()) out.add("software engineer");
-        return new ArrayList<>(out).subList(0, Math.min(5, out.size()));
+        List<String> list = new ArrayList<>(out);
+        return list.subList(0, Math.min(8, list.size()));
+    }
+
+    /** Keep the first role-looking phrase of a title, e.g. "java backend developer". */
+    private static void addRolePhrase(Set<String> out, String raw, String level) {
+        if (raw == null || raw.isBlank()) return;
+        String t = raw.split("[|,•@(]")[0].trim();
+        if (t.length() <= 3 || t.length() >= 60) return;
+        String phrase = t.toLowerCase(Locale.ROOT);
+        out.add(level != null && !phrase.contains(level) ? level + " " + phrase : phrase);
+    }
+
+    /** fresher (<1y) / junior (<3y) / senior (7y+) from years_experience, or the seniority field. */
+    private static String experienceLevel(Profile p) {
+        if (p.getSeniority() != null) {
+            String s = p.getSeniority().toLowerCase(Locale.ROOT).trim();
+            if (s.matches("fresher|junior|senior|lead|intern")) return s;
+        }
+        String y = p.getYearsExperience();
+        if (y == null) return null;
+        Matcher m = Pattern.compile("\\d+(?:\\.\\d+)?").matcher(y);
+        if (!m.find()) return null;
+        double years = Double.parseDouble(m.group());
+        if (years < 1) return "fresher";
+        if (years < 3) return "junior";
+        if (years >= 7) return "senior";
+        return null; // mid-level: leave queries unqualified
+    }
+
+    private static String firstString(Object... vals) {
+        for (Object v : vals) if (v instanceof String s && !s.isBlank()) return s;
+        return null;
     }
 
     // ---- small helpers -------------------------------------------------------------
@@ -269,12 +347,21 @@ public class JobScoutService {
         return found.isEmpty() ? null : String.join(", ", found);
     }
 
-    private static String matchedKeywords(String text, List<String> keywords) {
+    /** Which of the search keywords AND profile skills actually appear in the listing text. */
+    private static String matchedKeywords(String text, List<String> keywords, Profile p) {
         String low = text.toLowerCase(Locale.ROOT);
         Set<String> hits = new LinkedHashSet<>();
         for (String kw : keywords) {
             String core = kw.replace(" developer", "").trim();
             if (!core.isEmpty() && low.contains(core)) hits.add(core);
+        }
+        if (p != null && p.getSkills() != null) {
+            for (String skill : p.getSkills()) {
+                if (hits.size() >= 8) break;
+                if (skill == null || skill.trim().length() < 3) continue;
+                String sk = skill.toLowerCase(Locale.ROOT).trim();
+                if (low.contains(sk)) hits.add(sk);
+            }
         }
         return hits.isEmpty() ? null : String.join(", ", hits);
     }

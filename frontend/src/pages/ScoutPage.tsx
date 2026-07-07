@@ -30,7 +30,14 @@ export function ScoutPage() {
     setRunning(true);
     try {
       const r = await api.scoutRun();
-      toast(`Scout done — kept ${r.kept} new of ${r.found} found (keywords: ${r.keywords.join(', ')})`, 'success');
+      const sites = Object.entries(r.bySite ?? {}).map(([k, v]) => `${k} +${v}`).join(' · ');
+      toast(`Scout done — ${r.kept} new of ${r.found} found${sites ? ` (${sites})` : ''}`, 'success');
+      const cse = r.channels?.googleCse ?? '';
+      if (cse.includes('NOT CONFIGURED')) {
+        toast('LinkedIn/Naukri/Indeed are OFF — add the Google CSE key + CX in Admin → API keys, then scout again', 'error');
+      } else if (cse.startsWith('error')) {
+        toast(`Google search channel failed: ${cse.slice(0, 140)}`, 'error');
+      }
       load();
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -53,10 +60,11 @@ export function ScoutPage() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Scout <span className="chip">auto · 5×/day</span></h1>
+          <h1 className="page-title">Scout <span className="chip">auto · hourly</span></h1>
           <div className="page-sub">
-            Fresh listings found automatically with your resume keywords across LinkedIn, Naukri,
-            Indeed &amp; the web — with any contact details mined from the posting.
+            Fresh listings found automatically every hour, using keywords scanned from your whole
+            profile (role, experience level, skills) across LinkedIn, Naukri, Indeed &amp; the web —
+            with any contact details mined from the posting.
           </div>
         </div>
         <button className="btn btn-primary" onClick={runNow} disabled={running}>
@@ -74,7 +82,7 @@ export function ScoutPage() {
           Has contact details
         </label>
         <span className="faint" style={{ marginLeft: 'auto', fontSize: 12 }}>
-          {filtered.length} listing{filtered.length === 1 ? '' : 's'} · refreshed automatically at 8, 11, 14, 17 &amp; 20 IST
+          {filtered.length} listing{filtered.length === 1 ? '' : 's'} · refreshed automatically every hour
         </span>
       </div>
 
@@ -82,7 +90,7 @@ export function ScoutPage() {
         : filtered.length === 0 ? (
           <div className="card card-pad empty">
             <div className="big">🔎</div>
-            Nothing scouted yet. Click <b>Scout now</b> — results also arrive automatically 5× a day.
+            Nothing scouted yet. Click <b>Scout now</b> — results also arrive automatically every hour.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

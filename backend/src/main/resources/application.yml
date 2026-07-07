@@ -66,8 +66,9 @@ jobpilot:
     ingest-times-utc: ${JOBPILOT_INGEST_TIMES_UTC:01:30,08:30,14:30}
     # Daily ATS-board discovery (health-check + auto-add new boards), before first ingest.
     discovery-cron: ${JOBPILOT_DISCOVERY_CRON:0 30 6 * * *}
-    # Automated job scout (LinkedIn/Naukri/Indeed via free APIs) — 5x/day.
-    scout-cron: ${JOBPILOT_SCOUT_CRON:0 0 8,11,14,17,20 * * *}
+    # Automated job scout (LinkedIn/Naukri/Indeed via free APIs) — hourly, on the hour.
+    # The Google CSE free budget is honoured by rotating one keyword per run (3 queries/run).
+    scout-cron: ${JOBPILOT_SCOUT_CRON:0 0 * * * *}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:

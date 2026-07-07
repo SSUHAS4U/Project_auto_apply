@@ -147,23 +147,51 @@ public class ResumeDocService {
         form.add("filename[]", "document.tex");
         form.add("engine", "pdflatex");
         form.add("return", "pdf");
+
+        // texlive.net answers 301 → /latexcgi/<doc>.pdf on success or <doc>.log on failure;
+        // the redirect must be followed manually (RestClient won't re-issue a POST redirect).
+        String location;
         byte[] body;
         try {
-            body = http.post().uri(compileUrl)
+            var result = http.post().uri(compileUrl)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(form)
-                    .retrieve().body(byte[].class);
+                    .exchange((request, response) -> {
+                        String loc = response.getHeaders().getFirst("Location");
+                        byte[] b = response.getBody().readAllBytes();
+                        return java.util.Map.entry(loc == null ? "" : loc, b);
+                    });
+            location = result.getKey();
+            body = result.getValue();
         } catch (Exception e) {
             throw new IllegalStateException("LaTeX compile service unreachable: " + e.getMessage(), e);
         }
-        if (body == null || body.length < 5
-                || !(body[0] == '%' && body[1] == 'P' && body[2] == 'D' && body[3] == 'F')) {
-            // Not a PDF — texlive.net returns the compile log; surface the first error line.
-            String logText = body == null ? "" : new String(body, StandardCharsets.UTF_8);
-            String err = firstErrorLine(logText);
+
+        if (!location.isBlank()) {
+            byte[] fetched = fetchCompiled(location);
+            if (location.endsWith(".pdf") && isPdf(fetched)) return fetched;
+            String err = firstErrorLine(fetched == null ? "" : new String(fetched, StandardCharsets.UTF_8));
             throw new IllegalStateException("LaTeX compile failed" + (err.isBlank() ? "" : ": " + err));
         }
-        return body;
+        if (isPdf(body)) return body; // some latexcgi deployments return the PDF inline
+        String err = firstErrorLine(body == null ? "" : new String(body, StandardCharsets.UTF_8));
+        throw new IllegalStateException("LaTeX compile failed" + (err.isBlank() ? "" : ": " + err));
+    }
+
+    /** Fetch the redirect target (PDF or compile log), resolving relative paths against the service URL. */
+    private byte[] fetchCompiled(String location) {
+        java.net.URI target = location.startsWith("http")
+                ? java.net.URI.create(location)
+                : java.net.URI.create(compileUrl).resolve(location);
+        try {
+            return http.get().uri(target).retrieve().body(byte[].class);
+        } catch (Exception e) {
+            throw new IllegalStateException("could not fetch compile result: " + e.getMessage(), e);
+        }
+    }
+
+    private static boolean isPdf(byte[] b) {
+        return b != null && b.length >= 5 && b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F';
     }
 
     private static String firstErrorLine(String logText) {

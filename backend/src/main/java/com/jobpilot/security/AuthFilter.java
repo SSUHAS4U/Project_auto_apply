@@ -32,7 +32,7 @@ public class AuthFilter extends OncePerRequestFilter {
 
     // Cron endpoints: the GitHub Actions machine token OR an ADMIN JWT may call these.
     private static final List<String> CRON_PREFIXES = List.of(
-            "/api/ingest", "/api/daily/run", "/api/digest", "/api/sources", "/api/scout/run");
+            "/api/ingest", "/api/daily/run", "/api/digest", "/api/sources");
     // Sensitive admin surfaces: ADMIN JWT ONLY. The static token can never reach these,
     // so a leaked machine token cannot manage users or wipe/maintain data.
     private static final List<String> ADMIN_ONLY_PREFIXES = List.of(
@@ -65,6 +65,15 @@ public class AuthFilter extends OncePerRequestFilter {
             if (userId == null) { deny(res, 401, "login required"); return; }
             if (!isAdmin(userId)) { deny(res, 403, "admin access required"); return; }
             withUser(userId, req, res, chain);
+            return;
+        }
+
+        // --- scout run : machine token (cron) OR any signed-in user ("Scout now" button).
+        //     Scheduled runs happen in-process (DailyScheduler); this only adds manual runs. ---
+        if (path.startsWith("/api/scout/run")) {
+            if (staticTokenValid(req)) { chain.doFilter(req, res); return; }
+            if (userId != null) { withUser(userId, req, res, chain); return; }
+            deny(res, 401, "login required");
             return;
         }
 

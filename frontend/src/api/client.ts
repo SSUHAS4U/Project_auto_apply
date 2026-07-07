@@ -274,7 +274,10 @@ export type ScoutedJob = {
   matchedKeywords?: string; matchScore?: number; postedHint?: string;
   fetchedAt?: string; createdAt?: string;
 };
-export type ScoutRunResult = { keywords: string[]; found: number; kept: number; purged: number; total: number };
+export type ScoutRunResult = {
+  keywords: string[]; found: number; kept: number; purged: number; total: number;
+  bySite?: Record<string, number>; channels?: Record<string, string>;
+};
 
 export type ResumeDoc = {
   id: string; name: string; latex: string; base: boolean; hasPdf: boolean;
