@@ -52,6 +52,68 @@ class KeywordMatchScorerTest {
     }
 
     @Test
+    void skillMatchingUsesWordBoundaries() {
+        // A "java" skill must NOT match a JavaScript-only job.
+        Profile p = new Profile();
+        p.setSeniority("mid");
+        p.setSkills(List.of("java"));
+
+        Job jsOnly = new Job();
+        jsOnly.setTitle("Frontend Engineer");
+        jsOnly.setDescription("You will write javascript and typescript all day.");
+        jsOnly.setPostedAt(Instant.now());
+
+        Job javaJob = new Job();
+        javaJob.setTitle("Frontend Engineer");
+        javaJob.setDescription("You will write java services all day.");
+        javaJob.setPostedAt(Instant.now());
+
+        assertTrue(scorer.score(javaJob, p) > scorer.score(jsOnly, p),
+                "'java' skill must not match 'javascript' text");
+    }
+
+    @Test
+    void skillSynonymsMatch() {
+        // Profile says "javascript"; the JD only says "JS" — should still count.
+        Profile p = new Profile();
+        p.setSeniority("mid");
+        p.setSkills(List.of("javascript"));
+
+        Job jsJob = new Job();
+        jsJob.setTitle("Web Developer");
+        jsJob.setDescription("Strong JS and HTML required.");
+        jsJob.setPostedAt(Instant.now());
+
+        Job noneJob = new Job();
+        noneJob.setTitle("Web Developer");
+        noneJob.setDescription("Strong COBOL required.");
+        noneJob.setPostedAt(Instant.now());
+
+        assertTrue(scorer.score(jsJob, p) > scorer.score(noneJob, p),
+                "synonym 'js' should match a 'javascript' skill");
+    }
+
+    @Test
+    void titleSkillOutweighsDescriptionSkill() {
+        Profile p = new Profile();
+        p.setSeniority("mid");
+        p.setSkills(List.of("java"));
+
+        Job inTitle = new Job();
+        inTitle.setTitle("Java Developer");
+        inTitle.setDescription("Great team.");
+        inTitle.setPostedAt(Instant.now());
+
+        Job inDesc = new Job();
+        inDesc.setTitle("Software Developer");
+        inDesc.setDescription("Some java exposure is a plus.");
+        inDesc.setPostedAt(Instant.now());
+
+        assertTrue(scorer.score(inTitle, p) >= scorer.score(inDesc, p),
+                "a skill in the title is a core requirement and should score at least as high");
+    }
+
+    @Test
     void recencyBoostsScore() {
         Job fresh = new Job();
         fresh.setTitle("Java Engineer");

@@ -6,10 +6,11 @@
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg.type !== 'FILL' || window.__jobpilotHandled) return;
+    if (!JP.isEnabled()) { sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' }); return; }
     JP.getProfile(msg.force).then((profile) => {
-      const { filled, total } = JP.fillTextInputs(profile);
+      const { filled, total, report } = JP.fillTextInputs(profile);
       JP.showBadge(`JobPilot · filled ${filled} of ${total} — review & submit`);
-      sendResponse({ ok: true, filled, total, site: 'generic' });
+      sendResponse({ ok: true, filled, total, report, site: 'generic' });
     }).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   });

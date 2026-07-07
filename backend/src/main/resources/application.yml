@@ -64,6 +64,8 @@ jobpilot:
     zone: ${JOBPILOT_DAILY_ZONE:Asia/Kolkata}
     ingest-cron: ${JOBPILOT_INGEST_CRON:0 0 7,14,20 * * *}
     ingest-times-utc: ${JOBPILOT_INGEST_TIMES_UTC:01:30,08:30,14:30}
+    # Daily ATS-board discovery (health-check + auto-add new boards), before first ingest.
+    discovery-cron: ${JOBPILOT_DISCOVERY_CRON:0 30 6 * * *}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:
@@ -87,10 +89,10 @@ jobpilot:
     app-key: ${JOBPILOT_ADZUNA_APP_KEY:}
     country: ${JOBPILOT_ADZUNA_COUNTRY:in}
     where: ${JOBPILOT_ADZUNA_WHERE:India}
-    queries: ${JOBPILOT_ADZUNA_QUERIES:java developer,backend engineer}
+    queries: ${JOBPILOT_ADZUNA_QUERIES:java developer,backend engineer,frontend developer,full stack developer,software engineer,react developer,python developer}
   jooble:
     key: ${JOBPILOT_JOOBLE_KEY:}
-    keywords: ${JOBPILOT_JOOBLE_KEYWORDS:java developer}
+    keywords: ${JOBPILOT_JOOBLE_KEYWORDS:java developer,software engineer fresher,backend developer,full stack developer,junior software engineer}
   google-cse:
     api-key: ${JOBPILOT_GOOGLE_CSE_KEY:}
     cx: ${JOBPILOT_GOOGLE_CSE_CX:}
@@ -99,7 +101,7 @@ jobpilot:
     affid: ${JOBPILOT_CAREERJET_AFFID:}
     locale: ${JOBPILOT_CAREERJET_LOCALE:en_IN}
     where: ${JOBPILOT_CAREERJET_WHERE:India}
-    queries: ${JOBPILOT_CAREERJET_QUERIES:software engineer,java developer,full stack developer}
+    queries: ${JOBPILOT_CAREERJET_QUERIES:software engineer,java developer,full stack developer,react developer,python developer,junior software engineer}
   indian-api:
     api-key: ${JOBPILOT_INDIANAPI_KEY:}
     url: ${JOBPILOT_INDIANAPI_URL:https://jobs.indianapi.in/jobs}

@@ -56,6 +56,8 @@ Statuses: `interested · applied · interviewing · offer · rejected · withdra
 |---|---|---|
 | POST | `/api/ingest` | run all connectors; `{ fetched, inserted, updated }` |
 | POST | `/api/digest` | send daily digest; `{ count, sent }` |
+| POST | `/api/sources/discover` | health-check + auto-discover ATS boards; `{ checked, deactivated, revived, added, activeBoards }` |
+| GET | `/api/sources` | full board catalogue with health metadata (active, last job count, failures) |
 
 ### Example
 ```bash

@@ -30,6 +30,8 @@ public class OpsController {
     private final IngestProgress progress;
     private final com.jobpilot.service.MailService mailService;
     private final JobPilotProperties props;
+    private final com.jobpilot.service.AtsDiscoveryService discovery;
+    private final com.jobpilot.repository.AtsSourceRepository atsSources;
 
     @Value("${spring.mail.host:}") private String mailHost;
     @Value("${spring.mail.port:}") private String mailPort;
@@ -39,7 +41,9 @@ public class OpsController {
     public OpsController(IngestService ingest, DigestService digest, DailyService daily,
                          CleanupService cleanup, BackgroundRunner runner,
                          IngestProgress progress, com.jobpilot.service.MailService mailService,
-                         JobPilotProperties props) {
+                         JobPilotProperties props,
+                         com.jobpilot.service.AtsDiscoveryService discovery,
+                         com.jobpilot.repository.AtsSourceRepository atsSources) {
         this.ingest = ingest;
         this.digest = digest;
         this.daily = daily;
@@ -48,6 +52,8 @@ public class OpsController {
         this.progress = progress;
         this.mailService = mailService;
         this.props = props;
+        this.discovery = discovery;
+        this.atsSources = atsSources;
     }
 
     /** Send a test email to verify the mail transport (Brevo/SMTP) is working. Admin-only. */
@@ -113,6 +119,18 @@ public class OpsController {
     @PostMapping("/maintenance/rescore")
     public Map<String, Object> rescore() {
         return runner.startRescore();
+    }
+
+    /** Run ATS-board discovery now: health-check boards, drop dead ones, add new ones. */
+    @PostMapping("/sources/discover")
+    public Map<String, Object> discoverSources() {
+        return discovery.discover();
+    }
+
+    /** The full board catalogue with health metadata (active, job counts, failures). */
+    @GetMapping("/sources")
+    public java.util.List<com.jobpilot.domain.AtsSource> listSources() {
+        return atsSources.findAll(org.springframework.data.domain.Sort.by("provider", "boardToken"));
     }
 
     /** The current AI-curated Daily Picks (separate from the main board). */

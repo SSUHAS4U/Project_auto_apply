@@ -1,5 +1,6 @@
 package com.jobpilot.config;
 
+import com.jobpilot.service.AtsDiscoveryService;
 import com.jobpilot.service.BackgroundRunner;
 import com.jobpilot.service.DailyService;
 import org.slf4j.Logger;
@@ -21,10 +22,26 @@ public class DailyScheduler {
     private static final Logger log = LoggerFactory.getLogger(DailyScheduler.class);
     private final DailyService daily;
     private final BackgroundRunner runner;
+    private final AtsDiscoveryService discovery;
 
-    public DailyScheduler(DailyService daily, BackgroundRunner runner) {
+    public DailyScheduler(DailyService daily, BackgroundRunner runner, AtsDiscoveryService discovery) {
         this.daily = daily;
         this.runner = runner;
+        this.discovery = discovery;
+    }
+
+    /**
+     * Daily source discovery: health-check every ATS board, drop dead ones, and add
+     * newly found boards — runs before the first ingest so fresh boards are included.
+     */
+    @Scheduled(cron = "${jobpilot.schedule.discovery-cron:0 30 6 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    public void runDiscovery() {
+        log.info("Scheduled source discovery starting…");
+        try {
+            discovery.discover();
+        } catch (Exception e) {
+            log.warn("Scheduled source discovery failed: {}", e.getMessage());
+        }
     }
 
     /** Reliable server-side ingest (3x/day by default). Uses the background runner's

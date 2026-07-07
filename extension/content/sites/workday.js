@@ -16,6 +16,7 @@
 
   async function fillWorkday(profile) {
     let filled = 0, total = 0;
+    const report = [];
     const inputs = smart.deepQueryAll('input, textarea');
     for (const el of inputs) {
       const type = (el.getAttribute('type') || 'text').toLowerCase();
@@ -24,28 +25,37 @@
       if ((el.value || '').trim()) continue;
       const label = JP.deriveLabel(el);
       if (!label) continue;
-      const m = JP.match(label, profile);
-      if (!m || !m.value) continue;
+      const m = JP.matchDetailed(label, profile);
+      if (!m.value) {
+        report.push({ label, status: 'unfilled', key: m.key, reason: m.reason });
+        continue;
+      }
       total++;
+      let ok = false;
       try {
         if (isCombobox(el)) {
-          if (await smart.fillTypeahead(el, m.value)) { JP.highlight(el); filled++; }
+          if (await smart.fillTypeahead(el, m.value)) { JP.highlight(el); filled++; ok = true; }
         } else {
-          smart.setValue(el, m.value); JP.highlight(el); filled++;
+          smart.setValue(el, m.value); JP.highlight(el); filled++; ok = true;
         }
         await smart.sleep(140); // let Workday's state settle between fields
       } catch (_) { /* keep going */ }
+      report.push(ok
+        ? { label, status: 'filled', key: m.key }
+        : { label, status: 'unfilled', key: m.key, reason: 'widget-failed', value: m.value });
     }
-    return { filled, total };
+    JP.lastFillReport = report;
+    return { filled, total, report };
   }
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg.type !== 'FILL') return;
+    if (!JP.isEnabled()) { sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' }); return; }
     JP.getProfile(msg.force)
       .then((profile) => fillWorkday(profile))
-      .then(({ filled, total }) => {
+      .then(({ filled, total, report }) => {
         JP.showBadge(`JobPilot · Workday — filled ${filled} of ${total} fields. Typeaheads: pick if not exact. Review & submit.`);
-        sendResponse({ ok: true, filled, total, site: 'workday' });
+        sendResponse({ ok: true, filled, total, report, site: 'workday' });
       })
       .catch((e) => sendResponse({ ok: false, error: e.message }));
     return true; // async

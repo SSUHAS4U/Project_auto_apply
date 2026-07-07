@@ -8,17 +8,21 @@
 <body>
   <div class="head">
     <div class="logo">J</div>
-    <div>
+    <div class="headtext">
       <div class="name">JobPilot</div>
       <div class="sub" id="conn">checking…</div>
     </div>
+    <label class="switch" title="Turn JobPilot on/off on all pages">
+      <input type="checkbox" id="power" checked />
+      <span class="slider"></span>
+    </label>
   </div>
 
   <div class="profile" id="profile">
     <div class="muted">Loading profile…</div>
   </div>
 
-  <div class="actions">
+  <div class="actions" id="actions">
     <button class="btn primary" id="fill">⚡ Fill this form</button>
     <button class="btn" id="answer">✨ AI-answer questions</button>
     <button class="btn" id="resume">📎 Attach resume</button>
@@ -28,6 +32,7 @@
   </div>
 
   <div class="status" id="status"></div>
+  <div class="report" id="report"></div>
 
   <a class="foot" id="opts" href="#">⚙ Options — sign in</a>
   <script src="popup.js"></script>

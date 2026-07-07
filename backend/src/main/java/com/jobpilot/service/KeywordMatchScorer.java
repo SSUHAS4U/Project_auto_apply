@@ -47,10 +47,9 @@ public class KeywordMatchScorer implements MatchScorer {
         if (profile == null) return 0;
         String title = job.getTitle() == null ? "" : job.getTitle().toLowerCase(Locale.ROOT);
         String desc = job.getDescription() == null ? "" : job.getDescription().toLowerCase(Locale.ROOT);
-        String hay = title + " " + desc;
 
-        int skills = scoreSkills(hay, profile.getSkills());
-        int exp = scoreExperience(title, hay, candidateYears(profile));
+        int skills = scoreSkills(title, desc, profile.getSkills());
+        int exp = scoreExperience(title, title + " " + desc, candidateYears(profile));
         int region = scoreRegion(normalize.region(job.getLocation(), job.isRemote()));
         int recency = scoreRecency(job.getPostedAt());
 
@@ -74,15 +73,95 @@ public class KeywordMatchScorer implements MatchScorer {
         return 0.5; // entry/fresher default
     }
 
-    private int scoreSkills(String hay, List<String> skills) {
+    /**
+     * Skill-name synonym groups: a profile skill matches the job text if ANY spelling
+     * in its group appears. Keeps "java" from matching "javascript" (word-boundary
+     * matching below) while still catching "js" vs "javascript", "postgres" vs
+     * "postgresql", "k8s" vs "kubernetes" and so on.
+     */
+    private static final String[][] SKILL_SYNONYMS = {
+            {"javascript", "js", "ecmascript"},
+            {"typescript", "ts"},
+            {"python", "py"},
+            {"golang", "go"},
+            {"kubernetes", "k8s"},
+            {"postgres", "postgresql"},
+            {"react", "reactjs", "react.js"},
+            {"node", "nodejs", "node.js"},
+            {"vue", "vuejs", "vue.js"},
+            {"angular", "angularjs"},
+            {"next", "nextjs", "next.js"},
+            {"express", "expressjs", "express.js"},
+            {"spring", "spring boot", "springboot"},
+            {"c#", "csharp", ".net", "dotnet"},
+            {"c++", "cpp"},
+            {"machine learning", "ml"},
+            {"artificial intelligence", "ai"},
+            {"amazon web services", "aws"},
+            {"google cloud", "gcp", "google cloud platform"},
+            {"mongodb", "mongo"},
+            {"mysql", "sql"},
+            {"html", "html5"},
+            {"css", "css3"},
+            {"rest", "rest api", "restful"},
+            {"ci/cd", "cicd", "continuous integration"},
+    };
+
+    /**
+     * Skill overlap, up to 45. Word-boundary matching (so "java" ≠ "javascript",
+     * "r" doesn't match everything) with synonym expansion, and a skill found in the
+     * TITLE counts extra — a title mention means it's the role's core requirement.
+     */
+    private int scoreSkills(String title, String desc, List<String> skills) {
         if (skills == null || skills.isEmpty()) return 0;
-        int matched = 0;
+        double matched = 0;
+        int considered = 0;
         for (String s : skills) {
-            if (s != null && !s.isBlank() && hay.contains(s.toLowerCase(Locale.ROOT).trim())) matched++;
+            if (s == null || s.isBlank()) continue;
+            considered++;
+            String skill = s.toLowerCase(Locale.ROOT).trim();
+            if (containsSkill(title, skill)) matched += 1.5;      // core requirement
+            else if (containsSkill(desc, skill)) matched += 1.0;  // mentioned in JD
         }
-        double ratio = (double) matched / skills.size();
+        if (considered == 0) return 0;
+        double ratio = Math.min(1.0, matched / considered);
         double absolute = Math.min(matched, 6) / 6.0;
         return (int) Math.round((ratio * 0.5 + absolute * 0.5) * 45);
+    }
+
+    /** True if the text contains the skill (or any synonym) as a whole word. */
+    private boolean containsSkill(String hay, String skill) {
+        if (hay.isEmpty()) return false;
+        for (String variant : expand(skill)) {
+            if (wordMatch(hay, variant)) return true;
+        }
+        return false;
+    }
+
+    private List<String> expand(String skill) {
+        for (String[] group : SKILL_SYNONYMS) {
+            for (String g : group) {
+                if (g.equals(skill)) return List.of(group);
+            }
+        }
+        return List.of(skill);
+    }
+
+    /**
+     * Whole-word containment that tolerates skills with symbols ("c++", ".net",
+     * "node.js"): the char before/after the match must not be a letter or digit,
+     * and the char after must also not extend the token (stops "java|script").
+     */
+    private boolean wordMatch(String hay, String needle) {
+        int from = 0, idx;
+        while ((idx = hay.indexOf(needle, from)) >= 0) {
+            char before = idx == 0 ? ' ' : hay.charAt(idx - 1);
+            int endPos = idx + needle.length();
+            char after = endPos >= hay.length() ? ' ' : hay.charAt(endPos);
+            if (!Character.isLetterOrDigit(before) && !Character.isLetterOrDigit(after)) return true;
+            from = idx + 1;
+        }
+        return false;
     }
 
     /** Reward roles within the candidate's reach; penalise senior roles and high year requirements. */

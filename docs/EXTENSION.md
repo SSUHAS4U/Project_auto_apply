@@ -11,11 +11,25 @@ The JobPilot extension does two things, and **never submits a form for you**:
 
 Works in Chrome, Edge, and Brave.
 
+## On/off toggle
+The popup header has a **power switch**. Off = JobPilot injects nothing into pages (no Save
+button, no ✨ toolbars) and every fill/save action refuses until you switch it back on.
+The setting persists in `chrome.storage.local` and applies to all tabs immediately.
+
 ## Autofill a form
 1. Open a Google Form / MS Form / application page.
 2. Click the JobPilot icon → **⚡ Fill this form**.
 3. Filled fields are highlighted; a badge shows *"filled N of M — review & submit"*.
 4. Review everything, then submit yourself.
+
+The fill is **two-pass and adaptive**: a fast synonym pass fills standard profile fields, then an
+AI pass reads the remaining labels (dropdowns, typeaheads and custom widgets included) and fills
+them from your full profile. Afterwards the popup shows a **fill report** listing every field that
+still needs you, with the exact reason:
+- *No info in your JobPilot profile* → add the value in Profile, or save an answer in the Q&A bank.
+- *Your profile's "X" is empty* → that one profile field is missing — fill it and refill.
+- *Value ready but the control resisted autofill* → the value is shown; set it manually.
+- *Couldn't read a label* → the form hides its label; use the side-panel copilot.
 
 How matching works (`content/common/fieldEngine.js`):
 - Derives a label per field from `<label>`, `aria-label`, placeholder, name, or nearby text.

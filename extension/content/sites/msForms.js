@@ -29,23 +29,32 @@
   function fill(profile) {
     const items = document.querySelectorAll('[data-automation-id="questionItem"], div[class*="question-item"]');
     let filled = 0, total = 0;
+    const report = [];
     items.forEach((item) => {
       const q = questionText(item);
       if (!q) return;
       total++;
-      const m = JP.match(q, profile);
-      if (m && m.value && (fillInput(item, m.value) || selectChoice(item, m.value))) filled++;
+      const m = JP.matchDetailed(q, profile);
+      if (m.value) {
+        if (fillInput(item, m.value) || selectChoice(item, m.value)) {
+          filled++; report.push({ label: q, status: 'filled', key: m.key });
+        } else report.push({ label: q, status: 'unfilled', key: m.key, reason: 'widget-failed', value: m.value });
+      } else {
+        report.push({ label: q, status: 'unfilled', key: m.key, reason: m.reason });
+      }
     });
     if (total === 0) return JP.fillTextInputs(profile); // fallback
-    return { filled, total };
+    JP.lastFillReport = report;
+    return { filled, total, report };
   }
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg.type !== 'FILL') return;
+    if (!JP.isEnabled()) { sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' }); return; }
     JP.getProfile(msg.force).then((profile) => {
-      const { filled, total } = fill(profile);
+      const { filled, total, report } = fill(profile);
       JP.showBadge(`JobPilot · filled ${filled} of ${total} — review & submit`);
-      sendResponse({ ok: true, filled, total, site: 'msForms' });
+      sendResponse({ ok: true, filled, total, report, site: 'msForms' });
     }).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   });

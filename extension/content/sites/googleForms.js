@@ -32,25 +32,31 @@
   function fill(profile) {
     const items = document.querySelectorAll('[role="listitem"]');
     let filled = 0, total = 0;
+    const report = [];
     items.forEach((item) => {
       const q = questionText(item);
       if (!q) return;
       total++;
-      const m = JP.match(q, profile);
-      if (m && m.value) {
+      const m = JP.matchDetailed(q, profile);
+      if (m.value) {
         const ok = fillTextInput(item, m.value) || selectOption(item, m.value);
-        if (ok) filled++;
+        if (ok) { filled++; report.push({ label: q, status: 'filled', key: m.key }); }
+        else report.push({ label: q, status: 'unfilled', key: m.key, reason: 'widget-failed', value: m.value });
+      } else {
+        report.push({ label: q, status: 'unfilled', key: m.key, reason: m.reason });
       }
     });
-    return { filled, total };
+    JP.lastFillReport = report;
+    return { filled, total, report };
   }
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg.type !== 'FILL') return;
+    if (!JP.isEnabled()) { sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' }); return; }
     JP.getProfile(msg.force).then((profile) => {
-      const { filled, total } = fill(profile);
+      const { filled, total, report } = fill(profile);
       JP.showBadge(`JobPilot · filled ${filled} of ${total} questions — review & submit`);
-      sendResponse({ ok: true, filled, total, site: 'googleForms' });
+      sendResponse({ ok: true, filled, total, report, site: 'googleForms' });
     }).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   });

@@ -36,7 +36,7 @@ public class GeminiAiClient implements AiClient {
     public String complete(String system, String user, boolean fast) {
         String key = props.getGemini().getApiKey();
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                + props.getGemini().getModel() + ":generateContent";
+                + props.getGemini().getModel() + ":generateContent?key=" + key;
         // Disable "thinking" so the token budget isn't spent on hidden reasoning
         // (2.5-flash otherwise truncates the visible answer). Cap output tokens.
         Map<String, Object> body = Map.of(
@@ -46,8 +46,8 @@ public class GeminiAiClient implements AiClient {
                         "maxOutputTokens", 2000,
                         "temperature", 0.6,
                         "thinkingConfig", Map.of("thinkingBudget", 0)));
-        // Google's new AQ.-format auth keys require the x-goog-api-key header
-        // (the old ?key= query parameter is rejected for new-format keys).
+        // Pass the API key both as a query parameter and as the x-goog-api-key header
+        // to support all key formats (AQ.- and AIza- prefixed keys).
         JsonNode resp = http.post().uri(url)
                 .header("x-goog-api-key", key)
                 .contentType(MediaType.APPLICATION_JSON)

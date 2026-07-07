@@ -159,6 +159,7 @@
   }
 
   function enhance() {
+    if (window.JobPilot && !window.JobPilot.isEnabled()) return; // extension toggled off
     if (!looksLikeApplicationForm()) return; // don't litter chat/search pages with buttons
     document.querySelectorAll('textarea, input, [contenteditable="true"]').forEach((el) => {
       if (isQuestionField(el)) {
@@ -706,33 +707,42 @@
       });
     }
 
-    if (!candidates.length) return { filled: 0, total: 0 };
+    if (!candidates.length) return { filled: 0, total: 0, report: [] };
     const labels = [...new Set(candidates.map((c) => c.label))];
     const r = await msg('ASSIST_AUTOFILL', { fields: labels });
     const answers = (r && r.answers) || {};
 
+    // Per-field outcome report so the popup can explain every unfilled field.
+    const report = [];
     let filled = 0;
     for (const { el, label, kind } of candidates) {
       const v = answers[label];
-      if (!v || !String(v).trim()) continue;
+      if (!v || !String(v).trim()) {
+        report.push({ label, status: 'unfilled', reason: 'no-data' });
+        continue;
+      }
+      let ok = false;
       try {
         if (kind === 'select') {
           const want = norm(v);
           const opt = [...el.options].find((o) => norm(o.text) === want) || [...el.options].find((o) => norm(o.text).includes(want));
-          if (opt) { el.value = opt.value; el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(el); filled++; }
+          if (opt) { el.value = opt.value; el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(el); filled++; ok = true; }
         } else if (kind === 'custom') {
-          if (await smart.fillCustomDropdown(el, String(v))) { window.JobPilot.highlight(el); filled++; }
+          if (await smart.fillCustomDropdown(el, String(v))) { window.JobPilot.highlight(el); filled++; ok = true; }
         } else if (kind === 'combo') {
-          if ((el.value || '').trim()) continue;
-          if (await smart.fillTypeahead(el, String(v))) { window.JobPilot.highlight(el); filled++; }
+          if ((el.value || '').trim()) { ok = true; }
+          else if (await smart.fillTypeahead(el, String(v))) { window.JobPilot.highlight(el); filled++; ok = true; }
         } else {
-          if ((el.value || '').trim()) continue;
-          writeValue(el, String(v)); filled++;
+          if ((el.value || '').trim()) { ok = true; }
+          else { writeValue(el, String(v)); filled++; ok = true; }
         }
         if (smart) await smart.sleep(120);
       } catch (_) { /* keep going */ }
+      report.push(ok
+        ? { label, status: 'filled', value: String(v) }
+        : { label, status: 'unfilled', reason: 'widget-failed', value: String(v) });
     }
-    return { filled, total: candidates.length };
+    return { filled, total: candidates.length, report };
   }
 
   // Attach the user's stored resume to the page's file-upload field.
@@ -763,6 +773,11 @@
 
   // Popup-triggered actions (works on any page since this script loads everywhere).
   chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
+    const ACTION_TYPES = ['AUTO_ANSWER', 'AI_FILL', 'UPLOAD_RESUME', 'ATTACH_COVER_LETTER', 'SAVE_CURRENT', 'FILL_FIELD'];
+    if (ACTION_TYPES.includes(m.type) && window.JobPilot && !window.JobPilot.isEnabled()) {
+      sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' });
+      return false;
+    }
     if (m.type === 'AUTO_ANSWER') {
       autoAnswerAll().then((r) => sendResponse({ ok: true, ...r }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));

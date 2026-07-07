@@ -43,6 +43,8 @@ public class JobPilotProperties {
         private String ingestCron = "0 0 7,14,20 * * *";
         /** UTC times the ingest fires (mirror of the cron) — used to show "next ingest". */
         private String ingestTimesUtc = "01:30,08:30,14:30";
+        /** Daily ATS-board discovery (health-check + auto-add new boards); "-" disables. */
+        private String discoveryCron = "0 30 6 * * *";
     }
     private CoverLetter coverletter = new CoverLetter();
     private Ai ai = new Ai();

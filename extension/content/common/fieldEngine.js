@@ -3,6 +3,27 @@
 (function () {
   if (window.JobPilot) return;
 
+  // --- Global on/off switch. When off, no UI is injected and fill actions refuse. ---
+  let jpEnabled = true;
+  function removeInjectedUi() {
+    document.querySelectorAll('#jobpilot-save, #jobpilot-badge, .jobpilot-assistbar')
+      .forEach((el) => el.remove());
+    document.querySelectorAll('[data-jobpilot-assist]')
+      .forEach((el) => delete el.dataset.jobpilotAssist);
+  }
+  try {
+    chrome.storage.local.get({ jobpilotEnabled: true }, (v) => {
+      jpEnabled = v.jobpilotEnabled !== false;
+      if (!jpEnabled) removeInjectedUi();
+    });
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === 'local' && ch.jobpilotEnabled) {
+        jpEnabled = ch.jobpilotEnabled.newValue !== false;
+        if (!jpEnabled) removeInjectedUi();
+      }
+    });
+  } catch (_) { /* not in an extension context */ }
+
   // Synonym dictionary: profile key -> label keywords (normalized, lowercased).
   // Order matters — more specific keys are matched before generic ones.
   const SYNONYMS = {
@@ -130,6 +151,26 @@
   // Match a label to the BEST profile key — the longest/most-specific synonym wins, so
   // "College/University Name" maps to college (via "university name") instead of full_name
   // (via the greedy "name"), and "Current Company" maps to current_company.
+  // Like match(), but also reports WHY nothing was filled: distinguishes "no synonym
+  // matched this label" from "matched a profile field that has no value yet".
+  function matchDetailed(label, profile) {
+    if (!label) return { key: null, value: null, reason: 'no-label' };
+    let bestKey = null, bestLen = 0, bestValue = null;
+    const fieldMap = (profile && profile.field_map) || {};
+    for (const k of Object.keys(fieldMap)) {
+      const nk = norm(k);
+      if (nk && label.includes(nk) && nk.length > bestLen) { bestKey = k; bestLen = nk.length; bestValue = fieldMap[k]; }
+    }
+    for (const [key, words] of Object.entries(SYNONYMS)) {
+      for (const w of words) {
+        if (w.length > bestLen && label.includes(w)) { bestKey = key; bestLen = w.length; bestValue = valueFor(key, profile); }
+      }
+    }
+    if (!bestKey) return { key: null, value: null, reason: 'no-match' };
+    if (!bestValue) return { key: bestKey, value: null, reason: 'no-value' };
+    return { key: bestKey, value: bestValue, reason: null };
+  }
+
   function match(label, profile) {
     if (!label) return null;
     // Decide the BEST-matching field purely by the longest matching keyword — regardless of
@@ -171,22 +212,34 @@
   }
 
   // Fill all standard text-like inputs/textareas on the page (incl. inside open Shadow DOM).
+  // Also builds a per-field report (window.JobPilot.lastFillReport) explaining every
+  // field that could NOT be filled, so the popup can show accurate suggestions.
   function fillTextInputs(profile) {
+    if (!jpEnabled) return { filled: 0, total: 0, report: [] };
     const sel = 'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), textarea';
     const controls = window.JobPilotSmart ? window.JobPilotSmart.deepQueryAll(sel) : document.querySelectorAll(sel);
     let filled = 0, total = 0;
+    const report = [];
     controls.forEach((el) => {
       if (el.disabled || el.readOnly || el.offsetParent === null) return;
       total++;
-      if (el.value && el.value.trim()) return; // don't overwrite
-      const m = match(deriveLabel(el), profile);
-      if (m && m.value) {
+      const label = deriveLabel(el);
+      if (el.value && el.value.trim()) {
+        report.push({ label, status: 'already-filled' });
+        return; // don't overwrite
+      }
+      const m = matchDetailed(label, profile);
+      if (m.value) {
         setNativeValue(el, m.value);
         highlight(el);
         filled++;
+        report.push({ label, status: 'filled', key: m.key });
+      } else {
+        report.push({ label, status: 'unfilled', key: m.key, reason: m.reason });
       }
     });
-    return { filled, total };
+    window.JobPilot.lastFillReport = report;
+    return { filled, total, report };
   }
 
   // Floating badge with the fill summary. Never submits anything.
@@ -227,6 +280,7 @@
 
   // Inject a floating "Save to JobPilot" button. extractor() -> listing payload.
   function injectSaveButton(site, extractor) {
+    if (!jpEnabled) return;
     if (document.getElementById('jobpilot-save')) return;
     const btn = document.createElement('button');
     btn.id = 'jobpilot-save';
@@ -262,7 +316,9 @@
   }
 
   window.JobPilot = {
-    norm, deriveLabel, match, valueFor, setNativeValue, highlight,
+    norm, deriveLabel, match, matchDetailed, valueFor, setNativeValue, highlight,
     fillTextInputs, showBadge, getProfile, saveJob, injectSaveButton, textOf, SYNONYMS,
+    isEnabled: () => jpEnabled,
+    lastFillReport: [],
   };
 })();

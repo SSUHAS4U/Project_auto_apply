@@ -64,7 +64,9 @@ See [`docs/EXTENSION.md`](docs/EXTENSION.md) for usage and [`docs/SETUP.md`](doc
 ## How it works
 
 ```
-GitHub cron → POST /api/ingest → connectors (Greenhouse/Lever/Ashby/Adzuna/Jooble)
+Daily cron  → source discovery: health-check every ATS board, drop dead ones,
+              probe/search for NEW boards (Greenhouse/Lever/Ashby) and auto-add live ones
+Server cron → POST /api/ingest → connectors (Greenhouse/Lever/Ashby/Adzuna/Jooble/Careerjet/…)
             → normalize + dedupe (content_hash) + classify apply_type + match score → Postgres
 Dashboard  → browse / filter / track / email-apply / manage pipeline
 Extension  → autofill forms (you submit) + "Save to JobPilot" capture

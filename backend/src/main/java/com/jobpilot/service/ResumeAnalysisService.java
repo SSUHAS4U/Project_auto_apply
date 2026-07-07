@@ -26,7 +26,18 @@ public class ResumeAnalysisService {
               "experience":[{"company","title","start","end","description"}],
               "education":[{"school","degree","field","year"}],
               "certifications":[{"name","issuer","year"}]
-            }""";
+            }
+            Extraction rules:
+            - "skills": be EXHAUSTIVE — include every language, framework, library, database,
+              cloud service and tool found ANYWHERE in the resume (skills section, projects,
+              work experience, certifications). Lowercase each skill and use the canonical
+              name ("javascript" not "JS", "postgres" not "PostgreSQL", "c++" not "CPP").
+              Do not include soft skills (communication, teamwork).
+            - "yearsExperience": a NUMBER of years of professional (non-internship) experience,
+              computed from the work-experience dates; count internships as 0.25 each if there
+              is no full-time work. "0" for a fresher.
+            - "headline": a one-line professional identity (e.g. "Computer Science graduate |
+              Java backend developer") — derive it from the resume if not explicitly present.""";
 
     private final ResumeTextExtractor extractor;
     private final ProfileService profileService;
