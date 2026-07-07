@@ -145,7 +145,7 @@ public class ResumeDocService {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         form.add("filecontents[]", latex);
         form.add("filename[]", "document.tex");
-        form.add("engine", "pdflatex");
+        form.add("engine", engineFor(latex));
         form.add("return", "pdf");
 
         // texlive.net answers 301 → /latexcgi/<doc>.pdf on success or <doc>.log on failure;
@@ -194,11 +194,31 @@ public class ResumeDocService {
         return b != null && b.length >= 5 && b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F';
     }
 
+    /**
+     * Pick the TeX engine the source needs — Overleaf templates using fontspec /
+     * FontAwesome5 / unicode-math require XeLaTeX (pdflatex can't load OpenType fonts).
+     */
+    static String engineFor(String latex) {
+        if (latex.contains("luacode") || latex.contains("directlua")) return "lualatex";
+        if (latex.contains("fontspec") || latex.contains("\\setmainfont")
+                || latex.contains("unicode-math") || latex.contains("fontawesome5")
+                || latex.contains("polyglossia")) return "xelatex";
+        return "pdflatex";
+    }
+
+    /** Up to the first three distinct "!" error lines plus the "l.NN" source-line hint. */
     private static String firstErrorLine(String logText) {
+        java.util.LinkedHashSet<String> errs = new java.util.LinkedHashSet<>();
+        String lineHint = null;
         for (String line : logText.split("\n")) {
-            if (line.startsWith("!") || line.contains("Error")) return line.trim().replaceAll("<[^>]*>", "");
+            String t = line.trim().replaceAll("<[^>]*>", "");
+            if (t.startsWith("!") && errs.size() < 3) errs.add(t.replaceFirst("^!\\s*", ""));
+            if (lineHint == null && t.matches("^l\\.\\d+.*")) lineHint = t;
         }
-        return "";
+        errs.remove("Emergency stop.");
+        errs.remove("==> Fatal error occurred, no output PDF file produced!");
+        String out = String.join(" | ", errs);
+        return lineHint == null ? out : out + " (" + lineHint + ")";
     }
 
     // ---- AI tailor -------------------------------------------------------------

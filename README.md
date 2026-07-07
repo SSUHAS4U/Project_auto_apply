@@ -65,8 +65,8 @@ See [`docs/EXTENSION.md`](docs/EXTENSION.md) for usage and [`docs/SETUP.md`](doc
 
 ```
 Daily cron  → source discovery: health-check every ATS board, drop dead ones,
-              probe/search for NEW boards (Greenhouse/Lever/Ashby) and auto-add live ones
-Server cron → POST /api/ingest → connectors (Greenhouse/Lever/Ashby/Adzuna/Jooble/Careerjet/…)
+              probe for NEW boards (Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Recruitee) and auto-add live ones
+Server cron → POST /api/ingest → connectors (Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Recruitee/Adzuna/Jooble/Careerjet/Muse/Remotive/RemoteOK/Arbeitnow/Jobicy/…)
             → normalize + dedupe (content_hash) + classify apply_type + match score → Postgres
 Dashboard  → browse / filter / track / email-apply / manage pipeline
 Extension  → autofill forms (you submit) + "Save to JobPilot" capture

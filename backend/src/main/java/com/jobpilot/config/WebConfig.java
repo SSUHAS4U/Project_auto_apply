@@ -26,7 +26,11 @@ public class WebConfig {
     public RestClient restClient() {
         return RestClient.builder()
                 .requestInterceptor((request, body, execution) -> {
-                    request.getHeaders().add("User-Agent", "JobPilot/0.1 (+personal-use)");
+                    // Default UA only when the caller didn't set one (e.g. the LinkedIn
+                    // guest search sends a browser UA — don't append a second value).
+                    if (!request.getHeaders().containsKey("User-Agent")) {
+                        request.getHeaders().add("User-Agent", "JobPilot/0.1 (+personal-use)");
+                    }
                     return execution.execute(request, body);
                 })
                 .build();

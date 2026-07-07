@@ -88,6 +88,21 @@ public class AtsDiscoveryService {
             {"ashby", "docker", "Docker"},
             {"ashby", "deel", "Deel"},
             {"ashby", "commure", "Commure"},
+            // SmartRecruiters / Workable / Recruitee — keyless public APIs; every
+            // candidate is probe-verified (>0 live jobs) before it enters the rotation.
+            {"smartrecruiters", "boschgroup", "Bosch Group"},
+            {"smartrecruiters", "servicenow", "ServiceNow"},
+            {"smartrecruiters", "continental", "Continental"},
+            {"smartrecruiters", "gameloft", "Gameloft"},
+            {"smartrecruiters", "visa", "Visa"},
+            {"workable", "blueground", "Blueground"},
+            {"workable", "novibet", "Novibet"},
+            {"workable", "epignosis", "Epignosis"},
+            {"workable", "moodle", "Moodle"},
+            {"recruitee", "channable", "Channable"},
+            {"recruitee", "carv", "Carv"},
+            {"recruitee", "sendcloud", "Sendcloud"},
+            {"recruitee", "hotjar", "Hotjar"},
     };
 
     /** Full daily run: health-check existing boards, then discover new ones. */
@@ -182,6 +197,24 @@ public class AtsDiscoveryService {
                             .uri("https://api.ashbyhq.com/posting-api/job-board/{t}", token)
                             .retrieve().body(JsonNode.class);
                     return r == null ? null : r.path("jobs").size();
+                }
+                case "smartrecruiters": {
+                    JsonNode r = http.get()
+                            .uri("https://api.smartrecruiters.com/v1/companies/{t}/postings?limit=1", token)
+                            .retrieve().body(JsonNode.class);
+                    return r == null ? null : r.path("totalFound").asInt(0);
+                }
+                case "workable": {
+                    JsonNode r = http.get()
+                            .uri("https://apply.workable.com/api/v1/widget/accounts/{t}", token)
+                            .retrieve().body(JsonNode.class);
+                    return r == null ? null : r.path("jobs").size();
+                }
+                case "recruitee": {
+                    JsonNode r = http.get()
+                            .uri("https://" + token + ".recruitee.com/api/offers/")
+                            .retrieve().body(JsonNode.class);
+                    return r == null ? null : r.path("offers").size();
                 }
                 default:
                     return null;
