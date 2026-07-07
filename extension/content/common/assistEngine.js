@@ -89,56 +89,121 @@
     window.JobPilot.highlight(el);
   }
 
-  // ---- per-field toolbar (✨ AI answer · 💾 save) --------------------------
+  // ---- focus pill (✨ AI answer · 💾 save) ----------------------------------
+  // Instead of littering every field with permanent buttons, ONE compact pill
+  // appears next to the question field you're focused on, and vanishes on blur.
 
-  function toolbar(el) {
-    if (el.dataset.jobpilotAssist) return;
-    el.dataset.jobpilotAssist = '1';
+  let pill = null;
+  let pillField = null;
+  let pillHideTimer = null;
 
-    const bar = document.createElement('div');
-    bar.className = 'jobpilot-assistbar';
-    bar.style.cssText = 'display:inline-flex;gap:6px;margin:6px 0;z-index:2147483646;font:600 12px system-ui,sans-serif';
+  function buildPill() {
+    if (pill) return pill;
+    pill = document.createElement('div');
+    pill.id = 'jobpilot-pill';
+    pill.style.cssText = [
+      'position:absolute', 'z-index:2147483647', 'display:flex', 'align-items:center', 'gap:2px',
+      'padding:3px', 'border-radius:999px', 'background:rgba(17,20,29,.92)',
+      'backdrop-filter:blur(8px)', 'border:1px solid rgba(99,102,241,.45)',
+      'box-shadow:0 6px 24px rgba(0,0,0,.35)', 'font:600 12px system-ui,sans-serif',
+      'transition:opacity .12s ease', 'opacity:0',
+    ].join(';');
 
-    const mk = (label, title, bg) => {
+    const mk = (label, title) => {
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label; b.title = title;
-      b.style.cssText = `border:none;border-radius:8px;padding:5px 10px;cursor:pointer;color:#fff;background:${bg};box-shadow:0 2px 8px rgba(0,0,0,.25)`;
-      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.style.cssText = [
+        'border:none', 'border-radius:999px', 'padding:5px 11px', 'cursor:pointer',
+        'color:#e7e9ee', 'background:transparent', 'font:600 12px system-ui,sans-serif',
+        'transition:background .12s',
+      ].join(';');
+      b.addEventListener('mouseenter', () => { b.style.background = 'rgba(99,102,241,.35)'; });
+      b.addEventListener('mouseleave', () => { b.style.background = 'transparent'; });
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // keep field focus
       return b;
     };
 
-    const ai = mk('✨ AI answer', 'Generate an answer from your profile', 'linear-gradient(135deg,#6366f1,#4f46e5)');
-    const save = mk('💾 Save', 'Add this Q&A to your autofill questions', '#0f766e');
+    const ai = mk('✨ AI answer', 'Generate an answer from your profile');
+    const save = mk('💾 Save', 'Save this Q&A for autofill');
     const note = document.createElement('span');
-    note.style.cssText = 'align-self:center;color:#6b7280;font-weight:500';
+    note.style.cssText = 'color:#9aa1b1;font-weight:500;padding:0 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
 
     ai.addEventListener('click', async () => {
+      const el = pillField;
+      if (!el) return;
       const question = deriveQuestion(el);
       if (!question) { note.textContent = 'no question detected'; return; }
       ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
       try {
         const r = await msg('ASSIST_ANSWER', { question });
         writeValue(el, r.answer);
-        note.textContent = r.source === 'saved' ? '↺ from saved' : '✓ AI · saved';
+        note.textContent = r.source === 'saved' ? '↺ saved answer' : '✓ AI';
       } catch (e) {
         note.textContent = '⚠ ' + e.message;
       } finally { ai.disabled = false; ai.textContent = old; }
     });
 
     save.addEventListener('click', async () => {
+      const el = pillField;
+      if (!el) return;
       const question = deriveQuestion(el);
       const answer = readValue(el).trim();
       if (!question) { note.textContent = 'no question detected'; return; }
       if (!answer) { note.textContent = 'type an answer first'; return; }
       save.disabled = true;
-      try { await msg('SAVE_QA', { question, answer }); note.textContent = '✓ saved to autofill'; }
+      try { await msg('SAVE_QA', { question, answer }); note.textContent = '✓ saved'; }
       catch (e) { note.textContent = '⚠ ' + e.message; }
       finally { save.disabled = false; }
     });
 
-    bar.append(ai, save, note);
-    // Place the bar right after the field (works across form layouts).
-    if (el.parentNode) el.parentNode.insertBefore(bar, el.nextSibling);
+    // Keep the pill alive while the pointer is over it.
+    pill.addEventListener('mouseenter', () => clearTimeout(pillHideTimer));
+    pill.addEventListener('mouseleave', scheduleHidePill);
+    pill.append(ai, save, note);
+    pill._note = note;
+    document.body.appendChild(pill);
+    return pill;
+  }
+
+  function showPillFor(el) {
+    const p = buildPill();
+    pillField = el;
+    p._note.textContent = '';
+    const r = el.getBoundingClientRect();
+    p.style.display = 'flex';
+    // Above the field's top-right corner; flip below if there's no room.
+    const top = r.top + window.scrollY - 40;
+    p.style.top = Math.max(window.scrollY + 4, top) + 'px';
+    p.style.left = Math.max(8, r.right + window.scrollX - 230) + 'px';
+    requestAnimationFrame(() => { p.style.opacity = '1'; });
+  }
+
+  function hidePill() {
+    if (!pill) return;
+    pill.style.opacity = '0';
+    pillField = null;
+    setTimeout(() => { if (pill && !pillField) pill.style.display = 'none'; }, 130);
+  }
+
+  function scheduleHidePill() {
+    clearTimeout(pillHideTimer);
+    pillHideTimer = setTimeout(hidePill, 220);
+  }
+
+  function installPill() {
+    if (document.__jobpilotPillInstalled) return;
+    document.__jobpilotPillInstalled = true;
+    document.addEventListener('focusin', (e) => {
+      if (window.JobPilot && !window.JobPilot.isEnabled()) return;
+      if (!looksLikeApplicationForm()) return;
+      const el = e.target;
+      clearTimeout(pillHideTimer);
+      if (isQuestionField(el)) showPillFor(el);
+      else if (!pill || !pill.contains(el)) scheduleHidePill();
+    });
+    document.addEventListener('focusout', scheduleHidePill);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePill(); });
+    window.addEventListener('scroll', () => { if (pillField) showPillFor(pillField); }, { passive: true });
   }
 
   // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
@@ -158,14 +223,9 @@
     return (jobby && (hasUpload || fields >= 3));
   }
 
+  // The pill is delegated (focusin), so a one-time install covers dynamic forms too.
   function enhance() {
-    if (window.JobPilot && !window.JobPilot.isEnabled()) return; // extension toggled off
-    if (!looksLikeApplicationForm()) return; // don't litter chat/search pages with buttons
-    document.querySelectorAll('textarea, input, [contenteditable="true"]').forEach((el) => {
-      if (isQuestionField(el)) {
-        try { toolbar(el); } catch (_) { /* keep scanning */ }
-      }
-    });
+    installPill();
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -745,9 +805,10 @@
     return { filled, total: candidates.length, report };
   }
 
-  // Attach the user's stored resume to the page's file-upload field.
-  async function uploadResume() {
-    const r = await msg('GET_RESUME');
+  // Attach a stored resume to the page's file-upload field. docId picks a specific
+  // LaTeX resume from the builder; without it the profile's uploaded resume is used.
+  async function uploadResume(docId) {
+    const r = await msg('GET_RESUME', { docId });
     if (!r || !r.hasResume) throw new Error('No resume on file — upload one in your JobPilot profile first');
     const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0));
     const blob = new Blob([bytes], { type: r.contentType || 'application/pdf' });
@@ -789,8 +850,13 @@
       return true;
     }
     if (m.type === 'UPLOAD_RESUME') {
-      uploadResume().then((r) => sendResponse({ ok: true, ...r }))
+      uploadResume(m.docId).then((r) => sendResponse({ ok: true, ...r }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    // Side/popup "Tailor resume": hand back the page's JD text + role/company.
+    if (m.type === 'EXTRACT_JD') {
+      sendResponse({ ok: true, jdText: extractJobText(), role: pageRole(), company: pageCompany(), url: location.href.split('?')[0] });
       return true;
     }
     if (m.type === 'ATTACH_COVER_LETTER') {
@@ -873,13 +939,9 @@
     return { ok: true, label: deriveQuestion(best) };
   }
 
-  let timer = null;
-  function scheduleEnhance() { clearTimeout(timer); timer = setTimeout(enhance, 600); }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scheduleEnhance);
-  } else { scheduleEnhance(); }
-  const obs = new MutationObserver(scheduleEnhance);
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', enhance);
+  } else { enhance(); }
 
   window.JobPilotAssist = { enhance, autoAnswerAll, attachCoverLetter, deriveQuestion, isQuestionField };
 })();

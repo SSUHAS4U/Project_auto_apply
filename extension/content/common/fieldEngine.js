@@ -6,7 +6,7 @@
   // --- Global on/off switch. When off, no UI is injected and fill actions refuse. ---
   let jpEnabled = true;
   function removeInjectedUi() {
-    document.querySelectorAll('#jobpilot-save, #jobpilot-badge, .jobpilot-assistbar')
+    document.querySelectorAll('#jobpilot-save, #jobpilot-badge, #jobpilot-pill, .jobpilot-assistbar')
       .forEach((el) => el.remove());
     document.querySelectorAll('[data-jobpilot-assist]')
       .forEach((el) => delete el.dataset.jobpilotAssist);

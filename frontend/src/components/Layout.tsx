@@ -5,6 +5,8 @@ import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 const NAV = [
   { to: '/', label: 'Jobs', ico: '🧭', end: true },
   { to: '/daily', label: 'Daily picks', ico: '☀️' },
+  { to: '/scout', label: 'Scout', ico: '🔎' },
+  { to: '/resumes', label: 'Resumes', ico: '📄' },
   { to: '/assistant', label: 'Assistant', ico: '🤖' },
   { to: '/compose', label: 'Compose & send', ico: '✍️' },
   { to: '/applications', label: 'Applications', ico: '📋' },

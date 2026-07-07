@@ -3,12 +3,12 @@ const $ = (id) => document.getElementById(id);
 function send(type, payload) {
   return new Promise((resolve) => chrome.runtime.sendMessage({ type, ...payload }, resolve));
 }
-function tabSend(type) {
+function tabSend(type, payload) {
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (!tab) return resolve({ ok: false, error: 'no active tab' });
-      chrome.tabs.sendMessage(tab.id, { type }, (resp) => {
-        if (chrome.runtime.lastError) return resolve({ ok: false, error: 'No filler on this page' });
+      chrome.tabs.sendMessage(tab.id, { type, ...payload }, (resp) => {
+        if (chrome.runtime.lastError) return resolve({ ok: false, error: 'No JobPilot on this page — reload it' });
         resolve(resp || { ok: false, error: 'no response' });
       });
     });
@@ -20,10 +20,8 @@ function status(msg, kind = '') { const s = $('status'); s.textContent = msg; s.
 
 function applyEnabledUi(on) {
   $('power').checked = on;
-  document.querySelectorAll('#actions .btn').forEach((b) => {
-    if (b.id !== 'refresh') b.disabled = !on;
-  });
-  if (!on) status('JobPilot is off — pages are untouched.', '');
+  document.querySelectorAll('#actions .btn').forEach((b) => { b.disabled = !on; });
+  if (!on) { status('JobPilot is off — pages are untouched.'); $('picker').hidden = true; }
   else if (/is off/.test($('status').textContent)) status('');
 }
 
@@ -40,29 +38,26 @@ $('power').addEventListener('change', () => {
 async function loadProfile(force) {
   const resp = await send('GET_PROFILE', { force });
   const conn = $('conn');
-  const opts = $('opts');
   if (!resp || !resp.ok) {
-    conn.textContent = 'not connected'; conn.className = 'sub err';
+    conn.innerHTML = '<span class="dot"></span>not connected';
+    conn.className = 'sub err';
     $('profile').innerHTML = `<div class="muted">${resp ? resp.error : 'background unavailable'}</div>
-      <div class="muted" style="margin-top:6px">Sign in via Options.</div>`;
-    if (opts) opts.textContent = '⚙ Options — sign in';
+      <div class="muted" style="margin-top:4px">Sign in via <b>⚙ Options</b>.</div>`;
     return;
   }
-  // Signed in: keep it minimal — just the name. Footer drops the "sign in" wording.
-  conn.textContent = 'connected'; conn.className = 'sub ok';
+  conn.innerHTML = '<span class="dot"></span>connected';
+  conn.className = 'sub ok';
   const p = resp.data;
-  $('profile').innerHTML = `<div class="pname">${p.full_name || 'Signed in'}</div>`;
-  if (opts) opts.textContent = '⚙ Options';
+  $('profile').innerHTML = `<div class="pname">${p.full_name || 'Signed in'}</div>` +
+    (p.headline ? `<div class="muted" style="font-size:11.5px;margin-top:2px">${p.headline}</div>` : '');
 }
 
 // ---- fill report: explain every field that could NOT be filled --------------
 
 const REASON_TEXT = {
   'no-data': 'No info in your JobPilot profile — add it in Profile, or save an answer in the Q&A bank.',
-  'no-value': null, // handled specially with the field key
   'no-match': 'Didn’t recognize this field — use the side-panel copilot or fill manually.',
   'no-label': 'Couldn’t read a label for this field.',
-  'widget-failed': null, // handled specially with the value
 };
 
 function reasonLine(item) {
@@ -93,7 +88,7 @@ function renderReport(fillReport, aiReport) {
 
   const h = document.createElement('div');
   h.className = 'rephead';
-  h.textContent = `⚠ ${unfilled.length} field${unfilled.length === 1 ? '' : 's'} need${unfilled.length === 1 ? 's' : ''} you:`;
+  h.textContent = `⚠ ${unfilled.length} field${unfilled.length === 1 ? '' : 's'} need${unfilled.length === 1 ? 's' : ''} you`;
   box.appendChild(h);
   unfilled.slice(0, 8).forEach((item) => {
     const row = document.createElement('div');
@@ -123,30 +118,11 @@ $('fill').addEventListener('click', async () => {
   const r = await tabSend('FILL');
   if (!r.ok) { status(r.error, 'err'); return; }
   let filled = r.filled || 0;
-  // Second pass: AI fills the factual fields the synonym engine missed (CTC, college, etc.)
-  // and adapts to dropdowns/typeaheads. Returns a per-field report of what's left.
   status(`Filled ${filled} — adapting to the remaining fields with AI…`);
   const ai = await tabSend('AI_FILL');
   if (ai.ok) filled += ai.filled || 0;
   renderReport(r.report, ai.ok ? ai.report : null);
   status(`Filled ${filled} fields — review & submit`, 'ok');
-});
-
-$('resume').addEventListener('click', async () => {
-  status('Attaching resume…');
-  const r = await tabSend('UPLOAD_RESUME');
-  if (r.ok) status(r.note || `Resume attached (${r.filename}) ✓`, 'ok');
-  else status(r.error, 'err');
-});
-
-$('save').addEventListener('click', async () => {
-  status('Saving…');
-  let r = await tabSend('SAVE_CURRENT');
-  if (!r.ok && /No filler/.test(r.error || '')) {
-    status('Use the “Save to JobPilot” button on the page.', 'err');
-    return;
-  }
-  if (r.ok) status('Saved to tracker ✓', 'ok'); else status(r.error, 'err');
 });
 
 $('answer').addEventListener('click', async () => {
@@ -159,11 +135,67 @@ $('answer').addEventListener('click', async () => {
 $('cover').addEventListener('click', async () => {
   status('Writing cover letter…');
   const r = await tabSend('ATTACH_COVER_LETTER');
-  if (r.ok) status(r.attached ? 'Cover letter attached ✓ — review & submit' : 'No upload field — downloaded the PDF instead', 'ok');
+  if (r.ok) status(r.attached ? 'Cover letter attached ✓ — review & submit' : (r.note || 'Downloaded the PDF instead'), 'ok');
   else status(r.error, 'err');
 });
 
+$('save').addEventListener('click', async () => {
+  status('Saving…');
+  const r = await tabSend('SAVE_CURRENT');
+  if (r.ok) status('Saved to tracker ✓', 'ok');
+  else status(/No JobPilot/.test(r.error || '') ? r.error : 'Use the “Save to JobPilot” button on the page.', 'err');
+});
+
+// ---- resume picker: ask WHICH resume to upload, every time -------------------
+
+$('resume').addEventListener('click', async () => {
+  const picker = $('picker');
+  if (!picker.hidden) { picker.hidden = true; return; }
+  status('Loading your resumes…');
+  const r = await send('LIST_RESUMES', {});
+  if (!r || !r.ok) { status(r ? r.error : 'background unavailable', 'err'); return; }
+  const list = $('pickerList');
+  list.innerHTML = '';
+  const options = r.data || [];
+  if (!options.length) {
+    status('No resumes yet — upload one in Profile, or build one in Dashboard → Resumes.', 'err');
+    return;
+  }
+  options.forEach((o) => {
+    const b = document.createElement('button');
+    b.className = 'picker-item';
+    b.disabled = !o.hasPdf;
+    b.innerHTML = `<span>${o.base ? '⭐ ' : ''}${o.name}</span>` +
+      (o.hasPdf ? '' : '<span class="pi-sub" style="margin-left:auto">not compiled</span>');
+    b.addEventListener('click', async () => {
+      picker.hidden = true;
+      status(`Attaching “${o.name}”…`);
+      const res = await tabSend('UPLOAD_RESUME', o.id ? { docId: o.id } : {});
+      if (res.ok) status(res.note || `Attached ${res.filename} ✓`, 'ok');
+      else status(res.error, 'err');
+    });
+    list.appendChild(b);
+  });
+  status('');
+  picker.hidden = false;
+});
+$('pickerClose').addEventListener('click', () => { $('picker').hidden = true; });
+
+// ---- tailor resume to this job's JD ------------------------------------------
+
+$('tailor').addEventListener('click', async () => {
+  status('Reading the job description…');
+  const jd = await tabSend('EXTRACT_JD');
+  if (!jd.ok) { status(jd.error, 'err'); return; }
+  if (!jd.jdText || jd.jdText.length < 80) { status('Couldn’t find a job description on this page.', 'err'); return; }
+  const name = [jd.role, jd.company].filter(Boolean).join(' – ').slice(0, 80) || 'Tailored resume';
+  status('Tailoring a copy of your base resume…');
+  const r = await send('TAILOR_RESUME', { name, jobUrl: jd.url, jdText: jd.jdText });
+  if (r && r.ok) status('Tailored copy created ✓ — opening the editor to review & compile', 'ok');
+  else status((r && r.error) || 'tailor failed', 'err');
+});
+
 $('refresh').addEventListener('click', () => { status('Refreshing…'); loadProfile(true).then(() => status('Profile refreshed', 'ok')); });
-$('opts').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
+$('opts').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
 loadProfile(false);

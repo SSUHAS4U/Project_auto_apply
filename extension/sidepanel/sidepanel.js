@@ -34,9 +34,24 @@ function add(role, text, actions) {
 async function loadProfile() {
   const r = await bg('GET_PROFILE', {});
   const ok = r && r.ok;
-  $('conn').textContent = ok ? `connected · ${r.data.full_name || 'signed in'}` : (r ? r.error : 'sign in via Options');
+  const text = ok ? `connected · ${r.data.full_name || 'signed in'}` : (r ? r.error : 'sign in via Options');
+  $('conn').innerHTML = '<span class="dot"></span>';
+  $('conn').appendChild(document.createTextNode(text));
   $('conn').className = 'sub ' + (ok ? 'ok' : 'err');
 }
+
+// --- global on/off toggle --------------------------------------------------
+function applyEnabledUi(on) {
+  $('power').checked = on;
+  document.querySelectorAll('.actions .btn').forEach((b) => { b.disabled = !on; });
+}
+chrome.storage.local.get({ jobpilotEnabled: true }, (v) => applyEnabledUi(v.jobpilotEnabled !== false));
+$('power').addEventListener('change', () => {
+  const on = $('power').checked;
+  chrome.storage.local.set({ jobpilotEnabled: on });
+  applyEnabledUi(on);
+  add('ai', on ? 'JobPilot is back on ✓' : 'JobPilot is off — pages stay untouched until you switch it back on.');
+});
 
 // --- action buttons -------------------------------------------------------
 // One click = a COMPLETE pass: profile text fields, selects, custom dropdowns, then every
@@ -68,10 +83,38 @@ $('answer').onclick = async () => {
   const r = await tabSend('AUTO_ANSWER');
   add('ai', r.ok ? (r.total ? `Answered ${r.done} of ${r.total} questions — review them.` : 'No open-ended question fields found here.') : '⚠ ' + r.error);
 };
+// Resume picker: always ask WHICH resume to attach (profile + LaTeX builder PDFs).
 $('resume').onclick = async () => {
-  const r = await tabSend('UPLOAD_RESUME');
-  if (!r.ok) return void add('ai', '⚠ ' + r.error);
-  add('ai', r.attached ? `Resume attached (${r.filename}) ✓` : (r.note || 'Downloaded your resume.'));
+  const r = await bg('LIST_RESUMES', {});
+  if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'background unavailable'));
+  const options = (r.data || []).filter((o) => o.hasPdf);
+  if (!options.length) {
+    return void add('ai', 'No resume PDFs yet — upload one in Profile, or compile one in Dashboard → Resumes.');
+  }
+  add('ai', 'Which resume should I attach?', options.map((o) => [
+    `${o.base ? '⭐ ' : ''}${o.name}`,
+    async () => {
+      add('me', `Attach "${o.name}"`);
+      const res = await tabSend('UPLOAD_RESUME', o.id ? { docId: o.id } : {});
+      if (!res.ok) return void add('ai', '⚠ ' + res.error);
+      add('ai', res.attached ? `Resume attached (${res.filename}) ✓` : (res.note || 'Downloaded your resume.'));
+    },
+  ]));
+};
+
+// Grab this page's JD → AI-tailored copy of the base resume → open the editor.
+$('tailor').onclick = async () => {
+  add('me', 'Tailor resume to this job');
+  const jd = await tabSend('EXTRACT_JD');
+  if (!jd.ok) return void add('ai', '⚠ ' + jd.error);
+  if (!jd.jdText || jd.jdText.length < 80) return void add('ai', '⚠ Couldn’t find a job description on this page.');
+  const name = [jd.role, jd.company].filter(Boolean).join(' – ').slice(0, 80) || 'Tailored resume';
+  const prog = add('ai', '⏳ Tailoring a copy of your base resume to this JD…');
+  const r = await bg('TAILOR_RESUME', { name, jobUrl: jd.url, jdText: jd.jdText });
+  prog.remove();
+  add('ai', r && r.ok
+    ? `✓ Created "${name}" — opened the editor. Review, compile, and it'll appear in 📎 Resume.`
+    : '⚠ ' + ((r && r.error) || 'tailor failed'));
 };
 $('cover').onclick = async () => {
   const r = await tabSend('ATTACH_COVER_LETTER');

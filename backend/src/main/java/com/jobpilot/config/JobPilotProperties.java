@@ -45,6 +45,8 @@ public class JobPilotProperties {
         private String ingestTimesUtc = "01:30,08:30,14:30";
         /** Daily ATS-board discovery (health-check + auto-add new boards); "-" disables. */
         private String discoveryCron = "0 30 6 * * *";
+        /** Automated job scout (5x/day default); "-" disables. */
+        private String scoutCron = "0 0 8,11,14,17,20 * * *";
     }
     private CoverLetter coverletter = new CoverLetter();
     private Ai ai = new Ai();

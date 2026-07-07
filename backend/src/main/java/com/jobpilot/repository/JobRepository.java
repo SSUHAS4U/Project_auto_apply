@@ -16,13 +16,15 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
     long countByFetchedAtAfter(Instant after);
 
     /**
-     * Delete stale jobs older than the cutoff, but never ones the user has acted
-     * on (tracked applications) or promoted from a saved listing.
+     * Delete stale jobs older than the cutoff — either not seen on any board since the
+     * cutoff (fetched_at) OR POSTED before the cutoff (kills week-old postings even if a
+     * board still lists them) — but never ones the user has acted on.
      */
     @Modifying
     @Query(value = """
             delete from job j
-            where j.fetched_at < :cutoff
+            where (j.fetched_at < :cutoff
+                   or (j.posted_at is not null and j.posted_at < :cutoff))
               and not exists (select 1 from application a where a.job_id = j.id)
               and not exists (select 1 from saved_job s where s.promoted_job_id = j.id)
             """, nativeQuery = true)

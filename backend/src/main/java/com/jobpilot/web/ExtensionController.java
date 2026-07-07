@@ -16,10 +16,13 @@ public class ExtensionController {
 
     private final SavedJobService savedJobs;
     private final ProfileService profile;
+    private final com.jobpilot.service.ResumeDocService resumeDocs;
 
-    public ExtensionController(SavedJobService savedJobs, ProfileService profile) {
+    public ExtensionController(SavedJobService savedJobs, ProfileService profile,
+                               com.jobpilot.service.ResumeDocService resumeDocs) {
         this.savedJobs = savedJobs;
         this.profile = profile;
+        this.resumeDocs = resumeDocs;
     }
 
     /** Extension pushes a captured listing from LinkedIn/Naukri/Indeed/etc. */
@@ -29,15 +32,43 @@ public class ExtensionController {
                 req.url(), req.sourceSite(), req.raw());
     }
 
-    /** Extension pulls the resume bytes (base64) to attach to application file inputs. */
+    /**
+     * Extension pulls resume bytes (base64) to attach to application file inputs.
+     * No {@code docId} → the profile's uploaded resume; with {@code docId} → the
+     * compiled PDF of that LaTeX resume doc (the "which resume?" picker).
+     */
     @GetMapping("/resume")
-    public Map<String, Object> resume() {
+    public Map<String, Object> resume(@RequestParam(required = false) java.util.UUID docId) {
+        if (docId != null) {
+            com.jobpilot.domain.ResumeDoc d = resumeDocs.get(docId);
+            byte[] pdf = resumeDocs.pdf(docId);
+            return Map.of("hasResume", true,
+                    "filename", d.getName().replaceAll("[^A-Za-z0-9 _-]", "").trim() + ".pdf",
+                    "contentBase64", java.util.Base64.getEncoder().encodeToString(pdf));
+        }
         Profile p = profile.get();
         byte[] data = p.getResumeData();
         if (data == null || data.length == 0) return Map.of("hasResume", false);
         return Map.of("hasResume", true,
                 "filename", p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename(),
                 "contentBase64", java.util.Base64.getEncoder().encodeToString(data));
+    }
+
+    /** Resume picker options for the extension: profile resume + compiled LaTeX resumes. */
+    @GetMapping("/resumes")
+    public java.util.List<Map<String, Object>> resumeOptions() {
+        java.util.List<Map<String, Object>> out = new java.util.ArrayList<>();
+        Profile p = profile.get();
+        if (p.getResumeData() != null && p.getResumeData().length > 0) {
+            out.add(Map.of("id", "", "name",
+                    "Profile resume (" + (p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename()) + ")",
+                    "hasPdf", true, "base", false));
+        }
+        for (com.jobpilot.domain.ResumeDoc d : resumeDocs.list()) {
+            out.add(Map.of("id", d.getId().toString(), "name", d.getName(),
+                    "hasPdf", d.isHasPdf(), "base", d.isBase()));
+        }
+        return out;
     }
 
     /** Extension pulls profile + a flattened answer map for autofill. */

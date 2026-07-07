@@ -66,6 +66,8 @@ jobpilot:
     ingest-times-utc: ${JOBPILOT_INGEST_TIMES_UTC:01:30,08:30,14:30}
     # Daily ATS-board discovery (health-check + auto-add new boards), before first ingest.
     discovery-cron: ${JOBPILOT_DISCOVERY_CRON:0 30 6 * * *}
+    # Automated job scout (LinkedIn/Naukri/Indeed via free APIs) — 5x/day.
+    scout-cron: ${JOBPILOT_SCOUT_CRON:0 0 8,11,14,17,20 * * *}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:
@@ -105,6 +107,15 @@ jobpilot:
   indian-api:
     api-key: ${JOBPILOT_INDIANAPI_KEY:}
     url: ${JOBPILOT_INDIANAPI_URL:https://jobs.indianapi.in/jobs}
+  ingest:
+    # Skip listings scoring below this at ingest (only applies once the profile has skills).
+    min-score: ${JOBPILOT_INGEST_MIN_SCORE:30}
+  scout:
+    min-score: ${JOBPILOT_SCOUT_MIN_SCORE:35}
+    retention-days: ${JOBPILOT_SCOUT_RETENTION_DAYS:7}
+  latex:
+    # Free LaTeX compile service (texlive.net is the default; no key needed).
+    compile-url: ${JOBPILOT_LATEX_COMPILE_URL:https://texlive.net/cgi-bin/latexcgi}
   cleanup:
     retention-days: ${JOBPILOT_RETENTION_DAYS:7}
     cron: ${JOBPILOT_CLEANUP_CRON:0 30 3 * * *}

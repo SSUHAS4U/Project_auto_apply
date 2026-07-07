@@ -7,11 +7,19 @@ try {
 
 // Defaults to the deployed backend so the extension works out-of-the-box.
 // Override in Options only if you run the backend locally (http://localhost:8080).
-const DEFAULTS = { backendUrl: 'https://jobpilot-backend-owb0.onrender.com', jwt: '' };
+const DEFAULTS = {
+  backendUrl: 'https://jobpilot-backend-owb0.onrender.com',
+  dashboardUrl: 'https://jobpilot-app.vercel.app',
+  jwt: '',
+};
 
 async function getConfig() {
-  const c = await chrome.storage.local.get(['backendUrl', 'jwt']);
-  return { backendUrl: c.backendUrl || DEFAULTS.backendUrl, jwt: c.jwt || DEFAULTS.jwt };
+  const c = await chrome.storage.local.get(['backendUrl', 'dashboardUrl', 'jwt']);
+  return {
+    backendUrl: c.backendUrl || DEFAULTS.backendUrl,
+    dashboardUrl: c.dashboardUrl || DEFAULTS.dashboardUrl,
+    jwt: c.jwt || DEFAULTS.jwt,
+  };
 }
 
 async function apiFetch(path, init = {}) {
@@ -132,8 +140,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
         }
         case 'GET_RESUME': {
-          const data = await apiFetch('/api/extension/resume');
+          const q = msg.docId ? `?docId=${encodeURIComponent(msg.docId)}` : '';
+          const data = await apiFetch(`/api/extension/resume${q}`);
           sendResponse({ ok: true, data });
+          break;
+        }
+        case 'LIST_RESUMES': {
+          const data = await apiFetch('/api/extension/resumes');
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'TAILOR_RESUME': {
+          // Create a JD-tailored copy of the base resume, then open its editor.
+          const doc = await apiFetch('/api/resumes/tailor', {
+            method: 'POST',
+            body: JSON.stringify({ name: msg.name, jobUrl: msg.jobUrl, jdText: msg.jdText }),
+          });
+          const { dashboardUrl } = await getConfig();
+          if (msg.openEditor !== false) {
+            chrome.tabs.create({ url: `${dashboardUrl}/resumes?id=${doc.id}` });
+          }
+          sendResponse({ ok: true, data: doc });
           break;
         }
         case 'SAVE_QA': {

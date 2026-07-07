@@ -37,6 +37,18 @@ How matching works (`content/common/fieldEngine.js`):
 - Custom mappings: add entries to your profile's `field_map` (label keyword → value) for site-specific questions.
 - Values are set with native setters + `input`/`change` events so React/Angular/Vue forms register them.
 
+## Inline ✨ assist (focus pill)
+The old always-on per-field buttons are gone. Focus any open-ended question field on an
+application form and ONE compact pill appears next to it with **✨ AI answer** and **💾 Save**;
+it disappears on blur or Esc. Same functionality, no clutter.
+
+## Resume picker + per-JD tailoring
+- **📎 Resume…** now asks WHICH resume to attach: your profile upload plus every compiled
+  LaTeX resume from Dashboard → Resumes (⭐ marks the base).
+- **🧵 Tailor resume to this job** grabs the page's job description, creates an AI-tailored
+  COPY of your base LaTeX resume (named "Role – Company"), and opens the dashboard editor to
+  review + compile. After compiling it shows up in the 📎 picker.
+
 ## Save a listing
 On a LinkedIn/Naukri/Indeed job page a **🔖 Save to JobPilot** button appears (bottom-left), or use the
 popup's **Save this listing**. The listing (title/company/location/url) is pushed to `/api/extension/saved-job`.

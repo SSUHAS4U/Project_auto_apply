@@ -201,7 +201,14 @@ public class NormalizeService {
             "\\bdesigner\\b|product designer|ux designer|ui designer|graphic designer|visual designer|" +
             "product manager|program manager|project manager|scrum master|delivery manager|account manager|" +
             "business analyst|customer success|\\bmarketing\\b|\\bsales\\b|presales|pre.?sales|" +
-            "consultant|implementation|solution(s)? consultant)",
+            "consultant|implementation|solution(s)? consultant|" +
+            // additional non-engineering roles that were slipping through
+            "\\bhr\\b|human resources|payroll|finance (executive|manager|analyst|officer)|" +
+            "legal (counsel|assistant|associate|officer)|paralegal|compliance officer|" +
+            "teacher|tutor|\\btrainer\\b|counsel(l)?or|chartered accountant|auditor|" +
+            "video editor|animator|social media|copywriter|translator|transcription|" +
+            "receptionist|front desk|office assistant|admin(istrative)? (assistant|executive)|" +
+            "procurement|logistics|supply chain|merchandis|real estate|insurance)",
             Pattern.CASE_INSENSITIVE);
 
     /** True if the role title looks like a software-development job (drops support/ops/sales/design). */

@@ -40,6 +40,10 @@ public class IngestService {
     @org.springframework.beans.factory.annotation.Value("${jobpilot.cleanup.retention-days:7}")
     private int maxAgeDays;
 
+    /** Relevance gate: skip listings scoring below this (only when the profile has skills). */
+    @org.springframework.beans.factory.annotation.Value("${jobpilot.ingest.min-score:30}")
+    private int minScore;
+
     private final List<JobConnector> connectors;
     private final AtsSourceRepository atsRepo;
     private final JobRepository jobRepo;
@@ -236,6 +240,10 @@ public class IngestService {
         Job j = normalize.toJob(r);
         if (profile != null) {
             j.setMatchScore(scorer.score(j, profile));
+            // Relevance gate: with a real profile on file, don't clutter the board with
+            // listings that barely relate to the candidate (kills "unnecessary" jobs).
+            boolean hasSkills = profile.getSkills() != null && !profile.getSkills().isEmpty();
+            if (hasSkills && j.getMatchScore() < minScore) return 0;
         }
         try {
             jobRepo.save(j);

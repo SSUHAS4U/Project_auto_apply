@@ -23,11 +23,25 @@ public class DailyScheduler {
     private final DailyService daily;
     private final BackgroundRunner runner;
     private final AtsDiscoveryService discovery;
+    private final com.jobpilot.service.JobScoutService scout;
 
-    public DailyScheduler(DailyService daily, BackgroundRunner runner, AtsDiscoveryService discovery) {
+    public DailyScheduler(DailyService daily, BackgroundRunner runner,
+                          AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout) {
         this.daily = daily;
         this.runner = runner;
         this.discovery = discovery;
+        this.scout = scout;
+    }
+
+    /** Automated job scout — 5x/day by default; fills the dashboard's Scout section. */
+    @Scheduled(cron = "${jobpilot.schedule.scout-cron:0 0 8,11,14,17,20 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    public void runScout() {
+        log.info("Scheduled scout run starting…");
+        try {
+            scout.run();
+        } catch (Exception e) {
+            log.warn("Scheduled scout run failed: {}", e.getMessage());
+        }
     }
 
     /**

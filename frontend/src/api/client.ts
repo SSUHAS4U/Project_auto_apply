@@ -200,6 +200,42 @@ export const api = {
     req<QaPair>(`/api/assist/qa/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
 
+  // Job Scout — automated resume-keyword search across LinkedIn/Naukri/Indeed/Google.
+  scoutJobs: (limit = 200) => req<ScoutedJob[]>(`/api/scout/jobs?limit=${limit}`),
+  scoutRun: () => req<ScoutRunResult>('/api/scout/run', { method: 'POST' }),
+  scoutDelete: (id: string) => req<{ deleted: boolean }>(`/api/scout/jobs/${id}`, { method: 'DELETE' }),
+
+  // LaTeX resume builder (Overleaf-style).
+  resumeList: () => req<ResumeDoc[]>('/api/resumes'),
+  resumeGet: (id: string) => req<ResumeDoc>(`/api/resumes/${id}`),
+  resumeCreate: (body: { name?: string; latex?: string; fromId?: string; blank?: string }) =>
+    req<ResumeDoc>('/api/resumes', { method: 'POST', body: JSON.stringify(body) }),
+  resumeUpdate: (id: string, body: { name?: string; latex?: string }) =>
+    req<ResumeDoc>(`/api/resumes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  resumeDelete: (id: string) => req<{ deleted: boolean }>(`/api/resumes/${id}`, { method: 'DELETE' }),
+  resumeSetBase: (id: string) => req<ResumeDoc>(`/api/resumes/${id}/base`, { method: 'POST' }),
+  resumeTailor: (body: { name?: string; jobUrl?: string; jdText: string }) =>
+    req<ResumeDoc>('/api/resumes/tailor', { method: 'POST', body: JSON.stringify(body) }),
+  resumeCompile: async (id: string): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/resumes/${id}/compile`, {
+      method: 'POST',
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
+    });
+    if (!res.ok) {
+      let msg = `${res.status}`;
+      try { const b = await res.json(); if (b?.message) msg = b.message; } catch { /* ignore */ }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+  resumePdf: async (id: string): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/resumes/${id}/pdf`, {
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.blob();
+  },
+
   // Admin (server enforces ADMIN role on these routes).
   adminUsers: (q = '') => req<AdminUser[]>(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   adminUser: (id: string) => req<AdminUserDetail>(`/api/admin/users/${id}`),
@@ -231,6 +267,19 @@ export type IngestMetrics = {
 };
 
 export type DocItem = { id: string; name: string; type: string; filename: string; contentType?: string; sizeBytes?: number; createdAt?: string };
+
+export type ScoutedJob = {
+  id: string; title: string; company?: string; location?: string; url: string;
+  sourceSite?: string; snippet?: string; emails?: string; phones?: string;
+  matchedKeywords?: string; matchScore?: number; postedHint?: string;
+  fetchedAt?: string; createdAt?: string;
+};
+export type ScoutRunResult = { keywords: string[]; found: number; kept: number; purged: number; total: number };
+
+export type ResumeDoc = {
+  id: string; name: string; latex: string; base: boolean; hasPdf: boolean;
+  jobUrl?: string; createdAt?: string; updatedAt?: string;
+};
 
 export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
 export type AdminUser = {

@@ -58,6 +58,19 @@ Statuses: `interested · applied · interviewing · offer · rejected · withdra
 | POST | `/api/digest` | send daily digest; `{ count, sent }` |
 | POST | `/api/sources/discover` | health-check + auto-discover ATS boards; `{ checked, deactivated, revived, added, activeBoards }` |
 | GET | `/api/sources` | full board catalogue with health metadata (active, last job count, failures) |
+| POST | `/api/scout/run` | run the job scout now; `{ keywords, found, kept, purged, total }` |
+| GET | `/api/scout/jobs` | current scouted listings (LinkedIn/Naukri/Indeed via free APIs, with mined contacts) |
+
+## Resume builder (JWT, per user)
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/api/resumes` | list / create (`{name, latex?, fromId?, blank?}` — none → profile starter) |
+| PUT/DELETE | `/api/resumes/{id}` | rename / edit LaTeX / delete |
+| POST | `/api/resumes/{id}/compile` | LaTeX → PDF via free texlive.net; stores + returns the PDF |
+| GET | `/api/resumes/{id}/pdf` | last compiled PDF |
+| POST | `/api/resumes/{id}/base` | mark as the base (original) resume |
+| POST | `/api/resumes/tailor` | `{name?, jobUrl?, jdText}` → AI-tailored copy of the base |
+| GET | `/api/extension/resumes` | resume picker options for the extension |
 
 ### Example
 ```bash

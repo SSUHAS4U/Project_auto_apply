@@ -6,25 +6,32 @@
   <title>JobPilot</title>
 </head>
 <body>
-  <div class="head">
+  <header class="head">
     <div class="logo">J</div>
     <div class="head-txt">
       <div class="name">JobPilot</div>
-      <div class="sub" id="conn">checking…</div>
+      <div class="sub" id="conn"><span class="dot"></span>checking…</div>
     </div>
-  </div>
+    <label class="switch" title="Turn JobPilot on/off on all pages">
+      <input type="checkbox" id="power" checked />
+      <span class="slider"></span>
+    </label>
+  </header>
 
   <div class="actions">
-    <button class="btn primary" id="fill">⚡ Fill this form</button>
-    <button class="btn" id="answer">✨ AI-answer questions</button>
+    <button class="btn primary" id="fill"><span>⚡</span>Fill this form</button>
     <div class="actions-row">
-      <button class="btn sm" id="resume">📎 Resume</button>
-      <button class="btn sm" id="cover">📄 Cover letter</button>
-      <button class="btn sm" id="save">🔖 Save</button>
+      <button class="btn sm" id="answer" title="AI-answer open questions">✨ Answers</button>
+      <button class="btn sm" id="resume" title="Choose & attach a resume">📎 Resume</button>
+      <button class="btn sm" id="cover" title="Generate & attach a cover letter">📄 Cover</button>
+    </div>
+    <div class="actions-row">
+      <button class="btn sm" id="save" title="Save this listing to your tracker">🔖 Save job</button>
+      <button class="btn sm" id="tailor" title="Grab this JD and tailor your resume">🧵 Tailor resume</button>
     </div>
   </div>
 
-  <div class="chat-head">💬 Copilot — tell me what to do</div>
+  <div class="chat-head"><span class="ch-ico">💬</span> Copilot</div>
   <div class="chat" id="chat">
     <div class="msg ai">Hi! Ask me to fill a field or answer a question. Try:
       <div class="hints">
@@ -36,11 +43,16 @@
   </div>
 
   <div class="composer">
-    <textarea id="input" rows="1" autocomplete="off" placeholder='Type an instruction…  (Enter to send, Shift+Enter for a new line)'></textarea>
-    <button id="send" title="Send">➤</button>
+    <textarea id="input" rows="1" autocomplete="off" placeholder="Type an instruction…"></textarea>
+    <button id="send" title="Send (Enter)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4Z" /></svg>
+    </button>
   </div>
 
-  <a class="foot" id="opts" href="#">⚙ Options — sign in</a>
+  <footer class="foot">
+    <a id="opts" href="#">⚙ Options</a>
+    <span class="hintline">Enter to send · Shift+Enter for a new line</span>
+  </footer>
   <script src="sidepanel.js"></script>
 </body>
 </html>

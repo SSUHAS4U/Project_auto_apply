@@ -6,35 +6,58 @@
   <title>JobPilot</title>
 </head>
 <body>
-  <div class="head">
+  <header class="head">
     <div class="logo">J</div>
     <div class="headtext">
       <div class="name">JobPilot</div>
-      <div class="sub" id="conn">checking…</div>
+      <div class="sub" id="conn"><span class="dot"></span>checking…</div>
     </div>
     <label class="switch" title="Turn JobPilot on/off on all pages">
       <input type="checkbox" id="power" checked />
       <span class="slider"></span>
     </label>
-  </div>
+  </header>
 
   <div class="profile" id="profile">
     <div class="muted">Loading profile…</div>
   </div>
 
   <div class="actions" id="actions">
-    <button class="btn primary" id="fill">⚡ Fill this form</button>
-    <button class="btn" id="answer">✨ AI-answer questions</button>
-    <button class="btn" id="resume">📎 Attach resume</button>
-    <button class="btn" id="cover">📄 Attach cover letter</button>
-    <button class="btn" id="save">🔖 Save this listing</button>
-    <button class="btn ghost" id="refresh">↻ Refresh profile</button>
+    <button class="btn primary big" id="fill">
+      <span class="bi">⚡</span><span class="bt">Fill this form<small>autofill + AI, adapts to the form</small></span>
+    </button>
+
+    <div class="grid">
+      <button class="btn" id="answer"><span class="bi">✨</span><span class="bt">AI answers</span></button>
+      <button class="btn" id="resume"><span class="bi">📎</span><span class="bt">Resume…</span></button>
+      <button class="btn" id="cover"><span class="bi">📄</span><span class="bt">Cover letter</span></button>
+      <button class="btn" id="save"><span class="bi">🔖</span><span class="bt">Save listing</span></button>
+    </div>
+
+    <button class="btn accent" id="tailor">
+      <span class="bi">🧵</span><span class="bt">Tailor resume to this job<small>grabs the JD → AI copy in the builder</small></span>
+    </button>
+  </div>
+
+  <!-- resume picker (hidden until 📎 Resume… is clicked) -->
+  <div class="picker" id="picker" hidden>
+    <div class="picker-head">
+      <span>Which resume?</span>
+      <button class="linkbtn" id="pickerClose">✕</button>
+    </div>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="picker-foot">Manage in Dashboard → Resumes</div>
   </div>
 
   <div class="status" id="status"></div>
   <div class="report" id="report"></div>
 
-  <a class="foot" id="opts" href="#">⚙ Options — sign in</a>
+  <footer class="foot">
+    <button class="linkbtn" id="refresh">↻ Refresh profile</button>
+    <span class="dotsep">·</span>
+    <button class="linkbtn" id="opts">⚙ Options</button>
+  </footer>
+
   <script src="popup.js"></script>
 </body>
 </html>
