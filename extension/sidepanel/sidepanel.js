@@ -78,6 +78,122 @@ $('fill').onclick = async () => {
   if (answered) parts.push(`${answered} question${answered === 1 ? '' : 's'}`);
   add('ai', parts.length ? `✓ Filled ${parts.join(' + ')} — review & submit.` : '✓ Everything was already filled — review & submit.');
 };
+// --- Scan & review, then fill ----------------------------------------------
+// PLAN_FILL returns every empty field with a proposed answer + where it came from.
+// The user edits inline (text/selects), regenerates single answers with ✨, and
+// nothing touches the page until ✅ Apply.
+$('review').onclick = async () => {
+  add('me', 'Scan & review this form');
+  const prog = add('ai', '⏳ Scanning the form and preparing an answer for every field…');
+  await bg('GET_PROFILE', { force: true });
+  const r = await tabSend('PLAN_FILL');
+  prog.remove();
+  if (!r.ok) return void add('ai', '⚠ ' + r.error);
+  if (!r.plan || !r.plan.length) return void add('ai', 'No empty fillable fields found here — everything may already be filled.');
+  renderPlan(r.plan);
+};
+
+const SRC_LABEL = { profile: '👤 profile', ai: '✨ AI', '': '⚠ no answer' };
+
+function renderPlan(plan) {
+  const card = add('ai', '');
+  card.classList.add('plan');
+  const head = document.createElement('div');
+  head.className = 'plan-head';
+  head.textContent = `📋 Found ${plan.length} field${plan.length === 1 ? '' : 's'} to fill. ` +
+    'Check each answer (👤 = from your profile, ✨ = AI), edit anything, then Apply.';
+  card.appendChild(head);
+
+  const inputs = new Map(); // id → input/select
+  plan.forEach((f) => {
+    const row = document.createElement('div');
+    row.className = 'plan-row';
+
+    const top = document.createElement('div');
+    top.className = 'plan-top';
+    const label = document.createElement('div');
+    label.className = 'plan-label';
+    label.textContent = f.label;
+    label.title = f.label;
+    const src = document.createElement('span');
+    src.className = 'plan-src' + (f.source ? '' : ' warn');
+    src.textContent = SRC_LABEL[f.source] ?? f.source;
+    top.append(label, src);
+
+    let input;
+    if (f.options && f.kind !== 'checkbox') {
+      input = document.createElement('select');
+      input.className = 'plan-input';
+      const empty = document.createElement('option');
+      empty.value = ''; empty.textContent = '— skip this field —';
+      input.appendChild(empty);
+      f.options.forEach((o) => {
+        const opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        if (f.value && (o.toLowerCase() === f.value.toLowerCase() || o.toLowerCase().includes(f.value.toLowerCase()))) opt.selected = true;
+        input.appendChild(opt);
+      });
+    } else {
+      input = document.createElement(f.kind === 'question' ? 'textarea' : 'input');
+      input.className = 'plan-input';
+      if (f.kind === 'question') input.rows = 3;
+      input.value = f.value;
+      input.placeholder = f.kind === 'checkbox' ? 'comma-separated choices, or empty to skip' : 'empty = skip this field';
+    }
+    inputs.set(f.id, input);
+
+    const regen = document.createElement('button');
+    regen.className = 'plan-regen';
+    regen.title = 'Ask the AI again for this field';
+    regen.textContent = '✨';
+    regen.onclick = async () => {
+      regen.disabled = true; regen.textContent = '…';
+      try {
+        if (f.options) {
+          const c = await bg('ASSIST_CHOOSE', { question: f.label, options: f.options, multi: f.kind === 'checkbox' });
+          const sel = ((c && c.data && c.data.selected) || (c && c.selected) || []).join(', ');
+          if (sel) { input.value = sel; src.textContent = SRC_LABEL.ai; src.classList.remove('warn'); }
+        } else {
+          const a = await bg('ASSIST_ANSWER', { question: f.label });
+          const ans = (a && a.data && a.data.answer) || (a && a.answer);
+          if (ans) { input.value = ans; src.textContent = SRC_LABEL.ai; src.classList.remove('warn'); }
+        }
+      } finally { regen.disabled = false; regen.textContent = '✨'; }
+    };
+
+    const line = document.createElement('div');
+    line.className = 'plan-line';
+    line.append(input, regen);
+    row.append(top, line);
+    card.appendChild(row);
+  });
+
+  const foot = document.createElement('div');
+  foot.className = 'plan-foot';
+  const apply = document.createElement('button');
+  apply.className = 'plan-apply';
+  apply.textContent = `✅ Apply ${plan.length} answers`;
+  apply.onclick = async () => {
+    apply.disabled = true; apply.textContent = '⏳ Applying…';
+    const items = plan.map((f) => ({ id: f.id, value: inputs.get(f.id).value }));
+    const res = await tabSend('APPLY_FILL', { items });
+    apply.remove(); cancel.remove();
+    if (!res.ok) return void add('ai', '⚠ ' + res.error);
+    let msgTxt = `✓ Applied ${res.applied} answer${res.applied === 1 ? '' : 's'} — review the page & submit yourself.`;
+    if (res.failed && res.failed.length) {
+      msgTxt += `\n⚠ Couldn't set: ${res.failed.slice(0, 5).join('; ')}${res.failed.length > 5 ? '…' : ''} — set those manually.`;
+    }
+    add('ai', msgTxt);
+  };
+  const cancel = document.createElement('button');
+  cancel.className = 'plan-cancel';
+  cancel.textContent = 'Discard';
+  cancel.onclick = () => { card.remove(); add('ai', 'Plan discarded — nothing was filled.'); };
+  foot.append(apply, cancel);
+  card.appendChild(foot);
+  $('chat').scrollTop = $('chat').scrollHeight;
+}
+
 $('answer').onclick = async () => {
   add('me', 'AI-answer questions');
   const r = await tabSend('AUTO_ANSWER');

@@ -124,3 +124,40 @@ body {
 .foot a { color: var(--accent-hi); text-decoration: none; font-weight: 600; }
 .foot a:hover { text-decoration: underline; }
 .hintline { color: var(--dim); }
+
+/* ---- Scan & review plan ---- */
+.msg.plan { max-width: 100%; width: 100%; padding: 12px; }
+.plan-head { font-size: 12.5px; color: var(--dim); margin-bottom: 10px; line-height: 1.5; }
+.plan-row { border-top: 1px solid var(--border); padding: 9px 0 10px; }
+.plan-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.plan-label {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 650;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plan-src { flex: none; font-size: 10.5px; font-weight: 600; color: var(--green); }
+.plan-src.warn { color: var(--red); }
+.plan-line { display: flex; gap: 6px; align-items: flex-start; }
+.plan-input {
+  flex: 1; min-width: 0; background: var(--card2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px;
+  font-size: 12.5px; font-family: inherit; outline: none; resize: vertical;
+}
+.plan-input:focus { border-color: var(--accent); }
+select.plan-input { appearance: auto; }
+.plan-regen {
+  flex: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card2); color: var(--text); font-size: 13px;
+}
+.plan-regen:hover { border-color: var(--accent); }
+.plan-foot { display: flex; gap: 8px; margin-top: 12px; }
+.plan-apply {
+  flex: 1; padding: 10px; border: none; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; font-weight: 700; font-size: 13px;
+}
+.plan-apply:hover { filter: brightness(1.1); }
+.plan-apply:disabled { opacity: .6; cursor: default; }
+.plan-cancel {
+  flex: none; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--dim); font-weight: 600; font-size: 12.5px;
+}
+.plan-cancel:hover { color: var(--red); border-color: var(--red); }

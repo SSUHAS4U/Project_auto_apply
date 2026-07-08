@@ -16,6 +16,16 @@ The popup header has a **power switch**. Off = JobPilot injects nothing into pag
 button, no ✨ toolbars) and every fill/save action refuses until you switch it back on.
 The setting persists in `chrome.storage.local` and applies to all tabs immediately.
 
+## Scan & review, then fill (recommended)
+The side panel's primary button. The extension scans every empty fillable field —
+text inputs, textareas, native/custom dropdowns, radio groups (incl. ARIA/Google
+Forms), checkbox groups — and shows a structured plan in the chat: each field's
+detected label, the proposed answer, and its source (👤 profile or ✨ AI). You can
+edit any answer inline (choice fields show the real options in a dropdown), hit ✨
+on a row to regenerate just that answer, and NOTHING touches the page until you
+press **✅ Apply**. Fields left empty are skipped; anything that couldn't be set is
+reported so you can do it manually.
+
 ## Autofill a form
 1. Open a Google Form / MS Form / application page.
 2. Click the JobPilot icon → **⚡ Fill this form**.

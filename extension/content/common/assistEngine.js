@@ -523,6 +523,164 @@
     return { done, total };
   }
 
+  // ---- plan & review fill ----------------------------------------------------
+  // PLAN_FILL scans every empty fillable field, computes a proposed answer for each
+  // (profile mapping → AI option choice → AI free answer) and returns the plan WITHOUT
+  // touching the page. The side panel shows it for review/editing; APPLY_FILL then
+  // writes the (possibly edited) values.
+
+  let planRegistry = []; // id → { kind, el?, els? } — valid until the page changes
+
+  async function planFill() {
+    const smart = window.JobPilotSmart;
+    const q = (sel) => (smart ? smart.deepQueryAll(sel) : [...document.querySelectorAll(sel)]);
+    const vis = (el) => el.offsetParent !== null && !el.disabled;
+    planRegistry = [];
+    const units = [];
+    const seen = new Set();
+    const push = (u) => { if (units.length < 40) { u.id = units.length; units.push(u); } };
+
+    // text-like inputs / textareas / custom dropdown triggers (empty only)
+    q('input, textarea').forEach((el) => {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
+      if (!vis(el) || el.readOnly || (el.value || '').trim()) return;
+      const label = deriveQuestion(el);
+      if (!label || label.length < 2 || seen.has(norm(label))) return;
+      seen.add(norm(label));
+      const isPara = el.tagName === 'TEXTAREA';
+      const combo = smart && (smart.isCustomDropdown(el) || isCombobox(el));
+      push({ el, label, kind: combo ? 'combo' : (isPara || looksLikeQuestion(label) ? 'question' : 'text') });
+    });
+    q('select').forEach((el) => {
+      if (!vis(el)) return;
+      const cur = (el.options[el.selectedIndex]?.text || '').trim().toLowerCase();
+      if (cur && !/^(select|choose|—|-|please)/.test(cur)) return;
+      const label = deriveQuestion(el);
+      const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
+      if (!label || options.length < 2 || seen.has(norm(label))) return;
+      seen.add(norm(label));
+      push({ el, label, kind: 'select', options });
+    });
+    // native radio groups
+    const rGroups = {};
+    q('input[type="radio"]').filter(vis).forEach((r, i) => { (rGroups[r.name || '__r' + i] ||= []).push(r); });
+    for (const k of Object.keys(rGroups)) {
+      const group = rGroups[k];
+      if (group.length < 2 || group.some((g) => g.checked)) continue;
+      const label = groupQuestion(group);
+      const options = group.map(nativeLabel).filter(Boolean);
+      if (!label || options.length < 2 || seen.has(norm(label))) continue;
+      seen.add(norm(label));
+      push({ els: group, label, kind: 'radio', options });
+    }
+    // ARIA radio groups (Google Forms, Workday, MS)
+    for (const rg of q('[role="radiogroup"]').filter((el) => el.offsetParent !== null)) {
+      const opts = [...rg.querySelectorAll('[role="radio"]')].filter((o) => o.offsetParent !== null);
+      if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+      const label = ariaGroupQuestion(rg);
+      const options = opts.map((o) => labelOf(o)).filter(Boolean);
+      if (!label || options.length < 2 || seen.has(norm(label))) continue;
+      seen.add(norm(label));
+      push({ els: opts, label, kind: 'aria-radio', options });
+    }
+    // checkbox groups (multi)
+    const cGroups = {};
+    q('input[type="checkbox"]').filter((c) => vis(c) && c.name).forEach((c) => { (cGroups[c.name] ||= []).push(c); });
+    for (const k of Object.keys(cGroups)) {
+      const group = cGroups[k];
+      if (group.length < 2 || group.some((g) => g.checked)) continue;
+      const label = groupQuestion(group);
+      const options = group.map(nativeLabel).filter(Boolean);
+      if (!label || !options.length || seen.has(norm(label))) continue;
+      seen.add(norm(label));
+      push({ els: group, label, kind: 'checkbox', options });
+    }
+
+    if (!units.length) return { plan: [] };
+
+    // Answers: one batched profile-mapping call, then AI per field where needed.
+    const r = await msg('ASSIST_AUTOFILL', { fields: units.map((u) => u.label) });
+    const answers = (r && r.answers) || {};
+    let chooseBudget = 15, answerBudget = 8;
+    for (const u of units) {
+      u.value = String(answers[u.label] || '').trim();
+      u.source = u.value ? 'profile' : '';
+      const choice = ['select', 'radio', 'aria-radio', 'checkbox'].includes(u.kind);
+      if (choice) {
+        const match = u.value && u.options.some((o) => norm(o) === norm(u.value) || norm(o).includes(norm(u.value)));
+        if (!match && chooseBudget-- > 0) {
+          try {
+            const c = await msg('ASSIST_CHOOSE', { question: u.label, options: u.options, multi: u.kind === 'checkbox' });
+            const sel = (c && c.selected) || [];
+            if (sel.length) { u.value = sel.join(', '); u.source = 'ai'; }
+            else if (!match) { u.value = ''; u.source = ''; }
+          } catch (_) { /* leave empty */ }
+        }
+      } else if (!u.value && u.kind === 'question' && answerBudget-- > 0) {
+        try {
+          const a = await msg('ASSIST_ANSWER', { question: u.label });
+          if (a && a.answer) { u.value = a.answer; u.source = 'ai'; }
+        } catch (_) { /* leave empty */ }
+      }
+    }
+
+    planRegistry = units.map((u) => ({ kind: u.kind, el: u.el, els: u.els }));
+    return {
+      plan: units.map((u) => ({
+        id: u.id, label: u.label, kind: u.kind, options: u.options ? u.options.slice(0, 25) : undefined,
+        value: u.value || '', source: u.source || '',
+      })),
+    };
+  }
+
+  async function applyPlan(items) {
+    const smart = window.JobPilotSmart;
+    let applied = 0;
+    const failed = [];
+    for (const it of items || []) {
+      const reg = planRegistry[it.id];
+      const value = String(it.value || '').trim();
+      if (!reg || !value) continue;
+      let ok = false;
+      try {
+        if (reg.kind === 'select') {
+          const want = norm(value);
+          const opt = [...reg.el.options].find((o) => norm(o.text) === want)
+            || [...reg.el.options].find((o) => norm(o.text).includes(want) || want.includes(norm(o.text)));
+          if (opt) { reg.el.value = opt.value; reg.el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(reg.el); ok = true; }
+        } else if (reg.kind === 'radio') {
+          const want = norm(value);
+          const el = reg.els.find((g) => norm(nativeLabel(g)) === want)
+            || reg.els.find((g) => { const l = norm(nativeLabel(g)); return l && (l.includes(want) || want.includes(l)); });
+          if (el) { clickInput(el); window.JobPilot.highlight(el); ok = true; }
+        } else if (reg.kind === 'aria-radio') {
+          const want = norm(value);
+          const el = reg.els.find((o) => norm(labelOf(o)) === want)
+            || reg.els.find((o) => { const l = norm(labelOf(o)); return l && (l.includes(want) || want.includes(l)); });
+          if (el) { clickOption(el); window.JobPilot.highlight(el); ok = true; }
+        } else if (reg.kind === 'checkbox') {
+          const wants = value.split(/[;,]/).map((s) => norm(s)).filter(Boolean);
+          reg.els.forEach((g) => {
+            const l = norm(nativeLabel(g));
+            if (wants.some((w) => l === w || l.includes(w) || w.includes(l)) && !g.checked) {
+              clickInput(g); window.JobPilot.highlight(g); ok = true;
+            }
+          });
+        } else if (reg.kind === 'custom' || reg.kind === 'combo') {
+          if (smart && await (reg.kind === 'combo' ? smart.fillTypeahead(reg.el, value) : smart.fillCustomDropdown(reg.el, value))) {
+            window.JobPilot.highlight(reg.el); ok = true;
+          } else if (reg.kind === 'combo') { writeValue(reg.el, value); ok = true; }
+        } else {
+          writeValue(reg.el, value); ok = true;
+        }
+        if (smart) await smart.sleep(100);
+      } catch (_) { /* record as failed */ }
+      if (ok) applied++; else failed.push(it.label || `field ${it.id}`);
+    }
+    return { applied, failed };
+  }
+
   // ---- cover letter: generate → minimal PDF → attach to file input --------
 
   function pageRole() {
@@ -875,7 +1033,7 @@
 
   // Popup-triggered actions (works on any page since this script loads everywhere).
   chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
-    const ACTION_TYPES = ['AUTO_ANSWER', 'AI_FILL', 'UPLOAD_RESUME', 'ATTACH_COVER_LETTER', 'SAVE_CURRENT', 'FILL_FIELD'];
+    const ACTION_TYPES = ['AUTO_ANSWER', 'AI_FILL', 'PLAN_FILL', 'APPLY_FILL', 'UPLOAD_RESUME', 'ATTACH_COVER_LETTER', 'SAVE_CURRENT', 'FILL_FIELD'];
     if (ACTION_TYPES.includes(m.type) && window.JobPilot && !window.JobPilot.isEnabled()) {
       sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' });
       return false;
@@ -887,6 +1045,18 @@
     }
     if (m.type === 'AI_FILL') {
       aiFillFields().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    // Review-first flow: scan + propose answers without touching the page…
+    if (m.type === 'PLAN_FILL') {
+      planFill().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    // …then apply the (possibly user-edited) answers.
+    if (m.type === 'APPLY_FILL') {
+      applyPlan(m.items).then((r) => sendResponse({ ok: true, ...r }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }
