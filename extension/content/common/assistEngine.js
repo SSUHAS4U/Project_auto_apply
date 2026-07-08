@@ -267,7 +267,7 @@
   // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
   const DENY_HOSTS = /(^|\.)(chat\.openai|chatgpt|claude\.ai|gemini\.google|bard\.google|copilot\.microsoft|bing|perplexity|you|poe|phind|google|duckduckgo|youtube|x|twitter|facebook|instagram|reddit|whatsapp|telegram|discord|slack|notion|figma|stackoverflow|github|gitlab)\.com/i;
   // Sites that ARE application/recruiting forms — always allow.
-  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com)/i;
+  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap)/i;
 
   function looksLikeApplicationForm() {
     const host = location.hostname;

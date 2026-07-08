@@ -3,16 +3,61 @@ const $ = (id) => document.getElementById(id);
 function send(type, payload) {
   return new Promise((resolve) => chrome.runtime.sendMessage({ type, ...payload }, resolve));
 }
-function tabSend(type, payload) {
-  return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab) return resolve({ ok: false, error: 'no active tab' });
-      chrome.tabs.sendMessage(tab.id, { type, ...payload }, (resp) => {
-        if (chrome.runtime.lastError) return resolve({ ok: false, error: 'No JobPilot on this page — reload it' });
-        resolve(resp || { ok: false, error: 'no response' });
+// Message EVERY frame (embedded ATS forms live in iframes) and merge the results,
+// instead of letting an empty top frame answer first and mask the real form frame.
+function activeTab() {
+  return new Promise((res) => chrome.tabs.query({ active: true, currentWindow: true }, ([t]) => res(t || null)));
+}
+function frameList(tabId) {
+  return new Promise((res) => {
+    try {
+      chrome.webNavigation.getAllFrames({ tabId }, (fs) => {
+        if (chrome.runtime.lastError || !fs || !fs.length) return res([{ frameId: 0 }]);
+        res(fs);
       });
-    });
+    } catch (_) { res([{ frameId: 0 }]); }
   });
+}
+function sendToFrame(tabId, frameId, message) {
+  return new Promise((res) => {
+    try {
+      chrome.tabs.sendMessage(tabId, message, { frameId }, (resp) => {
+        if (chrome.runtime.lastError || !resp) return res(null);
+        res({ ...resp, frameId });
+      });
+    } catch (_) { res(null); }
+  });
+}
+async function tabSend(type, payload = {}) {
+  const tab = await activeTab();
+  if (!tab) return { ok: false, error: 'no active tab' };
+  const frames = await frameList(tab.id);
+  const results = (await Promise.all(
+    frames.map((f) => sendToFrame(tab.id, f.frameId, { type, ...payload })),
+  )).filter(Boolean);
+  if (!results.length) return { ok: false, error: 'No JobPilot on this page — reload it' };
+  const oks = results.filter((r) => r.ok);
+  if (!oks.length) return results[0];
+  switch (type) {
+    case 'FILL':
+    case 'AI_FILL': {
+      const agg = { ok: true, filled: 0, total: 0, report: [] };
+      oks.forEach((r) => { agg.filled += r.filled || 0; agg.total += r.total || 0; if (r.report) agg.report.push(...r.report); });
+      return agg;
+    }
+    case 'AUTO_ANSWER': {
+      const agg = { ok: true, done: 0, total: 0 };
+      oks.forEach((r) => { agg.done += r.done || 0; agg.total += r.total || 0; });
+      return agg;
+    }
+    case 'EXTRACT_JD':
+      return oks.reduce((a, b) => (((b.jdText || '').length > (a.jdText || '').length) ? b : a));
+    case 'UPLOAD_RESUME':
+    case 'ATTACH_COVER_LETTER':
+      return oks.find((r) => r.attached) || oks.find((r) => r.pickerOpened) || oks[0];
+    default:
+      return oks.find((r) => r.frameId === 0) || oks[0];
+  }
 }
 function status(msg, kind = '') { const s = $('status'); s.textContent = msg; s.className = 'status ' + kind; }
 
