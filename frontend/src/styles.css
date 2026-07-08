@@ -68,7 +68,11 @@ button:focus:not(:focus-visible) { outline: none; }
   padding: 22px 16px;
   display: flex; flex-direction: column; gap: 6px;
   position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; /* short screens: nav items below the fold stay reachable */
+  scrollbar-width: thin;
 }
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
 .brand-logo {
   flex: none; /* keep it a perfect square — never let flex stretch/squish it */
@@ -546,4 +550,98 @@ tbody tr:hover { background: var(--bg-card-hover); }
 @media (max-width: 480px) {
   .stat-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 100px 1fr; }
+}
+
+/* Resume builder — Overleaf-style workbench ------------------------------- */
+.ov { display: flex; flex-direction: column; height: 100dvh; min-height: 460px; margin: -26px -32px -60px; }
+@media (max-width: 860px) { .ov { margin: -18px -16px -80px; height: calc(100dvh - 58px); } }
+
+.ov-top {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
+}
+.ov-name {
+  background: transparent; border: 1px solid transparent; border-radius: 8px;
+  color: var(--text); font-size: 14.5px; font-weight: 650; padding: 6px 10px; min-width: 0;
+  width: clamp(120px, 26vw, 300px);
+}
+.ov-name:hover { border-color: var(--border); }
+.ov-name:focus { border-color: var(--accent); outline: none; background: var(--bg-card); }
+.ov-btn {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+  border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ov-btn:hover { border-color: var(--accent); }
+.ov-btn:disabled { opacity: .45; cursor: default; }
+.ov-btn.green { background: #1f8b2e; border-color: #1f8b2e; color: #fff; }
+.ov-btn.green:hover { filter: brightness(1.1); }
+.ov-btn.danger:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
+
+.ov-body { display: flex; flex: 1; min-height: 0; }
+
+.ov-files {
+  width: 232px; flex: none; border-right: 1px solid var(--border); background: var(--bg-elev);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.ov-files-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  color: var(--text-faint); text-transform: uppercase; border-bottom: 1px solid var(--border);
+}
+.ov-files-list { flex: 1; overflow-y: auto; }
+.ov-file {
+  padding: 9px 12px; cursor: pointer; border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+}
+.ov-file:hover { background: var(--bg-card); }
+.ov-file.sel { background: var(--accent-soft); border-left-color: var(--accent); }
+.ov-file-name { font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.ov-file-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-file-sub { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+
+.ov-edit { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.ov-code {
+  flex: 1; width: 100%; resize: none; border: none; outline: none; min-height: 0;
+  background: var(--bg); color: var(--text); padding: 14px 16px;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.55;
+  tab-size: 2;
+}
+.ov-divider { width: 5px; flex: none; cursor: col-resize; background: var(--border); }
+.ov-divider:hover { background: var(--accent); }
+.ov-view { flex: none; min-width: 0; background: #525659; display: flex; }
+.ov-view iframe { width: 100%; height: 100%; border: none; }
+.ov-view .ov-empty {
+  margin: auto; text-align: center; color: #cfd3da; font-size: 13.5px; padding: 24px; max-width: 320px;
+}
+
+.ov-notes {
+  border-bottom: 1px solid var(--border); background: rgba(251, 191, 36, .07);
+  padding: 10px 16px; font-size: 12.5px; max-height: 38vh; overflow-y: auto;
+}
+.ov-notes-head { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; color: var(--amber, #fbbf24); }
+.ov-notes pre { white-space: pre-wrap; margin: 8px 0 0; font-family: inherit; color: var(--text-dim); line-height: 1.55; }
+
+.ov-seg { display: none; margin-left: auto; }
+.ov-seg button {
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-dim);
+  padding: 6px 14px; font-size: 12.5px; font-weight: 650; cursor: pointer;
+}
+.ov-seg button:first-child { border-radius: 8px 0 0 8px; }
+.ov-seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.ov-seg button.on { background: var(--accent-soft); color: var(--accent-hi); border-color: var(--accent); }
+
+@media (max-width: 920px) {
+  .ov-seg { display: flex; }
+  .ov-divider { display: none; }
+  .ov-files {
+    position: fixed; z-index: 40; inset: 0 auto 0 0; width: min(78vw, 300px);
+    transform: translateX(-105%); transition: transform .18s ease; box-shadow: 8px 0 30px rgba(0,0,0,.35);
+  }
+  .ov-files.open { transform: none; }
+  .ov-edit.hide, .ov-view.hide { display: none; }
+  .ov-view { flex: 1 !important; width: auto !important; }
+  .ov-top { padding: 8px 10px; }
+  .ov-btn .ov-label { display: none; }  /* icon-only buttons on phones */
+  .ov-name { flex: 1; width: auto; }
 }

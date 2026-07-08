@@ -281,7 +281,7 @@ export type ScoutRunResult = {
 
 export type ResumeDoc = {
   id: string; name: string; latex: string; base: boolean; hasPdf: boolean;
-  jobUrl?: string; createdAt?: string; updatedAt?: string;
+  jobUrl?: string; tailorNotes?: string; createdAt?: string; updatedAt?: string;
 };
 
 export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };

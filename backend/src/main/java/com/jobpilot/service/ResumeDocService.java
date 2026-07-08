@@ -278,14 +278,29 @@ public class ResumeDocService {
     // ---- AI tailor -------------------------------------------------------------
 
     private static final String TAILOR_SYSTEM = """
-            You tailor a LaTeX resume to a specific job description. Rules:
-            - Keep the SAME LaTeX structure, packages, formatting and length (one page).
-            - Reorder/reword bullet points and the skills section to emphasise what the JD asks
-              for. Mirror the JD's terminology where the candidate genuinely has that skill.
-            - NEVER invent employers, degrees, projects, dates or skills not present in the
-              original resume. Rewording and reprioritising only.
-            - The output MUST compile: escape special characters (&, %, #, _) exactly like the
-              original does. Output ONLY the complete LaTeX source, no fences, no commentary.""";
+            You are an expert resume writer and ATS-optimisation specialist. Tailor the given
+            LaTeX resume to the given job description. Method:
+            1. Extract the JD's top requirements: hard skills, tools, frameworks, seniority,
+               domain terms, and responsibilities — especially exact keywords an ATS scans for.
+            2. Rewrite the professional summary to lead with the candidate's strongest matches
+               for THIS role, using the JD's own terminology where genuinely supported.
+            3. Reorder the skills section so JD-matching skills come first; use the JD's exact
+               spelling of each term (e.g. "React.js" if the JD says React.js).
+            4. Reorder and reword experience/project bullets so the most JD-relevant ones come
+               first; mirror JD verbs and keywords where the underlying work genuinely supports
+               them. Keep metrics and quantified impact; sharpen weak bullets.
+            5. NEVER invent employers, titles, degrees, projects, dates, metrics or skills that
+               are not in the original resume. Rewording, reordering and re-emphasis only.
+            Hard constraints: keep the SAME LaTeX structure, packages, formatting and length
+            (one page). Escape special characters (&, %, #, _) exactly like the original does.
+            Output ONLY the complete LaTeX source — no fences, no commentary.""";
+
+    private static final String NOTES_SYSTEM = """
+            You compare an ORIGINAL resume and its TAILORED version against a job description
+            and report exactly what was changed and why. Output 5-10 short bullets, each in the
+            form: "<what changed> — <which JD requirement it serves>". Group trivial rewordings.
+            End with one line: "Keywords now matching the JD: <comma-separated list>".
+            Plain text only, no markdown headers.""";
 
     /** Duplicate the base resume, AI-tailored to the given JD, saved under a JD-derived name. */
     @Transactional
@@ -297,6 +312,7 @@ public class ResumeDocService {
         String cleanName = name == null || name.isBlank() ? "Tailored resume" : name.trim();
 
         String latex = base.getLatex();
+        String notes = null;
         if (jdText != null && !jdText.isBlank() && ai.isEnabled()) {
             String jd = jdText.length() > 6000 ? jdText.substring(0, 6000) : jdText;
             try {
@@ -307,10 +323,30 @@ public class ResumeDocService {
                 // Only accept output that still looks like a full LaTeX document.
                 if (stripped.contains("\\documentclass") && stripped.contains("\\end{document}")) {
                     latex = stripped;
+                    // Second pass: an auditable change report shown in the editor, so the
+                    // user sees exactly what was optimised and on what basis.
+                    try {
+                        notes = ai.complete(NOTES_SYSTEM,
+                                "JOB DESCRIPTION:\n" + jd
+                                        + "\n\nORIGINAL RESUME (LaTeX):\n" + base.getLatex()
+                                        + "\n\nTAILORED RESUME (LaTeX):\n" + latex
+                                        + "\n\nChange report:", false, true);
+                        notes = stripFences(notes);
+                    } catch (Exception e) {
+                        log.warn("tailor change-report failed: {}", e.getMessage());
+                    }
+                } else {
+                    notes = "AI output was not a valid LaTeX document — the copy is identical "
+                            + "to your base resume. Try again (Tailor to a JD).";
                 }
             } catch (Exception e) {
                 log.warn("AI tailor failed, duplicating base as-is: {}", e.getMessage());
+                notes = "AI tailoring failed (" + e.getMessage() + ") — the copy is identical "
+                        + "to your base resume. Check Settings → AI provider and try again.";
             }
+        } else if (jdText != null && !jdText.isBlank()) {
+            notes = "AI is not configured (Settings → AI provider), so this copy is identical "
+                    + "to your base resume.";
         }
 
         ResumeDoc d = new ResumeDoc();
@@ -319,6 +355,7 @@ public class ResumeDocService {
         d.setLatex(latex);
         d.setJobUrl(jobUrl);
         d.setJdText(jdText);
+        d.setTailorNotes(notes);
         return repo.save(d);
     }
 

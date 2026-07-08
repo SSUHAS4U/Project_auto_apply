@@ -162,13 +162,20 @@ public class ComposeService {
         if (!ai.isEnabled()) throw new IllegalStateException("AI is not configured.");
         String sys = """
                 You are editing a job application. Apply the user's instruction to the EMAIL and/or COVER
-                LETTER below. Change only what the instruction asks; keep everything else intact. Keep facts
-                truthful and never add [brackets]. Return EXACTLY this format, verbatim delimiters, no markdown:
+                LETTER below. Change only what the instruction asks; keep everything else intact.
+                The candidate's full PROFILE is provided. When the instruction asks to add or mention
+                something (internships, projects, skills, education, certifications…):
+                1. FIRST look it up in the PROFILE and use the real details (names, dates, tech).
+                2. If the profile has nothing relevant, write a natural role-appropriate line WITHOUT
+                   inventing specifics — no made-up company names, dates, metrics or credentials.
+                Keep facts truthful and never output [bracket placeholders].
+                Return EXACTLY this format, verbatim delimiters, no markdown:
                 @@EMAIL@@
                 <updated email — unchanged if the instruction doesn't touch it>
                 @@COVER@@
                 <updated cover letter — unchanged if the instruction doesn't touch it>""";
-        String user = "EMAIL:\n" + nz(coldEmail) + "\n\nCOVER LETTER:\n" + nz(coverLetter)
+        String user = "PROFILE:\n" + profileFacts(profileService.get())
+                + "\n\nEMAIL:\n" + nz(coldEmail) + "\n\nCOVER LETTER:\n" + nz(coverLetter)
                 + "\n\nINSTRUCTION: " + instruction.strip();
         String raw = ai.complete(sys, user, false, true);
         String email = between(raw, "@@EMAIL@@", "@@COVER@@");
@@ -176,6 +183,52 @@ public class ComposeService {
         return Map.of(
                 "coldEmail", email.isBlank() ? nz(coldEmail) : email,
                 "coverLetter", cover.isBlank() ? nz(coverLetter) : cover);
+    }
+
+    /** The whole profile as compact plain text, so edit instructions can pull real details. */
+    private static String profileFacts(Profile p) {
+        if (p == null) return "(empty profile)";
+        StringBuilder sb = new StringBuilder();
+        add(sb, "Name", p.getFullName());
+        add(sb, "Headline", p.getHeadline());
+        add(sb, "Current role", nz(p.getCurrentTitle())
+                + (notBlank(p.getCurrentCompany()) ? " at " + p.getCurrentCompany() : ""));
+        add(sb, "Experience (years)", p.getYearsExperience());
+        add(sb, "Location", p.getLocation());
+        add(sb, "Skills", p.getSkills() == null ? null : String.join(", ", p.getSkills()));
+        add(sb, "Summary", p.getSummary());
+        if (p.getExperience() != null) {
+            for (var e : p.getExperience()) {
+                add(sb, "Experience entry", entry(e, "title", "role") + " at " + entry(e, "company")
+                        + " (" + entry(e, "start") + " - " + entry(e, "end") + "): " + entry(e, "description"));
+            }
+        }
+        if (p.getEducation() != null) {
+            for (var e : p.getEducation()) {
+                add(sb, "Education", entry(e, "degree") + " " + entry(e, "field") + ", "
+                        + entry(e, "school") + " (" + entry(e, "year") + ")");
+            }
+        }
+        if (p.getCertifications() != null) {
+            for (var c : p.getCertifications()) {
+                add(sb, "Certification", entry(c, "name", "title") + " " + entry(c, "issuer") + " " + entry(c, "year"));
+            }
+        }
+        return sb.length() == 0 ? "(empty profile)" : sb.toString();
+    }
+
+    private static void add(StringBuilder sb, String label, String value) {
+        if (value != null && !value.isBlank() && !value.strip().matches("[-–—,():]*")) {
+            sb.append(label).append(": ").append(value.strip().replaceAll("\\s+", " ")).append('\n');
+        }
+    }
+
+    private static String entry(Map<String, Object> m, String... keys) {
+        for (String k : keys) {
+            Object v = m.get(k);
+            if (v instanceof String s && !s.isBlank()) return s.strip();
+        }
+        return "";
     }
 
     private String templateOrDefault(String t, String def) {

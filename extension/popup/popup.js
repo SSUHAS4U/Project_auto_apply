@@ -121,8 +121,11 @@ $('fill').addEventListener('click', async () => {
   status(`Filled ${filled} — adapting to the remaining fields with AI…`);
   const ai = await tabSend('AI_FILL');
   if (ai.ok) filled += ai.filled || 0;
+  status(`Filled ${filled} — answering questions (radios, dropdowns, open text)…`);
+  const ans = await tabSend('AUTO_ANSWER');
+  const answered = ans.ok ? (ans.done || 0) : 0;
   renderReport(r.report, ai.ok ? ai.report : null);
-  status(`Filled ${filled} fields — review & submit`, 'ok');
+  status(`Filled ${filled} field${filled === 1 ? '' : 's'}${answered ? ` + ${answered} question${answered === 1 ? '' : 's'}` : ''} — review & submit`, 'ok');
 });
 
 $('answer').addEventListener('click', async () => {

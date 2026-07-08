@@ -45,6 +45,10 @@ public class ResumeDoc {
     @Column(name = "jd_text", columnDefinition = "text")
     private String jdText;
 
+    /** What the AI changed (and which JD requirement each change serves) when tailoring. */
+    @Column(name = "tailor_notes", columnDefinition = "text")
+    private String tailorNotes;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

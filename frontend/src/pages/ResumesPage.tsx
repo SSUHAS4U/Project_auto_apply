@@ -5,9 +5,9 @@ import { Modal } from '../components/Modal';
 import { fmtDate, useToast } from '../lib/ui';
 
 /**
- * Overleaf-style LaTeX resume builder:
- * left — your named resumes (base + per-JD tailored copies);
- * right — LaTeX editor with compile-to-PDF preview (free texlive.net service).
+ * Overleaf-style workbench: files panel · LaTeX editor · live PDF preview.
+ * Desktop: three panes with a draggable splitter. Mobile: the files panel is a
+ * drawer and Code/PDF are switched with a segmented control.
  */
 export function ResumesPage() {
   const toast = useToast();
@@ -19,11 +19,16 @@ export function ResumesPage() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
+  const [filesOpen, setFilesOpen] = useState(false);   // mobile drawer
+  const [mobileTab, setMobileTab] = useState<'code' | 'pdf'>('code');
+  const [notesOpen, setNotesOpen] = useState(true);
+  const [pdfPct, setPdfPct] = useState(46);            // preview pane width %
   const [tailorOpen, setTailorOpen] = useState(false);
   const [jdName, setJdName] = useState('');
   const [jdUrl, setJdUrl] = useState('');
   const [jdText, setJdText] = useState('');
   const pdfUrlRef = useRef('');
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const setPreview = (blob: Blob | null) => {
     if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
@@ -37,10 +42,10 @@ export function ResumesPage() {
     setName(d.name);
     setLatex(d.latex);
     setDirty(false);
+    setNotesOpen(true);
+    setFilesOpen(false);
     setPreview(null);
-    if (d.hasPdf) {
-      api.resumePdf(d.id).then(setPreview).catch(() => {});
-    }
+    if (d.hasPdf) api.resumePdf(d.id).then(setPreview).catch(() => {});
   };
 
   const load = (selectId?: string) =>
@@ -98,6 +103,7 @@ export function ResumesPage() {
       if (dirty) { await api.resumeUpdate(sel.id, { name, latex }); setDirty(false); }
       const blob = await api.resumeCompile(sel.id);
       setPreview(blob);
+      setMobileTab('pdf');
       toast('Compiled ✓', 'success');
       await load(sel.id);
     } catch (e) { toast((e as Error).message, 'error'); }
@@ -136,104 +142,126 @@ export function ResumesPage() {
       const d = await api.resumeTailor({ name: jdName || 'Tailored resume', jobUrl: jdUrl, jdText });
       setTailorOpen(false);
       setJdName(''); setJdUrl(''); setJdText('');
-      toast('Tailored copy created from your base resume ✓ — review, then compile', 'success');
+      toast('Tailored copy created ✓ — see "What changed", then compile', 'success');
       await load(d.id);
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setBusy(''); }
   };
 
+  // Splitter drag (desktop): adjust the preview pane's share of the body width.
+  const dragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const body = bodyRef.current;
+    if (!body) return;
+    const onMove = (ev: MouseEvent) => {
+      const r = body.getBoundingClientRect();
+      const pct = ((r.right - ev.clientX) / r.width) * 100;
+      setPdfPct(Math.min(72, Math.max(20, pct)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const B = ({ id, label, ico, onClick, disabled, cls, title }: {
+    id?: string; label: string; ico: string; onClick: () => void;
+    disabled?: boolean; cls?: string; title?: string;
+  }) => (
+    <button className={`ov-btn ${cls ?? ''}`} onClick={onClick} disabled={disabled} title={title ?? label}>
+      {busy === id ? <span className="spinner" /> : ico}<span className="ov-label">{label}</span>
+    </button>
+  );
+
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Resumes <span className="chip">LaTeX → PDF</span></h1>
-          <div className="page-sub">
-            Your base resume plus per-JD tailored copies. Edit the LaTeX, compile to PDF (free
-            texlive.net), and the extension will ask which one to upload on every application.
-          </div>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" onClick={() => create(true)} disabled={!!busy}>＋ Blank</button>
-          <button className="btn btn-primary" onClick={() => create(false)} disabled={!!busy}>
-            {busy === 'create' ? <span className="spinner" /> : '＋'} From profile
-          </button>
-        </div>
+    <div className="ov">
+      {/* ---- toolbar ---- */}
+      <div className="ov-top">
+        <button className="ov-btn" onClick={() => setFilesOpen((v) => !v)} title="Your resumes">☰<span className="ov-label">Files</span></button>
+        {sel ? (
+          <>
+            <input className="ov-name" value={name} placeholder="Resume name"
+              onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+            <B id="save" label={dirty ? 'Save*' : 'Save'} ico="💾" onClick={save} disabled={!!busy || !dirty} />
+            <B id="compile" label="Recompile" ico="▶" cls="green" onClick={compile} disabled={!!busy} />
+            <B label="PDF" ico="⬇" onClick={download} disabled={!pdfUrl && !sel.hasPdf} title="Download PDF" />
+            <B label="Tailor" ico="🧵" onClick={() => setTailorOpen(true)} title="Tailor to a job description" />
+            <span style={{ flex: 1 }} />
+            {!sel.base && <B label="Base" ico="⭐" onClick={setBase} title="Make this the base resume" />}
+            <B id="dup" label="Copy" ico="⧉" onClick={duplicate} disabled={!!busy} title="Duplicate" />
+            <B label="" ico="🗑" cls="danger" onClick={remove} title="Delete" />
+            <div className="ov-seg">
+              <button className={mobileTab === 'code' ? 'on' : ''} onClick={() => setMobileTab('code')}>Code</button>
+              <button className={mobileTab === 'pdf' ? 'on' : ''} onClick={() => setMobileTab('pdf')}>PDF</button>
+            </div>
+          </>
+        ) : <span className="faint" style={{ fontSize: 13 }}>Create a resume to start editing</span>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: 14, alignItems: 'start' }}>
-        {/* ---- document list ---- */}
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {docs.length === 0 && (
-            <div className="card-pad faint" style={{ fontSize: 13 }}>
-              No resumes yet — create one from your profile or start blank.
-            </div>
-          )}
-          {docs.map((d) => (
-            <div key={d.id} onClick={() => pick(d)}
-              style={{
-                padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
-                background: sel?.id === d.id ? 'var(--card2, rgba(99,102,241,.12))' : 'transparent',
-                borderLeft: sel?.id === d.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5, display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
-                {d.base && <span title="Base resume">⭐</span>}
-              </div>
-              <div className="faint" style={{ fontSize: 11.5, marginTop: 2 }}>
-                {d.hasPdf ? '📄 PDF ready' : '— not compiled'} · {d.updatedAt ? fmtDate(d.updatedAt) : ''}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ---- editor + preview ---- */}
-        {sel ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <input className="input" style={{ width: 260 }} value={name}
-                onChange={(e) => { setName(e.target.value); setDirty(true); }} placeholder="Resume name" />
-              <button className="btn" onClick={save} disabled={!!busy || !dirty}>
-                {busy === 'save' ? <span className="spinner" /> : '💾'} Save
-              </button>
-              <button className="btn btn-primary" onClick={compile} disabled={!!busy}>
-                {busy === 'compile' ? <span className="spinner" /> : '⚙'} Compile → PDF
-              </button>
-              <button className="btn" onClick={download} disabled={!pdfUrl && !sel.hasPdf}>⬇ PDF</button>
-              <button className="btn" onClick={() => setTailorOpen(true)}>🧵 Tailor to a JD</button>
-              <span style={{ marginLeft: 'auto' }} />
-              {!sel.base && <button className="btn btn-ghost btn-sm" onClick={setBase}>⭐ Set as base</button>}
-              <button className="btn btn-ghost btn-sm" onClick={duplicate} disabled={!!busy}>⧉ Duplicate</button>
-              <button className="btn btn-ghost btn-sm" onClick={remove} style={{ color: 'var(--red, #f87171)' }}>🗑</button>
-            </div>
-            {sel.jobUrl && (
-              <div className="faint" style={{ fontSize: 12 }}>
-                Tailored for: <a href={sel.jobUrl} target="_blank" rel="noreferrer">{sel.jobUrl}</a>
+      {/* ---- body ---- */}
+      <div className="ov-body" ref={bodyRef}>
+        <aside className={`ov-files ${filesOpen ? 'open' : ''}`}>
+          <div className="ov-files-head">
+            Resumes
+            <span style={{ display: 'flex', gap: 6 }}>
+              <button className="ov-btn" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => create(true)} disabled={!!busy} title="New blank resume">＋ Blank</button>
+              <button className="ov-btn" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => create(false)} disabled={!!busy} title="Starter pre-filled from your profile">＋ Profile</button>
+            </span>
+          </div>
+          <div className="ov-files-list">
+            {docs.length === 0 && (
+              <div className="faint" style={{ padding: 14, fontSize: 12.5 }}>
+                No resumes yet — create one from your profile, or blank.
               </div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: pdfUrl ? '1fr 1fr' : '1fr', gap: 10, minHeight: 520 }}>
-              <textarea
-                value={latex}
-                onChange={(e) => { setLatex(e.target.value); setDirty(true); }}
-                spellCheck={false}
-                style={{
-                  width: '100%', minHeight: 520, resize: 'vertical',
-                  fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 12.5, lineHeight: 1.5,
-                  background: 'var(--card, #161a23)', color: 'var(--text, #e7e9ee)',
-                  border: '1px solid var(--border, #2b3243)', borderRadius: 10, padding: 12, outline: 'none',
-                }} />
-              {pdfUrl && (
-                <iframe title="PDF preview" src={pdfUrl}
-                  style={{ width: '100%', minHeight: 520, border: '1px solid var(--border, #2b3243)', borderRadius: 10, background: '#fff' }} />
+            {docs.map((d) => (
+              <div key={d.id} className={`ov-file ${sel?.id === d.id ? 'sel' : ''}`} onClick={() => pick(d)}>
+                <div className="ov-file-name">📄<span>{d.name}</span>{d.base && <span title="Base resume">⭐</span>}</div>
+                <div className="ov-file-sub">
+                  {d.hasPdf ? 'PDF ready' : 'not compiled'}{d.updatedAt ? ` · ${fmtDate(d.updatedAt)}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+        {filesOpen && <div className="scrim" style={{ display: 'block', zIndex: 39 }} onClick={() => setFilesOpen(false)} />}
+
+        {sel ? (
+          <>
+            <section className={`ov-edit ${mobileTab === 'pdf' ? 'hide' : ''}`}>
+              {sel.tailorNotes && (
+                <div className="ov-notes">
+                  <div className="ov-notes-head" onClick={() => setNotesOpen((v) => !v)}>
+                    🧵 What the AI changed for this JD {notesOpen ? '▾' : '▸'}
+                    {sel.jobUrl && (
+                      <a href={sel.jobUrl} target="_blank" rel="noreferrer"
+                        style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 12 }}
+                        onClick={(e) => e.stopPropagation()}>job posting ↗</a>
+                    )}
+                  </div>
+                  {notesOpen && <pre>{sel.tailorNotes}</pre>}
+                </div>
               )}
-            </div>
-            {dirty && <div className="faint" style={{ fontSize: 12 }}>Unsaved changes — Save or Compile (compiling saves first).</div>}
-          </div>
+              <textarea className="ov-code" value={latex} spellCheck={false}
+                onChange={(e) => { setLatex(e.target.value); setDirty(true); }} />
+            </section>
+            <div className="ov-divider" onMouseDown={dragStart} title="Drag to resize" />
+            <section className={`ov-view ${mobileTab === 'code' ? 'hide' : ''}`} style={{ width: `${pdfPct}%` }}>
+              {pdfUrl
+                ? <iframe title="PDF preview" src={pdfUrl} />
+                : <div className="ov-empty">No PDF yet — hit <b style={{ color: '#7ee787' }}>▶ Recompile</b> to build one from the LaTeX source.</div>}
+            </section>
+          </>
         ) : (
-          <div className="card card-pad empty">
-            <div className="big">📄</div>
-            Create your first resume — <b>From profile</b> gives you a compilable one-page LaTeX
-            starter filled with your details; <b>Blank</b> gives a minimal skeleton.
-          </div>
+          <section className="ov-edit">
+            <div className="empty" style={{ margin: 'auto', maxWidth: 380 }}>
+              <div className="big">📄</div>
+              <b>＋ Profile</b> gives you a compilable one-page LaTeX starter pre-filled with your
+              details; <b>＋ Blank</b> gives a minimal skeleton. Same LaTeX as Overleaf.
+            </div>
+          </section>
         )}
       </div>
 
@@ -249,8 +277,9 @@ export function ResumesPage() {
           }>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="faint" style={{ fontSize: 13 }}>
-              The AI rewrites a COPY of your base resume (⭐) to emphasise this JD — it never
-              invents experience. Your base stays untouched.
+              The AI rewrites a COPY of your base resume (⭐) for this JD — reordering skills and
+              bullets, mirroring the JD's keywords where you genuinely have them, never inventing
+              experience. You'll get a "What changed" report on the copy. Your base stays untouched.
             </div>
             <input className="input" placeholder="Name for this copy (e.g. 'Backend – Razorpay')"
               value={jdName} onChange={(e) => setJdName(e.target.value)} />
@@ -262,6 +291,6 @@ export function ResumesPage() {
           </div>
         </Modal>
       )}
-    </>
+    </div>
   );
 }

@@ -798,15 +798,35 @@
     let filled = 0;
     for (const { el, label, kind } of candidates) {
       const v = answers[label];
-      if (!v || !String(v).trim()) {
+      const hasValue = v && String(v).trim();
+      // Selects can still be answered without a profile value: the AI picks the best of
+      // the field's own options (scenario dropdowns like "Expected Salary Currency").
+      if (!hasValue && kind !== 'select') {
         report.push({ label, status: 'unfilled', reason: 'no-data' });
         continue;
       }
       let ok = false;
       try {
         if (kind === 'select') {
-          const want = norm(v);
-          const opt = [...el.options].find((o) => norm(o.text) === want) || [...el.options].find((o) => norm(o.text).includes(want));
+          let opt = null;
+          if (hasValue) {
+            const want = norm(v);
+            opt = [...el.options].find((o) => norm(o.text) === want) || [...el.options].find((o) => norm(o.text).includes(want));
+          }
+          if (!opt) {
+            // Profile value missing or doesn't match any option — let the AI choose
+            // among the ACTUAL options, given the question.
+            const optionTexts = [...el.options].map((o) => o.text.trim())
+              .filter((t) => t && !/^(select|choose|—|-|please select)/i.test(t));
+            if (optionTexts.length && optionTexts.length <= 60) {
+              const c = await msg('ASSIST_CHOOSE', { question: label, options: optionTexts, multi: false });
+              const pick = norm(((c && c.selected) || [])[0] || '');
+              if (pick) {
+                opt = [...el.options].find((o) => norm(o.text) === pick)
+                  || [...el.options].find((o) => norm(o.text).includes(pick) || pick.includes(norm(o.text)));
+              }
+            }
+          }
           if (opt) { el.value = opt.value; el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(el); filled++; ok = true; }
         } else if (kind === 'custom') {
           if (await smart.fillCustomDropdown(el, String(v))) { window.JobPilot.highlight(el); filled++; ok = true; }

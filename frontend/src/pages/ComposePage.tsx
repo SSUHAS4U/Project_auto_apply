@@ -71,6 +71,15 @@ export function ComposePage() {
     finally { setRefining(false); }
   };
 
+  const downloadText = (text: string, filename: string) => {
+    if (!text.trim()) { toast('Nothing to download yet', 'error'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  };
+
   const downloadCoverPdf = async () => {
     if (!coverLetter) { toast('Generate the cover letter first', 'info'); return; }
     try {
@@ -166,13 +175,19 @@ export function ComposePage() {
             <>
               <div className="grid2" style={{ alignItems: 'start' }}>
                 <div className="panel">
-                  <div className="panel-head">✉ Cold email <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button></div>
+                  <div className="panel-head">✉ Cold email
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn copy-btn" onClick={() => downloadText(coldEmail, `ColdEmail_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}>⬇ Download</button>
+                      <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button>
+                    </span>
+                  </div>
                   <textarea rows={12} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
                 </div>
                 <div className="panel">
                   <div className="panel-head">📄 Cover letter
                     <span style={{ display: 'flex', gap: 6 }}>
                       <button className="btn copy-btn" onClick={downloadCoverPdf}>⬇ PDF</button>
+                      <button className="btn copy-btn" onClick={() => downloadText(coverLetter, `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}>⬇ .txt</button>
                       <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button>
                     </span>
                   </div>
