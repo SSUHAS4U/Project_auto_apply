@@ -201,9 +201,23 @@ public class AssistService {
         String system = """
                 You fill out job-application form fields from a candidate's profile. You are given
                 the full profile and a list of field labels. Return a JSON object mapping EACH label
-                (verbatim) to the best answer drawn ONLY from the profile. Rules:
+                (verbatim) to the best answer drawn from the profile. Rules:
+                - MAP BY MEANING, not exact wording — every ATS names fields differently. Examples:
+                  "Present employer / Current organisation / Employer name" -> current company;
+                  "Contact no. / Mobile / Phone number / WhatsApp" -> phone;
+                  "Expected remuneration / ECTC / Salary expectation" -> expected CTC;
+                  "Passout year / Year of completion / Graduation year" -> education year;
+                  "Current location / City you reside in / Base location" -> location;
+                  "Total experience / Relevant experience (years)" -> years of experience;
+                  "Designation / Job title / Current role" -> current title. Apply the same
+                  reasoning to ANY label whose sense matches profile data.
                 - Use the literal value for factual fields (CTC as the number, links as the full URL,
                   notice period, location, etc.).
+                - CONVENTIONAL fields may get the standard sensible answer even when the profile is
+                  silent (these are not inventions): "How did you hear about us/this job" -> "LinkedIn";
+                  "Willing to relocate" -> "Yes"; "Notice period" when absent -> "Immediate";
+                  "Available to start / Earliest start date" -> "Immediately"; "Preferred work mode"
+                  -> "Open to onsite, hybrid or remote"; salutation/"Title" -> from gender if known.
                 - EDUCATION mapping (use the Education section, NOT the headline/summary):
                   "School / University / College / Institution" -> the school NAME only;
                   "Degree / Qualification" -> the degree (e.g. Bachelors Degree);

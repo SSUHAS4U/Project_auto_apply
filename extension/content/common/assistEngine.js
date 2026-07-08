@@ -620,6 +620,21 @@
       seen.add(norm(label));
       push({ el, label, kind: 'select', options });
     });
+    // Custom dropdown TRIGGERS — the button/div widgets real ATSs use (Workday
+    // aria-haspopup buttons, react-select controls, MUI role=combobox divs…).
+    q('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="menu"], [class*="select__control" i], [data-automation-id*="select" i], [data-automation-id*="dropdown" i]')
+      .forEach((el) => {
+        if (['SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(el.tagName)) return; // inputs handled above
+        if (el.offsetParent === null || el.closest('[role="listbox"], [role="option"]')) return;
+        const already = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        // Skip widgets that clearly hold a chosen value already.
+        const label = deriveQuestion(el);
+        if (!label || label.length < 2 || seen.has(norm(label))) return;
+        if (already && norm(already) !== norm(label)
+            && !/select|choose|please|—|^-$|search/i.test(already) && already.length < 60 && !already.includes(label)) return;
+        seen.add(norm(label));
+        push({ el, label, kind: 'custom' });
+      });
     // native radio groups
     const rGroups = {};
     q('input[type="radio"]').filter(vis).forEach((r, i) => { (rGroups[r.name || '__r' + i] ||= []).push(r); });
@@ -660,11 +675,20 @@
     // Answers: one batched profile-mapping call, then AI per field where needed.
     const r = await msg('ASSIST_AUTOFILL', { fields: units.map((u) => u.label) });
     const answers = (r && r.answers) || {};
-    let chooseBudget = 15, answerBudget = 8;
+    let chooseBudget = 15, answerBudget = 8, openBudget = 8;
     for (const u of units) {
       u.value = String(answers[u.label] || '').trim();
       u.source = u.value ? 'profile' : '';
-      const choice = ['select', 'radio', 'aria-radio', 'checkbox'].includes(u.kind);
+      // Custom widgets: briefly open them to read their REAL options so the AI can
+      // choose among what the form actually offers (Workday/react-select/MUI).
+      if (u.kind === 'custom' && smart && smart.readDropdownOptions && openBudget-- > 0) {
+        try {
+          const opts = await smart.readDropdownOptions(u.el);
+          if (opts.length >= 2) u.options = opts;
+        } catch (_) { /* fill by typed value instead */ }
+      }
+      const choice = ['select', 'radio', 'aria-radio', 'checkbox'].includes(u.kind)
+        || (u.kind === 'custom' && u.options);
       if (choice) {
         const match = u.value && u.options.some((o) => norm(o) === norm(u.value) || norm(o).includes(norm(u.value)));
         if (!match && chooseBudget-- > 0) {
@@ -1015,9 +1039,9 @@
     for (const { el, label, kind } of candidates) {
       const v = answers[label];
       const hasValue = v && String(v).trim();
-      // Selects can still be answered without a profile value: the AI picks the best of
-      // the field's own options (scenario dropdowns like "Expected Salary Currency").
-      if (!hasValue && kind !== 'select') {
+      // Choice widgets can still be answered without a profile value: the AI picks the
+      // best of the field's own options (scenario dropdowns like "Salary Currency").
+      if (!hasValue && kind !== 'select' && kind !== 'custom') {
         report.push({ label, status: 'unfilled', reason: 'no-data' });
         continue;
       }
@@ -1045,7 +1069,16 @@
           }
           if (opt) { el.value = opt.value; el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(el); filled++; ok = true; }
         } else if (kind === 'custom') {
-          if (await smart.fillCustomDropdown(el, String(v))) { window.JobPilot.highlight(el); filled++; ok = true; }
+          let val = hasValue ? String(v) : '';
+          if (!val && smart && smart.readDropdownOptions) {
+            // No profile value: open the widget, read its real options, let the AI pick.
+            const opts = await smart.readDropdownOptions(el);
+            if (opts.length >= 2) {
+              const c = await msg('ASSIST_CHOOSE', { question: label, options: opts, multi: false });
+              val = (((c && c.selected) || [])[0] || '');
+            }
+          }
+          if (val && await smart.fillCustomDropdown(el, val)) { window.JobPilot.highlight(el); filled++; ok = true; }
         } else if (kind === 'combo') {
           if ((el.value || '').trim()) { ok = true; }
           else if (await smart.fillTypeahead(el, String(v))) { window.JobPilot.highlight(el); filled++; ok = true; }

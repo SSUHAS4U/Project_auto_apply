@@ -132,6 +132,30 @@
     return true;
   }
 
+  // Open a custom dropdown just long enough to READ its options, then close it.
+  // Lets the review plan show a widget's real choices without committing anything.
+  async function readDropdownOptions(trigger, opts = {}) {
+    const optionSel = opts.optionSelector
+      || '[role="option"], li[role="option"], [data-automation-id="promptOption"], [data-automation-id="menuItem"], .select__option, [class*="option" i][role], [role="menuitem"]';
+    try { trigger.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+    trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    trigger.click();
+    trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    await sleep(200);
+    const options = await waitFor(() => {
+      const o = [...document.querySelectorAll(optionSel)].filter((x) => x.offsetParent !== null && norm(x.textContent));
+      return o.length ? o : null;
+    }, { timeout: opts.timeout || 2500 });
+    const texts = options
+      ? [...new Set(options.map((o) => o.textContent.replace(/\s+/g, ' ').trim()))].filter(Boolean).slice(0, 40)
+      : [];
+    // Close without selecting: Escape to the trigger, then to the document.
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(120);
+    return texts;
+  }
+
   // Is this element a custom dropdown trigger (not a plain input/select)?
   function isCustomDropdown(el) {
     const tag = el.tagName;
@@ -158,5 +182,5 @@
     return 'generic';
   }
 
-  window.JobPilotSmart = { deepQueryAll, setValue, waitFor, typeInto, fillTypeahead, fillCustomDropdown, isCustomDropdown, detectAts, sleep, norm };
+  window.JobPilotSmart = { deepQueryAll, setValue, waitFor, typeInto, fillTypeahead, fillCustomDropdown, readDropdownOptions, isCustomDropdown, detectAts, sleep, norm };
 })();

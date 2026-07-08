@@ -148,17 +148,31 @@ export function ResumesPage() {
     finally { setBusy(''); }
   };
 
-  // Splitter drag (desktop): adjust the preview pane's share of the body width.
+  // Splitter drag (desktop). Two subtleties: the PDF iframe swallows mousemove the
+  // instant the cursor crosses it (drag would freeze) — an .ov-dragging class turns
+  // its pointer-events off for the duration; and updates are rAF-throttled so the
+  // pane resizes once per frame instead of once per pixel.
   const dragStart = (e: React.MouseEvent) => {
     e.preventDefault();
     const body = bodyRef.current;
     if (!body) return;
-    const onMove = (ev: MouseEvent) => {
+    document.body.classList.add('ov-dragging');
+    let lastX = e.clientX;
+    let raf = 0;
+    const applyX = () => {
+      raf = 0;
       const r = body.getBoundingClientRect();
-      const pct = ((r.right - ev.clientX) / r.width) * 100;
-      setPdfPct(Math.min(72, Math.max(20, pct)));
+      const pct = ((r.right - lastX) / r.width) * 100;
+      setPdfPct(Math.min(72, Math.max(18, pct)));
+    };
+    const onMove = (ev: MouseEvent) => {
+      lastX = ev.clientX;
+      if (!raf) raf = requestAnimationFrame(applyX);
     };
     const onUp = () => {
+      document.body.classList.remove('ov-dragging');
+      if (raf) cancelAnimationFrame(raf);
+      applyX();
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
@@ -247,7 +261,8 @@ export function ResumesPage() {
               <textarea className="ov-code" value={latex} spellCheck={false}
                 onChange={(e) => { setLatex(e.target.value); setDirty(true); }} />
             </section>
-            <div className="ov-divider" onMouseDown={dragStart} title="Drag to resize" />
+            <div className="ov-divider" onMouseDown={dragStart} onDoubleClick={() => setPdfPct(46)}
+              title="Drag to resize · double-click to reset" />
             <section className={`ov-view ${mobileTab === 'code' ? 'hide' : ''}`} style={{ width: `${pdfPct}%` }}>
               {pdfUrl
                 ? <iframe title="PDF preview" src={pdfUrl} />

@@ -179,7 +179,19 @@ function renderPlan(plan) {
     const res = await tabSend('APPLY_FILL', { items });
     apply.remove(); cancel.remove();
     if (!res.ok) return void add('ai', '⚠ ' + res.error);
+
+    // LEARN from corrections: any answer the user edited becomes a saved Q&A, so the
+    // same question is answered THEIR way (bank first) on every future form.
+    let learned = 0;
+    for (const f of plan) {
+      const finalV = (inputs.get(f.id).value || '').trim();
+      if (finalV && finalV !== (f.value || '').trim() && finalV.length <= 1500) {
+        try { await bg('SAVE_QA', { question: f.label, answer: finalV }); learned++; } catch (_) { /* skip */ }
+      }
+    }
+
     let msgTxt = `✓ Applied ${res.applied} answer${res.applied === 1 ? '' : 's'} — review the page & submit yourself.`;
+    if (learned) msgTxt += `\n🧠 Learned ${learned} corrected answer${learned === 1 ? '' : 's'} — I'll use them automatically next time.`;
     if (res.failed && res.failed.length) {
       msgTxt += `\n⚠ Couldn't set: ${res.failed.slice(0, 5).join('; ')}${res.failed.length > 5 ? '…' : ''} — set those manually.`;
     }

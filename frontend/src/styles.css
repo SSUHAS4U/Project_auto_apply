@@ -607,8 +607,12 @@ tbody tr:hover { background: var(--bg-card-hover); }
   font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.55;
   tab-size: 2;
 }
-.ov-divider { width: 5px; flex: none; cursor: col-resize; background: var(--border); }
-.ov-divider:hover { background: var(--accent); }
+.ov-divider { width: 6px; flex: none; cursor: col-resize; background: var(--border); }
+.ov-divider:hover, .ov-dragging .ov-divider { background: var(--accent); }
+/* While dragging: the iframe must not swallow mousemove, and nothing should get selected. */
+.ov-dragging { cursor: col-resize; user-select: none; }
+.ov-dragging .ov-view iframe { pointer-events: none; }
+.ov-dragging .ov-code { pointer-events: none; }
 .ov-view { flex: none; min-width: 0; background: #525659; display: flex; }
 .ov-view iframe { width: 100%; height: 100%; border: none; }
 .ov-view .ov-empty {
