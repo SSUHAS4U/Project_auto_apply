@@ -25,7 +25,7 @@ public class AssistController {
 
     @PostMapping("/answer")
     public Map<String, Object> answer(@RequestBody Map<String, String> body) {
-        return assist.answer(body.get("question"));
+        return assist.answer(body.get("question"), body.get("fieldType"));
     }
 
     @PostMapping("/choose")

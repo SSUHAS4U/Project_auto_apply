@@ -131,13 +131,9 @@
     ai.addEventListener('click', async () => {
       const el = pillField;
       if (!el) return;
-      const question = deriveQuestion(el);
-      if (!question) { note.textContent = 'no question detected'; return; }
       ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
       try {
-        const r = await msg('ASSIST_ANSWER', { question });
-        writeValue(el, r.answer);
-        note.textContent = r.source === 'saved' ? '↺ saved answer' : '✓ AI';
+        await answerIntoField(el, note);
       } catch (e) {
         note.textContent = '⚠ ' + e.message;
       } finally { ai.disabled = false; ai.textContent = old; }
@@ -163,6 +159,68 @@
     pill._note = note;
     document.body.appendChild(pill);
     return pill;
+  }
+
+  // Type-aware AI answer for the focused field: selects choose among their REAL
+  // options; custom dropdowns/typeaheads get a short value picked into the widget;
+  // date/tel/url/email/number fields get the literal profile fact in the right
+  // format; only true open questions get prose.
+  async function answerIntoField(el, note) {
+    const question = deriveQuestion(el);
+    if (!question) { note.textContent = 'no question detected'; return; }
+    const smart = window.JobPilotSmart;
+
+    if (el.tagName === 'SELECT') {
+      const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
+      if (!options.length) { note.textContent = 'no options in this dropdown'; return; }
+      const r = await msg('ASSIST_CHOOSE', { question, options, multi: false });
+      const pick = norm(((r && r.selected) || [])[0] || '');
+      const opt = [...el.options].find((o) => norm(o.text) === pick)
+        || (pick && [...el.options].find((o) => norm(o.text).includes(pick) || pick.includes(norm(o.text))));
+      if (!opt) { note.textContent = 'no option matched'; return; }
+      el.value = opt.value;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      window.JobPilot.highlight(el);
+      note.textContent = '✓ ' + opt.text.trim().slice(0, 26);
+      return;
+    }
+
+    const type = el.tagName === 'INPUT'
+      ? (el.getAttribute('type') || 'text').toLowerCase()
+      : (el.tagName === 'TEXTAREA' ? 'textarea' : 'text');
+    const isDrop = el.tagName === 'INPUT' && smart && (smart.isCustomDropdown(el) || isCombobox(el));
+
+    const r = await msg('ASSIST_ANSWER', { question, fieldType: isDrop ? 'dropdown' : type });
+    const answer = r && r.answer;
+    if (!answer || !String(answer).trim()) { note.textContent = 'nothing in your profile for this'; return; }
+
+    if (isDrop) {
+      const ok = smart.isCustomDropdown(el)
+        ? await smart.fillCustomDropdown(el, String(answer))
+        : await smart.fillTypeahead(el, String(answer));
+      if (!ok) writeValue(el, String(answer)); // fall back to typing the value
+    } else {
+      writeValue(el, String(answer));
+    }
+    window.JobPilot.highlight(el);
+    note.textContent = r.source === 'saved' ? '↺ saved answer'
+      : r.source === 'profile' ? '👤 from profile' : '✓ AI';
+  }
+
+  // Everything the pill can act on — question fields PLUS selects, custom dropdowns
+  // and value-typed inputs (date / tel / url / email / number) that have a label.
+  function isPillTarget(el) {
+    if (!el || el.disabled || el.offsetParent === null) return false;
+    if (el.tagName === 'SELECT') return true;
+    if (el.tagName === 'INPUT' && !el.readOnly) {
+      const t = (el.getAttribute('type') || 'text').toLowerCase();
+      const smart = window.JobPilotSmart;
+      if (['date', 'tel', 'url', 'email', 'number'].includes(t)) return (deriveQuestion(el) || '').length > 2;
+      if (t === 'text' && smart && (smart.isCustomDropdown(el) || isCombobox(el))) {
+        return (deriveQuestion(el) || '').length > 2;
+      }
+    }
+    return isQuestionField(el);
   }
 
   function showPillFor(el) {
@@ -198,7 +256,7 @@
       if (!looksLikeApplicationForm()) return;
       const el = e.target;
       clearTimeout(pillHideTimer);
-      if (isQuestionField(el)) showPillFor(el);
+      if (isPillTarget(el)) showPillFor(el);
       else if (!pill || !pill.contains(el)) scheduleHidePill();
     });
     document.addEventListener('focusout', scheduleHidePill);

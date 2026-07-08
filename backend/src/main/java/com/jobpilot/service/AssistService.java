@@ -33,6 +33,16 @@ public class AssistService {
               genuine eagerness and fast-learning. Claim FOUNDATIONAL / working familiarity — not
               deep expertise — so it stays believable.
             - Be specific, genuine and concise (2-5 sentences unless more is clearly needed).
+            - MATCH THE ANSWER TO THE QUESTION TYPE — never write an essay where a value fits:
+              * yes/no questions ("Are you willing to relocate?"): "Yes" or "No", plus at most one
+                short supporting clause (and only if the field is a textarea).
+              * link/URL fields: output ONLY the URL from the profile; if the profile has none,
+                output an empty string.
+              * numbers (salary, years, notice-period days, CGPA): the number alone, no sentences.
+              * dates (DOB, available-from): the date alone in YYYY-MM-DD.
+              * short factual fields (city, college, degree): the value alone.
+              * "Answer field type" (when given) is the input control — a value-typed control
+                (date/tel/url/email/number) must NEVER receive prose.
             - Don't fabricate specific employers, degrees, projects or year counts — keep it about
               capability and approach. No placeholders, no markdown, no preamble — output ONLY the answer.""";
 
@@ -49,9 +59,28 @@ public class AssistService {
         this.coverLetters = coverLetters;
     }
 
-    /** Answer a question — reuse a saved answer if we have a close match, else ask AI (and store it). */
-    @Transactional
+    /** Fields that want a FACT from the profile, not an essay: links, phone, DOB, CTC, … */
+    private static final java.util.regex.Pattern FACTUAL_Q = java.util.regex.Pattern.compile(
+            "linkedin|github|portfolio|website|profile (url|link)|\\burl\\b|\\blink\\b|leetcode|hackerrank|codechef"
+                    + "|phone|mobile|contact number|whatsapp|e-?mail"
+                    + "|date of birth|\\bdob\\b|birth ?date"
+                    + "|notice period|current ctc|expected ctc|\\bctc\\b|current salary|expected salary|compensation"
+                    + "|years? of experience|total experience|\\bpin ?code\\b|postal|zip"
+                    + "|current (city|location)|\\bcity\\b|\\bgender\\b|nationality|\\bcollege\\b|university"
+                    + "|graduation year|passing year|\\bcgpa\\b|\\bgpa\\b|percentage|roll (no|number)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     public Map<String, Object> answer(String question) {
+        return answer(question, null);
+    }
+
+    /**
+     * Answer a question — saved bank first; then, for factual fields (links, phone, DOB…),
+     * the literal profile value; otherwise a format-aware AI answer. {@code fieldType} is
+     * the HTML control hint (date / tel / url / email / number / textarea / dropdown / text).
+     */
+    @Transactional
+    public Map<String, Object> answer(String question, String fieldType) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("question is required");
         }
@@ -68,13 +97,43 @@ public class AssistService {
         if (similar != null) {
             return Map.of("answer", similar.getAnswer(), "source", "saved");
         }
-        // 3. Generate with AI, grounded in the profile. Do NOT auto-save — only the
-        //    user's explicit "Save" should add an answer to the reusable bank.
+        // 3. Factual field (or a value-typed control): the literal profile value, not prose.
+        boolean typedFactual = fieldType != null
+                && List.of("date", "tel", "url", "email", "number").contains(fieldType);
+        if (typedFactual || FACTUAL_Q.matcher(question).find()) {
+            String v = autofill(List.of(question.trim())).get(question.trim());
+            if (v != null && !v.isBlank()) {
+                if ("date".equals(fieldType)) v = toIsoDate(v);
+                return Map.of("answer", v, "source", "profile");
+            }
+        }
+        // 4. Generate with AI, grounded in the profile and shaped to the control type.
+        //    Do NOT auto-save — only the user's explicit "Save" adds to the bank.
         Profile p = profiles.get();
         String prompt = "Candidate background:\n" + profileContext(p)
-                + "\n\nApplication question: " + question.trim() + "\n\nAnswer:";
+                + "\n\nApplication question: " + question.trim()
+                + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
+                + "\n\nAnswer:";
         String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
+        if ("date".equals(fieldType)) generated = toIsoDate(generated);
         return Map.of("answer", generated, "source", "ai");
+    }
+
+    /** Best-effort YYYY-MM-DD for <input type=date>; returns the input when unparseable. */
+    private static String toIsoDate(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.matches("\\d{4}-\\d{2}-\\d{2}")) return t;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})").matcher(t);   // dd/mm/yyyy (Indian forms)
+        if (m.find()) {
+            return "%s-%02d-%02d".formatted(m.group(3), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
+        }
+        try {
+            var d = new java.text.SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH).parse(t);
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format(d);
+        } catch (Exception ignored) { /* keep original */ }
+        return t;
     }
 
     /**

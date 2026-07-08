@@ -104,8 +104,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
         }
         case 'ASSIST_ANSWER': {
+          // fieldType tells the backend what control it's answering into
+          // (date/tel/url/email/number/textarea/dropdown) so the format matches.
           const data = await apiFetch('/api/assist/answer', {
-            method: 'POST', body: JSON.stringify({ question: msg.question }),
+            method: 'POST', body: JSON.stringify({ question: msg.question, fieldType: msg.fieldType }),
           });
           sendResponse({ ok: true, data });
           break;
