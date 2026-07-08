@@ -39,6 +39,12 @@ public class ComposeService {
               "strong work ethic", "passion for technology", "thrive in", "fast-paced environment",
               "team player", "make me an ideal fit".
             - Be specific to the company/role — never generic. No leftover [brackets].
+            - SIGNATURE: end the cold email with EXACTLY ONE signature block — name, phone, email,
+              then each link LABELED on its own line:
+                LinkedIn: <url>
+                GitHub: <url>
+                Portfolio: <url>
+              Never paste bare URLs strung together with "|", and never write a second signature.
 
             Output EXACTLY in this format — use the delimiter lines verbatim, NO JSON, NO markdown:
             @@SUBJECT@@
@@ -274,9 +280,21 @@ public class ComposeService {
         if (!email.isBlank()) body.append(email);
         else body.append("Dear Hiring Team,\n\nPlease find my cover letter and resume attached for your consideration. "
                 + "I'd welcome the chance to discuss how I can contribute.");
-        body.append("\n\n").append(nz(p.getFullName()));
-        if (notBlank(p.getEmail())) body.append("\n").append(p.getEmail());
-        if (notBlank(p.getPhone())) body.append("\n").append(p.getPhone());
+        // Append a fallback signature ONLY when the email doesn't already sign off with
+        // the candidate's details — the AI usually writes a full signature block, and
+        // appending unconditionally duplicated name/email/phone at the bottom.
+        String tail = email.length() > 400 ? email.substring(email.length() - 400) : email;
+        String tailLow = tail.toLowerCase(java.util.Locale.ROOT);
+        boolean signed =
+                (notBlank(p.getFullName()) && tailLow.contains(p.getFullName().toLowerCase(java.util.Locale.ROOT)))
+                || (notBlank(p.getEmail()) && tailLow.contains(p.getEmail().toLowerCase(java.util.Locale.ROOT)))
+                || (notBlank(p.getPhone())
+                        && tail.replaceAll("[\\s-]", "").contains(p.getPhone().replaceAll("[\\s-]", "")));
+        if (!signed) {
+            body.append("\n\n").append(nz(p.getFullName()));
+            if (notBlank(p.getEmail())) body.append("\n").append(p.getEmail());
+            if (notBlank(p.getPhone())) body.append("\n").append(p.getPhone());
+        }
 
         String subj = (subject == null || subject.isBlank())
                 ? "Application — " + nz(p.getFullName()) : subject;
