@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Assistant",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "description": "Autofill job forms (Google/MS Forms, ATS) and save listings to your JobPilot tracker. You always review & submit.",
   "permissions": [
     "storage",
