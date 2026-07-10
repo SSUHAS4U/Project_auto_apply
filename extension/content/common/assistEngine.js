@@ -357,12 +357,20 @@
     p._note.textContent = '';
     p.style.display = 'flex';
     if (!pillDragged) {
-      // BELOW the field's left edge — never covering the label above or the value —
-      // flipped above only when there's no room underneath.
+      // To the RIGHT of the field, vertically centered on it — clear of the label
+      // above and the value inside. Falls back to below-left when the field spans
+      // the full width and there's no room on the right.
       const r = el.getBoundingClientRect();
-      const fitsBelow = r.bottom + 48 < window.innerHeight;
-      p.style.top = (window.scrollY + (fitsBelow ? r.bottom + 8 : Math.max(4, r.top - 44))) + 'px';
-      p.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - 260)) + 'px';
+      const pw = p.offsetWidth || 270;
+      const ph = p.offsetHeight || 38;
+      if (r.right + 10 + pw <= window.innerWidth) {
+        p.style.top = (window.scrollY + Math.max(4, r.top + (r.height - ph) / 2)) + 'px';
+        p.style.left = (window.scrollX + r.right + 10) + 'px';
+      } else {
+        const fitsBelow = r.bottom + ph + 10 < window.innerHeight;
+        p.style.top = (window.scrollY + (fitsBelow ? r.bottom + 8 : Math.max(4, r.top - ph - 6))) + 'px';
+        p.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - pw - 8)) + 'px';
+      }
     }
     requestAnimationFrame(() => { p.style.opacity = '1'; });
   }
