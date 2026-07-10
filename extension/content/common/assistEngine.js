@@ -235,9 +235,10 @@
       finally { save.disabled = false; }
     });
 
-    // Keep the pill alive while the pointer is over it.
+    // Keep the pill alive while the pointer is over it. (No hide on mouseleave —
+    // the pill lives by FIELD focus, not cursor position; leaving it mid-drag or
+    // while reading must not dismiss it.)
     pill.addEventListener('mouseenter', () => clearTimeout(pillHideTimer));
-    pill.addEventListener('mouseleave', scheduleHidePill);
 
     // Drag handle: grab the ⠿ grip (or the note area) and park the pill anywhere it
     // doesn't cover the form. The manual position sticks until the pill hides.
@@ -251,6 +252,7 @@
       const dx = e.clientX - pr.left, dy = e.clientY - pr.top;
       const onMove = (ev) => {
         pillDragged = true;
+        pillPinned = true; // moving it means "keep it around" — only ✕ / Esc dismiss it
         pill.style.left = Math.max(4, ev.clientX - dx + window.scrollX) + 'px';
         pill.style.top = Math.max(4, ev.clientY - dy + window.scrollY) + 'px';
       };
@@ -264,13 +266,21 @@
     grip.addEventListener('mousedown', startDrag);
     note.addEventListener('mousedown', startDrag);
 
-    pill.append(grip, ai, save, note);
+    const close = document.createElement('button');
+    close.textContent = '✕';
+    close.title = 'Close (Esc)';
+    close.style.cssText = 'border:none;background:transparent;color:#9aa1b1;cursor:pointer;padding:4px 8px;font-size:12px;border-radius:999px';
+    close.addEventListener('mousedown', (e) => e.preventDefault());
+    close.addEventListener('click', () => hidePill(true));
+
+    pill.append(grip, ai, save, note, close);
     pill._note = note;
     document.body.appendChild(pill);
     return pill;
   }
 
   let pillDragged = false;
+  let pillPinned = false;
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
   // options; custom dropdowns/typeaheads get a short value picked into the widget;
@@ -351,10 +361,19 @@
     requestAnimationFrame(() => { p.style.opacity = '1'; });
   }
 
-  function hidePill() {
+  function hidePill(force) {
     if (!pill) return;
+    if (!force) {
+      // Pinned (user dragged it) → only ✕ / Esc dismiss it.
+      if (pillPinned) return;
+      // Focus merely moved into the pill or onto another fillable field → keep it.
+      const a = document.activeElement;
+      if (a && pill.contains(a)) return;
+      if (a && a !== document.body && isPillTarget(a)) { pillField = a; return; }
+    }
     pill.style.opacity = '0';
     pillField = null;
+    pillPinned = false;
     pillDragged = false; // next field gets automatic placement again
     setTimeout(() => { if (pill && !pillField) pill.style.display = 'none'; }, 130);
   }
@@ -376,7 +395,7 @@
       else if (!pill || !pill.contains(el)) scheduleHidePill();
     });
     document.addEventListener('focusout', scheduleHidePill);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePill(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePill(true); });
     window.addEventListener('scroll', () => { if (pillField) showPillFor(pillField); }, { passive: true });
   }
 
