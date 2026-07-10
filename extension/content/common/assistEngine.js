@@ -33,6 +33,74 @@
   // Generic placeholder labels that are NOT the real question (Google/MS Forms etc.).
   const GENERIC_LABEL = /^(your answer|answer|response|short answer|long answer|paragraph text|text|enter your answer|type here|untitled question|required question)\b/i;
 
+  // Machine names that are NOT human labels ("field_9702_1_1", "q17", raw hashes…).
+  const JUNK_NAME = /^(field|input|q|question|item|el|ctrl|control|answer)[_\-]?\d|^\d+$|^[a-z]?\d[\d_\-]*$|^[a-z0-9]{16,}$/i;
+
+  // Nearest heading-ish text physically above a node (section titles like
+  // "10TH ACADEMIC DETAILS" that grids rely on instead of per-field labels).
+  function nearestHeading(node) {
+    let cur = node;
+    for (let d = 0; cur && cur !== document.body && d < 5; d++, cur = cur.parentElement) {
+      let sib = cur.previousElementSibling;
+      for (let i = 0; sib && i < 4; i++, sib = sib.previousElementSibling) {
+        const t = (sib.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t.length > 2 && t.length < 90
+            && (/^H[1-6]$/.test(sib.tagName)
+              || sib.matches('legend, [role="heading"], [class*="head" i], [class*="title" i], [class*="section" i], b, strong')
+              || sib.children.length === 0)) return t;
+      }
+    }
+    return '';
+  }
+
+  // Table grids (HCL-style ATS wizards): the label lives in the COLUMN header <th>,
+  // the row header cell, and the section heading above the table — not on the input.
+  function tableLabel(el) {
+    const td = el.closest && el.closest('td, th');
+    const table = el.closest && el.closest('table');
+    if (!td || !table) return '';
+    const tr = td.parentElement;
+    const idx = [...tr.children].indexOf(td);
+    let headRow = table.tHead && table.tHead.rows.length ? table.tHead.rows[table.tHead.rows.length - 1] : null;
+    if (!headRow) {
+      for (const r of table.rows) { if (r !== tr && r.querySelector('th')) { headRow = r; break; } }
+    }
+    const cell = (c) => (c ? (c.textContent || '').replace(/\s+/g, ' ').replace(/\*\s*$/, '').trim() : '');
+    const col = headRow ? cell(headRow.children[idx]) : '';
+    const first = tr.children[0];
+    const row = first && first !== td && !first.querySelector('input,select,textarea') ? cell(first) : '';
+    if (!col && !row) return '';
+    const sect = nearestHeading(table);
+    return [sect, row, col].filter((t) => t && t.length < 90).join(' — ');
+  }
+
+  // Raw context for the AI labeler: attributes + grid headers + preceding page text.
+  function fieldContext(el) {
+    if (!el) return '';
+    const parts = [];
+    const attr = (n) => (el.getAttribute ? el.getAttribute(n) : null);
+    if (attr('name')) parts.push('name=' + attr('name'));
+    if (attr('id')) parts.push('id=' + attr('id'));
+    if (attr('placeholder')) parts.push('placeholder=' + attr('placeholder'));
+    if (el.tagName === 'SELECT') {
+      const opts = [...el.options].slice(0, 6).map((o) => o.text.trim()).filter(Boolean);
+      if (opts.length) parts.push('options=' + opts.join('/'));
+    }
+    const tl = tableLabel(el);
+    if (tl) parts.push('table=' + tl);
+    let txt = '';
+    let cur = el;
+    for (let d = 0; cur && d < 4 && txt.length < 150; d++, cur = cur.parentElement) {
+      let sib = cur.previousElementSibling;
+      for (let i = 0; sib && i < 3 && txt.length < 150; i++, sib = sib.previousElementSibling) {
+        const t = (sib.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t) txt = t.slice(-150) + ' | ' + txt;
+      }
+    }
+    if (txt) parts.push('before="' + txt.slice(0, 200) + '"');
+    return parts.join('; ').slice(0, 420);
+  }
+
   // Original-case question text (unlike fieldEngine's normalized label).
   function deriveQuestion(el) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -61,6 +129,10 @@
     }
     const wrap = el.closest && el.closest('label');
     if (wrap && strip(wrap.textContent).length > 4) return strip(wrap.textContent).slice(0, 500);
+    // 4.5 Table grids: column header + row + section (must beat the container scan —
+    //     a <div> above the table would give EVERY cell the same section heading).
+    const tl = tableLabel(el);
+    if (tl) return strip(tl).slice(0, 500);
     // 5. A heading/label/legend in a nearby container.
     const box = el.closest && el.closest('li, fieldset, .form-group, .field, div, section');
     if (box) {
@@ -71,7 +143,10 @@
     const prev = el.previousElementSibling;
     if (prev && strip(prev.textContent).length > 8) return strip(prev.textContent).slice(0, 500);
     if (el.placeholder && !GENERIC_LABEL.test(clean(el.placeholder))) return strip(el.placeholder);
-    return clean(el.name || '');
+    // A machine name ("field_9702_1_1") is worse than no label — the AI labeler
+    // reads the field's surroundings instead.
+    const nm = clean(el.name || '');
+    return JUNK_NAME.test(nm) ? '' : nm;
   }
 
   function readValue(el) {
@@ -308,7 +383,7 @@
   // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
   const DENY_HOSTS = /(^|\.)(chat\.openai|chatgpt|claude\.ai|gemini\.google|bard\.google|copilot\.microsoft|bing|perplexity|you|poe|phind|google|duckduckgo|youtube|x|twitter|facebook|instagram|reddit|whatsapp|telegram|discord|slack|notion|figma|stackoverflow|github|gitlab)\.com/i;
   // Sites that ARE application/recruiting forms — always allow.
-  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap)/i;
+  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap|hcltech\.com|freshers\.)/i;
 
   function looksLikeApplicationForm() {
     const host = location.hostname;
@@ -316,7 +391,7 @@
     if (DENY_HOSTS.test(host)) return false;
     // Generic page: only treat it as an application if the URL/title says so AND it has a form.
     const hay = (location.href + ' ' + document.title).toLowerCase();
-    const jobby = /(apply|application|career|job|recruit|vacancy|opening|hiring|candidate|position)/.test(hay);
+    const jobby = /(apply|application|career|job|recruit|vacancy|opening|hiring|candidate|position|fresher|placement)/.test(hay);
     const hasUpload = !!document.querySelector('input[type="file"]');
     const fields = document.querySelectorAll('form textarea, form input[type="text"], form input[type="email"], [role="listitem"]').length;
     return (jobby && (hasUpload || fields >= 3));
@@ -633,11 +708,24 @@
   async function planFill() {
     const smart = window.JobPilotSmart;
     const q = (sel) => (smart ? smart.deepQueryAll(sel) : [...document.querySelectorAll(sel)]);
-    const vis = (el) => el.offsetParent !== null && !el.disabled;
+    // checkVisibility sees through CSS visibility/opacity tricks that multi-step
+    // wizards use — offsetParent alone let hidden steps leak into the plan.
+    const shown = (el) => (el.checkVisibility
+      ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+      : el.offsetParent !== null);
+    const vis = (el) => shown(el) && !el.disabled;
     planRegistry = [];
-    const units = [];
+    let units = [];
     const seen = new Set();
-    const push = (u) => { if (units.length < 40) { u.id = units.length; units.push(u); } };
+    // Fields without a readable label are KEPT (keyed by their machine name) — the
+    // AI labeler names them from their surroundings in a later pass.
+    const push = (u) => {
+      const key = norm(u.label || (u.el && (u.el.name || u.el.id)) || ('anon' + units.length));
+      if (seen.has(key) || units.length >= 40) return;
+      seen.add(key);
+      u.id = units.length;
+      units.push(u);
+    };
 
     // text-like inputs / textareas / custom dropdown triggers (empty only)
     q('input, textarea').forEach((el) => {
@@ -645,11 +733,9 @@
       if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
       if (!vis(el) || el.readOnly || (el.value || '').trim()) return;
       const label = deriveQuestion(el);
-      if (!label || label.length < 2 || seen.has(norm(label))) return;
-      seen.add(norm(label));
       const isPara = el.tagName === 'TEXTAREA';
       const combo = smart && (smart.isCustomDropdown(el) || isCombobox(el));
-      push({ el, label, kind: combo ? 'combo' : (isPara || looksLikeQuestion(label) ? 'question' : 'text') });
+      push({ el, label, kind: combo ? 'combo' : (isPara || looksLikeQuestion(label || '') ? 'question' : 'text') });
     });
     q('select').forEach((el) => {
       if (!vis(el)) return;
@@ -657,8 +743,7 @@
       if (cur && !/^(select|choose|—|-|please)/.test(cur)) return;
       const label = deriveQuestion(el);
       const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
-      if (!label || options.length < 2 || seen.has(norm(label))) return;
-      seen.add(norm(label));
+      if (options.length < 2) return;
       push({ el, label, kind: 'select', options });
     });
     // Custom dropdown TRIGGERS — the button/div widgets real ATSs use (Workday
@@ -711,6 +796,21 @@
       push({ els: group, label, kind: 'checkbox', options });
     }
 
+    if (!units.length) return { plan: [] };
+
+    // AI labeler: any field the DOM couldn't explain (grids, exotic markup) gets
+    // named by the AI from its raw surroundings — like a human reading the page.
+    const unnamed = units.filter((u) => !u.label || u.label.length < 3 || JUNK_NAME.test(u.label));
+    if (unnamed.length) {
+      try {
+        const ctx = unnamed.map((u) => ({ key: String(u.id), context: fieldContext(u.el || (u.els && u.els[0])) }));
+        const named = await msg('ASSIST_LABELS', { fields: ctx });
+        const map = (named && named.labels) || {};
+        unnamed.forEach((u) => { const v = map[String(u.id)]; if (v && v.length > 2) u.label = v; });
+      } catch (_) { /* fields stay unnamed and are dropped below */ }
+    }
+    units = units.filter((u) => u.label && u.label.length > 2);
+    units.forEach((u, i) => { u.id = i; }); // re-key: registry index must equal plan id
     if (!units.length) return { plan: [] };
 
     // Answers: one batched profile-mapping call, then AI per field where needed.

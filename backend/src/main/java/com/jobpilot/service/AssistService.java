@@ -248,6 +248,45 @@ public class AssistService {
     }
 
     /**
+     * Name form fields a DOM parser couldn't label. Each item carries the control's raw
+     * context (HTML attributes, table column/row headers, preceding page text); the AI
+     * returns the question a human filling the form would read for it.
+     */
+    public Map<String, String> labels(List<Map<String, String>> fields) {
+        if (fields == null || fields.isEmpty() || !ai.isEnabled()) return Map.of();
+        StringBuilder list = new StringBuilder();
+        for (Map<String, String> f : fields) {
+            if (f.get("key") == null) continue;
+            list.append("- key=").append(f.get("key")).append(" :: ")
+                    .append(f.get("context") == null ? "" : f.get("context")).append("\n");
+        }
+        String system = """
+                You label job-application form fields. Each item is one form control with raw
+                context: its HTML attributes, its table column/row headers ("table=SECTION — row
+                — column"), and the page text physically before it. Return STRICT JSON mapping
+                each key to the QUESTION/LABEL a human filling that control would read — e.g.
+                "10th — School Name", "Year of Passing (10th)", "Expected CTC". Keep each label
+                under 12 words; include the section/row qualifier when the same column repeats
+                (10th/12th/Graduation). If truly unknowable, map the key to "".
+                Output ONLY the JSON object.""";
+        try {
+            String raw = ai.complete(system, "FIELDS:\n" + list + "\nJSON:", true, false);
+            com.fasterxml.jackson.databind.JsonNode json =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Map<String, String> f : fields) {
+                String k = f.get("key");
+                if (k == null) continue;
+                String v = json.path(k).asText("");
+                if (v != null && !v.isBlank() && !"null".equalsIgnoreCase(v)) out.put(k, v.trim());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    /**
      * Side-panel copilot: interpret a free-form instruction about the current page and
      * return a structured action — fill a specific field, answer a question to paste, or reply.
      */

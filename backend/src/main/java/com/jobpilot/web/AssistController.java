@@ -28,6 +28,15 @@ public class AssistController {
         return assist.answer(body.get("question"), body.get("fieldType"));
     }
 
+    /** Name fields the DOM couldn't label: {fields:[{key,context}]} → {labels:{key:label}}. */
+    @PostMapping("/labels")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> labels(@RequestBody Map<String, Object> body) {
+        Object fields = body.get("fields");
+        return Map.of("labels", assist.labels(fields instanceof java.util.List<?> l
+                ? (java.util.List<Map<String, String>>) l : java.util.List.of()));
+    }
+
     @PostMapping("/choose")
     @SuppressWarnings("unchecked")
     public Map<String, Object> choose(@RequestBody Map<String, Object> body) {

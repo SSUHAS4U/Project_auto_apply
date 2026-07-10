@@ -20,6 +20,7 @@ export function ResumesPage() {
   const [busy, setBusy] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [filesOpen, setFilesOpen] = useState(false);   // mobile drawer
+  const [filesClosed, setFilesClosed] = useState(false); // desktop collapse
   const [mobileTab, setMobileTab] = useState<'code' | 'pdf'>('code');
   const [notesOpen, setNotesOpen] = useState(true);
   const [pdfPct, setPdfPct] = useState(46);            // preview pane width %
@@ -200,7 +201,10 @@ export function ResumesPage() {
     <div className="ov" onKeyDown={onKey}>
       {/* ---- toolbar ---- */}
       <div className="ov-top">
-        <button className="ov-btn ov-files-btn" onClick={() => setFilesOpen((v) => !v)} title="Your resumes">☰<span className="ov-label">Files</span></button>
+        <button className="ov-btn ov-files-btn" title="Show / hide your resumes"
+          onClick={() => { setFilesOpen((v) => !v); setFilesClosed((v) => !v); }}>
+          ☰<span className="ov-label">Files</span>
+        </button>
         {sel ? (
           <>
             <input className="ov-name" value={name} placeholder="Resume name"
@@ -223,7 +227,7 @@ export function ResumesPage() {
 
       {/* ---- body ---- */}
       <div className="ov-body" ref={bodyRef}>
-        <aside className={`ov-files ${filesOpen ? 'open' : ''}`}>
+        <aside className={`ov-files ${filesOpen ? 'open' : ''} ${filesClosed ? 'closed' : ''}`}>
           <div className="ov-files-head">
             Resumes
             <span style={{ display: 'flex', gap: 6 }}>

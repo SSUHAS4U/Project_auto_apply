@@ -565,8 +565,8 @@ tbody tr:hover { background: var(--bg-card-hover); }
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
 }
 .ov-top::-webkit-scrollbar { display: none; }
-/* The Files toggle only means something on mobile (the panel is fixed-in on desktop). */
-@media (min-width: 921px) { .ov-files-btn { display: none; } }
+/* Desktop: the Files button collapses/expands the panel for a wider editor. */
+@media (min-width: 921px) { .ov-files.closed { display: none; } }
 /* The mobile files-drawer scrim must never exist on desktop — it invisibly blocked
    every click after toggling Files. */
 .ov-scrim { display: none; }

@@ -112,6 +112,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'ASSIST_LABELS': {
+          // AI names fields the DOM couldn't label, from their raw surroundings.
+          const data = await apiFetch('/api/assist/labels', {
+            method: 'POST', body: JSON.stringify({ fields: msg.fields }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'ASSIST_CHOOSE': {
           const data = await apiFetch('/api/assist/choose', {
             method: 'POST',
