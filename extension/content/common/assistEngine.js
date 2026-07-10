@@ -222,9 +222,11 @@
       if (!el) return;
       ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
       try {
+        note.title = '';
         await answerIntoField(el, note);
       } catch (e) {
         note.textContent = '⚠ ' + e.message;
+        note.title = e.message + ' — click ✨ to retry'; // full text on hover (note truncates)
       } finally { ai.disabled = false; ai.textContent = old; }
     });
 
