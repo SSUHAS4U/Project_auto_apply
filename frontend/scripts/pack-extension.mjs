@@ -16,4 +16,6 @@ fs.mkdirSync(path.dirname(out), { recursive: true });
 zip.writeZip(out);
 
 const manifest = JSON.parse(fs.readFileSync(path.join(extDir, 'manifest.json'), 'utf8'));
+fs.writeFileSync(path.join(root, 'public', 'extension-version.json'),
+  JSON.stringify({ version: manifest.version }));
 console.log(`packed extension v${manifest.version} -> ${path.relative(root, out)}`);

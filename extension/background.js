@@ -213,3 +213,34 @@ function notify(title, message) {
     });
   } catch (_) { /* icon optional */ }
 }
+
+// ---- update check -----------------------------------------------------------
+// Unpacked extensions can't auto-update, but we can TELL you when you're behind:
+// every ~6h (and on browser start) compare this manifest's version against the
+// one the dashboard last deployed. Badge shows "NEW" + one notification per version.
+async function checkForUpdate() {
+  try {
+    const { dashboardUrl } = await getConfig();
+    const r = await fetch(`${dashboardUrl}/extension-version.json`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    const mine = chrome.runtime.getManifest().version;
+    const newer = version && version !== mine
+      && version.split('.').map(Number).some((n, i) => n > (Number(mine.split('.')[i]) || 0));
+    if (!newer) { chrome.action.setBadgeText({ text: '' }); return; }
+    chrome.action.setBadgeText({ text: 'NEW' });
+    chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
+    const { notifiedVersion } = await chrome.storage.local.get('notifiedVersion');
+    if (notifiedVersion !== version) {
+      await chrome.storage.local.set({ notifiedVersion: version });
+      notify('JobPilot update available',
+        `v${version} is out (you have v${mine}). Repo folder: git pull + reload. Zip install: re-download from the dashboard's Saved page.`);
+    }
+  } catch (_) { /* offline — try again next alarm */ }
+}
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create('update-check', { periodInMinutes: 360 });
+  checkForUpdate();
+});
+chrome.runtime.onStartup.addListener(checkForUpdate);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'update-check') checkForUpdate(); });
