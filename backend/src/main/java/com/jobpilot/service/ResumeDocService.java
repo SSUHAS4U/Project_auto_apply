@@ -320,6 +320,14 @@ public class ResumeDocService {
                         "ORIGINAL RESUME (LaTeX):\n" + base.getLatex()
                                 + "\n\nJOB DESCRIPTION:\n" + jd + "\n\nTailored LaTeX:", false, true);
                 String stripped = stripFences(out);
+                // Drop any AI preamble before the document, and salvage a truncated tail
+                // (models sometimes stop right before \end{document}).
+                int dc = stripped.indexOf("\\documentclass");
+                if (dc > 0) stripped = stripped.substring(dc);
+                if (stripped.contains("\\documentclass") && !stripped.contains("\\end{document}")
+                        && stripped.length() > base.getLatex().length() / 2) {
+                    stripped = stripped + "\n\\end{document}\n";
+                }
                 // Only accept output that still looks like a full LaTeX document.
                 if (stripped.contains("\\documentclass") && stripped.contains("\\end{document}")) {
                     latex = stripped;

@@ -128,8 +128,16 @@
     const note = document.createElement('span');
     note.style.cssText = 'color:#9aa1b1;font-weight:500;padding:0 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
 
+    // Always act on the field that is focused RIGHT NOW (mousedown preventDefault
+    // keeps it focused) — never a stale reference from an earlier focus.
+    const currentField = () => {
+      const a = document.activeElement;
+      if (a && a !== document.body && isPillTarget(a)) return a;
+      return pillField;
+    };
+
     ai.addEventListener('click', async () => {
-      const el = pillField;
+      const el = currentField();
       if (!el) return;
       ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
       try {
@@ -140,7 +148,7 @@
     });
 
     save.addEventListener('click', async () => {
-      const el = pillField;
+      const el = currentField();
       if (!el) return;
       const question = deriveQuestion(el);
       const answer = readValue(el).trim();
@@ -155,11 +163,39 @@
     // Keep the pill alive while the pointer is over it.
     pill.addEventListener('mouseenter', () => clearTimeout(pillHideTimer));
     pill.addEventListener('mouseleave', scheduleHidePill);
-    pill.append(ai, save, note);
+
+    // Drag handle: grab the ⠿ grip (or the note area) and park the pill anywhere it
+    // doesn't cover the form. The manual position sticks until the pill hides.
+    const grip = document.createElement('span');
+    grip.textContent = '⠿';
+    grip.title = 'Drag to move';
+    grip.style.cssText = 'cursor:grab;color:#6b7280;padding:0 4px 0 8px;font-size:12px;user-select:none';
+    const startDrag = (e) => {
+      e.preventDefault();
+      const pr = pill.getBoundingClientRect();
+      const dx = e.clientX - pr.left, dy = e.clientY - pr.top;
+      const onMove = (ev) => {
+        pillDragged = true;
+        pill.style.left = Math.max(4, ev.clientX - dx + window.scrollX) + 'px';
+        pill.style.top = Math.max(4, ev.clientY - dy + window.scrollY) + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    };
+    grip.addEventListener('mousedown', startDrag);
+    note.addEventListener('mousedown', startDrag);
+
+    pill.append(grip, ai, save, note);
     pill._note = note;
     document.body.appendChild(pill);
     return pill;
   }
+
+  let pillDragged = false;
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
   // options; custom dropdowns/typeaheads get a short value picked into the widget;
@@ -214,9 +250,10 @@
     if (el.tagName === 'SELECT') return true;
     if (el.tagName === 'INPUT' && !el.readOnly) {
       const t = (el.getAttribute('type') || 'text').toLowerCase();
-      const smart = window.JobPilotSmart;
-      if (['date', 'tel', 'url', 'email', 'number'].includes(t)) return (deriveQuestion(el) || '').length > 2;
-      if (t === 'text' && smart && (smart.isCustomDropdown(el) || isCombobox(el))) {
+      // On application pages (the focusin gate already checked that), ANY labelled
+      // input is fair game — the backend routes by type, so short factual fields
+      // (name, city, links) work as well as long questions.
+      if (['text', 'date', 'tel', 'url', 'email', 'number', 'search', ''].includes(t)) {
         return (deriveQuestion(el) || '').length > 2;
       }
     }
@@ -227,12 +264,15 @@
     const p = buildPill();
     pillField = el;
     p._note.textContent = '';
-    const r = el.getBoundingClientRect();
     p.style.display = 'flex';
-    // Above the field's top-right corner; flip below if there's no room.
-    const top = r.top + window.scrollY - 40;
-    p.style.top = Math.max(window.scrollY + 4, top) + 'px';
-    p.style.left = Math.max(8, r.right + window.scrollX - 230) + 'px';
+    if (!pillDragged) {
+      // BELOW the field's left edge — never covering the label above or the value —
+      // flipped above only when there's no room underneath.
+      const r = el.getBoundingClientRect();
+      const fitsBelow = r.bottom + 48 < window.innerHeight;
+      p.style.top = (window.scrollY + (fitsBelow ? r.bottom + 8 : Math.max(4, r.top - 44))) + 'px';
+      p.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - 260)) + 'px';
+    }
     requestAnimationFrame(() => { p.style.opacity = '1'; });
   }
 
@@ -240,6 +280,7 @@
     if (!pill) return;
     pill.style.opacity = '0';
     pillField = null;
+    pillDragged = false; // next field gets automatic placement again
     setTimeout(() => { if (pill && !pillField) pill.style.display = 'none'; }, 130);
   }
 
@@ -675,7 +716,7 @@
     // Answers: one batched profile-mapping call, then AI per field where needed.
     const r = await msg('ASSIST_AUTOFILL', { fields: units.map((u) => u.label) });
     const answers = (r && r.answers) || {};
-    let chooseBudget = 15, answerBudget = 8, openBudget = 8;
+    let chooseBudget = 24, answerBudget = 12, openBudget = 10;
     for (const u of units) {
       u.value = String(answers[u.label] || '').trim();
       u.source = u.value ? 'profile' : '';

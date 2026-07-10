@@ -68,11 +68,12 @@ button:focus:not(:focus-visible) { outline: none; }
   padding: 22px 16px;
   display: flex; flex-direction: column; gap: 6px;
   position: sticky; top: 0; height: 100vh;
-  overflow-y: auto; /* short screens: nav items below the fold stay reachable */
-  scrollbar-width: thin;
+  /* Short screens: nav items below the fold stay reachable — but keep the clean
+     look: it scrolls with no visible scrollbar. */
+  overflow-y: auto;
+  scrollbar-width: none;
 }
-.sidebar::-webkit-scrollbar { width: 8px; }
-.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+.sidebar::-webkit-scrollbar { display: none; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
 .brand-logo {
   flex: none; /* keep it a perfect square — never let flex stretch/squish it */
@@ -557,8 +558,20 @@ tbody tr:hover { background: var(--bg-card-hover); }
 @media (max-width: 860px) { .ov { margin: -18px -16px -80px; height: calc(100dvh - 58px); } }
 
 .ov-top {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px;
+  /* One steady row: overflow scrolls horizontally instead of wrapping into a
+     multi-line toolbar that eats the editor's height. */
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
+}
+.ov-top::-webkit-scrollbar { display: none; }
+/* The Files toggle only means something on mobile (the panel is fixed-in on desktop). */
+@media (min-width: 921px) { .ov-files-btn { display: none; } }
+/* The mobile files-drawer scrim must never exist on desktop — it invisibly blocked
+   every click after toggling Files. */
+.ov-scrim { display: none; }
+@media (max-width: 920px) {
+  .ov-scrim { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,.45); }
 }
 .ov-name {
   background: transparent; border: 1px solid transparent; border-radius: 8px;

@@ -73,6 +73,19 @@ public class Profile {
     @Column(name = "date_of_birth")
     private String dateOfBirth;
 
+    @Column(name = "alternate_phone")
+    private String alternatePhone;
+
+    @Column(name = "marital_status")
+    private String maritalStatus;
+
+    /** Asked on many Indian application forms. */
+    @Column(name = "father_name")
+    private String fatherName;
+
+    @Column(name = "disability_status")
+    private String disabilityStatus;
+
     private String gender;
     private String nationality;
 

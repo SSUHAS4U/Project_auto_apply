@@ -189,11 +189,18 @@ export function ResumesPage() {
     </button>
   );
 
+  // Editor shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+Enter compiles.
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || !sel) return;
+    if (e.key.toLowerCase() === 's') { e.preventDefault(); if (dirty && !busy) save(); }
+    if (e.key === 'Enter') { e.preventDefault(); if (!busy) compile(); }
+  };
+
   return (
-    <div className="ov">
+    <div className="ov" onKeyDown={onKey}>
       {/* ---- toolbar ---- */}
       <div className="ov-top">
-        <button className="ov-btn" onClick={() => setFilesOpen((v) => !v)} title="Your resumes">☰<span className="ov-label">Files</span></button>
+        <button className="ov-btn ov-files-btn" onClick={() => setFilesOpen((v) => !v)} title="Your resumes">☰<span className="ov-label">Files</span></button>
         {sel ? (
           <>
             <input className="ov-name" value={name} placeholder="Resume name"
@@ -240,7 +247,7 @@ export function ResumesPage() {
             ))}
           </div>
         </aside>
-        {filesOpen && <div className="scrim" style={{ display: 'block', zIndex: 39 }} onClick={() => setFilesOpen(false)} />}
+        {filesOpen && <div className="ov-scrim" onClick={() => setFilesOpen(false)} />}
 
         {sel ? (
           <>

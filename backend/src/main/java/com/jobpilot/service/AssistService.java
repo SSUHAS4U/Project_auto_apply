@@ -339,13 +339,31 @@ public class AssistService {
     private String fullProfileContext(Profile p) {
         StringBuilder sb = new StringBuilder();
         line(sb, "Full name", p.getFullName());
+        line(sb, "First name", p.getFirstName());
+        line(sb, "Last name", p.getLastName());
         line(sb, "Email", p.getEmail());
         line(sb, "Phone", p.getPhone());
+        line(sb, "Alternate phone", p.getAlternatePhone());
+        line(sb, "Date of birth", p.getDateOfBirth());
+        line(sb, "Gender", p.getGender());
+        line(sb, "Nationality", p.getNationality());
+        line(sb, "Marital status", p.getMaritalStatus());
+        line(sb, "Father's name", p.getFatherName());
+        line(sb, "Disability status", p.getDisabilityStatus());
         line(sb, "Location", p.getLocation());
+        line(sb, "Address / Address line 1", p.getAddress());
         line(sb, "City", p.getCity());
         line(sb, "State", p.getState());
         line(sb, "Country", p.getCountry());
-        line(sb, "Postal code", p.getPostalCode());
+        line(sb, "Postal code / PIN", p.getPostalCode());
+        line(sb, "Permanent address / Address 2", join(p.getAddress2(), p.getCity2()));
+        line(sb, "Permanent state/country/PIN", join(p.getState2(), p.getCountry2())
+                + (p.getPostalCode2() == null || p.getPostalCode2().isBlank() ? "" : " " + p.getPostalCode2()));
+        if (p.getLanguages() != null && !p.getLanguages().isEmpty())
+            line(sb, "Languages known", String.join(", ", p.getLanguages()));
+        if (p.getPreferredLocations() != null && !p.getPreferredLocations().isEmpty())
+            line(sb, "Preferred work locations", String.join(", ", p.getPreferredLocations()));
+        line(sb, "Summary", p.getSummary());
         line(sb, "College / University", p.getCollege());
         line(sb, "Headline", p.getHeadline());
         line(sb, "Current role", join(p.getCurrentTitle(), p.getCurrentCompany()));
@@ -387,7 +405,29 @@ public class AssistService {
                 sb.append("\n");
             }
         }
-        line(sb, "Summary", p.getSummary());
+        // Certifications — with credential number, dates and link where present.
+        if (p.getCertifications() != null && !p.getCertifications().isEmpty()) {
+            sb.append("Certifications:\n");
+            for (Map<String, Object> c : p.getCertifications()) {
+                if (s(c.get("name")).isBlank()) continue;
+                sb.append("  - ").append(s(c.get("name")));
+                if (!s(c.get("issuer")).isBlank()) sb.append(" | Issuer: ").append(s(c.get("issuer")));
+                if (!s(c.get("credentialId")).isBlank()) sb.append(" | Credential/Certificate no: ").append(s(c.get("credentialId")));
+                if (!s(c.get("issued")).isBlank()) sb.append(" | Issued: ").append(s(c.get("issued")));
+                else if (!s(c.get("year")).isBlank()) sb.append(" | Year: ").append(s(c.get("year")));
+                if (!s(c.get("expiry")).isBlank()) sb.append(" | Expires: ").append(s(c.get("expiry")));
+                if (!s(c.get("link")).isBlank()) sb.append(" | Link: ").append(s(c.get("link")));
+                sb.append("\n");
+            }
+        }
+        // The user's own custom answers — these are authoritative for matching labels.
+        if (p.getFieldMap() != null && !p.getFieldMap().isEmpty()) {
+            sb.append("Custom answers (user-defined, authoritative):\n");
+            p.getFieldMap().forEach((k, v) -> {
+                if (k != null && v != null && !k.isBlank() && !v.isBlank())
+                    sb.append("  - ").append(k.trim()).append(": ").append(v.trim()).append("\n");
+            });
+        }
         return sb.length() == 0 ? "(no profile details)" : sb.toString();
     }
 

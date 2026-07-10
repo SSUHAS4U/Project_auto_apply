@@ -54,7 +54,10 @@ export interface ApplicationEvent {
 
 export interface ExperienceItem { company?: string; title?: string; start?: string; end?: string; description?: string; }
 export interface EducationItem { school?: string; degree?: string; field?: string; year?: string; }
-export interface CertificationItem { name?: string; issuer?: string; year?: string; link?: string; }
+export interface CertificationItem {
+  name?: string; issuer?: string; year?: string; link?: string;
+  credentialId?: string; issued?: string; expiry?: string;
+}
 
 export interface Profile {
   id?: string;
@@ -79,6 +82,10 @@ export interface Profile {
   country2?: string;
   postalCode2?: string;
   dateOfBirth?: string;
+  alternatePhone?: string;
+  maritalStatus?: string;
+  fatherName?: string;
+  disabilityStatus?: string;
   gender?: string;
   nationality?: string;
   // professional

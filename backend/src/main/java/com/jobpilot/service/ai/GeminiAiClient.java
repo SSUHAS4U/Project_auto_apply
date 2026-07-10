@@ -43,7 +43,7 @@ public class GeminiAiClient implements AiClient {
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", system))),
                 "contents", List.of(Map.of("parts", List.of(Map.of("text", user)))),
                 "generationConfig", Map.of(
-                        "maxOutputTokens", 2000,
+                        "maxOutputTokens", 8192,
                         "temperature", 0.6,
                         "thinkingConfig", Map.of("thinkingBudget", 0)));
         // Pass the API key both as a query parameter and as the x-goog-api-key header

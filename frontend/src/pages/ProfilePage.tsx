@@ -202,6 +202,20 @@ export function ProfilePage() {
                 <input className="input" list="nationality-list" value={p.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value })} placeholder="Indian" />
                 <datalist id="nationality-list">{COUNTRY_SUGGESTIONS.map((c) => <option key={c} value={c} />)}</datalist>
               </Field>
+              <Field label="Alternate phone"><input className="input" value={p.alternatePhone ?? ''} onChange={(e) => set({ alternatePhone: e.target.value })} placeholder="optional second number" /></Field>
+              <Field label="Marital status">
+                <select className="select" value={p.maritalStatus ?? ''} onChange={(e) => set({ maritalStatus: e.target.value })}>
+                  <option value="">Select…</option>
+                  <option>Single</option><option>Married</option><option>Prefer not to say</option>
+                </select>
+              </Field>
+              <Field label="Father's name"><input className="input" value={p.fatherName ?? ''} onChange={(e) => set({ fatherName: e.target.value })} placeholder="asked on many Indian forms" /></Field>
+              <Field label="Disability status">
+                <select className="select" value={p.disabilityStatus ?? ''} onChange={(e) => set({ disabilityStatus: e.target.value })}>
+                  <option value="">Select…</option>
+                  <option>No</option><option>Yes</option><option>Prefer not to say</option>
+                </select>
+              </Field>
             </div>
           </Section>
 
@@ -332,16 +346,19 @@ export function ProfilePage() {
             ico="📜" title="Certifications"
             items={p.certifications ?? []}
             onChange={(items) => set({ certifications: items })}
-            empty={{ name: '', issuer: '', year: '', link: '' }}
+            empty={{ name: '', issuer: '', year: '', link: '', credentialId: '', issued: '', expiry: '' }}
             render={(item, upd) => (
               <>
                 <div className="grid3">
                   <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
                   <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
-                  <Field label="Year"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
+                  <Field label="Credential / certificate no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
+                  <Field label="Issued"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
+                  <Field label="Expiry (blank = never)"><input className="input" type="month" value={item.expiry ?? ''} onChange={(e) => upd({ expiry: e.target.value })} /></Field>
+                  <Field label="Year (legacy)"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
                 </div>
                 <Field label="Credential link"><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
-                <div className="faint" style={{ fontSize: 12 }}>Upload the certificate file in the <b>Resume → Document vault</b> tab.</div>
+                <div className="faint" style={{ fontSize: 12 }}>Drop the certificate file in the <b>Resume → Document vault</b> tab (drag &amp; drop supported).</div>
               </>
             )}
           />
@@ -403,11 +420,17 @@ function DocumentsVault() {
   const load = () => api.docList().then(setDocs).catch(() => setDocs([]));
   useEffect(() => { load(); }, []);
 
-  const upload = async (file?: File) => {
-    if (!file) return;
+  const [dragOver, setDragOver] = useState(false);
+
+  const upload = async (files?: FileList | File[] | null) => {
+    const list = [...(files ?? [])];
+    if (!list.length) return;
     setBusy(true);
-    try { await api.docUpload(file, file.name, type); toast('Uploaded & encrypted ✓', 'success'); load(); }
-    catch (e) { toast((e as Error).message, 'error'); }
+    try {
+      for (const file of list) await api.docUpload(file, file.name, type);
+      toast(`Uploaded & encrypted ${list.length === 1 ? '✓' : `${list.length} files ✓`}`, 'success');
+      load();
+    } catch (e) { toast((e as Error).message, 'error'); }
     finally { setBusy(false); }
   };
 
@@ -435,14 +458,28 @@ function DocumentsVault() {
 
   return (
     <Section ico="🔐" title="Document vault" sub="encrypted at rest · download asks for your password">
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <select className="select" value={type} onChange={(e) => setType(e.target.value)} style={{ maxWidth: 200 }}>
           {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <label className="btn btn-primary btn-sm">
-          {busy ? <span className="spinner" /> : '⬆'} Upload document
-          <input type="file" style={{ display: 'none' }} disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
+          {busy ? <span className="spinner" /> : '⬆'} Upload document(s)
+          <input type="file" multiple style={{ display: 'none' }} disabled={busy} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
         </label>
+      </div>
+
+      {/* Drag & drop: certificates, ID proofs, transcripts, extra resumes — any files. */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); upload(e.dataTransfer.files); }}
+        style={{
+          border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+          background: dragOver ? 'var(--accent-soft)' : 'transparent',
+          borderRadius: 12, padding: '18px 14px', textAlign: 'center',
+          fontSize: 13, color: 'var(--text-dim)', marginBottom: 12, transition: 'all .15s',
+        }}>
+        {busy ? <span className="spinner" /> : <>📥 Drag &amp; drop files here — stored as “<b>{type}</b>”</>}
       </div>
 
       {docs === null ? <div className="empty"><span className="spinner" /></div>

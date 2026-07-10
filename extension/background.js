@@ -9,7 +9,7 @@ try {
 // Override in Options only if you run the backend locally (http://localhost:8080).
 const DEFAULTS = {
   backendUrl: 'https://jobpilot-backend-owb0.onrender.com',
-  dashboardUrl: 'https://jobpilot-app.vercel.app',
+  dashboardUrl: 'https://project-auto-apply.vercel.app',
   jwt: '',
 };
 

@@ -39,7 +39,7 @@ public class GroqAiClient implements AiClient {
         Map<String, Object> body = Map.of(
                 "model", model,
                 "temperature", 0.6,
-                "max_tokens", 2000,
+                "max_tokens", 8000,
                 "messages", List.of(
                         Map.of("role", "system", "content", system),
                         Map.of("role", "user", "content", user)));
