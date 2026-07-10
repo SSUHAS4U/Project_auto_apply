@@ -74,6 +74,20 @@
     return [sect, row, col].filter((t) => t && t.length < 90).join(' — ');
   }
 
+  // The text physically before a field on the page — usually its question.
+  function beforeText(el) {
+    let txt = '';
+    let cur = el;
+    for (let d = 0; cur && d < 4 && txt.length < 150; d++, cur = cur.parentElement) {
+      let sib = cur.previousElementSibling;
+      for (let i = 0; sib && i < 3 && txt.length < 150; i++, sib = sib.previousElementSibling) {
+        const t = (sib.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t) txt = t.slice(-150) + (txt ? ' | ' + txt : '');
+      }
+    }
+    return txt.trim();
+  }
+
   // Raw context for the AI labeler: attributes + grid headers + preceding page text.
   function fieldContext(el) {
     if (!el) return '';
@@ -88,15 +102,7 @@
     }
     const tl = tableLabel(el);
     if (tl) parts.push('table=' + tl);
-    let txt = '';
-    let cur = el;
-    for (let d = 0; cur && d < 4 && txt.length < 150; d++, cur = cur.parentElement) {
-      let sib = cur.previousElementSibling;
-      for (let i = 0; sib && i < 3 && txt.length < 150; i++, sib = sib.previousElementSibling) {
-        const t = (sib.textContent || '').replace(/\s+/g, ' ').trim();
-        if (t) txt = t.slice(-150) + ' | ' + txt;
-      }
-    }
+    const txt = beforeText(el);
     if (txt) parts.push('before="' + txt.slice(0, 200) + '"');
     return parts.join('; ').slice(0, 420);
   }
@@ -770,14 +776,12 @@
     q('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="menu"], [class*="select__control" i], [data-automation-id*="select" i], [data-automation-id*="dropdown" i]')
       .forEach((el) => {
         if (['SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(el.tagName)) return; // inputs handled above
-        if (el.offsetParent === null || el.closest('[role="listbox"], [role="option"]')) return;
+        if (!shown(el) || el.closest('[role="listbox"], [role="option"]')) return;
         const already = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        // Skip widgets that clearly hold a chosen value already.
-        const label = deriveQuestion(el);
-        if (!label || label.length < 2 || seen.has(norm(label))) return;
-        if (already && norm(already) !== norm(label)
+        const label = deriveQuestion(el); // may be '' — the labeler passes name it later
+        // Skip widgets that clearly hold a chosen value already ("Select One" ≠ chosen).
+        if (already && label && norm(already) !== norm(label)
             && !/select|choose|please|—|^-$|search/i.test(already) && already.length < 60 && !already.includes(label)) return;
-        seen.add(norm(label));
         push({ el, label, kind: 'custom' });
       });
     // native radio groups
@@ -828,6 +832,20 @@
         unnamed.forEach((u) => { const v = map[String(u.id)]; if (v && v.length > 2) u.label = v; });
       } catch (_) { /* fields stay unnamed and are dropped below */ }
     }
+    // Never drop a field just because naming failed: fall back to the text right
+    // before it on the page (usually the question itself). And bare generic labels
+    // ("Month", "Day", "Year") get their question prefixed for clarity.
+    units.forEach((u) => {
+      const el = u.el || (u.els && u.els[0]);
+      if (!el) return;
+      if (!u.label || u.label.length < 3) {
+        const before = beforeText(el).split('|').pop().trim();
+        if (before.length > 2) u.label = before.slice(0, 140);
+      } else if (u.label.length <= 6 || /^(month|day|year|date|city|state|from|to)$/i.test(u.label)) {
+        const q0 = beforeText(el).split('|').pop().trim();
+        if (q0.length > 6 && !q0.includes(u.label)) u.label = q0.slice(0, 120) + ' — ' + u.label;
+      }
+    });
     units = units.filter((u) => u.label && u.label.length > 2);
     units.forEach((u, i) => { u.id = i; }); // re-key: registry index must equal plan id
     if (!units.length) return { plan: [] };

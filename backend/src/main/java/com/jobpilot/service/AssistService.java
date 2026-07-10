@@ -263,16 +263,20 @@ public class AssistService {
         String system = """
                 You label job-application form fields. Each item is one form control with raw
                 context: its HTML attributes, its table column/row headers ("table=SECTION — row
-                — column"), and the page text physically before it. Return STRICT JSON mapping
-                each key to the QUESTION/LABEL a human filling that control would read — e.g.
-                "10th — School Name", "Year of Passing (10th)", "Expected CTC". Keep each label
-                under 12 words; include the section/row qualifier when the same column repeats
-                (10th/12th/Graduation). If truly unknowable, map the key to "".
-                Output ONLY the JSON object.""";
+                — column"), and the page text physically before it ("before=..."). Return STRICT
+                JSON mapping each key (the exact string after "key=") to the QUESTION/LABEL a
+                human filling that control would read — e.g. {"0":"10th — School Name",
+                "1":"Notice period"}. Keep each label under 12 words; include the section/row
+                qualifier when the same column repeats (10th/12th/Graduation). If truly
+                unknowable, map the key to "". Output ONLY the JSON object, nothing else.""";
         try {
-            String raw = ai.complete(system, "FIELDS:\n" + list + "\nJSON:", true, false);
+            // Strong model: labeling accuracy is what the whole fill pipeline hangs on,
+            // and small models too often break the strict-JSON contract here.
+            String raw = ai.complete(system, "FIELDS:\n" + list + "\nJSON:", false, false);
             com.fasterxml.jackson.databind.JsonNode json =
                     new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            // Some models wrap the mapping: {"labels": {...}} — unwrap it.
+            if (json.has("labels") && json.get("labels").isObject()) json = json.get("labels");
             Map<String, String> out = new LinkedHashMap<>();
             for (Map<String, String> f : fields) {
                 String k = f.get("key");
@@ -280,8 +284,15 @@ public class AssistService {
                 String v = json.path(k).asText("");
                 if (v != null && !v.isBlank() && !"null".equalsIgnoreCase(v)) out.put(k, v.trim());
             }
+            if (out.isEmpty()) {
+                org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                        .warn("assist/labels produced no usable labels; raw AI output: {}",
+                                raw == null ? "null" : raw.substring(0, Math.min(300, raw.length())));
+            }
             return out;
         } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                    .warn("assist/labels failed: {}", e.getMessage());
             return Map.of();
         }
     }
