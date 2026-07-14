@@ -16,6 +16,24 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
     long countByFetchedAtAfter(Instant after);
 
     /**
+     * Pilot scrape stage: fresh postings not yet in the pipeline backlog and not
+     * already applied to — the seen_jobs.json + tracker dedup of the framework.
+     */
+    @Query(value = """
+            select j.* from job j
+            where j.fetched_at > :since
+              and not exists (select 1 from application a
+                              where a.job_id = j.id and a.user_id = :userId)
+              and not exists (select 1 from pilot_job p
+                              where p.job_id = j.id and p.user_id = :userId)
+            order by j.match_score desc nulls last, j.fetched_at desc
+            limit :lim
+            """, nativeQuery = true)
+    java.util.List<Job> findPilotCandidates(@Param("userId") UUID userId,
+                                            @Param("since") Instant since,
+                                            @Param("lim") int lim);
+
+    /**
      * Delete stale jobs older than the cutoff — either not seen on any board since the
      * cutoff (fetched_at) OR POSTED before the cutoff (kills week-old postings even if a
      * board still lists them) — but never ones the user has acted on.

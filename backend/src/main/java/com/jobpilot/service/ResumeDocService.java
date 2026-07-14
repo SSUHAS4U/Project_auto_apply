@@ -140,7 +140,7 @@ public class ResumeDocService {
         return pdf;
     }
 
-    byte[] compileLatex(String latex) {
+    public byte[] compileLatex(String latex) {
         if (latex == null || latex.isBlank()) throw new IllegalArgumentException("empty LaTeX source");
         String engine = engineFor(latex);
         // Two independent free services: texlive.net first, latex.ytotech.com as the

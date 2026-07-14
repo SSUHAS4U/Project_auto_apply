@@ -146,6 +146,88 @@ export interface AssistantJob {
   url: string;
 }
 
+// ---- Pilot (Auto Apply v2): the observed pipeline ----
+
+export type PilotStage =
+  | 'scraped' | 'evaluated' | 'drafted' | 'reviewed' | 'revised'
+  | 'compiled' | 'verified' | 'submitted' | 'queued' | 'skipped' | 'failed';
+
+export interface PilotConfig {
+  maxPerCycle: number;
+  minFitScore: number;
+  emailDailyCap: number;
+  lookbackDays: number;
+  reviewerEnabled: boolean;
+  tailorCv: boolean;
+  ingestFirst: boolean;
+}
+
+export interface PilotCycle {
+  id: string;
+  trigger: 'scheduled' | 'manual';
+  status: 'running' | 'completed' | 'failed';
+  startedAt: string;
+  finishedAt?: string;
+  scanned: number;
+  picked: number;
+  evaluated: number;
+  submitted: number;
+  queued: number;
+  skipped: number;
+  failed: number;
+  summary?: string;
+  error?: string;
+}
+
+export interface PilotJobSummary {
+  id: string;
+  cycleId?: string;
+  jobId?: string;
+  applicationId?: string;
+  jobTitle?: string;
+  jobCompany?: string;
+  jobLocation?: string;
+  jobUrl?: string;
+  jobApplyType?: string;
+  matchScore?: number;
+  stage: PilotStage;
+  skipReason?: string;
+  error?: string;
+  fitScore?: number;
+  verdict?: 'strong' | 'good' | 'moderate' | 'weak' | 'poor';
+  tailoringSummary?: string;
+  queueStatus?: 'pending' | 'opened' | 'applied' | 'dismissed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PilotJobDetail extends PilotJobSummary {
+  stageLog?: string;        // JSON [{stage, at, note}]
+  evaluation?: string;      // JSON: 6-dimension framework result
+  cvLatex?: string;
+  coverLetter?: string;
+  reviewerFeedback?: string;
+  revisionNotes?: string;
+  atsReport?: string;       // JSON: contact/garbage + keyword coverage
+  hasCvPdf: boolean;
+  hasCoverPdf: boolean;
+}
+
+export interface PilotStatus {
+  enabled: boolean;
+  running: boolean;
+  progress?: string;
+  lastOutcome?: string;
+  config: PilotConfig;
+  aiEnabled: boolean;
+  stageCounts: Record<string, number>;
+  submittedToday: number;
+  queuedToday: number;
+  queuePending: number;
+  nextRunAt?: string | null;
+  lastCycle?: PilotCycle;
+}
+
 export interface Page<T> {
   items: T[];
   page: number;

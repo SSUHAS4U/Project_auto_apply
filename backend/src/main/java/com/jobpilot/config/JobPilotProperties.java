@@ -47,6 +47,9 @@ public class JobPilotProperties {
         private String discoveryCron = "0 30 6 * * *";
         /** Automated job scout (5x/day default); "-" disables. */
         private String scoutCron = "0 0 8,11,14,17,20 * * *";
+        /** Daily Auto Apply run (after the 07:00 ingest); "-" disables the schedule.
+         *  The run itself is also gated on the dashboard's pause toggle. */
+        private String autoApplyCron = "0 30 9 * * *";
     }
     private CoverLetter coverletter = new CoverLetter();
     private Ai ai = new Ai();

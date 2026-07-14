@@ -17,12 +17,38 @@ public class ExtensionController {
     private final SavedJobService savedJobs;
     private final ProfileService profile;
     private final com.jobpilot.service.ResumeDocService resumeDocs;
+    private final com.jobpilot.pilot.PilotOrchestrator pilot;
 
     public ExtensionController(SavedJobService savedJobs, ProfileService profile,
-                               com.jobpilot.service.ResumeDocService resumeDocs) {
+                               com.jobpilot.service.ResumeDocService resumeDocs,
+                               com.jobpilot.pilot.PilotOrchestrator pilot) {
         this.savedJobs = savedJobs;
         this.profile = profile;
         this.resumeDocs = resumeDocs;
+        this.pilot = pilot;
+    }
+
+    /** Pilot queue for the extension: portal jobs with tailored documents ready to fill. */
+    @GetMapping("/auto-apply/queue")
+    public java.util.List<Map<String, Object>> autoApplyQueue(@RequestParam(defaultValue = "50") int limit) {
+        return pilot.queue(limit).stream().<Map<String, Object>>map(i -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", i.getId().toString());
+            m.put("title", i.getJobTitle());
+            m.put("company", i.getJobCompany());
+            m.put("url", i.getJobUrl());
+            m.put("matchScore", i.getFitScore() != null ? i.getFitScore() : i.getMatchScore());
+            m.put("reason", i.getVerdict() == null ? i.getSkipReason()
+                    : i.getVerdict() + " fit " + i.getFitScore() + "/100 — tailored CV + letter ready");
+            return m;
+        }).toList();
+    }
+
+    /** Extension reports what happened to a queue item: opened | applied | dismissed. */
+    @PostMapping("/auto-apply/queue/{id}/status")
+    public Map<String, Object> autoApplyQueueStatus(@PathVariable java.util.UUID id,
+                                                    @RequestBody Map<String, String> body) {
+        return pilot.updateQueue(id, body.getOrDefault("status", ""));
     }
 
     /** Extension pushes a captured listing from LinkedIn/Naukri/Indeed/etc. */

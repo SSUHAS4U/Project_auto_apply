@@ -1,5 +1,6 @@
 import type {
-  Application, ApplicationEvent, AssistantJob, Job, Notification, Page, Profile, SavedJob,
+  Application, ApplicationEvent, AssistantJob, Job, Notification, Page,
+  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, Profile, SavedJob,
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
@@ -199,6 +200,29 @@ export const api = {
   qaUpdate: (id: string, body: { question: string; answer: string }) =>
     req<QaPair>(`/api/assist/qa/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
+
+  // Pilot (Auto Apply): the observed evaluate→draft→review→verify→apply pipeline.
+  pilotStatus: () => req<PilotStatus>('/api/pilot/status'),
+  pilotToggle: (enabled: boolean) =>
+    req<{ enabled: boolean }>('/api/pilot/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  pilotConfig: (config: PilotConfig) =>
+    req<PilotConfig>('/api/pilot/config', { method: 'PUT', body: JSON.stringify(config) }),
+  pilotRun: () => req<{ status: string; message?: string }>('/api/pilot/run', { method: 'POST' }),
+  pilotCycles: (limit = 20) => req<PilotCycle[]>(`/api/pilot/cycles?limit=${limit}`),
+  pilotCycleJobs: (cycleId: string) => req<PilotJobSummary[]>(`/api/pilot/cycles/${cycleId}/jobs`),
+  pilotJobs: (stage?: string, limit = 100) =>
+    req<PilotJobSummary[]>(`/api/pilot/jobs?limit=${limit}${stage ? `&stage=${stage}` : ''}`),
+  pilotJob: (id: string) => req<PilotJobDetail>(`/api/pilot/jobs/${id}`),
+  pilotQueue: (limit = 100) => req<PilotJobSummary[]>(`/api/pilot/queue?limit=${limit}`),
+  pilotQueueStatus: (id: string, status: 'opened' | 'applied' | 'dismissed' | 'pending') =>
+    req<{ id: string; queueStatus: string }>(`/api/pilot/queue/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  pilotPdf: async (id: string, kind: 'cv' | 'cover'): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/pilot/jobs/${id}/${kind}.pdf`, {
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.blob();
+  },
 
   // Job Scout — automated resume-keyword search across LinkedIn/Naukri/Indeed/Google.
   scoutJobs: (limit = 200) => req<ScoutedJob[]>(`/api/scout/jobs?limit=${limit}`),

@@ -317,6 +317,37 @@ $('cover').onclick = async () => {
   add('ai', r.attached ? 'Cover letter attached ✓ — review & submit.' : (r.note || 'Downloaded the cover-letter PDF.'));
 };
 $('save').onclick = async () => { const r = await tabSend('SAVE_CURRENT'); add('ai', r.ok ? 'Saved to your tracker ✓' : '⚠ ' + r.error); };
+
+// --- Auto Apply queue -------------------------------------------------------
+// The daily Auto Apply engine queues ATS/portal jobs it can't legally submit
+// server-side. Walk the queue here: open a job, hit Quick fill, submit, then
+// mark it ✓ so it lands in Applications.
+$('queue').onclick = async () => {
+  add('me', 'Show my Auto Apply queue');
+  const r = await bg('AUTO_APPLY_QUEUE', {});
+  if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'background unavailable'));
+  const items = r.data || [];
+  if (!items.length) return void add('ai', 'Queue is empty ✓ — the next daily run will refill it.');
+  add('ai', `⚡ ${items.length} job${items.length === 1 ? '' : 's'} queued. Open one, use Quick fill, submit, then mark it ✓.`);
+  items.slice(0, 10).forEach((it) => {
+    const title = `${it.title || 'Job'}${it.company ? ' @ ' + it.company : ''}${it.matchScore != null ? ` (match ${it.matchScore})` : ''}`;
+    add('ai', title, [
+      ['↗ Open & fill', async () => {
+        await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'opened' });
+        chrome.tabs.create({ url: it.url });
+      }],
+      ['✓ Applied', async () => {
+        const res = await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'applied' });
+        add('ai', res && res.ok ? 'Marked applied — added to Applications ✓' : '⚠ ' + (res ? res.error : 'failed'));
+      }],
+      ['✕ Dismiss', async () => {
+        await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'dismissed' });
+        add('ai', 'Dismissed.');
+      }],
+    ]);
+  });
+  if (items.length > 10) add('ai', `…and ${items.length - 10} more — manage the full queue in Dashboard → Auto Apply.`);
+};
 $('opts').onclick = (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); };
 
 // --- copilot chat ---------------------------------------------------------

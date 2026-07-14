@@ -68,6 +68,8 @@ jobpilot:
     discovery-cron: ${JOBPILOT_DISCOVERY_CRON:0 30 6 * * *}
     # Automated job scout (LinkedIn/Naukri/Indeed via free keyless APIs) — hourly, on the hour.
     scout-cron: ${JOBPILOT_SCOUT_CRON:0 0 * * * *}
+    # Daily Auto Apply run (also gated on the dashboard pause toggle); "-" disables.
+    auto-apply-cron: ${JOBPILOT_AUTO_APPLY_CRON:0 30 9 * * *}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:

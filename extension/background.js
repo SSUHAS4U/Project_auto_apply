@@ -185,6 +185,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case 'AUTO_APPLY_QUEUE': {
+          const data = await apiFetch('/api/extension/auto-apply/queue?limit=50');
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case 'AUTO_APPLY_QUEUE_STATUS': {
+          const data = await apiFetch(`/api/extension/auto-apply/queue/${msg.itemId}/status`, {
+            method: 'POST', body: JSON.stringify({ status: msg.status }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'GEN_COVER_LETTER': {
           const data = await apiFetch('/api/assist/cover-letter', {
             method: 'POST',

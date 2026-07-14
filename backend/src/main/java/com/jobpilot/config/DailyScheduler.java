@@ -24,13 +24,28 @@ public class DailyScheduler {
     private final BackgroundRunner runner;
     private final AtsDiscoveryService discovery;
     private final com.jobpilot.service.JobScoutService scout;
+    private final com.jobpilot.pilot.PilotOrchestrator pilot;
 
     public DailyScheduler(DailyService daily, BackgroundRunner runner,
-                          AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout) {
+                          AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout,
+                          com.jobpilot.pilot.PilotOrchestrator pilot) {
         this.daily = daily;
         this.runner = runner;
         this.discovery = discovery;
         this.scout = scout;
+        this.pilot = pilot;
+    }
+
+    /** Daily Pilot cycle — evaluate → draft → review → compile → verify → apply.
+     *  The orchestrator no-ops when the dashboard pause toggle is off. */
+    @Scheduled(cron = "${jobpilot.schedule.auto-apply-cron:0 30 9 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    public void runPilot() {
+        log.info("Scheduled pilot cycle starting…");
+        try {
+            pilot.run("scheduled");
+        } catch (Exception e) {
+            log.warn("Scheduled pilot cycle failed: {}", e.getMessage());
+        }
     }
 
     /** Automated job scout — 5x/day by default; fills the dashboard's Scout section. */
