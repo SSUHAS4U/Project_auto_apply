@@ -1,0 +1,4 @@
+node_modules/
+.profile/
+worker.config.json
+*.log

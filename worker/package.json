@@ -1,0 +1,15 @@
+{
+  "name": "jobpilot-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Playwright worker — drives Naukri/LinkedIn/Indeed on your PC while the JobPilot backend stays the brain and the dashboard watches live.",
+  "scripts": {
+    "start": "node src/index.js",
+    "postinstall": "playwright install chromium"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}

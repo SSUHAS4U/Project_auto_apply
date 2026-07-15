@@ -7,6 +7,7 @@ import { isLoggedIn, isAdminUI } from './api/client';
 import { Layout } from './components/Layout';
 import { JobsPage } from './pages/JobsPage';
 import { EnginePage } from './pages/EnginePage';
+import { AgentPage } from './pages/AgentPage';
 import { AutoApplyPage } from './pages/AutoApplyPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { SavedJobsPage } from './pages/SavedJobsPage';
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <JobsPage /> },
       { path: 'auto-apply', element: <EnginePage /> },
+      { path: 'agent', element: <AgentPage /> },
       { path: 'pilot', element: <AutoApplyPage /> },
       { path: 'daily', element: <DailyPicksPage /> },
       { path: 'scout', element: <ScoutPage /> },

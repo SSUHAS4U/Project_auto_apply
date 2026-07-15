@@ -146,6 +146,105 @@ export interface AssistantJob {
   url: string;
 }
 
+// ---- Agent: the local Playwright worker (HireDue portal automation) ----
+
+export interface AgentMetrics {
+  postsAnalysed: number;
+  jobsIdentified: number;
+  relevantJobs: number;
+  applied: number;
+  easyApply: number;
+  connectionsSent: number;
+  messagesSent: number;
+  emailsSent: number;
+  repliesReceived: number;
+  errors: number;
+}
+
+export interface AgentRun {
+  id: string;
+  portal: string;
+  status: 'queued' | 'running' | 'paused' | 'needs_attention' | 'done' | 'failed';
+  currentAction?: string;
+  startedAt?: string;
+  endedAt?: string;
+  searched: number;
+  evaluated: number;
+  applied: number;
+  connected: number;
+  messaged: number;
+  failed: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface AgentStatus {
+  paused: boolean;
+  workerConfigured: boolean;
+  activeRun: AgentRun | null;
+  metricsToday: AgentMetrics;
+  pendingApprovals: number;
+  liveAction?: string | null;
+  liveUpdatedAt?: string | null;
+}
+
+export interface AgentEvent {
+  id: string;
+  type: string;
+  portal?: string;
+  title?: string;
+  company?: string;
+  url?: string;
+  detail?: string;
+  createdAt: string;
+}
+
+export interface AgentFrame {
+  hasFrame: boolean;
+  portal?: string;
+  action?: string;
+  imageB64?: string;
+  updatedAt?: string;
+}
+
+export interface AgentSchedule {
+  id?: string;
+  portal: string;
+  ord?: number;
+  startTime?: string;
+  durationMins: number;
+  keywords?: string;
+  locations?: string;
+  applyCap: number;
+  connectCap: number;
+  messageCap: number;
+  enabled: boolean;
+}
+
+export interface PortalContact {
+  id: string;
+  portal: string;
+  name?: string;
+  profileUrl?: string;
+  company?: string;
+  role?: string;
+  connectionStatus: 'none' | 'pending' | 'connected' | 'replied';
+  lastMessageAt?: string;
+  updatedAt: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  contactId?: string;
+  portal?: string;
+  direction: 'in' | 'out';
+  body?: string;
+  status: 'draft' | 'pending_approval' | 'approved' | 'sent' | 'received' | 'rejected';
+  aiDrafted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- Engine: clean-room ai-job-search replica (setup→scrape→rank→apply→outcome→interview→upskill) ----
 
 export interface EngineProfile {

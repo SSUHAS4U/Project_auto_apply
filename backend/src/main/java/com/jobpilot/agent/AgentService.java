@@ -35,10 +35,15 @@ public class AgentService {
     private final SettingsService settings;
     private final ProfileService profiles;
     private final KeywordMatchScorer scorer;
+    private final PortalContactRepository contacts;
+    private final AgentMessageRepository messages;
+    private final com.jobpilot.service.ai.AiService ai;
 
     public AgentService(AgentRunRepository runs, AgentEventRepository events,
                         AgentScheduleRepository schedules, LiveFrameService frames,
-                        SettingsService settings, ProfileService profiles, KeywordMatchScorer scorer) {
+                        SettingsService settings, ProfileService profiles, KeywordMatchScorer scorer,
+                        PortalContactRepository contacts, AgentMessageRepository messages,
+                        com.jobpilot.service.ai.AiService ai) {
         this.runs = runs;
         this.events = events;
         this.schedules = schedules;
@@ -46,6 +51,9 @@ public class AgentService {
         this.settings = settings;
         this.profiles = profiles;
         this.scorer = scorer;
+        this.contacts = contacts;
+        this.messages = messages;
+        this.ai = ai;
     }
 
     // ---- pause switch -------------------------------------------------------
@@ -142,6 +150,11 @@ public class AgentService {
 
     public List<AgentEvent> recentEvents(UUID userId, int limit) {
         return events.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, limit));
+    }
+
+    /** [type, count] since a cutoff — powers the dashboard metric tiles in one query. */
+    public List<Object[]> eventCountsSince(UUID userId, Instant since) {
+        return events.countByTypeSince(userId, since);
     }
 
     // ---- live frames --------------------------------------------------------
@@ -252,4 +265,120 @@ public class AgentService {
         plan.put("messageCap", block != null ? block.getMessageCap() : 50);
         return plan;
     }
+
+    // ---- Network CRM: contacts + draft-first messaging ----------------------
+
+    public List<PortalContact> contacts(UUID userId, int limit) {
+        return contacts.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, limit));
+    }
+
+    @Transactional
+    public PortalContact upsertContact(UUID userId, String portal, String name, String profileUrl,
+                                       String company, String role, String sourceJobUrl) {
+        PortalContact c = contacts.findByUserIdAndPortalAndProfileUrl(userId, portal, profileUrl)
+                .orElseGet(PortalContact::new);
+        c.setUserId(userId);
+        c.setPortal(portal);
+        if (name != null) c.setName(name);
+        c.setProfileUrl(profileUrl);
+        if (company != null) c.setCompany(company);
+        if (role != null) c.setRole(role);
+        if (sourceJobUrl != null) c.setSourceJobUrl(sourceJobUrl);
+        c.setUpdatedAt(Instant.now());
+        return contacts.save(c);
+    }
+
+    public List<AgentMessage> messages(UUID userId, String status, int limit) {
+        return status == null
+                ? messages.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, limit))
+                : messages.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status, PageRequest.of(0, limit));
+    }
+
+    public long pendingApprovals(UUID userId) {
+        return messages.countByUserIdAndStatus(userId, "pending_approval");
+    }
+
+    public List<AgentMessage> approvedOutgoing(UUID userId) {
+        return messages.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, "approved", PageRequest.of(0, 50));
+    }
+
+    /**
+     * Draft-first: AI drafts a message (a connection note, or a reply to an incoming
+     * recruiter message) grounded in the profile, saved as pending_approval. It is NOT
+     * sent until the owner approves it in the dashboard.
+     */
+    @Transactional
+    public AgentMessage draftMessage(UUID userId, UUID contactId, String incoming, String kind) {
+        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
+        if (incoming != null && !incoming.isBlank()) {
+            // log the recruiter's inbound message and mark the contact as replied
+            AgentMessage in = new AgentMessage();
+            in.setUserId(userId);
+            in.setContactId(contactId);
+            in.setPortal(c == null ? null : c.getPortal());
+            in.setDirection("in");
+            in.setBody(incoming);
+            in.setStatus("received");
+            messages.save(in);
+            if (c != null) { c.setConnectionStatus("replied"); c.setLastMessageAt(Instant.now()); contacts.save(c); }
+        }
+
+        Profile p = profiles.get();
+        String draft;
+        if (ai.isEnabled()) {
+            String sys = """
+                    You draft short, warm, professional messages a job seeker sends to a
+                    recruiter/hiring contact. 40-70 words, first person, specific, no clichés,
+                    no fabricated facts. If replying, address their message directly. Never
+                    negotiate salary or commit to interview times — defer those politely to
+                    the person. Output only the message text.""";
+            String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
+                    + "\nSKILLS: " + (p.getSkills() == null ? "" : String.join(", ", p.getSkills()))
+                    + "\nCONTACT: " + (c == null ? "recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
+                    + "\nKIND: " + nz(kind)
+                    + (incoming != null && !incoming.isBlank() ? "\nTHEIR MESSAGE: " + incoming
+                       : "\nGOAL: a brief connection/intro note about fit for their roles.");
+            draft = nz(ai.complete(sys, user, false, false)).trim();
+        } else {
+            draft = "Hi" + (c != null && c.getName() != null ? " " + c.getName().split(" ")[0] : "")
+                    + ", I'm " + nz(p.getFullName()) + ", a " + nz(p.getCurrentTitle())
+                    + ". I'd love to connect regarding relevant openings on your team.";
+        }
+
+        AgentMessage m = new AgentMessage();
+        m.setUserId(userId);
+        m.setContactId(contactId);
+        m.setPortal(c == null ? null : c.getPortal());
+        m.setDirection("out");
+        m.setBody(draft);
+        m.setStatus("pending_approval");
+        m.setAiDrafted(ai.isEnabled());
+        return messages.save(m);
+    }
+
+    @Transactional
+    public AgentMessage setMessageStatus(UUID userId, UUID messageId, String status, String editedBody) {
+        AgentMessage m = messages.findById(messageId).orElseThrow();
+        if (!m.getUserId().equals(userId)) throw new IllegalStateException("not your message");
+        if (editedBody != null && !editedBody.isBlank()) m.setBody(editedBody);
+        m.setStatus(status);
+        m.setUpdatedAt(Instant.now());
+        return messages.save(m);
+    }
+
+    @Transactional
+    public void markMessageSent(UUID userId, UUID messageId) {
+        AgentMessage m = messages.findById(messageId).orElseThrow();
+        if (!m.getUserId().equals(userId)) throw new IllegalStateException("not your message");
+        m.setStatus("sent");
+        m.setUpdatedAt(Instant.now());
+        messages.save(m);
+        if (m.getContactId() != null) contacts.findById(m.getContactId()).ifPresent(c -> {
+            c.setLastMessageAt(Instant.now());
+            if ("none".equals(c.getConnectionStatus())) c.setConnectionStatus("pending");
+            contacts.save(c);
+        });
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
 }

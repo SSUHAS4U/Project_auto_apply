@@ -1,9 +1,10 @@
 import type {
+  AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentSchedule, AgentStatus,
   Application, ApplicationEvent, AssistantJob,
   EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
   EngineProfile, EngineStatus, EngineUpskill,
   Job, Notification, Page,
-  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, Profile, SavedJob,
+  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalContact, Profile, SavedJob,
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
@@ -226,6 +227,28 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status}`);
     return res.blob();
   },
+
+  // Agent — the local Playwright worker (HireDue portal automation) + Watch Live.
+  agentStatus: () => req<AgentStatus>('/api/agent/status'),
+  agentStartRun: (portal: string) =>
+    req<AgentRun>('/api/agent/run', { method: 'POST', body: JSON.stringify({ portal }) }),
+  agentStopRun: (id: string) => req<AgentRun>(`/api/agent/run/${id}/stop`, { method: 'POST' }),
+  agentPause: (paused: boolean) =>
+    req<{ paused: boolean }>('/api/agent/pause', { method: 'POST', body: JSON.stringify({ paused }) }),
+  agentRuns: (limit = 20) => req<AgentRun[]>(`/api/agent/runs?limit=${limit}`),
+  agentFrame: () => req<AgentFrame>('/api/agent/frame'),
+  agentEvents: (limit = 60) => req<AgentEvent[]>(`/api/agent/events?limit=${limit}`),
+  agentSchedule: () => req<AgentSchedule[]>('/api/agent/schedule'),
+  agentSaveSchedule: (blocks: AgentSchedule[]) =>
+    req<AgentSchedule[]>('/api/agent/schedule', { method: 'PUT', body: JSON.stringify(blocks) }),
+  agentContacts: (limit = 100) => req<PortalContact[]>(`/api/agent/contacts?limit=${limit}`),
+  agentMessages: (status?: string, limit = 100) =>
+    req<AgentMessage[]>(`/api/agent/messages?limit=${limit}${status ? `&status=${status}` : ''}`),
+  agentApproveMessage: (id: string, body?: string) =>
+    req<AgentMessage>(`/api/agent/messages/${id}/approve`, { method: 'POST', body: JSON.stringify({ body: body ?? '' }) }),
+  agentRejectMessage: (id: string) =>
+    req<AgentMessage>(`/api/agent/messages/${id}/reject`, { method: 'POST' }),
+  agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
 
   // Engine — clean-room ai-job-search replica: setup → scrape → rank → apply → outcome → interview → upskill.
   engineStatus: () => req<EngineStatus>('/api/engine/status'),
