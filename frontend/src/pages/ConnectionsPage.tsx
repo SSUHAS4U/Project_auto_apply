@@ -71,9 +71,15 @@ export function ConnectionsPage() {
       </div>
 
       {!workerOn && (
-        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#d97706', fontSize: 13 }}>
-          ⚠ Your local worker isn't connected yet — connections run through it. Set it up first in{' '}
-          <a onClick={() => nav('/agent')} style={{ cursor: 'pointer', color: 'var(--accent)' }}>Agent → Connect</a>.
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#d97706' }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>① Set up JobPilot Desktop (once)</div>
+          <p className="faint" style={{ fontSize: 13, margin: '6px 0 10px' }}>
+            Just like VS Code is an app on your computer, JobPilot needs a small desktop app to open a real
+            browser and apply for you. Set it up once — then Connect works with a single click, forever.
+          </p>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => nav('/agent')}>Set up JobPilot Desktop →</button>
+          </div>
         </div>
       )}
 
@@ -130,13 +136,13 @@ export function ConnectionsPage() {
       </div>
 
       <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
-        <b>How it works</b>
-        <ol className="faint" style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
-          <li>Make sure your local worker is running (Agent → Connect).</li>
-          <li>Hit <b>Connect</b> — the worker opens that portal's login page in its browser.</li>
-          <li>Sign in there once. The session is saved on your PC; it flips to <b>Active</b> within seconds.</li>
-          <li>Now the agent can search &amp; apply on that portal. Your credentials never touch this server.</li>
-        </ol>
+        <b>What happens when you click Connect</b>
+        <p className="faint" style={{ margin: '6px 0 0', lineHeight: 1.7 }}>
+          A browser opens on that portal's login page. You sign in once — the login is saved on your computer
+          (never on our servers), and the card turns <b style={{ color: '#16a34a' }}>Active</b> within seconds.
+          From then on the agent can search and apply there for you. It's the same idea as signing into GitHub
+          from VS Code: the app on your machine handles the sign-in; we only ever see “connected: yes”.
+        </p>
       </div>
     </>
   );

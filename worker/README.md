@@ -9,41 +9,24 @@ and the dashboard shows a **live screen feed** of what the worker is doing.
 No portal passwords are ever sent to the backend. You log in yourself, in the browser
 this opens, once — the session is remembered in `worker/.profile/`.
 
-## Setup
+## Setup — one double-click
 
-Requires **Node 18+**.
+Requires **Node 18+** (get it once from https://nodejs.org — the "LTS" button).
 
-```bash
-cd worker
-npm install          # also downloads a private Chromium (~150 MB)
-```
+- **Windows:** double-click **`start-jobpilot.bat`**
+- **Mac / Linux:** run **`./start-jobpilot.sh`**
 
-Connect it to your account:
+The first run installs everything (incl. a private Chromium ~150 MB) and then asks for a
+**connect code**. Get it from the dashboard: **Agent → Connect → Generate connect code**,
+paste it in, and you're done — it's remembered, so next time it just opens.
 
-1. In the dashboard open **Auto Apply → Agent → Connect worker** and click **Generate
-   token**. Copy the token (shown once).
-2. Create `worker/worker.config.json`:
+A browser window opens. Sign into the portals you want (Naukri / LinkedIn / Indeed) — once;
+the logins are saved on your PC. Then use the **Connect** buttons on the dashboard's
+Connections page, or hit **▶ Start** for a portal on the Agent page. Watch it live in the
+**Watch Live** panel; **Pause** stops it promptly.
 
-```json
-{
-  "backendUrl": "https://your-backend.onrender.com",
-  "token": "PASTE_THE_TOKEN_HERE"
-}
-```
-
-(or set `JOBPILOT_BACKEND_URL` and `JOBPILOT_WORKER_TOKEN` as environment variables.)
-
-## Run
-
-```bash
-npm start
-```
-
-A browser window opens on `naukri.com`. **Log in** (first time only). Then in the
-dashboard hit **Start Naukri** — the worker picks up the run, searches your keywords
-across your locations, opens matches, checks fit, and applies via Naukri's native
-Apply (answering the screening chatbot from your profile). Watch it live in the
-dashboard's **Watch Live** panel. Hit **Pause** any time to stop it promptly.
+Advanced: instead of the connect code you can set `JOBPILOT_BACKEND_URL` +
+`JOBPILOT_WORKER_TOKEN` env vars, or create `worker.config.json` yourself.
 
 ## Safety & scope
 

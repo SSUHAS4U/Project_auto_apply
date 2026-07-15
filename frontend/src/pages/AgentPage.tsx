@@ -45,7 +45,7 @@ export function AgentPage() {
 
   const start = async (portal: string) => {
     setBusy(true);
-    try { await api.agentStartRun(portal); toast(`${portal} run queued — the worker will pick it up.`, 'success'); loadStatus(); }
+    try { await api.agentStartRun(portal); toast(`${portal} run queued — JobPilot Desktop will pick it up.`, 'success'); loadStatus(); }
     catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
   };
   const pause = async () => {
@@ -81,17 +81,17 @@ export function AgentPage() {
             {status && (live
               ? <Chip text={`● ${run?.portal} ${run?.status}`} color="#34d399" />
               : status.paused ? <Chip text="paused" color="#fbbf24" /> : <Chip text="idle" color="#7d8595" />)}
-            {status && !status.workerConfigured && <> <Chip text="worker not connected" color="#f87171" /></>}
+            {status && !status.workerConfigured && <> <Chip text="desktop not connected" color="#f87171" /></>}
           </h1>
           <div className="page-sub">
-            Your local worker runs a real browser on your PC and applies with your own logged-in
+            JobPilot Desktop runs a real browser on your PC and applies with your own logged-in
             sessions — you watch it live here. The backend schedules, scores, answers, and records everything.
           </div>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           {PORTALS.map((p) => (
             <button key={p} className="btn btn-sm" onClick={() => start(p)} disabled={busy || !status?.workerConfigured}
-              title={status?.workerConfigured ? `Queue a ${p} run` : 'Connect the worker first'}>
+              title={status?.workerConfigured ? `Queue a ${p} run` : 'Set up JobPilot Desktop first'}>
               ▶ {p}
             </button>
           ))}
@@ -105,7 +105,7 @@ export function AgentPage() {
 
       {status && !status.workerConfigured && (
         <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13 }}>
-          ⚠ No worker connected yet. Open the <b>Connect</b> tab to generate a token and start the local worker.
+          ⚠ JobPilot Desktop isn't connected yet. Open the <b>Connect</b> tab to set it up (one time).
         </div>
       )}
 
@@ -177,7 +177,7 @@ function LiveTab({ run, live }: { run: AgentRun | null; live: boolean }) {
           ) : (
             <div className="faint" style={{ padding: 40, textAlign: 'center' }}>
               <div style={{ fontSize: 40 }}>📺</div>
-              Waiting for the worker's screen feed.<br />Start the local worker and queue a run.
+              Waiting for JobPilot Desktop's screen feed.<br />Start it and queue a run.
             </div>
           )}
         </div>
@@ -342,42 +342,45 @@ function ScheduleTab() {
   );
 }
 
-// ---- Connect (worker onboarding) --------------------------------------------
+// ---- Connect (JobPilot Desktop onboarding) ----------------------------------
 
 function ConnectTab({ configured, onChange }: { configured: boolean; onChange: () => void }) {
   const toast = useToast();
-  const [token, setToken] = useState('');
+  const [code, setCode] = useState('');
   const issue = async () => {
-    try { const r = await api.agentIssueToken(); setToken(r.token); toast('Token generated — copy it now, it is shown once.', 'success'); onChange(); }
+    try { const r = await api.agentIssueToken(); setCode(r.token); toast('Connect code generated — paste it into JobPilot Desktop.', 'success'); onChange(); }
     catch (e) { toast((e as Error).message, 'error'); }
   };
+  const copy = () => { navigator.clipboard?.writeText(code).then(() => toast('Copied ✓', 'success')).catch(() => {}); };
+
   return (
-    <div className="card card-pad" style={{ maxWidth: 720 }}>
-      <h3 style={{ marginTop: 0 }}>Connect your local worker {configured && <Chip text="connected" color="#34d399" />}</h3>
-      <p className="faint" style={{ fontSize: 13 }}>
-        The worker runs a real browser on your PC with your own logged-in portal sessions — safest for your
-        accounts and free. No portal passwords ever reach this server. Set it up once:
+    <div className="card card-pad" style={{ maxWidth: 760 }}>
+      <h3 style={{ marginTop: 0 }}>Set up JobPilot Desktop {configured && <Chip text="connected" color="#16a34a" />}</h3>
+      <p className="faint" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+        JobPilot Desktop is a tiny app that runs on your computer — the same idea as VS Code being installed.
+        It opens a real browser so the agent can apply for you, using your own logins. Your passwords and
+        cookies stay on your machine and never reach our servers. You set it up <b>once</b>:
       </p>
-      <ol style={{ fontSize: 13.5, lineHeight: 1.7 }}>
-        <li>Generate a worker token below (shown once — regenerating replaces the old one).</li>
-        <li>In the repo: <code>cd worker &amp;&amp; npm install</code></li>
-        <li>Create <code>worker/worker.config.json</code> with your backend URL and the token.</li>
-        <li><code>npm start</code> → a browser opens. Log into Naukri. Then hit <b>▶ naukri</b> up top.</li>
+      <ol style={{ fontSize: 13.5, lineHeight: 1.9 }}>
+        <li>In the project's <code>worker</code> folder, double-click <b>start-jobpilot.bat</b> (Windows) or run
+          <code>./start-jobpilot.sh</code> (Mac/Linux). It installs itself the first time.</li>
+        <li>Generate your connect code below and paste it when the app asks (just once).</li>
+        <li>Done. A browser opens — now use the <b>Connect</b> buttons on the Connections page to sign into each portal.</li>
       </ol>
-      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-        <button className="btn btn-primary btn-sm" onClick={issue}>{configured ? 'Regenerate token' : 'Generate token'}</button>
+      <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
+        <button className="btn btn-primary btn-sm" onClick={issue}>
+          {configured ? 'Regenerate connect code' : 'Generate connect code'}
+        </button>
+        {configured && <span className="faint" style={{ fontSize: 12 }}>Already connected — regenerate only if you're setting up a new computer.</span>}
       </div>
-      {token && (
+      {code && (
         <div style={{ marginTop: 12 }}>
-          <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>Your worker token (copy now):</div>
-          <pre style={{ userSelect: 'all', background: 'var(--bg-elev,#0f1219)', padding: 10, borderRadius: 8, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{token}</pre>
-          <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
-            worker.config.json:
-            <pre style={{ background: 'var(--bg-elev,#0f1219)', padding: 10, borderRadius: 8, fontSize: 12, marginTop: 4 }}>{`{
-  "backendUrl": "${location.origin.replace('5173', '8080')}",
-  "token": "${token}"
-}`}</pre>
+          <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>Your connect code (paste it into JobPilot Desktop):</div>
+          <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
+            <pre style={{ userSelect: 'all', flex: 1, background: 'var(--bg-elev)', border: '1px solid var(--border)', padding: 10, borderRadius: 8, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{code}</pre>
+            <button className="btn btn-sm" onClick={copy}>Copy</button>
           </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>Shown once — regenerating replaces the old one.</div>
         </div>
       )}
     </div>

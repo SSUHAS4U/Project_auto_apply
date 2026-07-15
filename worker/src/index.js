@@ -14,6 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { Api } from './api.js';
 import { launchBrowser, startFrameStreamer, sleep } from './browser.js';
@@ -24,24 +25,44 @@ import { reportSessions, handleConnectionActions } from './connections.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function loadConfig() {
+const DEFAULT_BACKEND = 'https://jobpilot-backend-owb0.onrender.com';
+const CONFIG_FILE = path.join(__dirname, '..', 'worker.config.json');
+
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a.trim()); }));
+}
+
+/**
+ * First-run setup with zero file editing: if there's no saved token, ask for it once
+ * (paste it from the dashboard's Connect screen) and remember it. After that it just runs.
+ */
+async function loadConfig() {
   let cfg = {};
-  const file = path.join(__dirname, '..', 'worker.config.json');
-  if (fs.existsSync(file)) cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const backendUrl = process.env.JOBPILOT_BACKEND_URL || cfg.backendUrl;
-  const token = process.env.JOBPILOT_WORKER_TOKEN || cfg.token;
-  if (!backendUrl || !token) {
-    console.error('\n  Missing config. Set JOBPILOT_BACKEND_URL and JOBPILOT_WORKER_TOKEN');
-    console.error('  (or create worker/worker.config.json — see worker/README.md)\n');
-    process.exit(1);
+  if (fs.existsSync(CONFIG_FILE)) { try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { /* re-ask */ } }
+  let backendUrl = process.env.JOBPILOT_BACKEND_URL || cfg.backendUrl;
+  let token = process.env.JOBPILOT_WORKER_TOKEN || cfg.token;
+
+  if (!token) {
+    console.log('\n  Welcome to JobPilot Desktop — first-time setup (takes 20 seconds).\n');
+    console.log('  1) Open your JobPilot dashboard → Connections → "Set up".');
+    console.log('  2) Click "Generate connect code" and copy it.\n');
+    token = await ask('  Paste your connect code here: ');
+    if (!token) { console.error('  No code entered. Run me again when you have it.\n'); process.exit(1); }
+    if (!backendUrl) {
+      const b = await ask(`  Backend URL [${DEFAULT_BACKEND}]: `);
+      backendUrl = b || DEFAULT_BACKEND;
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify({ backendUrl, token }, null, 2));
+    console.log('  Saved ✓ — you won\'t need to do this again.\n');
   }
-  return { backendUrl, token };
+  return { backendUrl: backendUrl || DEFAULT_BACKEND, token };
 }
 
 const ADAPTERS = { naukri: runNaukri, linkedin: runLinkedIn, indeed: runIndeed };
 
 async function main() {
-  const { backendUrl, token } = loadConfig();
+  const { backendUrl, token } = await loadConfig();
   const api = new Api(backendUrl, token);
 
   console.log('Connecting to backend…');
