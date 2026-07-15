@@ -25,15 +25,29 @@ public class DailyScheduler {
     private final AtsDiscoveryService discovery;
     private final com.jobpilot.service.JobScoutService scout;
     private final com.jobpilot.engine.EngineOrchestrator engine;
+    private final com.jobpilot.agent.AgentService agent;
 
     public DailyScheduler(DailyService daily, BackgroundRunner runner,
                           AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout,
-                          com.jobpilot.engine.EngineOrchestrator engine) {
+                          com.jobpilot.engine.EngineOrchestrator engine,
+                          com.jobpilot.agent.AgentService agent) {
         this.daily = daily;
         this.runner = runner;
         this.discovery = discovery;
         this.scout = scout;
         this.engine = engine;
+        this.agent = agent;
+    }
+
+    /** Agent portal rotation — every few minutes, start the portal whose scheduled block
+     *  is active now (Naukri 09:00 → LinkedIn → Indeed). No-op when paused / no schedule. */
+    @Scheduled(cron = "${jobpilot.schedule.agent-rotation-cron:0 */5 * * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    public void runAgentRotation() {
+        try {
+            agent.tickRotation();
+        } catch (Exception e) {
+            log.warn("Agent rotation tick failed: {}", e.getMessage());
+        }
     }
 
     /** Daily Engine autopilot — for every profile that turned it on, run the full

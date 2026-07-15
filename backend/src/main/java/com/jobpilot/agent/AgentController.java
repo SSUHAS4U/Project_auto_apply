@@ -135,6 +135,12 @@ public class AgentController {
         return agent.saveSchedule(UserContext.require(), blocks);
     }
 
+    /** Advance the rotation now (also runs automatically every few minutes). */
+    @PostMapping("/rotation/run")
+    public Map<String, Object> rotateNow() {
+        return Map.of("result", agent.tickRotationForUser(UserContext.require()));
+    }
+
     // ---- Network CRM ----------------------------------------------------------
 
     @GetMapping("/contacts")

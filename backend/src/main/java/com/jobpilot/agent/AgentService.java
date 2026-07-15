@@ -334,7 +334,74 @@ public class AgentService {
         plan.put("applyCap", block != null ? block.getApplyCap() : 200);
         plan.put("connectCap", block != null ? block.getConnectCap() : 100);
         plan.put("messageCap", block != null ? block.getMessageCap() : 50);
+        plan.put("blockMinutes", block != null ? block.getDurationMins() : 120);
         return plan;
+    }
+
+    // ---- time-based rotation (Naukri 09:00 → LinkedIn → Indeed, unattended) ---
+
+    private static final java.time.ZoneId ZONE = java.time.ZoneId.of("Asia/Kolkata");
+
+    /** Which enabled schedule block covers "now", if any. */
+    private AgentSchedule activeBlock(List<AgentSchedule> blocks, int nowMin) {
+        for (AgentSchedule b : blocks) {
+            if (!b.isEnabled() || b.getStartTime() == null) continue;
+            Integer start = parseHhmm(b.getStartTime());
+            if (start == null) continue;
+            int end = start + Math.max(1, b.getDurationMins());
+            if (nowMin >= start && nowMin < end) return b;
+        }
+        return null;
+    }
+
+    private static Integer parseHhmm(String s) {
+        try {
+            String[] p = s.trim().split(":");
+            return Integer.parseInt(p[0]) * 60 + (p.length > 1 ? Integer.parseInt(p[1]) : 0);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Start the portal whose scheduled block is active right now, if nothing is already
+     * running for this user. Conservative: it never interrupts a live run — the worker's
+     * own block deadline ends it, and the next tick picks up the following block. Returns
+     * a short summary for the dashboard / logs.
+     */
+    @Transactional
+    public String tickRotationForUser(UUID userId) {
+        if (isPaused()) return "paused";
+        List<AgentSchedule> blocks = schedules.findByUserIdOrderByOrdAsc(userId);
+        if (blocks.isEmpty()) return "no schedule";
+        int nowMin = java.time.LocalTime.now(ZONE).toSecondOfDay() / 60;
+        AgentSchedule block = activeBlock(blocks, nowMin);
+        if (block == null) return "no active block now";
+
+        AgentRun live = activeRun(userId);
+        if (live != null) {
+            return block.getPortal().equals(live.getPortal())
+                    ? "already running " + block.getPortal()
+                    : "waiting — " + live.getPortal() + " still finishing";
+        }
+        startOrGetRun(userId, block.getPortal());
+        log.info("Rotation started {} for user {}", block.getPortal(), userId);
+        return "started " + block.getPortal();
+    }
+
+    /** Scheduler entry point — advance the rotation for every user that has a schedule. */
+    @Transactional
+    public void tickRotation() {
+        if (isPaused()) return;
+        java.util.Set<UUID> users = new java.util.LinkedHashSet<>();
+        for (AgentSchedule b : schedules.findAll()) users.add(b.getUserId());
+        for (UUID u : users) {
+            try {
+                tickRotationForUser(u);
+            } catch (Exception e) {
+                log.warn("rotation tick failed for {}: {}", u, e.getMessage());
+            }
+        }
     }
 
     // ---- Network CRM: contacts + draft-first messaging ----------------------
