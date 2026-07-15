@@ -16,11 +16,21 @@ function searchUrl(keyword, location) {
   return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
 }
 
+const CARD_SELECTOR =
+  'li[data-occludable-job-id], div.job-card-container[data-job-id], li.jobs-search-results__list-item, [data-job-id]';
+
+async function waitForResults(page) {
+  await page.waitForSelector(CARD_SELECTOR, { timeout: 18000 }).catch(() => {});
+  await page.waitForTimeout(1200).catch(() => {});
+}
+
 async function collectJobCards(page) {
-  // The results rail; ids live on the <li> or a data attribute.
-  const ids = await page.$$eval(
-    'li[data-occludable-job-id], div.job-card-container[data-job-id]',
-    (nodes) => nodes.map((n) => n.getAttribute('data-occludable-job-id') || n.getAttribute('data-job-id')).filter(Boolean),
+  // The results rail; ids live on the <li> or a data attribute. LinkedIn changes these
+  // often, so cast a wide net.
+  const ids = await page.$$eval(CARD_SELECTOR,
+    (nodes) => nodes.map((n) => n.getAttribute('data-occludable-job-id')
+      || n.getAttribute('data-job-id')
+      || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'))).filter(Boolean),
   ).catch(() => []);
   return [...new Set(ids)];
 }
@@ -46,14 +56,21 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     for (const location of plan.locations) {
       if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
 
-      state.action = `Searching LinkedIn "${keyword}" in ${location}`;
+      state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
       await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
-      await humanDelay(2500, 4500);
+      await waitForResults(page);
 
       const ids = await collectJobCards(page);
+      const landed = page.url();
+      const needsLogin = /\/login|\/authwall|signup/i.test(landed);
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-        detail: `${ids.length} Easy-Apply results for ${keyword} @ ${location}` });
+        detail: ids.length > 0
+          ? `Found ${ids.length} Easy-Apply jobs for "${keyword}" @ ${location}`
+          : needsLogin
+            ? `LinkedIn asked to log in — sign into linkedin.com in the browser, then run again`
+            : `No Easy-Apply results on this search — LinkedIn may have changed the page or need login` });
+      if (ids.length === 0) continue;
 
       for (const id of ids) {
         if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
@@ -108,7 +125,7 @@ async function easyApply(page, api, profile, resume, state) {
     const ext = await page.$('a[aria-label*="Apply"], button[aria-label*="Apply on company"]');
     return ext ? 'external' : 'none';
   }
-  state.action = 'Easy Apply…';
+  state.action = 'Easy Apply — opening the form';
   await btn.click({ timeout: 4000 }).catch(() => {});
   await humanDelay(1500, 2800);
 
@@ -117,6 +134,8 @@ async function easyApply(page, api, profile, resume, state) {
     const modal = await page.$('.jobs-easy-apply-modal, [data-test-modal][role="dialog"]');
     if (!modal) break;
 
+    // Narrate each step so the live feed caption shows the Easy Apply progressing.
+    state.action = `Easy Apply — step ${step + 1} (filling the form)`;
     await uploadResume(page, resume).catch(() => {});
     const { attention } = await fillForm(page, profile, api);
     if (attention.length) {
@@ -128,13 +147,17 @@ async function easyApply(page, api, profile, resume, state) {
     // Submit if we can; otherwise advance.
     const submit = await page.$('button[aria-label="Submit application"]');
     if (submit) {
+      state.action = 'Easy Apply — submitting';
       await submit.click({ timeout: 4000 }).catch(() => {});
       await humanDelay(1500, 2600);
       await dismissPostSubmit(page);
       return 'applied';
     }
     const next = await page.$('button[aria-label="Continue to next step"], button[aria-label="Review your application"]');
-    if (next) { await next.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue; }
+    if (next) {
+      state.action = `Easy Apply — step ${step + 1} done, continuing`;
+      await next.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue;
+    }
 
     // no recognizable control — bail safely
     await closeModal(page);
