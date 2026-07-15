@@ -146,6 +146,108 @@ export interface AssistantJob {
   url: string;
 }
 
+// ---- Engine: clean-room ai-job-search replica (setup→scrape→rank→apply→outcome→interview→upskill) ----
+
+export interface EngineProfile {
+  id?: string;
+  candidateMd?: string;
+  behavioralMd?: string;
+  writingStyleMd?: string;
+  evaluationMd?: string;
+  cvTemplateLatex?: string;
+  coverTemplateLatex?: string;
+  interviewPrepMd?: string;
+  searchQueries?: string;
+  setupLog?: string;
+  updatedAt?: string;
+}
+
+export type EngineDoc =
+  | 'candidate' | 'behavioral' | 'writingStyle' | 'evaluation'
+  | 'cvTemplate' | 'coverTemplate' | 'interviewPrep' | 'searchQueries';
+
+export interface EngineStatus {
+  aiEnabled: boolean;
+  setupReady: boolean;
+  checklist: Record<string, boolean>;
+  scrapeRunning: boolean;
+  scrapeProgress: string;
+  rankRunning: boolean;
+  rankProgress: string;
+  jobStatusCounts: Record<string, number>;
+  appStageCounts: Record<string, number>;
+}
+
+export interface EngineJob {
+  id: string;
+  source: string;
+  url?: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  postedAt?: string;
+  description?: string;
+  scrapedAt: string;
+  status: 'new' | 'ranked' | 'shortlisted' | 'applying' | 'applied' | 'dismissed' | 'expired';
+  fitScore?: number;
+  verdict?: string;
+  strengths?: string;
+  gaps?: string;
+  dealBreaker?: string;
+  urgent?: boolean;
+  rankNotes?: string;
+}
+
+export type EngineStage =
+  | 'parsing' | 'evaluating' | 'drafting' | 'reviewing' | 'revising'
+  | 'compiling' | 'verifying' | 'ready' | 'submitted' | 'failed' | 'vetoed';
+
+export interface EngineApplicationSummary {
+  id: string;
+  jobId?: string;
+  postingUrl?: string;
+  postingTitle?: string;
+  postingCompany?: string;
+  stage: EngineStage;
+  fitScore?: number;
+  verdict?: string;
+  outcome?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EngineApplication extends EngineApplicationSummary {
+  postingText?: string;
+  stageLog?: string;
+  evaluation?: string;
+  cvLatex?: string;
+  coverLatex?: string;
+  reviewerFeedback?: string;
+  revisionNotes?: string;
+  cutReport?: string;
+  atsReport?: string;
+  cvPages?: number;
+  coverPages?: number;
+  outcomeNotes?: string;
+  outcomeAt?: string;
+}
+
+export interface EngineInterview {
+  id: string;
+  applicationId?: string;
+  stageLabel: string;
+  packMd?: string;
+  createdAt: string;
+}
+
+export interface EngineUpskill {
+  id: string;
+  heatmap?: string;
+  reportMd?: string;
+  createdAt: string;
+}
+
 // ---- Pilot (Auto Apply v2): the observed pipeline ----
 
 export type PilotStage =

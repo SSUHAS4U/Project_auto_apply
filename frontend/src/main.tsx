@@ -6,6 +6,7 @@ import { ToastProvider } from './lib/ui';
 import { isLoggedIn, isAdminUI } from './api/client';
 import { Layout } from './components/Layout';
 import { JobsPage } from './pages/JobsPage';
+import { EnginePage } from './pages/EnginePage';
 import { AutoApplyPage } from './pages/AutoApplyPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { SavedJobsPage } from './pages/SavedJobsPage';
@@ -37,7 +38,8 @@ const router = createBrowserRouter([
     element: <Guard><Layout /></Guard>,
     children: [
       { index: true, element: <JobsPage /> },
-      { path: 'auto-apply', element: <AutoApplyPage /> },
+      { path: 'auto-apply', element: <EnginePage /> },
+      { path: 'pilot', element: <AutoApplyPage /> },
       { path: 'daily', element: <DailyPicksPage /> },
       { path: 'scout', element: <ScoutPage /> },
       { path: 'resumes', element: <ResumesPage /> },

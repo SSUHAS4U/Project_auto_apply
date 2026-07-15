@@ -1,5 +1,8 @@
 import type {
-  Application, ApplicationEvent, AssistantJob, Job, Notification, Page,
+  Application, ApplicationEvent, AssistantJob,
+  EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
+  EngineProfile, EngineStatus, EngineUpskill,
+  Job, Notification, Page,
   PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, Profile, SavedJob,
 } from '../types';
 
@@ -218,6 +221,41 @@ export const api = {
     req<{ id: string; queueStatus: string }>(`/api/pilot/queue/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
   pilotPdf: async (id: string, kind: 'cv' | 'cover'): Promise<Blob> => {
     const res = await fetch(`${BASE}/api/pilot/jobs/${id}/${kind}.pdf`, {
+      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.blob();
+  },
+
+  // Engine — clean-room ai-job-search replica: setup → scrape → rank → apply → outcome → interview → upskill.
+  engineStatus: () => req<EngineStatus>('/api/engine/status'),
+  engineProfile: () => req<EngineProfile>('/api/engine/profile'),
+  engineSetup: (body: { pastedCv?: string; interviewAnswers?: string; useStoredResume?: boolean }) =>
+    req<EngineProfile>('/api/engine/setup', { method: 'POST', body: JSON.stringify(body) }),
+  engineSaveDoc: (doc: EngineDoc, content: string) =>
+    req<EngineProfile>(`/api/engine/profile/${doc}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  engineScrape: () => req<{ status: string }>('/api/engine/scrape', { method: 'POST' }),
+  engineRank: () => req<{ status: string }>('/api/engine/rank', { method: 'POST' }),
+  engineJobs: (status?: string, limit = 150) =>
+    req<EngineJob[]>(`/api/engine/jobs?limit=${limit}${status ? `&status=${status}` : ''}`),
+  engineDismissJob: (id: string) =>
+    req<{ id: string; status: string }>(`/api/engine/jobs/${id}/dismiss`, { method: 'POST' }),
+  engineApply: (body: { jobId?: string; url?: string; pastedText?: string }) =>
+    req<EngineApplication>('/api/engine/apply', { method: 'POST', body: JSON.stringify(body) }),
+  engineApplications: (stage?: string, limit = 100) =>
+    req<EngineApplicationSummary[]>(`/api/engine/applications?limit=${limit}${stage ? `&stage=${stage}` : ''}`),
+  engineApplication: (id: string) => req<EngineApplication>(`/api/engine/applications/${id}`),
+  engineSubmit: (id: string, to: string) =>
+    req<EngineApplication>(`/api/engine/applications/${id}/submit`, { method: 'POST', body: JSON.stringify({ to }) }),
+  engineOutcome: (id: string, outcome: string, notes: string) =>
+    req<EngineApplication>(`/api/engine/applications/${id}/outcome`, { method: 'POST', body: JSON.stringify({ outcome, notes }) }),
+  engineInterview: (applicationId: string, stageLabel: string) =>
+    req<EngineInterview>('/api/engine/interview', { method: 'POST', body: JSON.stringify({ applicationId, stageLabel }) }),
+  engineInterviews: () => req<EngineInterview[]>('/api/engine/interview'),
+  engineUpskillRun: () => req<EngineUpskill>('/api/engine/upskill', { method: 'POST' }),
+  engineUpskills: () => req<EngineUpskill[]>('/api/engine/upskill'),
+  enginePdf: async (id: string, kind: 'cv' | 'cover'): Promise<Blob> => {
+    const res = await fetch(`${BASE}/api/engine/applications/${id}/${kind}.pdf`, {
       headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
     });
     if (!res.ok) throw new Error(`${res.status}`);
