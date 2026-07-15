@@ -20,6 +20,7 @@ import { launchBrowser, startFrameStreamer, sleep } from './browser.js';
 import { runNaukri } from './portals/naukri.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
+import { reportSessions, handleConnectionActions } from './connections.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,7 +65,13 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
+  let sessionTick = 0;
   while (running) {
+    // Connection handling every loop: act on Connect/Disconnect requests, and report
+    // session status periodically (every ~6th idle tick) so the dashboard stays live.
+    await handleConnectionActions(ctx, page, api).catch(() => {});
+    if (sessionTick++ % 6 === 0) await reportSessions(ctx, api).catch(() => {});
+
     let order;
     try { order = await api.next(); } catch (e) { console.error('poll error:', e.message); await sleep(5000); continue; }
 

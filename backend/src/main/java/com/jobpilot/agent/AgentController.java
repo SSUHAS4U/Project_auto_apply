@@ -159,6 +159,23 @@ public class AgentController {
         return agent.setMessageStatus(UserContext.require(), id, "rejected", null);
     }
 
+    // ---- portal connections (the Connect UX) ----------------------------------
+
+    @GetMapping("/connections")
+    public List<PortalConnection> connections() {
+        return agent.connections(UserContext.require());
+    }
+
+    @PostMapping("/connections/{portal}/connect")
+    public PortalConnection connect(@PathVariable String portal) {
+        return agent.requestConnection(UserContext.require(), portal.toLowerCase(Locale.ROOT), "connect");
+    }
+
+    @PostMapping("/connections/{portal}/disconnect")
+    public PortalConnection disconnect(@PathVariable String portal) {
+        return agent.requestConnection(UserContext.require(), portal.toLowerCase(Locale.ROOT), "disconnect");
+    }
+
     // ---- worker token ---------------------------------------------------------
 
     /** Mint a fresh worker token (shown once) for the local worker's config. */

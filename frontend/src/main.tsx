@@ -12,6 +12,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { JobsPage } from './pages/JobsPage';
 import { EnginePage } from './pages/EnginePage';
 import { AgentPage } from './pages/AgentPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { SavedJobsPage } from './pages/SavedJobsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: 'jobs', element: <JobsPage /> },
       { path: 'auto-apply', element: <EnginePage /> },
       { path: 'agent', element: <AgentPage /> },
+      { path: 'connections', element: <ConnectionsPage /> },
       { path: 'daily', element: <DailyPicksPage /> },
       { path: 'scout', element: <ScoutPage /> },
       { path: 'resumes', element: <ResumesPage /> },

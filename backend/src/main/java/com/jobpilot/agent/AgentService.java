@@ -37,12 +37,16 @@ public class AgentService {
     private final KeywordMatchScorer scorer;
     private final PortalContactRepository contacts;
     private final AgentMessageRepository messages;
+    private final PortalConnectionRepository connections;
     private final com.jobpilot.service.ai.AiService ai;
+
+    private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
 
     public AgentService(AgentRunRepository runs, AgentEventRepository events,
                         AgentScheduleRepository schedules, LiveFrameService frames,
                         SettingsService settings, ProfileService profiles, KeywordMatchScorer scorer,
                         PortalContactRepository contacts, AgentMessageRepository messages,
+                        PortalConnectionRepository connections,
                         com.jobpilot.service.ai.AiService ai) {
         this.runs = runs;
         this.events = events;
@@ -53,7 +57,74 @@ public class AgentService {
         this.scorer = scorer;
         this.contacts = contacts;
         this.messages = messages;
+        this.connections = connections;
         this.ai = ai;
+    }
+
+    // ---- portal connections (the "Connect" UX) ------------------------------
+
+    /** All portal connections, seeding a disconnected row for any portal not yet seen. */
+    @Transactional
+    public List<PortalConnection> connections(UUID userId) {
+        for (String portal : PORTALS) {
+            if (connections.findByUserIdAndPortal(userId, portal).isEmpty()) {
+                PortalConnection c = new PortalConnection();
+                c.setUserId(userId);
+                c.setPortal(portal);
+                connections.save(c);
+            }
+        }
+        return connections.findByUserIdOrderByPortalAsc(userId);
+    }
+
+    /** Dashboard asks to connect/disconnect — queues the action for the worker. */
+    @Transactional
+    public PortalConnection requestConnection(UUID userId, String portal, String action) {
+        if (!PORTALS.contains(portal)) throw new IllegalArgumentException("unknown portal: " + portal);
+        PortalConnection c = connections.findByUserIdAndPortal(userId, portal)
+                .orElseGet(() -> {
+                    PortalConnection n = new PortalConnection();
+                    n.setUserId(userId);
+                    n.setPortal(portal);
+                    return n;
+                });
+        c.setRequestedAction(action);
+        c.setStatus("connect".equals(action) ? "connecting" : "disconnected");
+        c.setUpdatedAt(Instant.now());
+        return connections.save(c);
+    }
+
+    /** Worker pulls pending connect/disconnect actions and they're cleared once delivered. */
+    @Transactional
+    public List<Map<String, String>> pullConnectionActions(UUID userId) {
+        List<Map<String, String>> out = new ArrayList<>();
+        for (PortalConnection c : connections.findByUserIdOrderByPortalAsc(userId)) {
+            if (c.getRequestedAction() != null && !c.getRequestedAction().isBlank()) {
+                out.add(Map.of("portal", c.getPortal(), "action", c.getRequestedAction()));
+                c.setRequestedAction(null);
+                c.setUpdatedAt(Instant.now());
+                connections.save(c);
+            }
+        }
+        return out;
+    }
+
+    /** Worker reports whether it has a logged-in session for a portal. */
+    @Transactional
+    public void reportSession(UUID userId, String portal, boolean loggedIn, String detail) {
+        if (!PORTALS.contains(portal)) return;
+        PortalConnection c = connections.findByUserIdAndPortal(userId, portal)
+                .orElseGet(() -> {
+                    PortalConnection n = new PortalConnection();
+                    n.setUserId(userId);
+                    n.setPortal(portal);
+                    return n;
+                });
+        // don't flip a "connecting" row to disconnected until the worker confirms either way
+        c.setStatus(loggedIn ? "connected" : "disconnected");
+        c.setDetail(detail);
+        c.setUpdatedAt(Instant.now());
+        connections.save(c);
     }
 
     // ---- pause switch -------------------------------------------------------

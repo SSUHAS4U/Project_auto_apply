@@ -32,6 +32,10 @@ export class Api {
   runStatus(runId, status, currentAction) {
     return this.#req(`/api/worker/run/${runId}/status`, { method: 'POST', body: { status, currentAction } });
   }
+  session(portal, loggedIn, detail) {
+    return this.#req('/api/worker/session', { method: 'POST', body: { portal, loggedIn, detail } });
+  }
+  connectionActions() { return this.#req('/api/worker/connection-actions'); }
   evaluate(job) { return this.#req('/api/worker/evaluate', { method: 'POST', body: job }); }
   profile() { return this.#req('/api/worker/profile'); }
   resume() { return this.#req('/api/worker/resume'); }

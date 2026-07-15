@@ -82,6 +82,21 @@ public class WorkerController {
         return Map.of("ok", true, "paused", agent.isPaused());
     }
 
+    /** Worker reports whether it has a logged-in session for a portal. */
+    @PostMapping("/session")
+    public Map<String, Object> session(@RequestBody Map<String, Object> b) {
+        UUID u = UserContext.require();
+        boolean loggedIn = b.get("loggedIn") != null && Boolean.parseBoolean(b.get("loggedIn").toString());
+        agent.reportSession(u, str(b.get("portal")), loggedIn, str(b.get("detail")));
+        return Map.of("ok", true);
+    }
+
+    /** Worker pulls pending connect/disconnect actions (cleared once delivered). */
+    @GetMapping("/connection-actions")
+    public List<Map<String, String>> connectionActions() {
+        return agent.pullConnectionActions(UserContext.require());
+    }
+
     /** Update run status / the human-readable "what it's doing now" caption. */
     @PostMapping("/run/{id}/status")
     public Map<String, Object> runStatus(@PathVariable UUID id, @RequestBody Map<String, String> b) {

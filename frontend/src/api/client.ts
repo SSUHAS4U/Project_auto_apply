@@ -4,7 +4,7 @@ import type {
   EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
   EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
   Job, Notification, Page,
-  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalContact, Profile, SavedJob,
+  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalConnection, PortalContact, Profile, SavedJob,
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
@@ -249,6 +249,9 @@ export const api = {
   agentRejectMessage: (id: string) =>
     req<AgentMessage>(`/api/agent/messages/${id}/reject`, { method: 'POST' }),
   agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
+  agentConnections: () => req<PortalConnection[]>('/api/agent/connections'),
+  agentConnect: (portal: string) => req<PortalConnection>(`/api/agent/connections/${portal}/connect`, { method: 'POST' }),
+  agentDisconnect: (portal: string) => req<PortalConnection>(`/api/agent/connections/${portal}/disconnect`, { method: 'POST' }),
 
   // Engine — clean-room ai-job-search replica: setup → scrape → rank → apply → outcome → interview → upskill.
   engineStatus: () => req<EngineStatus>('/api/engine/status'),

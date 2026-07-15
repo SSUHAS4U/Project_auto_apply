@@ -7,6 +7,7 @@ const NAV = [
   { to: '/', label: 'Dashboard', ico: '▦', end: true },
   { to: '/auto-apply', label: 'Auto Apply', ico: '⚡' },
   { to: '/agent', label: 'Agent · Live', ico: '📺' },
+  { to: '/connections', label: 'Connections', ico: '🔗' },
   { to: '/jobs', label: 'Jobs', ico: '🧭' },
   { to: '/daily', label: 'Daily picks', ico: '☀️' },
   { to: '/scout', label: 'Scout', ico: '🔎' },

@@ -221,6 +221,15 @@ export interface AgentSchedule {
   enabled: boolean;
 }
 
+export interface PortalConnection {
+  id: string;
+  portal: 'linkedin' | 'naukri' | 'indeed';
+  status: 'connected' | 'connecting' | 'disconnected';
+  requestedAction?: string | null;
+  detail?: string | null;
+  updatedAt: string;
+}
+
 export interface PortalContact {
   id: string;
   portal: string;
