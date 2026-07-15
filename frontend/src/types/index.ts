@@ -268,6 +268,7 @@ export interface EngineProfile {
   interviewPrepMd?: string;
   searchQueries?: string;
   setupLog?: string;
+  guidedInputs?: string;
   updatedAt?: string;
 }
 

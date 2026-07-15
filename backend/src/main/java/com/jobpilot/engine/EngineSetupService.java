@@ -117,6 +117,18 @@ public class EngineSetupService {
         if (!filled(p.getCandidateMd())) p.setCandidateMd(candidateFromProfile(wins));
         if (!filled(p.getCvTemplateLatex())) p.setCvTemplateLatex(DEFAULT_CV_TEMPLATE);
         if (!filled(p.getCoverTemplateLatex())) p.setCoverTemplateLatex(DEFAULT_COVER_TEMPLATE);
+
+        // Keep the raw form inputs so the Setup fields survive a refresh.
+        try {
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("roles", kw);
+            raw.put("locations", loc);
+            raw.put("careerGoal", nz(careerGoal));
+            raw.put("dealBreakers", db);
+            raw.put("wins", nz(wins));
+            p.setGuidedInputs(json.writeValueAsString(raw));
+        } catch (Exception ignore) { /* non-fatal */ }
+
         p.setUpdatedAt(Instant.now());
         return profiles.save(p);
     }

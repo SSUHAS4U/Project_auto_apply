@@ -52,6 +52,10 @@ public class EngineProfile {
     @Column(name = "setup_log", columnDefinition = "text")
     private String setupLog;
 
+    /** The Setup form's raw inputs (JSON) so the fields round-trip on reload. */
+    @Column(name = "guided_inputs", columnDefinition = "text")
+    private String guidedInputs;
+
     // ---- autopilot (daily self-running cycle) ----
     @Column(name = "auto_enabled", nullable = false)
     private boolean autoEnabled = false;

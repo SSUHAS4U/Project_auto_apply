@@ -216,10 +216,23 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
   const [draft, setDraft] = useState('');
 
   useEffect(() => {
-    api.engineProfile().then(setProfile).catch(() => {});
+    api.engineProfile().then((p) => {
+      setProfile(p);
+      // Restore whatever was saved so the fields survive a refresh.
+      if (p.guidedInputs) {
+        try {
+          const g = JSON.parse(p.guidedInputs);
+          if (Array.isArray(g.roles) && g.roles.length) setRoles(g.roles.join(', '));
+          if (Array.isArray(g.locations) && g.locations.length) setLocations(g.locations.join(', '));
+          if (g.careerGoal) setCareerGoal(g.careerGoal);
+          if (Array.isArray(g.dealBreakers) && g.dealBreakers.length) setDealBreakers(g.dealBreakers.join(', '));
+          if (g.wins) setWins(g.wins);
+        } catch { /* ignore */ }
+      }
+    }).catch(() => {});
     api.enginePrefill().then((p) => {
       setMe(p);
-      // pre-fill target inputs from what we already know, so the form is never blank
+      // pre-fill target inputs from what we already know, only if still blank
       setRoles((r) => r || [p.currentTitle, p.headline].filter(Boolean).join(', '));
       setLocations((l) => l || [p.location, ...(p.preferredLocations || [])].filter(Boolean).join(', '));
     }).catch(() => {});
