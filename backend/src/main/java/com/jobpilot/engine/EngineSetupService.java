@@ -9,8 +9,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +34,7 @@ public class EngineSetupService {
     private final EngineProfileRepository profiles;
     private final AiService ai;
     private final ProfileService appProfile; // shared resource: only the stored resume bytes
+    private final ObjectMapper json = new ObjectMapper();
 
     public EngineSetupService(EngineProfileRepository profiles, AiService ai, ProfileService appProfile) {
         this.profiles = profiles;
@@ -38,13 +42,109 @@ public class EngineSetupService {
         this.appProfile = appProfile;
     }
 
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    /** Race-safe: two first-time requests (status + profile) can't crash on the unique key. */
+    @Transactional
     public EngineProfile get(UUID userId) {
         return profiles.findByUserId(userId).orElseGet(() -> {
             EngineProfile p = new EngineProfile();
             p.setUserId(userId);
             p.setCoverTemplateLatex(DEFAULT_COVER_TEMPLATE);
-            return profiles.save(p);
+            p.setCvTemplateLatex(DEFAULT_CV_TEMPLATE);
+            try {
+                return profiles.saveAndFlush(p);
+            } catch (org.springframework.dao.DataIntegrityViolationException race) {
+                // a concurrent request created it first — use theirs
+                return profiles.findByUserId(userId).orElseThrow(() -> race);
+            }
         });
+    }
+
+    /** The real details we already have (from the app Profile) — shown on the Setup screen. */
+    public Map<String, Object> appProfileSummary() {
+        var p = appProfile.get();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("fullName", nz(p.getFullName()));
+        m.put("email", nz(p.getEmail()));
+        m.put("phone", nz(p.getPhone()));
+        m.put("headline", nz(p.getHeadline()));
+        m.put("currentTitle", nz(p.getCurrentTitle()));
+        m.put("currentCompany", nz(p.getCurrentCompany()));
+        m.put("yearsExperience", nz(p.getYearsExperience()));
+        m.put("location", nz(p.getLocation()));
+        m.put("skills", p.getSkills() == null ? List.of() : p.getSkills());
+        m.put("preferredLocations", p.getPreferredLocations() == null ? List.of() : p.getPreferredLocations());
+        m.put("hasResume", p.getResumeData() != null && p.getResumeData().length > 0);
+        return m;
+    }
+
+    /**
+     * Guided setup — NO AI required. Turns clear inputs (target roles, locations, career
+     * goal, deal-breakers) plus the existing app Profile into the documents the engine
+     * needs, so Scrape works immediately. AI enhancement (rich CV/letter tailoring) is a
+     * separate optional step in {@link #run}.
+     */
+    @Transactional
+    public EngineProfile saveGuided(UUID userId, List<String> roles, List<String> locations,
+                                    String careerGoal, List<String> dealBreakers, String wins) {
+        EngineProfile p = get(userId);
+
+        // search-queries.md (deterministic)
+        List<String> kw = clean(roles);
+        List<String> loc = clean(locations);
+        if (kw.isEmpty() && !nz(appProfile.get().getCurrentTitle()).isBlank()) kw.add(appProfile.get().getCurrentTitle());
+        if (loc.isEmpty() && appProfile.get().getPreferredLocations() != null) loc.addAll(appProfile.get().getPreferredLocations());
+        try {
+            Map<String, Object> q = new LinkedHashMap<>();
+            q.put("keywords", kw);
+            q.put("locations", loc);
+            p.setSearchQueries(json.writeValueAsString(q));
+        } catch (Exception ignore) { /* leave as-is */ }
+
+        // 04-job-evaluation.md (deterministic)
+        StringBuilder ev = new StringBuilder("# Job Evaluation Lens\n\n## Career goals\n")
+                .append(nz(careerGoal).isBlank() ? "_Not specified._" : careerGoal.trim())
+                .append("\n\n## Target roles\n").append(kw.isEmpty() ? "_Any._" : String.join(", ", kw))
+                .append("\n\n## Preferred locations\n").append(loc.isEmpty() ? "_Any._" : String.join(", ", loc))
+                .append("\n\n## Deal-breakers\n");
+        List<String> db = clean(dealBreakers);
+        if (db.isEmpty()) ev.append("_None specified._");
+        else db.forEach(d -> ev.append("- ").append(d).append('\n'));
+        p.setEvaluationMd(ev.toString());
+
+        // 01-candidate-profile.md seeded from the real app Profile (deterministic) if empty
+        if (!filled(p.getCandidateMd())) p.setCandidateMd(candidateFromProfile(wins));
+        if (!filled(p.getCvTemplateLatex())) p.setCvTemplateLatex(DEFAULT_CV_TEMPLATE);
+        if (!filled(p.getCoverTemplateLatex())) p.setCoverTemplateLatex(DEFAULT_COVER_TEMPLATE);
+        p.setUpdatedAt(Instant.now());
+        return profiles.save(p);
+    }
+
+    /** Build a candidate profile document from the structured app Profile — no AI. */
+    private String candidateFromProfile(String wins) {
+        var p = appProfile.get();
+        StringBuilder s = new StringBuilder("# Candidate Profile\n\n## Contact\n");
+        s.append("- Name: ").append(nz(p.getFullName())).append('\n');
+        s.append("- Email: ").append(nz(p.getEmail())).append('\n');
+        s.append("- Phone: ").append(nz(p.getPhone())).append('\n');
+        s.append("- Location: ").append(nz(p.getLocation())).append('\n');
+        if (p.getLinks() != null) p.getLinks().forEach((k, v) -> s.append("- ").append(k).append(": ").append(v).append('\n'));
+        s.append("\n## Summary\n").append(nz(p.getSummary()).isBlank() ? nz(p.getHeadline()) : p.getSummary()).append('\n');
+        s.append("\n## Current role\n- ").append(nz(p.getCurrentTitle()));
+        if (!nz(p.getCurrentCompany()).isBlank()) s.append(" at ").append(p.getCurrentCompany());
+        if (!nz(p.getYearsExperience()).isBlank()) s.append(" (").append(p.getYearsExperience()).append(" yrs)");
+        s.append('\n');
+        s.append("\n## Skills\n").append(p.getSkills() == null ? "" : String.join(", ", p.getSkills())).append('\n');
+        if (!nz(p.getCollege()).isBlank()) s.append("\n## Education\n- ").append(p.getCollege()).append('\n');
+        if (!nz(wins).isBlank()) s.append("\n## Highlights\n").append(wins.trim()).append('\n');
+        return s.toString();
+    }
+
+    private static List<String> clean(List<String> in) {
+        List<String> out = new java.util.ArrayList<>();
+        if (in != null) for (String s : in) if (s != null && !s.isBlank()) out.add(s.trim());
+        return out;
     }
 
     /** Which docs exist — the dashboard's setup checklist. */

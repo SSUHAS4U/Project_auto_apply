@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type {
   EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
-  EngineProfile, EngineStatus, EngineUpskill,
+  EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
 } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 
@@ -125,94 +125,173 @@ function count(m?: Record<string, number>): string {
 function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange: () => void }) {
   const toast = useToast();
   const [profile, setProfile] = useState<EngineProfile | null>(null);
-  const [pastedCv, setPastedCv] = useState('');
-  const [answers, setAnswers] = useState('');
-  const [useResume, setUseResume] = useState(true);
-  const [running, setRunning] = useState(false);
-  const [openDoc, setOpenDoc] = useState<string>('');
+  const [me, setMe] = useState<EnginePrefill | null>(null);
+  const [roles, setRoles] = useState('');
+  const [locations, setLocations] = useState('');
+  const [careerGoal, setCareerGoal] = useState('');
+  const [dealBreakers, setDealBreakers] = useState('');
+  const [wins, setWins] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [openDoc, setOpenDoc] = useState('');
   const [draft, setDraft] = useState('');
 
-  const load = useCallback(() => { api.engineProfile().then(setProfile).catch(() => {}); }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.engineProfile().then(setProfile).catch(() => {});
+    api.enginePrefill().then((p) => {
+      setMe(p);
+      // pre-fill target inputs from what we already know, so the form is never blank
+      setRoles((r) => r || [p.currentTitle, p.headline].filter(Boolean).join(', '));
+      setLocations((l) => l || [p.location, ...(p.preferredLocations || [])].filter(Boolean).join(', '));
+    }).catch(() => {});
+  }, []);
 
-  const run = async () => {
-    setRunning(true);
+  const csv = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
+
+  const saveGuided = async () => {
+    if (csv(roles).length === 0) { toast('Add at least one target role', 'error'); return; }
+    setSaving(true);
     try {
-      const p = await api.engineSetup({ pastedCv, interviewAnswers: answers, useStoredResume: useResume });
+      const p = await api.engineGuided({
+        roles: csv(roles), locations: csv(locations),
+        careerGoal, dealBreakers: csv(dealBreakers), wins,
+      });
       setProfile(p);
-      toast('Profile documents generated ✓', 'success');
+      toast('Saved ✓ — you can Scrape now. (AI polish below is optional.)', 'success');
       onChange();
-    } catch (e) { toast((e as Error).message, 'error'); } finally { setRunning(false); }
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
+  };
+
+  const enhance = async () => {
+    setEnhancing(true);
+    try {
+      const p = await api.engineSetup({ useStoredResume: true });
+      setProfile(p);
+      toast('AI-polished your documents ✓', 'success');
+      onChange();
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setEnhancing(false); }
   };
 
   const openEditor = (doc: string) => {
     if (openDoc === doc) { setOpenDoc(''); return; }
-    setOpenDoc(doc);
-    setDraft((profile?.[DOC_FIELD[doc]] as string) ?? '');
+    setOpenDoc(doc); setDraft((profile?.[DOC_FIELD[doc]] as string) ?? '');
   };
   const saveDoc = async (doc: string) => {
-    try {
-      const p = await api.engineSaveDoc(doc as EngineDoc, draft);
-      setProfile(p);
-      toast('Saved ✓', 'success');
-      onChange();
-    } catch (e) { toast((e as Error).message, 'error'); }
+    try { const p = await api.engineSaveDoc(doc as EngineDoc, draft); setProfile(p); toast('Saved ✓', 'success'); onChange(); }
+    catch (e) { toast((e as Error).message, 'error'); }
   };
 
   const checklist = status?.checklist ?? {};
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Step 1 — your details (from the app Profile) */}
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>Build your profile</h3>
-        <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
-          The engine turns your material into eight working documents (candidate, behavioral, writing-style,
-          evaluation lens, CV &amp; cover templates, interview prep, search queries). Re-run any time you add
-          more — it refines, never loses facts.
-        </p>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {Object.entries(DOC_LABELS).map(([k, label]) => (
-            <button key={k} className="btn btn-sm" onClick={() => openEditor(k)}
-              style={{ opacity: checklist[k] ? 1 : 0.55 }}>
-              {checklist[k] ? '✓' : '○'} {label}
-            </button>
-          ))}
-        </div>
-        {openDoc && (
-          <div style={{ marginBottom: 12 }}>
-            <textarea className="input" style={{ width: '100%', minHeight: 240, fontFamily: 'monospace', fontSize: 12 }}
-              value={draft} onChange={(e) => setDraft(e.target.value)} />
-            <div className="row" style={{ gap: 8, marginTop: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={() => saveDoc(openDoc)}>Save {DOC_LABELS[openDoc]}</button>
-              <button className="btn btn-sm" onClick={() => setOpenDoc('')}>Close</button>
+        <h3 style={{ marginTop: 0 }}>1 · Your details</h3>
+        {me ? (
+          <>
+            <div className="row" style={{ gap: 18, flexWrap: 'wrap', fontSize: 13.5 }}>
+              <div><div className="faint" style={{ fontSize: 11 }}>NAME</div>{me.fullName || <em className="faint">— add in Profile</em>}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>EMAIL</div>{me.email || '—'}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>PHONE</div>{me.phone || '—'}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>CURRENT ROLE</div>{me.currentTitle || '—'}{me.currentCompany ? ` @ ${me.currentCompany}` : ''}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>EXPERIENCE</div>{me.yearsExperience || '—'}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>RESUME</div>{me.hasResume ? '✓ uploaded' : '✕ none'}</div>
             </div>
+            {me.skills?.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                {me.skills.slice(0, 16).map((s) => <span key={s} className="chip">{s}</span>)}
+              </div>
+            )}
+            <div className="faint" style={{ fontSize: 12, marginTop: 10 }}>
+              These come from your <a href="/profile">Profile</a> — edit there. {!me.hasResume && 'Upload a resume in Profile to enable AI CV tailoring.'}
+            </div>
+          </>
+        ) : <span className="spinner" />}
+      </div>
+
+      {/* Step 2 — what you're looking for (no AI needed) */}
+      <div className="card card-pad">
+        <h3 style={{ marginTop: 0 }}>2 · What you're looking for</h3>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
+          This is all the engine needs to start finding &amp; ranking jobs — no AI required. Separate multiple entries with commas.
+        </p>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <label style={{ fontSize: 13 }}>Target roles <span className="faint">— job titles to search</span>
+            <input className="input" style={{ width: '100%' }} value={roles} onChange={(e) => setRoles(e.target.value)}
+              placeholder="e.g. Full-Stack Developer, Java Backend Engineer, React Developer" />
+          </label>
+          <label style={{ fontSize: 13 }}>Locations <span className="faint">— cities + Remote</span>
+            <input className="input" style={{ width: '100%' }} value={locations} onChange={(e) => setLocations(e.target.value)}
+              placeholder="e.g. Bengaluru, Hyderabad, Remote" />
+          </label>
+          <label style={{ fontSize: 13 }}>Career goal <span className="faint">— one line</span>
+            <input className="input" style={{ width: '100%' }} value={careerGoal} onChange={(e) => setCareerGoal(e.target.value)}
+              placeholder="e.g. Grow into a backend-heavy full-stack role at a product company" />
+          </label>
+          <label style={{ fontSize: 13 }}>Deal-breakers <span className="faint">— auto-reject if a job has these</span>
+            <input className="input" style={{ width: '100%' }} value={dealBreakers} onChange={(e) => setDealBreakers(e.target.value)}
+              placeholder="e.g. unpaid, pure sales, on-site only in another city" />
+          </label>
+          <label style={{ fontSize: 13 }}>Biggest wins <span className="faint">— optional, strengthens tailoring</span>
+            <textarea className="input" style={{ width: '100%', minHeight: 70 }} value={wins} onChange={(e) => setWins(e.target.value)}
+              placeholder="e.g. Cut API latency 60%; shipped a payments feature used by 40k users" />
+          </label>
+        </div>
+        <div className="row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-primary" onClick={saveGuided} disabled={saving}>
+            {saving ? <span className="spinner" /> : '✓'} Save &amp; make ready
+          </button>
+          {status?.setupReady && <span className="chip" style={{ background: '#34d39922', color: '#34d399' }}>ready to scrape</span>}
+        </div>
+      </div>
+
+      {/* Step 3 — optional AI polish */}
+      <div className="card card-pad">
+        <h3 style={{ marginTop: 0 }}>3 · Polish with AI <span className="faint" style={{ fontSize: 13, fontWeight: 400 }}>(optional)</span></h3>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
+          Turns your profile + resume into richer tailoring documents (behavioral profile, writing style,
+          STAR interview stories, a tailored CV template). Needed for the best CV/cover-letter tailoring,
+          not for finding jobs.
+        </p>
+        {!status?.aiEnabled ? (
+          <div style={{ fontSize: 13, color: '#fbbf24' }}>
+            ⚠ No AI provider is configured on the server, so this step is disabled. Set a free Groq or Gemini
+            key in the backend environment (<code>JOBPILOT_GROQ_API_KEY</code>) to enable it. Steps 1–2 work without it.
           </div>
+        ) : (
+          <button className="btn" onClick={enhance} disabled={enhancing}>
+            {enhancing ? <span className="spinner" /> : '✨'} Generate AI documents
+          </button>
         )}
       </div>
 
+      {/* Advanced — raw document editors */}
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>Generate from your material</h3>
-        <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, marginBottom: 10 }}>
-          <input type="checkbox" checked={useResume} onChange={(e) => setUseResume(e.target.checked)} />
-          Use my uploaded resume (from Profile) as a source
-        </label>
-        <label style={{ fontSize: 13 }}>Paste a CV / any career material (optional)
-          <textarea className="input" style={{ width: '100%', minHeight: 120 }} value={pastedCv}
-            onChange={(e) => setPastedCv(e.target.value)} placeholder="Paste your CV text, LinkedIn export, project notes…" />
-        </label>
-        <label style={{ fontSize: 13, display: 'block', marginTop: 10 }}>Guided answers (optional)
-          <textarea className="input" style={{ width: '100%', minHeight: 90 }} value={answers}
-            onChange={(e) => setAnswers(e.target.value)}
-            placeholder="What roles do you want? Where? Biggest wins? Non-negotiables (deal-breakers)?" />
-        </label>
-        <div className="row" style={{ marginTop: 12, gap: 8, alignItems: 'center' }}>
-          <button className="btn btn-primary" onClick={run} disabled={running || !status?.aiEnabled}>
-            {running ? <span className="spinner" /> : '⚙'} Generate profile documents
-          </button>
-          <span className="faint" style={{ fontSize: 12 }}>Idempotent — safe to re-run.</span>
-        </div>
-        {profile?.setupLog && (
-          <pre className="faint" style={{ fontSize: 11.5, marginTop: 10, whiteSpace: 'pre-wrap' }}>{profile.setupLog}</pre>
+        <button className="btn btn-sm" onClick={() => setShowAdvanced((v) => !v)}>
+          {showAdvanced ? '▾' : '▸'} Advanced — edit the 8 documents directly
+        </button>
+        {showAdvanced && (
+          <>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+              {Object.entries(DOC_LABELS).map(([k, label]) => (
+                <button key={k} className="btn btn-sm" onClick={() => openEditor(k)} style={{ opacity: checklist[k] ? 1 : 0.55 }}>
+                  {checklist[k] ? '✓' : '○'} {label}
+                </button>
+              ))}
+            </div>
+            {openDoc && (
+              <div>
+                <textarea className="input" style={{ width: '100%', minHeight: 240, fontFamily: 'monospace', fontSize: 12 }}
+                  value={draft} onChange={(e) => setDraft(e.target.value)} />
+                <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => saveDoc(openDoc)}>Save {DOC_LABELS[openDoc]}</button>
+                  <button className="btn btn-sm" onClick={() => setOpenDoc('')}>Close</button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

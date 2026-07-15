@@ -33,6 +33,12 @@ public class ApiExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
+    /** Concurrent first-time row creation (e.g. two setup requests racing) — safe to retry. */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> conflict(org.springframework.dao.DataIntegrityViolationException ex) {
+        return build(HttpStatus.CONFLICT, "A concurrent update collided — please retry.");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> validation(MethodArgumentNotValidException ex) {
         String msg = ex.getBindingResult().getFieldErrors().stream()

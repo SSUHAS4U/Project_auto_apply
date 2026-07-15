@@ -82,6 +82,22 @@ public class EngineController {
         return setup.get(UserContext.require());
     }
 
+    /** The real details we already have (from the app Profile) — shown on the Setup screen. */
+    @GetMapping("/prefill")
+    public Map<String, Object> prefill() {
+        UserContext.require();
+        return setup.appProfileSummary();
+    }
+
+    /** Guided setup — no AI needed; makes Scrape work immediately. */
+    @PostMapping("/guided")
+    public EngineProfile guided(@RequestBody Map<String, Object> body) {
+        return setup.saveGuided(UserContext.require(),
+                strList(body.get("roles")), strList(body.get("locations")),
+                str(body.get("careerGoal")), strList(body.get("dealBreakers")), str(body.get("wins")));
+    }
+
+    /** AI enhancement — richer docs (needs an AI provider). Optional. */
     @PostMapping("/setup")
     public EngineProfile runSetup(@RequestBody Map<String, Object> body) {
         return setup.run(UserContext.require(),
@@ -231,4 +247,11 @@ public class EngineController {
     }
 
     private static String str(Object o) { return o == null ? null : o.toString(); }
+
+    private static List<String> strList(Object o) {
+        if (o instanceof List<?> l) return l.stream().filter(java.util.Objects::nonNull).map(Object::toString).toList();
+        if (o instanceof String s && !s.isBlank())
+            return java.util.Arrays.stream(s.split(",")).map(String::trim).filter(x -> !x.isEmpty()).toList();
+        return List.of();
+    }
 }

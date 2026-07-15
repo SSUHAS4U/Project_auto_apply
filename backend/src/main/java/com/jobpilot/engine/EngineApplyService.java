@@ -196,7 +196,7 @@ public class EngineApplyService {
                 + "\n\nEVALUATION LENS (goals, must-haves, deal-breakers):\n" + cap(nz(p.getEvaluationMd()), 2000)
                 + "\n\nPOSTING (" + nz(a.getPostingTitle()) + " @ " + nz(a.getPostingCompany()) + "):\n"
                 + cap(nz(a.getPostingText()), 6000);
-        return mapper.readTree(extractJson(ai.complete(EVAL_SYS, user, false, false)));
+        return mapper.readTree(extractJson(completeRetry(EVAL_SYS, user)));
     }
 
     // ---- stage 3: draft -----------------------------------------------------------
@@ -226,7 +226,7 @@ public class EngineApplyService {
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 1500)
                 + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 5000)
                 + "\n\nBASE CV LATEX:\n" + cap(nz(p.getCvTemplateLatex()), 6000);
-        return stripFences(ai.complete(CV_SYS, user, false, false));
+        return stripFences(completeRetry(CV_SYS, user));
     }
 
     private String draftCover(EngineProfile p, EngineApplication a, JsonNode eval) {
@@ -236,7 +236,7 @@ public class EngineApplyService {
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 1500)
                 + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 4000)
                 + "\n\nLETTER TEMPLATE LATEX:\n" + cap(nz(p.getCoverTemplateLatex()), 3000);
-        return stripFences(ai.complete(COVER_SYS, user, false, false));
+        return stripFences(completeRetry(COVER_SYS, user));
     }
 
     // ---- stage 4: reviewer ---------------------------------------------------------
@@ -260,7 +260,7 @@ public class EngineApplyService {
                 + "\n\nCANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 4000)
                 + "\n\nDRAFT CV (LaTeX):\n" + cap(nz(a.getCvLatex()), 5500)
                 + "\n\nDRAFT COVER LETTER (LaTeX):\n" + cap(nz(a.getCoverLatex()), 2500);
-        return ai.complete(REVIEW_SYS, user, false, false);
+        return completeRetry(REVIEW_SYS, user);
     }
 
     // ---- stage 5: revise -------------------------------------------------------------
@@ -275,10 +275,9 @@ public class EngineApplyService {
     private void revise(EngineProfile p, EngineApplication a) {
         String base = "REVIEWER CRITIQUE:\n" + cap(nz(a.getReviewerFeedback()), 3000)
                 + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 4000);
-        String cv = ai.complete(REVISE_SYS, base + "\n\nDOCUMENT (CV):\n" + cap(nz(a.getCvLatex()), 6000),
-                false, false);
-        String cover = ai.complete(REVISE_SYS, base + "\n\nDOCUMENT (COVER LETTER):\n"
-                + cap(nz(a.getCoverLatex()), 3000), false, false);
+        String cv = completeRetry(REVISE_SYS, base + "\n\nDOCUMENT (CV):\n" + cap(nz(a.getCvLatex()), 6000));
+        String cover = completeRetry(REVISE_SYS, base + "\n\nDOCUMENT (COVER LETTER):\n"
+                + cap(nz(a.getCoverLatex()), 3000));
         if (!blank(cv)) a.setCvLatex(stripFences(cv));
         if (!blank(cover)) a.setCoverLatex(stripFences(cover));
         a.setRevisionNotes("Reviewer critique applied where grounded in the profile.");
@@ -307,10 +306,10 @@ public class EngineApplyService {
         for (int pass = 0; pages > 2 && pass < 2; pass++) {
             cuts.append("Pass ").append(pass + 1).append(": CV was ").append(pages)
                 .append(" pages — relevance-weighted cut applied.\n");
-            String trimmed = stripFences(ai.complete(CUT_SYS,
+            String trimmed = stripFences(completeRetry(CUT_SYS,
                     "POSTING KEYWORDS: " + join(eval.path("requiredKeywords"))
                             + "\n\nPOSTING (for relevance):\n" + cap(nz(a.getPostingText()), 2500)
-                            + "\n\nCV LATEX:\n" + a.getCvLatex(), false, false));
+                            + "\n\nCV LATEX:\n" + a.getCvLatex()));
             if (blank(trimmed)) break;
             a.setCvLatex(trimmed);
             cvPdf = compileWithRepair(a.getCvLatex(), l -> a.setCvLatex(l));
@@ -330,8 +329,8 @@ public class EngineApplyService {
         try {
             return latex.compileLatex(source);
         } catch (Exception first) {
-            String fixed = stripFences(ai.complete(FIX_SYS,
-                    "ERROR:\n" + cap(nz(first.getMessage()), 800) + "\n\nLATEX:\n" + source, false, false));
+            String fixed = stripFences(completeRetry(FIX_SYS,
+                    "ERROR:\n" + cap(nz(first.getMessage()), 800) + "\n\nLATEX:\n" + source));
             if (blank(fixed)) throw new IllegalStateException("LaTeX compile failed: " + first.getMessage());
             onFix.accept(fixed);
             return latex.compileLatex(fixed); // second failure propagates
@@ -483,6 +482,27 @@ public class EngineApplyService {
         List<String> parts = new ArrayList<>();
         if (arr != null && arr.isArray()) arr.forEach(x -> parts.add(x.asText()));
         return String.join(", ", parts);
+    }
+
+    /**
+     * Run an AI completion but survive transient provider hiccups (free-tier rate limits,
+     * a momentary I/O error, a dead fallback provider). One flaky call should never throw
+     * away a whole application's work, so we retry with backoff before giving up.
+     */
+    private String completeRetry(String system, String user) {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                String out = ai.complete(system, user, false, false);
+                if (out != null && !out.isBlank()) return out;
+                last = new IllegalStateException("AI returned an empty response");
+            } catch (RuntimeException e) {
+                last = e;
+            }
+            try { Thread.sleep(2000L * (attempt + 1)); }
+            catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+        }
+        throw last != null ? last : new IllegalStateException("AI unavailable");
     }
 
     private static String extractJson(String s) {

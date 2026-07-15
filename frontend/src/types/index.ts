@@ -265,6 +265,20 @@ export type EngineDoc =
   | 'candidate' | 'behavioral' | 'writingStyle' | 'evaluation'
   | 'cvTemplate' | 'coverTemplate' | 'interviewPrep' | 'searchQueries';
 
+export interface EnginePrefill {
+  fullName: string;
+  email: string;
+  phone: string;
+  headline: string;
+  currentTitle: string;
+  currentCompany: string;
+  yearsExperience: string;
+  location: string;
+  skills: string[];
+  preferredLocations: string[];
+  hasResume: boolean;
+}
+
 export interface EngineStatus {
   aiEnabled: boolean;
   setupReady: boolean;

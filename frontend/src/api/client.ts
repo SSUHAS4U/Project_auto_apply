@@ -2,7 +2,7 @@ import type {
   AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentSchedule, AgentStatus,
   Application, ApplicationEvent, AssistantJob,
   EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
-  EngineProfile, EngineStatus, EngineUpskill,
+  EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
   Job, Notification, Page,
   PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalContact, Profile, SavedJob,
 } from '../types';
@@ -253,6 +253,9 @@ export const api = {
   // Engine — clean-room ai-job-search replica: setup → scrape → rank → apply → outcome → interview → upskill.
   engineStatus: () => req<EngineStatus>('/api/engine/status'),
   engineProfile: () => req<EngineProfile>('/api/engine/profile'),
+  enginePrefill: () => req<EnginePrefill>('/api/engine/prefill'),
+  engineGuided: (body: { roles: string[]; locations: string[]; careerGoal?: string; dealBreakers?: string[]; wins?: string }) =>
+    req<EngineProfile>('/api/engine/guided', { method: 'POST', body: JSON.stringify(body) }),
   engineSetup: (body: { pastedCv?: string; interviewAnswers?: string; useStoredResume?: boolean }) =>
     req<EngineProfile>('/api/engine/setup', { method: 'POST', body: JSON.stringify(body) }),
   engineSaveDoc: (doc: EngineDoc, content: string) =>
