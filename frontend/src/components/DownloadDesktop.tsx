@@ -4,8 +4,7 @@
 const RELEASE_BASE = 'https://github.com/SSUHAS4U/Project_auto_apply/releases/latest/download';
 const DOWNLOADS: Record<string, { label: string; file: string }> = {
   win: { label: 'Download for Windows', file: 'jobpilot-desktop-win-x64.exe' },
-  macArm: { label: 'Download for Mac (Apple Silicon)', file: 'jobpilot-desktop-macos-arm64' },
-  macIntel: { label: 'Download for Mac (Intel)', file: 'jobpilot-desktop-macos-x64' },
+  macArm: { label: 'Download for Mac', file: 'jobpilot-desktop-macos-arm64' },
   linux: { label: 'Download for Linux', file: 'jobpilot-desktop-linux-x64' },
 };
 

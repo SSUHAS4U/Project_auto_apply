@@ -1,10 +1,13 @@
 name: Build JobPilot Desktop
 
-# Builds the downloadable JobPilot Desktop app for Windows, macOS (Intel + Apple
-# Silicon) and Linux, and publishes them to a GitHub Release. The dashboard's
-# "Download JobPilot Desktop" button links to /releases/latest/download/<asset>.
+# Builds the downloadable JobPilot Desktop app and publishes each binary to a GitHub
+# Release as soon as it's built — the dashboard's "Download" button links to
+# /releases/latest/download/<asset>.
 #
-# Trigger: push a tag like `desktop-v1` (or run manually from the Actions tab).
+# Each platform publishes independently, so a fast runner (Windows/Linux) makes the
+# download live in a couple of minutes without waiting on the slower macOS queue.
+#
+# Trigger: push a tag like `desktop-v3` (or run manually from the Actions tab).
 
 on:
   push:
@@ -23,18 +26,14 @@ jobs:
           - os: windows-latest
             script: build:win
             out: jobpilot-desktop-win-x64.exe
-          - os: macos-13
-            script: build:mac-x64
-            out: jobpilot-desktop-macos-x64
-          - os: macos-14
-            script: build:mac-arm64
-            out: jobpilot-desktop-macos-arm64
           - os: ubuntu-latest
             script: build:linux
             out: jobpilot-desktop-linux-x64
+          - os: macos-14
+            script: build:mac-arm64
+            out: jobpilot-desktop-macos-arm64
     runs-on: ${{ matrix.os }}
-    # One platform failing must never block the others (e.g. still ship Windows if a
-    # macOS build hiccups) — the release job publishes whatever succeeded.
+    # A slow/failed platform never blocks the others — each publishes on its own.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -47,33 +46,18 @@ jobs:
       - name: Bundle + package executable
         working-directory: worker
         run: npm run ${{ matrix.script }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.out }}
-          path: worker/dist/${{ matrix.out }}
-          if-no-files-found: warn
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-      - name: Publish release
+      - name: Publish this binary to the release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: JobPilot Desktop ${{ github.ref_name }}
           body: |
-            Download the app for your computer, then open it and paste the connect code
-            from your JobPilot dashboard (Agent → Connect). Requires Google Chrome installed.
+            Download the app for your computer, open it, and paste the connect code from
+            your JobPilot dashboard (Agent → Connect). Requires Google Chrome installed.
 
             - Windows: `jobpilot-desktop-win-x64.exe`
             - macOS (Apple Silicon): `jobpilot-desktop-macos-arm64`
-            - macOS (Intel): `jobpilot-desktop-macos-x64`
             - Linux: `jobpilot-desktop-linux-x64`
-          files: artifacts/*
+          files: worker/dist/${{ matrix.out }}
           make_latest: true
