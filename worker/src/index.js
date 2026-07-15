@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { Api } from './api.js';
 import { launchBrowser, startFrameStreamer, sleep } from './browser.js';
 import { runNaukri } from './portals/naukri.js';
+import { runLinkedIn } from './portals/linkedin.js';
+import { runIndeed } from './portals/indeed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,7 +37,7 @@ function loadConfig() {
   return { backendUrl, token };
 }
 
-const ADAPTERS = { naukri: runNaukri };
+const ADAPTERS = { naukri: runNaukri, linkedin: runLinkedIn, indeed: runIndeed };
 
 async function main() {
   const { backendUrl, token } = loadConfig();
@@ -46,8 +48,11 @@ async function main() {
   console.log(`  Connected as ${hello.name || hello.userId}.`);
 
   const { ctx, page } = await launchBrowser();
-  console.log('\n  Browser is open. Log into the portals you want (Naukri first).');
-  console.log('  Then hit "Start Naukri" in the dashboard. Watching for work…\n');
+  console.log('\n  Browser is open. Log into the portals you want to use:');
+  console.log('   • Naukri:   https://www.naukri.com/');
+  console.log('   • LinkedIn: https://www.linkedin.com/');
+  console.log('   • Indeed:   https://www.indeed.com/');
+  console.log('  (log in once — the session is remembered). Then hit ▶ for a portal in the dashboard.\n');
   await page.goto('https://www.naukri.com/').catch(() => {});
 
   const state = { runId: null, portal: null, action: 'Idle — waiting for a run', paused: false };

@@ -56,7 +56,16 @@ dashboard's **Watch Live** panel. Hit **Pause** any time to stop it promptly.
   wait for your approval in the dashboard before the worker sends them.
 - **Human-paced.** Randomized delays and per-block caps; stops immediately on Pause.
 
-## Status
+## Portals
 
-Naukri is the first portal implemented end-to-end. LinkedIn and Indeed adapters follow
-the same shape (`src/portals/*.js`) and are next.
+All three drive the portal's **native** apply (never external employer sites):
+
+- **Naukri** — search → open → fit-check → Apply (+ screening chatbot).
+- **LinkedIn** — searches with the **Easy Apply** filter, walks the multi-step Easy Apply
+  modal, answers questions, uploads resume, submits.
+- **Indeed** — Indeed Apply / smartapply multi-step flow; stops and flags "needs attention"
+  on a captcha/checkpoint (solve it in the browser and it resumes).
+
+Log into each portal once in the browser this opens; the sessions persist. Start a portal
+run from the dashboard (▶ naukri / linkedin / indeed) or let the daily rotation schedule
+drive them.
