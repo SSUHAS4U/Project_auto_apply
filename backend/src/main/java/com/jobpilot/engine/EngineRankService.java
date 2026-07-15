@@ -24,20 +24,27 @@ public class EngineRankService {
     private static final int BATCH = 6;          // postings per AI call
     private static final int MAX_PER_RUN = 30;   // AI budget per /rank run
 
+    // Triage using the SAME framework as /apply (04-job-evaluation.md), scored from the
+    // posting text + profile only (no company research — that depth belongs to /apply).
+    // The overall score is the framework's fixed weighted average, computed in Java.
     private static final String SYSTEM = """
-            You are a job-fit triage engine. For EACH posting in the batch, score the
-            candidate's fit honestly:
-            - First check DEAL-BREAKERS from the candidate's evaluation lens; if one applies,
-              set "dealBreaker" to the exact reason and skip scoring (fit=0).
-            - Otherwise score fit 0-100 weighing: skill match, experience level alignment
-              (early-career candidates score HIGH on junior roles, LOW on 5+ yr roles),
-              location/remote compatibility, and career-goal alignment.
-            - verdict: strong(75+) good(60-74) moderate(45-59) weak(30-44) poor(<30).
-            - strengths: 2-3 concrete matches; gaps: 1-3 honest gaps. urgent=true only if
-              the posting shows a near deadline.
-            Never inflate. Output STRICT JSON only:
-            {"results":[{"i":0,"fit":0,"verdict":"","strengths":["",""],"gaps":[""],
-                         "dealBreaker":null,"urgent":false,"note":""}]}""";
+            You are a job-fit triage engine. Score EACH posting in the batch against this
+            fixed framework, honestly and critically (from the posting text only):
+            - dealBreaker: the exact reason if a deal-breaker from the evaluation lens clearly
+              applies, else null.
+            - technical 0-100: 80-100 core reqs are primary skills; 60-79 mostly match, 1-2
+              learnable gaps; 40-59 partial; 0-39 mismatch.
+            - experience 0-100: 80-100 direct same-domain/role; 60-79 related/transferable;
+              40-59 adjacent; 0-39 unrelated. Early-career scores HIGH on junior, LOW on senior.
+            - behavioral 0-100: culture/role fit (80-100 strong … 0-39 mismatch).
+            - career 0-100: advances goals + energizing (80-100 strong … 0-39 dead end).
+            - location: "PASS" | "FAIL" (requires relocation) | "FLAG" (heavy travel).
+            - deadline: "YYYY-MM-DD" if the posting states one, else null.
+            - strengths: 2-3 concrete; gaps: 1-3 honest.
+            Never inflate; a poor fit scores low even if prestigious. Output STRICT JSON only:
+            {"results":[{"i":0,"technical":0,"experience":0,"behavioral":0,"career":0,
+                         "location":"PASS","deadline":null,"strengths":["",""],"gaps":[""],
+                         "dealBreaker":null}]}""";
 
     private final EngineJobRepository jobs;
     private final EngineSetupService setup;
@@ -102,21 +109,32 @@ public class EngineRankService {
                         if (idx < 0 || idx >= alive.size()) continue;
                         EngineJob j = alive.get(idx);
                         String veto = r.path("dealBreaker").isNull() ? null : r.path("dealBreaker").asText(null);
-                        if (veto != null && !veto.isBlank() && !"null".equals(veto)) {
-                            j.setDealBreaker(veto);
+                        String location = r.path("location").asText("PASS");
+                        // Deal-breaker OR a location FAIL vetoes the job regardless of score.
+                        boolean vetoedJob = (veto != null && !veto.isBlank() && !"null".equals(veto))
+                                || "FAIL".equalsIgnoreCase(location);
+                        if (vetoedJob) {
+                            j.setDealBreaker(veto != null && !veto.isBlank() && !"null".equals(veto)
+                                    ? veto : "location: requires relocation");
                             j.setFitScore(0);
                             j.setVerdict("poor");
                             j.setStatus("dismissed");
                             vetoed++;
                         } else {
-                            j.setFitScore(r.path("fit").asInt(0));
-                            j.setVerdict(r.path("verdict").asText(""));
-                            j.setStatus(j.getFitScore() >= 60 ? "shortlisted" : "ranked");
+                            // Framework's exact weighted average + verdict bands.
+                            int overall = EngineApplyService.weightedOverall(
+                                    r.path("technical").asInt(0), r.path("experience").asInt(0),
+                                    r.path("behavioral").asInt(0), r.path("career").asInt(0));
+                            j.setFitScore(overall);
+                            j.setVerdict(EngineApplyService.verdictBand(overall));
+                            j.setStatus(overall >= 60 ? "shortlisted" : "ranked");
                         }
                         j.setStrengths(joined(r.path("strengths")));
                         j.setGaps(joined(r.path("gaps")));
-                        j.setUrgent(r.path("urgent").asBoolean(false));
-                        j.setRankNotes(r.path("note").asText(""));
+                        // Deadline within 7 days → urgent (🔥 tiebreaker), per the framework.
+                        j.setUrgent(deadlineSoon(r.path("deadline")));
+                        String loc = "FLAG".equalsIgnoreCase(location) ? " ⚠ heavy travel" : "";
+                        j.setRankNotes((r.path("deadline").isNull() ? "" : "deadline " + r.path("deadline").asText()) + loc);
                         jobs.save(j);
                         ranked++;
                     }
@@ -150,6 +168,18 @@ public class EngineRankService {
         }
         String out = ai.complete(SYSTEM, cap(u.toString(), 14000), false, false);
         return mapper.readTree(extractJson(out));
+    }
+
+    /** True if the posting's deadline (YYYY-MM-DD) is within the next 7 days. */
+    private static boolean deadlineSoon(JsonNode node) {
+        if (node == null || node.isNull()) return false;
+        try {
+            java.time.LocalDate d = java.time.LocalDate.parse(node.asText().trim());
+            long days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), d);
+            return days >= 0 && days <= 7;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String joined(JsonNode arr) {

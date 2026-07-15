@@ -177,36 +177,47 @@ function ActivityChart({ events }: { events: AgentEvent[] }) {
     return buckets;
   }, [events]);
 
-  const W = 900, H = 180, pad = 24;
-  const max = Math.max(4, ...series.map((s) => s.n));
-  const x = (i: number) => pad + (i * (W - 2 * pad)) / (series.length - 1);
-  const y = (n: number) => H - pad - (n / max) * (H - 2 * pad);
-  const pts = series.map((s, i) => `${x(i)},${y(s.n)}`).join(' ');
-  const area = `${pad},${H - pad} ${pts} ${W - pad},${H - pad}`;
+  // Rounded bars read far better than a line for sparse hourly counts (a line drags
+  // long flat stretches between spikes; bars show each hour honestly).
+  const W = 920, H = 190, padX = 14, padTop = 16, padBot = 26;
+  const max = Math.max(3, ...series.map((s) => s.n));
+  const innerW = W - 2 * padX;
+  const slot = innerW / series.length;
+  const bw = Math.min(30, slot * 0.55);
+  const barH = (n: number) => (n / max) * (H - padTop - padBot);
   const hasData = series.some((s) => s.n > 0);
 
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" role="img" aria-label="Activity trend, last 14 hours">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Activity trend, last 14 hours">
         <defs>
-          <linearGradient id="actfill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          <linearGradient id="barfill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.55" />
           </linearGradient>
         </defs>
-        {[0.25, 0.5, 0.75, 1].map((g) => (
-          <line key={g} x1={pad} x2={W - pad} y1={H - pad - g * (H - 2 * pad)} y2={H - pad - g * (H - 2 * pad)}
-            stroke="var(--border)" strokeWidth="1" />
-        ))}
-        {hasData && <polygon points={area} fill="url(#actfill)" />}
-        {hasData && <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-        {hasData && series.map((s, i) => s.n > 0 && (
-          <circle key={i} cx={x(i)} cy={y(s.n)} r="3.2" fill="var(--accent)" />
-        ))}
-        {series.filter((_, i) => i % 2 === 0).map((s, i) => (
-          <text key={i} x={x(i * 2)} y={H - 6} fontSize="10" fill="var(--text-faint)" textAnchor="middle">{s.label}</text>
-        ))}
-        {!hasData && <text x={W / 2} y={H / 2} fontSize="13" fill="var(--text-faint)" textAnchor="middle">No activity in the last 14 hours</text>}
+        {/* subtle gridlines */}
+        {[0.5, 1].map((g) => {
+          const yy = padTop + (1 - g) * (H - padTop - padBot);
+          return <line key={g} x1={padX} x2={W - padX} y1={yy} y2={yy} stroke="var(--border)" strokeWidth="1" />;
+        })}
+        <line x1={padX} x2={W - padX} y1={H - padBot} y2={H - padBot} stroke="var(--border)" strokeWidth="1" />
+        {series.map((s, i) => {
+          const cx = padX + i * slot + slot / 2;
+          const h = Math.max(s.n > 0 ? 4 : 0, barH(s.n));
+          return (
+            <g key={i}>
+              {s.n > 0 && (
+                <>
+                  <rect x={cx - bw / 2} y={H - padBot - h} width={bw} height={h} rx={5} fill="url(#barfill)" />
+                  <text x={cx} y={H - padBot - h - 5} fontSize="10.5" fill="var(--text-dim)" textAnchor="middle" fontWeight="600">{s.n}</text>
+                </>
+              )}
+              {i % 2 === 0 && <text x={cx} y={H - 8} fontSize="10" fill="var(--text-faint)" textAnchor="middle">{s.label}</text>}
+            </g>
+          );
+        })}
+        {!hasData && <text x={W / 2} y={(H - padBot) / 2 + padTop} fontSize="13" fill="var(--text-faint)" textAnchor="middle">No activity in the last 14 hours</text>}
       </svg>
     </div>
   );

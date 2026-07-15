@@ -167,28 +167,53 @@ public class EngineApplyService {
 
     // ---- stage 2: evaluate ------------------------------------------------------
 
+    // The exact ai-job-search Job Evaluation Framework (04-job-evaluation.md). Each
+    // dimension is scored 0-100 against its band definitions; the overall is a fixed
+    // weighted average (Technical 30 / Experience 25 / Behavioral 15 / Career 30, location
+    // unweighted) computed deterministically below — never left to the model's judgement.
     private static final String EVAL_SYS = """
-            You are a rigorous job-fit evaluator. Score the candidate against the posting on
-            the five dimensions of this framework, 0-100 each, honestly and critically:
-            1. skills — technical requirements vs the candidate's actual capabilities.
-            2. experience — role level, domain, industry alignment (early-career candidates
-               score HIGH on junior roles, LOW on senior ones).
-            3. culture — stated values, team structure, work environment vs the candidate's
-               behavioral profile.
-            4. location — remote policy, commute, relocation vs the candidate's logistics
-               ("result": pass | fail | flag).
-            5. career — alignment with stated goals and growth momentum; check the
-               candidate's deal-breakers ("dealBreaker": true only if one clearly applies).
-            overall = weighted judgment (not a plain mean). verdict: strong(75+) good(60-74)
-            moderate(45-59) weak(30-44) poor(<30).
-            Extract requiredKeywords (must-have hard skills/tools the ATS will scan) and
-            preferredKeywords. Every note must cite something concrete.
+            You are a rigorous job-fit evaluator applying a fixed framework. Score each
+            dimension 0-100 strictly against its band definitions, honest and critical:
+
+            1. technical — 80-100: core requirements are the candidate's PRIMARY skills;
+               60-79: most requirements match, 1-2 learnable gaps; 40-59: partial match,
+               significant upskilling needed; 0-39: fundamental mismatch.
+            2. experience — 80-100: direct experience in the same domain and role type;
+               60-79: related, transferable experience; 40-59: adjacent, must make the case;
+               0-39: unrelated. (Early-career candidates score HIGH on junior roles, LOW on
+               senior ones.)
+            3. behavioral — culture/role fit vs the candidate's behavioral profile. 80-100:
+               strong match; 60-79: mostly compatible; 40-59: some friction; 0-39: significant
+               mismatch.
+            4. location — "PASS" (within commute, or remote/hybrid), "FAIL" (requires
+               relocation — a deal-breaker), or "FLAG" (heavy/international travel — user judges).
+            5. career — advances the candidate's goals and contains energizing work. 80-100:
+               strongly aligned, clear growth; 60-79: good but only partially aligned; 40-59:
+               doesn't build toward goals; 0-39: dead end or backwards step.
+
+            Set "dealBreaker": true only if the evaluation lens's deal-breakers clearly apply.
+            Extract requiredKeywords (must-have hard skills/tools an ATS scans) and
+            preferredKeywords. Give 2-3 strengths, 1-3 honest gaps, and a 1-2 sentence
+            recommendation. Every note cites something concrete. Never invent. Do NOT output an
+            overall score or verdict — those are computed from your dimension scores.
             Output STRICT JSON only:
-            {"skills":{"score":0,"note":""},"experience":{"score":0,"note":""},
-             "culture":{"score":0,"note":""},"location":{"result":"pass","note":""},
-             "career":{"score":0,"note":""},"overall":0,"verdict":"","dealBreaker":false,
+            {"technical":{"score":0,"note":""},"experience":{"score":0,"note":""},
+             "behavioral":{"score":0,"note":""},"location":{"result":"PASS","note":""},
+             "career":{"score":0,"note":""},"dealBreaker":false,
              "strengths":["",""],"gaps":["",""],"recommendation":"",
              "requiredKeywords":[""],"preferredKeywords":[""]}""";
+
+    /** The framework's fixed weights + verdict bands, applied deterministically. */
+    static int weightedOverall(int technical, int experience, int behavioral, int career) {
+        return Math.round(technical * 0.30f + experience * 0.25f + behavioral * 0.15f + career * 0.30f);
+    }
+    static String verdictBand(int overall) {
+        if (overall >= 75) return "strong";
+        if (overall >= 60) return "good";
+        if (overall >= 45) return "moderate";
+        if (overall >= 30) return "weak";
+        return "poor";
+    }
 
     private JsonNode evaluate(EngineProfile p, EngineApplication a) throws Exception {
         String user = "CANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 2600)
@@ -196,7 +221,16 @@ public class EngineApplyService {
                 + "\n\nEVALUATION LENS (goals, must-haves, deal-breakers):\n" + cap(nz(p.getEvaluationMd()), 1200)
                 + "\n\nPOSTING (" + nz(a.getPostingTitle()) + " @ " + nz(a.getPostingCompany()) + "):\n"
                 + cap(nz(a.getPostingText()), 3000);
-        return mapper.readTree(extractJson(completeRetry(EVAL_SYS, user)));
+        JsonNode ev = mapper.readTree(extractJson(completeRetry(EVAL_SYS, user)));
+        // Compute overall + verdict from the dimension scores with the framework's exact weights.
+        int overall = weightedOverall(
+                ev.path("technical").path("score").asInt(0), ev.path("experience").path("score").asInt(0),
+                ev.path("behavioral").path("score").asInt(0), ev.path("career").path("score").asInt(0));
+        if (ev instanceof ObjectNode on) {
+            on.put("overall", overall);
+            on.put("verdict", verdictBand(overall));
+        }
+        return ev;
     }
 
     // ---- stage 3: draft -----------------------------------------------------------
