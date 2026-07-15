@@ -52,6 +52,22 @@ public class EngineProfile {
     @Column(name = "setup_log", columnDefinition = "text")
     private String setupLog;
 
+    // ---- autopilot (daily self-running cycle) ----
+    @Column(name = "auto_enabled", nullable = false)
+    private boolean autoEnabled = false;
+
+    @Column(name = "daily_cap", nullable = false)
+    private int dailyCap = 15;
+
+    @Column(name = "min_fit", nullable = false)
+    private int minFit = 60;
+
+    @Column(name = "last_run_at")
+    private Instant lastRunAt;
+
+    @Column(name = "last_run_summary", columnDefinition = "text")
+    private String lastRunSummary;
+
     @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
 }

@@ -260,6 +260,11 @@ export const api = {
     req<EngineProfile>('/api/engine/setup', { method: 'POST', body: JSON.stringify(body) }),
   engineSaveDoc: (doc: EngineDoc, content: string) =>
     req<EngineProfile>(`/api/engine/profile/${doc}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  engineAutopilotToggle: (enabled: boolean) =>
+    req<{ enabled: boolean }>('/api/engine/autopilot/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  engineAutopilotConfig: (dailyCap: number, minFit: number) =>
+    req<{ dailyCap: number; minFit: number }>('/api/engine/autopilot/config', { method: 'PUT', body: JSON.stringify({ dailyCap, minFit }) }),
+  engineAutopilotRun: () => req<{ status: string }>('/api/engine/autopilot/run', { method: 'POST' }),
   engineScrape: () => req<{ status: string }>('/api/engine/scrape', { method: 'POST' }),
   engineRank: () => req<{ status: string }>('/api/engine/rank', { method: 'POST' }),
   engineJobs: (status?: string, limit = 150) =>

@@ -6,7 +6,6 @@ const NAV = [
   { to: '/', label: 'Jobs', ico: '🧭', end: true },
   { to: '/auto-apply', label: 'Auto Apply', ico: '⚡' },
   { to: '/agent', label: 'Agent · Live', ico: '📺' },
-  { to: '/pilot', label: 'Pilot (v2)', ico: '🛰️' },
   { to: '/daily', label: 'Daily picks', ico: '☀️' },
   { to: '/scout', label: 'Scout', ico: '🔎' },
   { to: '/resumes', label: 'Resumes', ico: '📄' },

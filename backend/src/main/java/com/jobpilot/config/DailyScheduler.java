@@ -24,27 +24,27 @@ public class DailyScheduler {
     private final BackgroundRunner runner;
     private final AtsDiscoveryService discovery;
     private final com.jobpilot.service.JobScoutService scout;
-    private final com.jobpilot.pilot.PilotOrchestrator pilot;
+    private final com.jobpilot.engine.EngineOrchestrator engine;
 
     public DailyScheduler(DailyService daily, BackgroundRunner runner,
                           AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout,
-                          com.jobpilot.pilot.PilotOrchestrator pilot) {
+                          com.jobpilot.engine.EngineOrchestrator engine) {
         this.daily = daily;
         this.runner = runner;
         this.discovery = discovery;
         this.scout = scout;
-        this.pilot = pilot;
+        this.engine = engine;
     }
 
-    /** Daily Pilot cycle — evaluate → draft → review → compile → verify → apply.
-     *  The orchestrator no-ops when the dashboard pause toggle is off. */
+    /** Daily Engine autopilot — for every profile that turned it on, run the full
+     *  ai-job-search cycle: scrape → rank → auto-apply the best-fit shortlist. */
     @Scheduled(cron = "${jobpilot.schedule.auto-apply-cron:0 30 9 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
-    public void runPilot() {
-        log.info("Scheduled pilot cycle starting…");
+    public void runEngineAutopilot() {
+        log.info("Scheduled engine autopilot starting…");
         try {
-            pilot.run("scheduled");
+            engine.runAllDue();
         } catch (Exception e) {
-            log.warn("Scheduled pilot cycle failed: {}", e.getMessage());
+            log.warn("Scheduled engine autopilot failed: {}", e.getMessage());
         }
     }
 

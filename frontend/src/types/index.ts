@@ -279,6 +279,15 @@ export interface EnginePrefill {
   hasResume: boolean;
 }
 
+export interface EngineAutopilot {
+  enabled: boolean;
+  dailyCap: number;
+  minFit: number;
+  running: boolean;
+  lastRunAt?: string | null;
+  lastRunSummary?: string | null;
+}
+
 export interface EngineStatus {
   aiEnabled: boolean;
   setupReady: boolean;
@@ -289,6 +298,7 @@ export interface EngineStatus {
   rankProgress: string;
   jobStatusCounts: Record<string, number>;
   appStageCounts: Record<string, number>;
+  autopilot: EngineAutopilot;
 }
 
 export interface EngineJob {

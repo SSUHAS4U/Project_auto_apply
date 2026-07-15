@@ -33,6 +33,9 @@ public interface EngineApplicationRepository extends JpaRepository<EngineApplica
 
     long countByUserIdAndStage(UUID userId, String stage);
 
+    /** Autopilot daily budget: how many applications we already started today. */
+    long countByUserIdAndCreatedAtAfter(UUID userId, java.time.Instant since);
+
     /** [stage, count] for the engine dashboard. */
     @Query("select a.stage, count(a) from EngineApplication a where a.userId = :userId group by a.stage")
     List<Object[]> countByStage(@Param("userId") UUID userId);

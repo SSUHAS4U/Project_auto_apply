@@ -34,6 +34,8 @@ public class EngineController {
     private final EngineUpskillService upskill;
     private final EngineJobRepository jobs;
     private final EngineApplicationRepository apps;
+    private final EngineProfileRepository profiles;
+    private final EngineOrchestrator orchestrator;
     private final AiService ai;
 
     private final ExecutorService pool = Executors.newFixedThreadPool(2, r -> {
@@ -45,7 +47,8 @@ public class EngineController {
     public EngineController(EngineSetupService setup, EngineScraperService scraper, EngineRankService rank,
                             EngineApplyService apply, EngineInterviewService interview,
                             EngineUpskillService upskill, EngineJobRepository jobs,
-                            EngineApplicationRepository apps, AiService ai) {
+                            EngineApplicationRepository apps, EngineProfileRepository profiles,
+                            EngineOrchestrator orchestrator, AiService ai) {
         this.setup = setup;
         this.scraper = scraper;
         this.rank = rank;
@@ -54,6 +57,8 @@ public class EngineController {
         this.upskill = upskill;
         this.jobs = jobs;
         this.apps = apps;
+        this.profiles = profiles;
+        this.orchestrator = orchestrator;
         this.ai = ai;
     }
 
@@ -72,7 +77,52 @@ public class EngineController {
         m.put("rankProgress", rank.progress(u));
         m.put("jobStatusCounts", counts(jobs.countByStatus(u)));
         m.put("appStageCounts", counts(apps.countByStage(u)));
+        EngineProfile p = setup.get(u);
+        Map<String, Object> auto = new LinkedHashMap<>();
+        auto.put("enabled", p.isAutoEnabled());
+        auto.put("dailyCap", p.getDailyCap());
+        auto.put("minFit", p.getMinFit());
+        auto.put("running", orchestrator.isRunning(u));
+        auto.put("lastRunAt", p.getLastRunAt());
+        auto.put("lastRunSummary", p.getLastRunSummary());
+        m.put("autopilot", auto);
         return m;
+    }
+
+    // ---- autopilot (daily self-running cycle) ---------------------------------
+
+    /** Turn the daily autopilot on/off. */
+    @PostMapping("/autopilot/toggle")
+    public Map<String, Object> autopilotToggle(@RequestBody Map<String, Object> body) {
+        UUID u = UserContext.require();
+        boolean enabled = body.get("enabled") != null && Boolean.parseBoolean(body.get("enabled").toString());
+        EngineProfile p = setup.get(u);
+        p.setAutoEnabled(enabled);
+        profiles.save(p);
+        return Map.of("enabled", enabled);
+    }
+
+    /** Save autopilot limits (applies/day, minimum fit). */
+    @PutMapping("/autopilot/config")
+    public Map<String, Object> autopilotConfig(@RequestBody Map<String, Object> body) {
+        UUID u = UserContext.require();
+        EngineProfile p = setup.get(u);
+        if (body.get("dailyCap") != null) p.setDailyCap(Math.max(0, Math.min(200, ((Number) body.get("dailyCap")).intValue())));
+        if (body.get("minFit") != null) p.setMinFit(Math.max(0, Math.min(100, ((Number) body.get("minFit")).intValue())));
+        profiles.save(p);
+        return Map.of("dailyCap", p.getDailyCap(), "minFit", p.getMinFit());
+    }
+
+    /** Run the whole cycle now (scrape → rank → auto-apply), in the background. */
+    @PostMapping("/autopilot/run")
+    public Map<String, Object> autopilotRun() {
+        UUID u = UserContext.require();
+        if (orchestrator.isRunning(u)) return Map.of("status", "already_running");
+        pool.submit(() -> {
+            try { orchestrator.runDailyCycle(u, "manual"); }
+            catch (Exception e) { log.warn("manual engine cycle failed: {}", e.getMessage()); }
+        });
+        return Map.of("status", "started");
     }
 
     // ---- /setup ---------------------------------------------------------------

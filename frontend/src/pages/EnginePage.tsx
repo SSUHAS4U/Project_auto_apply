@@ -91,6 +91,8 @@ export function EnginePage() {
         </div>
       )}
 
+      {status && <AutopilotBanner status={status} onChange={loadStatus} />}
+
       <div className="row" style={{ gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {([
           ['setup', '① Setup'],
@@ -118,6 +120,82 @@ function count(m?: Record<string, number>): string {
   if (!m) return '';
   const total = Object.values(m).reduce((a, b) => a + b, 0);
   return total ? ` (${total})` : '';
+}
+
+// ---- Autopilot banner (the daily self-running cycle) ------------------------
+
+function AutopilotBanner({ status, onChange }: { status: EngineStatus; onChange: () => void }) {
+  const toast = useToast();
+  const a = status.autopilot;
+  const [cap, setCap] = useState(a.dailyCap);
+  const [minFit, setMinFit] = useState(a.minFit);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setCap(a.dailyCap); setMinFit(a.minFit); }, [a.dailyCap, a.minFit]);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      const r = await api.engineAutopilotToggle(!a.enabled);
+      toast(r.enabled
+        ? 'Autopilot ON — it runs the full cycle every day at 09:30 IST and applies for you.'
+        : 'Autopilot off. Nothing runs automatically.', 'success');
+      onChange();
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+  const runNow = async () => {
+    setBusy(true);
+    try { await api.engineAutopilotRun(); toast('Cycle started — scraping, ranking, then applying to the best matches…', 'success'); setTimeout(onChange, 1500); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+  const saveCfg = async () => {
+    try { await api.engineAutopilotConfig(cap, minFit); toast('Saved', 'success'); onChange(); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  };
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14, borderColor: a.enabled ? '#34d399' : undefined }}>
+      <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>
+            🤖 Autopilot{' '}
+            <Chip text={a.enabled ? (a.running ? 'running now' : 'ON · daily 09:30') : 'off'}
+              color={a.enabled ? (a.running ? '#60a5fa' : '#34d399') : '#7d8595'} />
+          </div>
+          <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>
+            Runs the whole cycle by itself every day — scrape → rank → apply the top {a.dailyCap} best-fit jobs (fit ≥ {a.minFit}).
+            {a.lastRunSummary ? ` Last run: ${a.lastRunSummary}` : ' Not run yet.'}
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-sm" onClick={runNow} disabled={busy || a.running || !status.setupReady}
+            title={status.setupReady ? 'Run the full cycle now' : 'Finish Setup first'}>
+            {a.running ? <span className="spinner" /> : '▶'} Run now
+          </button>
+          <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}>⚙ Limits</button>
+          <button className={`btn btn-sm ${a.enabled ? '' : 'btn-primary'}`} onClick={toggle} disabled={busy || !status.setupReady}
+            style={a.enabled ? { background: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined}>
+            {a.enabled ? 'Turn off' : 'Turn on'}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="row" style={{ gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ fontSize: 12.5 }}>Applies per day
+            <input className="input" type="number" min={0} max={200} style={{ width: 90, display: 'block' }}
+              value={cap} onChange={(e) => setCap(+e.target.value)} />
+          </label>
+          <label style={{ fontSize: 12.5 }}>Minimum fit
+            <input className="input" type="number" min={0} max={100} style={{ width: 90, display: 'block' }}
+              value={minFit} onChange={(e) => setMinFit(+e.target.value)} />
+          </label>
+          <button className="btn btn-primary btn-sm" onClick={saveCfg}>Save limits</button>
+          <span className="faint" style={{ fontSize: 11.5 }}>Each application uses ~5 AI calls — keep the cap sane on free AI tiers.</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- Setup ------------------------------------------------------------------

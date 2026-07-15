@@ -14,6 +14,9 @@ public interface EngineJobRepository extends JpaRepository<EngineJob, UUID> {
 
     List<EngineJob> findByUserIdAndStatusOrderByScrapedAtDesc(UUID userId, String status, Pageable page);
 
+    /** Autopilot picks the best-fit shortlisted jobs to apply to. */
+    List<EngineJob> findByUserIdAndStatusOrderByFitScoreDesc(UUID userId, String status, Pageable page);
+
     /** Ranked view: best fits first, unranked last. */
     @Query("""
             select j from EngineJob j where j.userId = :userId and j.status <> 'dismissed'
