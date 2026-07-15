@@ -2,9 +2,13 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import './styles.css';
+import { initTheme } from './lib/theme';
 import { ToastProvider } from './lib/ui';
+
+initTheme();
 import { isLoggedIn, isAdminUI } from './api/client';
 import { Layout } from './components/Layout';
+import { DashboardPage } from './pages/DashboardPage';
 import { JobsPage } from './pages/JobsPage';
 import { EnginePage } from './pages/EnginePage';
 import { AgentPage } from './pages/AgentPage';
@@ -37,7 +41,8 @@ const router = createBrowserRouter([
     path: '/',
     element: <Guard><Layout /></Guard>,
     children: [
-      { index: true, element: <JobsPage /> },
+      { index: true, element: <DashboardPage /> },
+      { path: 'jobs', element: <JobsPage /> },
       { path: 'auto-apply', element: <EnginePage /> },
       { path: 'agent', element: <AgentPage /> },
       { path: 'daily', element: <DailyPicksPage /> },

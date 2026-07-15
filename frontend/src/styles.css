@@ -27,6 +27,38 @@
   font-feature-settings: 'ss01';
 }
 
+/* HireDue light theme — the default look. Every surface uses these tokens, so flipping
+   data-theme on <html> re-skins the whole app. Dark remains available via the toggle. */
+:root[data-theme="light"] {
+  --bg: #f5f6f8;
+  --bg-elev: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f4f5f8;
+  --border: #e6e8ee;
+  --border-strong: #d6dae2;
+  --text: #171a21;          /* ~14:1 on white */
+  --text-dim: #5b6472;      /* ~6.5:1 — secondary */
+  --text-faint: #838b98;    /* ~4.5:1 — tertiary */
+  --accent: #5b5bd6;
+  --accent-hi: #4f46e5;
+  --accent-soft: rgba(91, 91, 214, 0.10);
+  --green: #16a34a;
+  --amber: #d97706;
+  --red: #dc2626;
+  --blue: #2563eb;
+  --purple: #7c3aed;
+  --shadow: 0 1px 2px rgba(20,24,33,.04), 0 8px 24px rgba(20,24,33,.06);
+  --glow: 0 0 0 1px rgba(91,91,214,0.18), 0 8px 26px rgba(91,91,214,0.12);
+  color-scheme: light;
+}
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(900px 500px at 85% -15%, rgba(91,91,214,0.06), transparent 55%),
+    var(--bg);
+}
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d3d8e0; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #c2c8d2; }
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 /* Stop mobile browsers from auto-inflating text on orientation/zoom (fixes the
