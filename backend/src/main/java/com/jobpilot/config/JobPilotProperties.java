@@ -113,7 +113,7 @@ public class JobPilotProperties {
     @Data
     public static class Gemini {
         private String apiKey = "";
-        private String model = "gemini-1.5-flash";
+        private String model = "gemini-2.5-flash"; // 1.5-flash was retired (404 on v1beta)
     }
 
     @Data

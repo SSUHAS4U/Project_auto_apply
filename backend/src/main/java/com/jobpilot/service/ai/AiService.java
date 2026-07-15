@@ -123,6 +123,10 @@ public class AiService {
         }
         enforceDailyLimit();
         Exception last = null;
+        // Remember each provider's most recent failure so the surfaced error names WHICH
+        // provider failed and why (e.g. "gemini: 404 model not found") instead of only the
+        // last one in the chain — the difference between a mystery and a one-line fix.
+        java.util.LinkedHashMap<String, String> failures = new java.util.LinkedHashMap<>();
         // Two rounds over the whole chain: free tiers throw transient I/O timeouts and
         // 429s all the time — one short backoff usually clears them.
         for (int attempt = 0; attempt < 2; attempt++) {
@@ -135,17 +139,25 @@ public class AiService {
                     return out;
                 } catch (Exception e) {
                     last = e;
-                    log.warn("AI provider '{}' failed ({}); trying next", c.name(), e.getMessage());
+                    String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                    failures.put(c.name(), msg.replaceAll("\\s+", " ").trim());
+                    log.warn("AI provider '{}' failed ({}); trying next", c.name(), msg);
                 }
             }
             if (attempt == 0 && isTransient(last)) {
                 try { Thread.sleep(1500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
             } else break;
         }
-        String reason = last == null ? "unknown" : last.getMessage();
+        String detail = failures.entrySet().stream()
+                .map(en -> en.getKey() + ": " + cap(en.getValue(), 160))
+                .reduce((x, y) -> x + " | " + y).orElse("no provider configured");
         throw new IllegalStateException(isTransient(last)
-                ? "AI is busy right now (" + reason + ") — try again in a few seconds."
-                : "All AI providers failed: " + reason, last);
+                ? "AI is busy right now — " + detail + ". Try again shortly."
+                : "All AI providers failed — " + detail, last);
+    }
+
+    private static String cap(String s, int max) {
+        return s == null ? "" : (s.length() > max ? s.substring(0, max) + "…" : s);
     }
 
     /** Rate limits, timeouts and upstream hiccups — worth one retry; real errors aren't. */
