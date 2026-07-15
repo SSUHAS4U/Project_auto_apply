@@ -43,6 +43,7 @@ public class EngineApplyService {
     private final AiService ai;
     private final ResumeDocService latex;   // shared plumbing: compileLatex only
     private final MailService mail;
+    private final com.jobpilot.service.SettingsService settings;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "engine-apply");
@@ -52,7 +53,8 @@ public class EngineApplyService {
 
     public EngineApplyService(EngineApplicationRepository apps, EngineJobRepository jobs,
                               EngineSetupService setup, EngineScraperService scraper,
-                              AiService ai, ResumeDocService latex, MailService mail) {
+                              AiService ai, ResumeDocService latex, MailService mail,
+                              com.jobpilot.service.SettingsService settings) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;
@@ -60,6 +62,7 @@ public class EngineApplyService {
         this.ai = ai;
         this.latex = latex;
         this.mail = mail;
+        this.settings = settings;
     }
 
     // ---- entry points ---------------------------------------------------------
@@ -132,15 +135,17 @@ public class EngineApplyService {
             a.setCoverLatex(draftCover(p, a, eval));
             save(a);
 
-            // 4. reviewer agent (fresh context — sees only drafts, profile, posting)
-            stage(a, "reviewing", "Independent reviewer critiquing the drafts");
-            a.setReviewerFeedback(review(p, a));
-            save(a);
-
-            // 5. revise
-            stage(a, "revising", "Applying reviewer feedback");
-            revise(p, a);
-            save(a);
+            // 4 + 5. reviewer + revise — the quality-refinement pass. It doubles the AI
+            // calls per application (3 -> 6), which quickly exhausts free AI tiers, so it's
+            // OFF by default. Turn on "thorough" mode when you have AI headroom.
+            if (isThorough()) {
+                stage(a, "reviewing", "Independent reviewer critiquing the drafts");
+                a.setReviewerFeedback(review(p, a));
+                save(a);
+                stage(a, "revising", "Applying reviewer feedback");
+                revise(p, a);
+                save(a);
+            }
 
             // 6. compile + page rules + relevance-weighted cutting
             stage(a, "compiling", "Compiling PDFs (CV ≤ 2 pages, letter 1 page)");
@@ -540,6 +545,12 @@ public class EngineApplyService {
             catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
         }
         throw last != null ? last : new IllegalStateException("AI unavailable");
+    }
+
+    /** Thorough mode adds the reviewer+revise pass (2x the AI calls). Off by default so
+     *  autopilot stays within free AI limits; toggled via the engine_thorough setting. */
+    private boolean isThorough() {
+        return settings.get("engine_thorough").map("true"::equals).orElse(false);
     }
 
     private static boolean isRateLimit(Throwable e) {

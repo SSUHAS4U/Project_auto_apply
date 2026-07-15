@@ -90,6 +90,10 @@ export function AgentPage() {
           </div>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary btn-sm" onClick={() => start('all')} disabled={busy || !status?.workerConfigured}
+            title={status?.workerConfigured ? 'Run Naukri → LinkedIn → Indeed in sequence' : 'Set up JobPilot Desktop first'}>
+            ▶ Run all
+          </button>
           {PORTALS.map((p) => (
             <button key={p} className="btn btn-sm" onClick={() => start(p)} disabled={busy || !status?.workerConfigured}
               title={status?.workerConfigured ? `Queue a ${p} run` : 'Set up JobPilot Desktop first'}>
