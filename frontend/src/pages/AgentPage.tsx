@@ -342,6 +342,46 @@ function ScheduleTab() {
   );
 }
 
+// ---- Download button (OS-aware, serves the latest release binary) -----------
+
+const RELEASE_BASE = 'https://github.com/SSUHAS4U/Project_auto_apply/releases/latest/download';
+const DOWNLOADS: Record<string, { label: string; file: string }> = {
+  win: { label: 'Download for Windows', file: 'jobpilot-desktop-win-x64.exe' },
+  macArm: { label: 'Download for Mac (Apple Silicon)', file: 'jobpilot-desktop-macos-arm64' },
+  macIntel: { label: 'Download for Mac (Intel)', file: 'jobpilot-desktop-macos-x64' },
+  linux: { label: 'Download for Linux', file: 'jobpilot-desktop-linux-x64' },
+};
+
+function detectOS(): string {
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'win';
+  if (/Mac/i.test(ua)) return /ARM|Apple/i.test((navigator as { platform?: string }).platform ?? '') ? 'macArm' : 'macArm';
+  if (/Linux|X11/i.test(ua)) return 'linux';
+  return 'win';
+}
+
+function DownloadDesktop() {
+  const primary = detectOS();
+  const others = Object.keys(DOWNLOADS).filter((k) => k !== primary);
+  return (
+    <div>
+      <a className="btn btn-primary" href={`${RELEASE_BASE}/${DOWNLOADS[primary].file}`} download>
+        ⬇ {DOWNLOADS[primary].label}
+      </a>
+      <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+        {others.map((k) => (
+          <a key={k} href={`${RELEASE_BASE}/${DOWNLOADS[k].file}`} download className="faint"
+            style={{ fontSize: 12.5, textDecoration: 'underline' }}>{DOWNLOADS[k].label}</a>
+        ))}
+      </div>
+      <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+        Requires Google Chrome installed. On Mac/Linux, make it executable once:
+        {' '}<code>chmod +x jobpilot-desktop-*</code>, then run it.
+      </div>
+    </div>
+  );
+}
+
 // ---- Connect (JobPilot Desktop onboarding) ----------------------------------
 
 function ConnectTab({ configured, onChange }: { configured: boolean; onChange: () => void }) {
@@ -362,11 +402,13 @@ function ConnectTab({ configured, onChange }: { configured: boolean; onChange: (
         cookies stay on your machine and never reach our servers. You set it up <b>once</b>:
       </p>
       <ol style={{ fontSize: 13.5, lineHeight: 1.9 }}>
-        <li>In the project's <code>worker</code> folder, double-click <b>start-jobpilot.bat</b> (Windows) or run
-          <code>./start-jobpilot.sh</code> (Mac/Linux). It installs itself the first time.</li>
+        <li><b>Download JobPilot Desktop</b> for your computer and open it (Windows may warn on an unknown
+          app — choose “More info → Run anyway”).</li>
         <li>Generate your connect code below and paste it when the app asks (just once).</li>
         <li>Done. A browser opens — now use the <b>Connect</b> buttons on the Connections page to sign into each portal.</li>
       </ol>
+      <DownloadDesktop />
+      <div style={{ height: 12 }} />
       <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
         <button className="btn btn-primary btn-sm" onClick={issue}>
           {configured ? 'Regenerate connect code' : 'Generate connect code'}

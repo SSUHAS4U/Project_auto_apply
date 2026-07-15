@@ -1,4 +1,6 @@
 node_modules/
 .profile/
+dist/
 worker.config.json
+jobpilot-desktop.config.json
 *.log

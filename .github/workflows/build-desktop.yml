@@ -1,0 +1,76 @@
+name: Build JobPilot Desktop
+
+# Builds the downloadable JobPilot Desktop app for Windows, macOS (Intel + Apple
+# Silicon) and Linux, and publishes them to a GitHub Release. The dashboard's
+# "Download JobPilot Desktop" button links to /releases/latest/download/<asset>.
+#
+# Trigger: push a tag like `desktop-v1` (or run manually from the Actions tab).
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: build:win
+            out: jobpilot-desktop-win-x64.exe
+          - os: macos-13
+            script: build:mac-x64
+            out: jobpilot-desktop-macos-x64
+          - os: macos-14
+            script: build:mac-arm64
+            out: jobpilot-desktop-macos-arm64
+          - os: ubuntu-latest
+            script: build:linux
+            out: jobpilot-desktop-linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install worker deps
+        working-directory: worker
+        run: npm install
+      - name: Bundle + package executable
+        working-directory: worker
+        run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: worker/dist/${{ matrix.out }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JobPilot Desktop ${{ github.ref_name }}
+          body: |
+            Download the app for your computer, then open it and paste the connect code
+            from your JobPilot dashboard (Agent → Connect). Requires Google Chrome installed.
+
+            - Windows: `jobpilot-desktop-win-x64.exe`
+            - macOS (Apple Silicon): `jobpilot-desktop-macos-arm64`
+            - macOS (Intel): `jobpilot-desktop-macos-x64`
+            - Linux: `jobpilot-desktop-linux-x64`
+          files: artifacts/*
+          make_latest: true

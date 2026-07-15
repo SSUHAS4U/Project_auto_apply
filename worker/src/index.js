@@ -15,18 +15,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { fileURLToPath } from 'node:url';
 import { Api } from './api.js';
-import { launchBrowser, startFrameStreamer, sleep } from './browser.js';
+import { launchBrowser, startFrameStreamer, sleep, APP_DIR } from './browser.js';
 import { runNaukri } from './portals/naukri.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import { reportSessions, handleConnectionActions } from './connections.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const DEFAULT_BACKEND = 'https://jobpilot-backend-owb0.onrender.com';
-const CONFIG_FILE = path.join(__dirname, '..', 'worker.config.json');
+const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
 
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
