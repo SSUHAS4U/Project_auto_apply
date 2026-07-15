@@ -18,12 +18,27 @@ function searchUrl(keyword, location) {
     : `https://www.naukri.com/${k}-jobs`;
 }
 
+// Naukri renders results with JavaScript after load, so we wait for a job card to appear
+// before scraping. Its class names change over time — cast a wide net.
+const JOB_LINK_SELECTORS = [
+  '.srp-jobtuple-wrapper a.title',
+  'article.jobTuple a.title',
+  'a.title[href*="job-listings"]',
+  'a[href*="/job-listings-"]',
+  'a.title',
+];
+
+async function waitForResults(page) {
+  await page.waitForSelector(JOB_LINK_SELECTORS.join(', '), { timeout: 18000 }).catch(() => {});
+  // let a couple of lazy rows settle
+  await page.waitForTimeout(1200).catch(() => {});
+}
+
 async function collectJobLinks(page) {
-  // Job title anchors on the results page. Naukri markup shifts often, so try a few.
-  const sels = ['a.title', 'a.title.ellipsis', 'article.jobTuple a.title', '.jobTuple a[href*="/job-listings-"]'];
-  for (const sel of sels) {
+  for (const sel of JOB_LINK_SELECTORS) {
     const links = await page.$$eval(sel, (as) =>
-      as.map((a) => ({ url: a.href, title: (a.textContent || '').trim() })).filter((x) => x.url),
+      as.map((a) => ({ url: a.href, title: (a.textContent || '').trim() }))
+        .filter((x) => x.url && /job-listings|\/jobs\//.test(x.url)),
     ).catch(() => []);
     if (links.length) return dedupe(links);
   }
@@ -57,14 +72,23 @@ export async function runNaukri(page, api, plan, state, ctx) {
     for (const location of plan.locations) {
       if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 200)) break outer;
 
-      state.action = `Searching "${keyword}" in ${location}`;
+      state.action = `Opening Naukri search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'naukri', type: 'info', detail: state.action });
-      await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
-      await humanDelay(1500, 3000);
+      const url = searchUrl(keyword, location);
+      await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await waitForResults(page);
 
       const links = await collectJobLinks(page);
+      // Tell the dashboard exactly what happened so a "0 results" is diagnosable, not silent.
+      const landed = page.url();
+      const blocked = /login|nlogin/i.test(landed);
       await api.event({ runId: state.runId, portal: 'naukri', type: 'info',
-        detail: `${links.length} results for ${keyword} @ ${location}` });
+        detail: links.length > 0
+          ? `Found ${links.length} jobs for "${keyword}" @ ${location}`
+          : blocked
+            ? `Naukri asked to log in — sign into naukri.com in the browser, then run again`
+            : `No job cards found on ${landed.replace('https://www.', '')} — the page may have changed or require login` });
+      if (links.length === 0) continue;
 
       for (const link of links) {
         if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 200)) break outer;

@@ -533,10 +533,20 @@ public class EngineApplyService {
             } catch (RuntimeException e) {
                 last = e;
             }
-            try { Thread.sleep(2000L * (attempt + 1)); }
+            // Rate limits reset per minute (Groq free = 6000 tokens/min), so a real wait
+            // clears them; ordinary hiccups just need a short pause.
+            long wait = isRateLimit(last) ? 18000L * (attempt + 1) : 2000L * (attempt + 1);
+            try { Thread.sleep(wait); }
             catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
         }
         throw last != null ? last : new IllegalStateException("AI unavailable");
+    }
+
+    private static boolean isRateLimit(Throwable e) {
+        String m = e == null ? "" : String.valueOf(e.getMessage());
+        return m != null && java.util.regex.Pattern.compile(
+                "429|413|rate.?limit|too many|tokens per minute|\\btpm\\b|quota|too large",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(m).find();
     }
 
     private static String extractJson(String s) {
