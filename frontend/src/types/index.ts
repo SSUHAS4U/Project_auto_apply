@@ -181,6 +181,7 @@ export interface AgentRun {
 export interface AgentStatus {
   paused: boolean;
   workerConfigured: boolean;
+  workerOnline: boolean;
   activeRun: AgentRun | null;
   metricsToday: AgentMetrics;
   pendingApprovals: number;

@@ -39,6 +39,7 @@ public class WorkerController {
     @GetMapping("/hello")
     public Map<String, Object> hello() {
         UUID u = UserContext.require();
+        agent.markWorkerSeen(u);
         Profile p = profiles.get();
         return Map.of("ok", true, "userId", u.toString(),
                 "name", nz(p.getFullName()), "paused", agent.isPaused());
@@ -51,6 +52,7 @@ public class WorkerController {
     @GetMapping("/next")
     public Map<String, Object> next() {
         UUID u = UserContext.require();
+        agent.markWorkerSeen(u); // heartbeat — the dashboard uses this to know the app is running
         if (agent.isPaused()) return Map.of("paused", true);
         AgentRun run = agent.activeRun(u);
         if (run == null) return Map.of("idle", true);

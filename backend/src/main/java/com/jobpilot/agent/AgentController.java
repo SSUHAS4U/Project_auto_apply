@@ -35,6 +35,7 @@ public class AgentController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paused", agent.isPaused());
         m.put("workerConfigured", workerTokens.isConfigured());
+        m.put("workerOnline", agent.isWorkerOnline(u));
         m.put("activeRun", run == null ? null : runView(run));
         m.put("metricsToday", metricMap(agent, u, since));
         m.put("pendingApprovals", agent.pendingApprovals(u));

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
+import { DownloadDesktop } from '../components/DownloadDesktop';
 
 /**
  * Connections — the "Connect" UX for the job portals. For LinkedIn/Naukri/Indeed the
@@ -42,13 +43,16 @@ export function ConnectionsPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  const workerOn = status?.workerConfigured ?? false;
+  // "online" = JobPilot Desktop is actually running right now (heartbeat), not just that a
+  // connect code was once generated. This is what gates the Connect buttons.
+  const online = status?.workerOnline ?? false;
 
   const connect = async (portal: string) => {
+    if (!online) { toast('Open JobPilot Desktop first — it isn’t running.', 'error'); return; }
     setBusy(portal);
     try {
       await api.agentConnect(portal);
-      toast(`Opening ${PORTALS[portal].name} sign-in in the worker's browser — log in there once.`, 'success');
+      toast(`Opening ${PORTALS[portal].name} sign-in — log in there once.`, 'success');
       load();
     } catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(''); }
   };
@@ -70,18 +74,30 @@ export function ConnectionsPage() {
         </div>
       </div>
 
-      {!workerOn && (
+      {/* Live status of the desktop app — this is what makes Connect work. */}
+      {status && (online ? (
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#16a34a', fontSize: 13.5 }}>
+          <span style={{ color: '#16a34a', fontWeight: 700 }}>● JobPilot Desktop is running.</span>{' '}
+          <span className="faint">Click Connect on a portal below — its login opens in the app.</span>
+        </div>
+      ) : (
         <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#d97706' }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>① Set up JobPilot Desktop (once)</div>
-          <p className="faint" style={{ fontSize: 13, margin: '6px 0 10px' }}>
-            Just like VS Code is an app on your computer, JobPilot needs a small desktop app to open a real
-            browser and apply for you. Set it up once — then Connect works with a single click, forever.
+          <div style={{ fontWeight: 700, fontSize: 15 }}>
+            <span style={{ color: '#d97706' }}>○</span> JobPilot Desktop isn’t running
+          </div>
+          <p className="faint" style={{ fontSize: 13, margin: '6px 0 10px', lineHeight: 1.6 }}>
+            Connecting needs the desktop app open — it's the piece that opens a real browser to apply for you
+            (the same way VS Code is an app on your computer). Download it, open it, and paste the connect code
+            once. Then the Connect buttons below light up.
           </p>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => nav('/agent')}>Set up JobPilot Desktop →</button>
+          <DownloadDesktop compact />
+          <div className="row" style={{ gap: 12, marginTop: 8 }}>
+            <a onClick={() => nav('/agent')} style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: 12.5 }}>
+              Get the connect code &amp; full setup →
+            </a>
           </div>
         </div>
-      )}
+      ))}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
         {conns.map((c) => {
@@ -110,12 +126,20 @@ export function ConnectionsPage() {
                   </button>
                 ) : (
                   <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => connect(c.portal)}
-                    disabled={busy === c.portal || !workerOn}>
-                    {busy === c.portal || c.status === 'connecting' ? <span className="spinner" /> : '🔗'} Connect {p.name}
+                    disabled={busy === c.portal || c.status === 'connecting' || !online}
+                    title={online ? '' : 'Open JobPilot Desktop first'}>
+                    {busy === c.portal || c.status === 'connecting' ? <span className="spinner" /> : '🔗'}{' '}
+                    {c.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
                   </button>
                 )}
               </div>
-              {c.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}
+              {/* surface the reason a connect stalled (e.g. app wasn't running) */}
+              {c.detail && c.status !== 'connected' && (
+                <div style={{ fontSize: 12, marginTop: 8, color: c.status === 'connecting' ? 'var(--text-dim)' : '#d97706' }}>
+                  {c.detail}
+                </div>
+              )}
+              {c.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>Updated {fmtDate(c.updatedAt)}</div>}
             </div>
           );
         })}

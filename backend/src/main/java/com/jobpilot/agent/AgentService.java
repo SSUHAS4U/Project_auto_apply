@@ -11,6 +11,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import java.time.Instant;
 import java.util.*;
 
@@ -61,9 +63,27 @@ public class AgentService {
         this.ai = ai;
     }
 
+    // ---- worker heartbeat (is JobPilot Desktop actually running?) -----------
+
+    private final Map<UUID, Instant> lastWorkerSeen = new ConcurrentHashMap<>();
+
+    /** Called on every worker request — the app's "I'm alive" ping. */
+    public void markWorkerSeen(UUID userId) {
+        lastWorkerSeen.put(userId, Instant.now());
+    }
+
+    /** True if JobPilot Desktop has pinged within the last 30s (it polls every ~4s). */
+    public boolean isWorkerOnline(UUID userId) {
+        Instant t = lastWorkerSeen.get(userId);
+        return t != null && t.isAfter(Instant.now().minusSeconds(30));
+    }
+
     // ---- portal connections (the "Connect" UX) ------------------------------
 
-    /** All portal connections, seeding a disconnected row for any portal not yet seen. */
+    /** Give a stuck "connecting" this long before we call it failed (covers slow sign-ins). */
+    private static final long CONNECT_TIMEOUT_SECONDS = 150;
+
+    /** All portal connections, seeding rows and expiring any stuck "connecting" state. */
     @Transactional
     public List<PortalConnection> connections(UUID userId) {
         for (String portal : PORTALS) {
@@ -74,7 +94,20 @@ public class AgentService {
                 connections.save(c);
             }
         }
-        return connections.findByUserIdOrderByPortalAsc(userId);
+        List<PortalConnection> list = connections.findByUserIdOrderByPortalAsc(userId);
+        boolean online = isWorkerOnline(userId);
+        for (PortalConnection c : list) {
+            if ("connecting".equals(c.getStatus())
+                    && c.getUpdatedAt().isBefore(Instant.now().minusSeconds(CONNECT_TIMEOUT_SECONDS))) {
+                c.setStatus("disconnected");
+                c.setRequestedAction(null);
+                c.setDetail(online ? "Sign-in timed out — try Connect again."
+                        : "JobPilot Desktop isn't running — start it, then click Connect.");
+                c.setUpdatedAt(Instant.now());
+                connections.save(c);
+            }
+        }
+        return list;
     }
 
     /** Dashboard asks to connect/disconnect — queues the action for the worker. */
@@ -120,10 +153,18 @@ public class AgentService {
                     n.setPortal(portal);
                     return n;
                 });
-        // don't flip a "connecting" row to disconnected until the worker confirms either way
-        c.setStatus(loggedIn ? "connected" : "disconnected");
-        c.setDetail(detail);
-        c.setUpdatedAt(Instant.now());
+        if (loggedIn) {
+            c.setStatus("connected");
+            c.setDetail(detail);
+            c.setUpdatedAt(Instant.now());
+        } else if (!"connecting".equals(c.getStatus())) {
+            // Not logged in — but DON'T clobber an in-progress "connecting" (the user is
+            // mid-sign-in on the login page the worker just opened). Only the connect
+            // timeout in connections() ends a stuck "connecting".
+            c.setStatus("disconnected");
+            c.setDetail(detail);
+            c.setUpdatedAt(Instant.now());
+        }
         connections.save(c);
     }
 
