@@ -76,6 +76,8 @@ public class JobPilotProperties {
         private String model = "llama-3.3-70b-versatile";
         private String fastModel = "llama-3.1-8b-instant";
         private String url = "https://api.groq.com/openai/v1/chat/completions";
+        /** Reserved output tokens. Free tier = 6000 TPM, so keep this well under it. */
+        private int maxTokens = 4000;
     }
 
     @Data

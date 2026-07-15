@@ -80,6 +80,10 @@ jobpilot:
     model: ${JOBPILOT_GROQ_MODEL:llama-3.3-70b-versatile}
     fast-model: ${JOBPILOT_GROQ_FAST_MODEL:llama-3.1-8b-instant}
     url: ${JOBPILOT_GROQ_URL:https://api.groq.com/openai/v1/chat/completions}
+    # Reserved output tokens per request. Free tier is 6000 tokens/min, and Groq counts
+    # this reservation against that budget — so a big value 413s every call. Raise it if
+    # you upgrade your Groq tier.
+    max-tokens: ${JOBPILOT_GROQ_MAX_TOKENS:4000}
   ollama:
     url: ${JOBPILOT_OLLAMA_URL:http://localhost:11434}
     model: ${JOBPILOT_OLLAMA_MODEL:llama3.1}

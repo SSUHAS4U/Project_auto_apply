@@ -191,11 +191,11 @@ public class EngineApplyService {
              "requiredKeywords":[""],"preferredKeywords":[""]}""";
 
     private JsonNode evaluate(EngineProfile p, EngineApplication a) throws Exception {
-        String user = "CANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 5000)
-                + "\n\nBEHAVIORAL PROFILE:\n" + cap(nz(p.getBehavioralMd()), 1500)
-                + "\n\nEVALUATION LENS (goals, must-haves, deal-breakers):\n" + cap(nz(p.getEvaluationMd()), 2000)
+        String user = "CANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 2600)
+                + "\n\nBEHAVIORAL PROFILE:\n" + cap(nz(p.getBehavioralMd()), 800)
+                + "\n\nEVALUATION LENS (goals, must-haves, deal-breakers):\n" + cap(nz(p.getEvaluationMd()), 1200)
                 + "\n\nPOSTING (" + nz(a.getPostingTitle()) + " @ " + nz(a.getPostingCompany()) + "):\n"
-                + cap(nz(a.getPostingText()), 6000);
+                + cap(nz(a.getPostingText()), 3000);
         return mapper.readTree(extractJson(completeRetry(EVAL_SYS, user)));
     }
 
@@ -221,20 +221,20 @@ public class EngineApplyService {
             Output ONLY the complete LaTeX source (no commentary, no fences).""";
 
     private String draftCv(EngineProfile p, EngineApplication a, JsonNode eval) {
-        String user = "POSTING:\n" + cap(nz(a.getPostingText()), 4500)
+        String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2600)
                 + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
-                + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 1500)
-                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 5000)
-                + "\n\nBASE CV LATEX:\n" + cap(nz(p.getCvTemplateLatex()), 6000);
+                + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
+                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2600)
+                + "\n\nBASE CV LATEX:\n" + cap(nz(p.getCvTemplateLatex()), 3200);
         return stripFences(completeRetry(CV_SYS, user));
     }
 
     private String draftCover(EngineProfile p, EngineApplication a, JsonNode eval) {
         String user = "POSTING (" + nz(a.getPostingTitle()) + " @ " + nz(a.getPostingCompany()) + "):\n"
-                + cap(nz(a.getPostingText()), 4500)
+                + cap(nz(a.getPostingText()), 2600)
                 + "\n\nCANDIDATE'S TOP MATCHES: " + join(eval.path("strengths"))
-                + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 1500)
-                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 4000)
+                + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
+                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2600)
                 + "\n\nLETTER TEMPLATE LATEX:\n" + cap(nz(p.getCoverTemplateLatex()), 3000);
         return stripFences(completeRetry(COVER_SYS, user));
     }
@@ -256,9 +256,9 @@ public class EngineApplyService {
             Every suggestion must be grounded in the profile — never suggest inventing.""";
 
     private String review(EngineProfile p, EngineApplication a) {
-        String user = "POSTING:\n" + cap(nz(a.getPostingText()), 4000)
-                + "\n\nCANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 4000)
-                + "\n\nDRAFT CV (LaTeX):\n" + cap(nz(a.getCvLatex()), 5500)
+        String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2600)
+                + "\n\nCANDIDATE PROFILE:\n" + cap(nz(p.getCandidateMd()), 2600)
+                + "\n\nDRAFT CV (LaTeX):\n" + cap(nz(a.getCvLatex()), 3000)
                 + "\n\nDRAFT COVER LETTER (LaTeX):\n" + cap(nz(a.getCoverLatex()), 2500);
         return completeRetry(REVIEW_SYS, user);
     }
@@ -274,8 +274,8 @@ public class EngineApplyService {
 
     private void revise(EngineProfile p, EngineApplication a) {
         String base = "REVIEWER CRITIQUE:\n" + cap(nz(a.getReviewerFeedback()), 3000)
-                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 4000);
-        String cv = completeRetry(REVISE_SYS, base + "\n\nDOCUMENT (CV):\n" + cap(nz(a.getCvLatex()), 6000));
+                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2600);
+        String cv = completeRetry(REVISE_SYS, base + "\n\nDOCUMENT (CV):\n" + cap(nz(a.getCvLatex()), 3200));
         String cover = completeRetry(REVISE_SYS, base + "\n\nDOCUMENT (COVER LETTER):\n"
                 + cap(nz(a.getCoverLatex()), 3000));
         if (!blank(cv)) a.setCvLatex(stripFences(cv));
