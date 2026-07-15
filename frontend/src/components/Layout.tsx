@@ -53,9 +53,9 @@ export function Layout() {
   const sidebar = (
     <aside className={`sidebar ${drawer ? 'open' : ''}`}>
       <div className="brand">
-        <div className="brand-logo">H</div>
+        <div className="brand-logo">J</div>
         <div>
-          <div className="brand-name">HireDue</div>
+          <div className="brand-name">JobPilot</div>
           <div className="brand-sub">autonomous job agent</div>
         </div>
       </div>
@@ -90,8 +90,8 @@ export function Layout() {
         <button className="hamburger" aria-label="Menu" onClick={() => setDrawer((d) => !d)}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
         </button>
-        <div className="brand-logo sm">H</div>
-        <span className="brand-name">HireDue</span>
+        <div className="brand-logo sm">J</div>
+        <span className="brand-name">JobPilot</span>
         {unread > 0 && <span className="nav-badge" style={{ marginLeft: 'auto' }}>{unread}</span>}
       </header>
 
