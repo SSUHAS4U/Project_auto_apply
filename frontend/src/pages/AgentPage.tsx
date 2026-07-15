@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import type {
   AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentSchedule, AgentStatus, PortalContact,
 } from '../types';
-import { fmtDate, useToast } from '../lib/ui';
+import { fmtDate, StatIcon, useToast } from '../lib/ui';
 
 /**
  * Agent — mission control for the LOCAL Playwright worker that drives the job portals
@@ -61,15 +61,15 @@ export function AgentPage() {
   };
 
   const m = status?.metricsToday;
-  const tiles: [string, number, string][] = [
-    ['Posts analysed', m?.postsAnalysed ?? 0, '🔬'],
-    ['Jobs identified', m?.jobsIdentified ?? 0, '🎯'],
-    ['Relevant', m?.relevantJobs ?? 0, '⭐'],
-    ['Applied', m?.applied ?? 0, '📤'],
-    ['Connections', m?.connectionsSent ?? 0, '🤝'],
-    ['Messages', m?.messagesSent ?? 0, '💬'],
-    ['Replies', m?.repliesReceived ?? 0, '📩'],
-    ['Errors', m?.errors ?? 0, '⚠️'],
+  const tiles: { label: string; value: number; icon: string; color: string }[] = [
+    { label: 'Posts analysed', value: m?.postsAnalysed ?? 0, icon: 'posts', color: '#5b5bd6' },
+    { label: 'Jobs identified', value: m?.jobsIdentified ?? 0, icon: 'target', color: '#2563eb' },
+    { label: 'Relevant', value: m?.relevantJobs ?? 0, icon: 'star', color: '#d97706' },
+    { label: 'Applied', value: m?.applied ?? 0, icon: 'send', color: '#16a34a' },
+    { label: 'Connections', value: m?.connectionsSent ?? 0, icon: 'link', color: '#7c3aed' },
+    { label: 'Messages', value: m?.messagesSent ?? 0, icon: 'chat', color: '#0891b2' },
+    { label: 'Replies', value: m?.repliesReceived ?? 0, icon: 'reply', color: '#16a34a' },
+    { label: 'Errors', value: m?.errors ?? 0, icon: 'alert', color: '#dc2626' },
   ];
 
   return (
@@ -109,15 +109,15 @@ export function AgentPage() {
         </div>
       )}
 
-      {/* HireDue-style metric tiles */}
-      <div className="row" style={{ gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        {tiles.map(([label, value, ico]) => (
-          <div key={label} className="card card-pad" style={{ flex: '1 1 130px', minWidth: 130 }}>
+      {/* metric tiles — same SVG-icon style as the Dashboard */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 14 }}>
+        {tiles.map((t) => (
+          <div key={t.label} className="card card-pad">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div className="faint" style={{ fontSize: 11, letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
-              <span style={{ fontSize: 15 }}>{ico}</span>
+              <div className="faint" style={{ fontSize: 11, letterSpacing: '.05em', textTransform: 'uppercase' }}>{t.label}</div>
+              <StatIcon name={t.icon} color={t.color} />
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 2 }}>{value}</div>
+            <div style={{ fontSize: 28, fontWeight: 750, marginTop: 2, letterSpacing: '-.02em' }}>{t.value}</div>
             <div className="faint" style={{ fontSize: 11 }}>today</div>
           </div>
         ))}

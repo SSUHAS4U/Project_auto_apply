@@ -2,36 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentEvent, AgentStatus, EngineStatus } from '../types';
-import { fmtDate } from '../lib/ui';
+import { fmtDate, StatIcon } from '../lib/ui';
 
 /**
- * Dashboard — the HireDue-style landing. One glance at what the automation did today:
- * status, the eight metric tiles, an activity-trend chart (hand-rolled SVG, no deps),
- * and the recent-actions feed. Reads the agent brain (/api/agent) + engine (/api/engine).
+ * Dashboard — the landing page. One glance at what the automation did today: status, the
+ * eight metric tiles, an activity-trend chart (hand-rolled SVG, no deps), and the
+ * recent-actions feed. Reads the agent brain (/api/agent) + engine (/api/engine).
  */
-
-const ICONS: Record<string, JSX.Element> = {
-  posts: <path d="M4 5h16M4 12h16M4 19h10" />,
-  target: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>,
-  star: <path d="M12 3l2.9 6 6.1.9-4.5 4.3 1 6.1L12 17.8 6.5 20.3l1-6.1L3 9.9 9.1 9z" />,
-  send: <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />,
-  link: <path d="M9 12h6M10 8H8a4 4 0 100 8h2M14 8h2a4 4 0 010 8h-2" />,
-  chat: <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />,
-  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></>,
-  reply: <path d="M9 17l-6-5 6-5M3 12h12a6 6 0 016 6v1" />,
-};
-
-function Icon({ name, color }: { name: string; color: string }) {
-  return (
-    <span style={{
-      width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center',
-      background: color + '18', color, flex: 'none',
-    }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round">{ICONS[name]}</svg>
-    </span>
-  );
-}
 
 const EVENT_LABEL: Record<string, string> = {
   post_analysed: 'Post analysed', job_identified: 'Job identified', relevant: 'Relevant match',
@@ -120,7 +97,7 @@ export function DashboardPage() {
                   <div className="faint" style={{ fontSize: 11.5, letterSpacing: '.04em', textTransform: 'uppercase' }}>{t.label}</div>
                   <div style={{ fontSize: 30, fontWeight: 750, marginTop: 2, letterSpacing: '-.02em' }}>{t.value}</div>
                 </div>
-                <Icon name={t.key} color={t.color} />
+                <StatIcon name={t.key} color={t.color} />
               </div>
               <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>Recent</div>
