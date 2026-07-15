@@ -41,11 +41,14 @@ public class AuthFilter extends OncePerRequestFilter {
     private final byte[] adminToken;
     private final JwtService jwt;
     private final AppUserRepository users;
+    private final WorkerTokenService workerTokens;
 
-    public AuthFilter(String adminToken, JwtService jwt, AppUserRepository users) {
+    public AuthFilter(String adminToken, JwtService jwt, AppUserRepository users,
+                      WorkerTokenService workerTokens) {
         this.adminToken = adminToken == null ? new byte[0] : adminToken.getBytes(StandardCharsets.UTF_8);
         this.jwt = jwt;
         this.users = users;
+        this.workerTokens = workerTokens;
     }
 
     @Override
@@ -56,6 +59,16 @@ public class AuthFilter extends OncePerRequestFilter {
         String path = req.getServletPath();
         if (path.equals("/api/auth/login") || path.equals("/api/auth/register")) {
             chain.doFilter(req, res); return; // public
+        }
+
+        // --- local worker : dedicated worker token (bound to its owning user) ---
+        // The Playwright worker on the owner's PC hits /api/worker/** with X-Worker-Token.
+        // It can NEVER reach any other route, so a leaked worker token can't touch user data.
+        if (path.startsWith("/api/worker/")) {
+            UUID workerUser = workerTokens.verify(req.getHeader("X-Worker-Token"));
+            if (workerUser == null) { deny(res, 401, "invalid worker token"); return; }
+            withUser(workerUser, req, res, chain);
+            return;
         }
 
         UUID userId = jwtUserId(req);

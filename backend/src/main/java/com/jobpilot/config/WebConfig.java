@@ -39,9 +39,10 @@ public class WebConfig {
     /** Auth filter for /api/**: public /auth, admin routes by DB role, JWT for user routes. */
     @Bean
     public FilterRegistrationBean<AuthFilter> authFilter(JwtService jwt,
-                                                         com.jobpilot.repository.AppUserRepository users) {
+                                                         com.jobpilot.repository.AppUserRepository users,
+                                                         com.jobpilot.security.WorkerTokenService workerTokens) {
         FilterRegistrationBean<AuthFilter> reg = new FilterRegistrationBean<>();
-        reg.setFilter(new AuthFilter(props.getApiToken(), jwt, users));
+        reg.setFilter(new AuthFilter(props.getApiToken(), jwt, users, workerTokens));
         reg.addUrlPatterns("/api/*");
         reg.setOrder(1);
         return reg;
