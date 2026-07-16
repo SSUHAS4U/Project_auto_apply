@@ -311,16 +311,24 @@ export function ProfilePage() {
             ico="trophy" title="Work experience"
             items={p.experience ?? []}
             onChange={(items) => set({ experience: items })}
-            empty={{ company: '', title: '', start: '', end: '', description: '' }}
+            empty={{ company: '', title: '', employmentType: '', location: '', start: '', end: '', current: false, description: '' }}
             render={(item, upd) => (
               <>
                 <div className="grid2">
                   <Field label="Company"><input className="input" value={item.company ?? ''} onChange={(e) => upd({ company: e.target.value })} /></Field>
-                  <Field label="Title"><input className="input" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
+                  <Field label="Title / role"><input className="input" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
+                  <Field label="Employment type">
+                    <select className="select" value={item.employmentType ?? ''} onChange={(e) => upd({ employmentType: e.target.value })}>
+                      <option value="">Select…</option>
+                      {['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance', 'Apprenticeship'].map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Location"><input className="input" placeholder="City · Remote / Hybrid / On-site" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
                   <Field label="Start"><input className="input" type="month" value={item.start ?? ''} onChange={(e) => upd({ start: e.target.value })} /></Field>
-                  <Field label="End (blank = present)"><input className="input" type="month" value={item.end ?? ''} onChange={(e) => upd({ end: e.target.value })} /></Field>
+                  <Field label="End"><input className="input" type="month" value={item.end ?? ''} disabled={item.current} onChange={(e) => upd({ end: e.target.value })} /></Field>
                 </div>
-                <Field label="Description" full><textarea className="input" rows={2} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })} /></Field>
+                <label className="check-row"><input type="checkbox" checked={!!item.current} onChange={(e) => upd({ current: e.target.checked, end: e.target.checked ? '' : item.end })} /> I currently work here</label>
+                <Field label="Description — what you did & impact" full><textarea className="input" rows={3} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })} /></Field>
               </>
             )}
           />
@@ -331,16 +339,31 @@ export function ProfilePage() {
         <div style={{ maxWidth: 820 }}>
           <RepeatableList<EducationItem>
             ico="file" title="Education"
+            sub="school, degree, field, dates and score — used for eligibility filters & autofill"
             items={p.education ?? []}
             onChange={(items) => set({ education: items })}
-            empty={{ school: '', degree: '', field: '', year: '' }}
+            empty={{ school: '', degree: '', field: '', location: '', startYear: '', endYear: '', gradeType: 'CGPA', grade: '' }}
             render={(item, upd) => (
-              <div className="grid2">
-                <Field label="School / University"><input className="input" value={item.school ?? ''} onChange={(e) => upd({ school: e.target.value })} /></Field>
-                <Field label="Degree"><input className="input" value={item.degree ?? ''} onChange={(e) => upd({ degree: e.target.value })} /></Field>
-                <Field label="Field of study"><input className="input" value={item.field ?? ''} onChange={(e) => upd({ field: e.target.value })} /></Field>
-                <Field label="Year"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
-              </div>
+              <>
+                <div className="grid2">
+                  <Field label="School / University"><input className="input" value={item.school ?? ''} onChange={(e) => upd({ school: e.target.value })} /></Field>
+                  <Field label="Degree"><input className="input" placeholder="B.Tech, 12th (Intermediate), 10th…" value={item.degree ?? ''} onChange={(e) => upd({ degree: e.target.value })} /></Field>
+                  <Field label="Field of study / stream"><input className="input" placeholder="Computer Science, MPC…" value={item.field ?? ''} onChange={(e) => upd({ field: e.target.value })} /></Field>
+                  <Field label="Location"><input className="input" placeholder="City, Country" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
+                </div>
+                <div className="grid3">
+                  <Field label="Start year"><input className="input" type="number" placeholder="2021" value={item.startYear ?? ''} onChange={(e) => upd({ startYear: e.target.value })} /></Field>
+                  <Field label="End year (or expected)"><input className="input" type="number" placeholder="2025" value={item.endYear ?? item.year ?? ''} onChange={(e) => upd({ endYear: e.target.value })} /></Field>
+                  <Field label="Score">
+                    <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                      <select className="select" style={{ maxWidth: 110 }} value={item.gradeType ?? 'CGPA'} onChange={(e) => upd({ gradeType: e.target.value })}>
+                        {['CGPA', 'Percentage', 'GPA', 'Grade'].map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                      <input className="input" style={{ flex: 1 }} placeholder={item.gradeType === 'Percentage' ? '87.5%' : '9.1'} value={item.grade ?? ''} onChange={(e) => upd({ grade: e.target.value })} />
+                    </div>
+                  </Field>
+                </div>
+              </>
             )}
           />
           <RepeatableList<CertificationItem>
@@ -541,24 +564,24 @@ function TriSelect({ value, onChange }: { value?: boolean | null; onChange: (v: 
 }
 
 function RepeatableList<T>({
-  ico, title, items, onChange, render, empty,
+  ico, title, sub, items, onChange, render, empty,
 }: {
-  ico: string; title: string; items: T[]; onChange: (items: T[]) => void;
+  ico: string; title: string; sub?: string; items: T[]; onChange: (items: T[]) => void;
   render: (item: T, upd: (patch: Partial<T>) => void) => React.ReactNode; empty: T;
 }) {
   const upd = (i: number, patch: Partial<T>) => onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
   return (
-    <Section ico={ico} title={title}>
-      {items.length === 0 && <div className="faint" style={{ marginBottom: 10 }}>None yet.</div>}
+    <Section ico={ico} title={title} sub={sub}>
+      {items.length === 0 && <div className="faint" style={{ marginBottom: 10 }}>None yet — click Add to create one.</div>}
       {items.map((item, i) => (
         <div className="repeat-row" key={i}>
-          <div className="rh"><span className="muted" style={{ fontSize: 12 }}>#{i + 1}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => remove(i)}><Icon name="x" size={13} /> Remove</button></div>
+          <div className="rh"><span className="muted" style={{ fontSize: 12, fontWeight: 700 }}>#{i + 1}</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => remove(i)}><Icon name="trash" size={13} /> Remove</button></div>
           {render(item, (patch) => upd(i, patch))}
         </div>
       ))}
-      <button className="btn btn-sm" onClick={() => onChange([...items, { ...empty }])}>+ Add</button>
+      <button className="btn btn-sm" onClick={() => onChange([...items, { ...empty }])}><Icon name="plus" size={13} /> Add {title.toLowerCase()}</button>
     </Section>
   );
 }

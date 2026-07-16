@@ -52,8 +52,15 @@ export interface ApplicationEvent {
   createdAt: string;
 }
 
-export interface ExperienceItem { company?: string; title?: string; start?: string; end?: string; description?: string; }
-export interface EducationItem { school?: string; degree?: string; field?: string; year?: string; }
+export interface ExperienceItem {
+  company?: string; title?: string; employmentType?: string; location?: string;
+  start?: string; end?: string; current?: boolean; description?: string;
+}
+export interface EducationItem {
+  school?: string; degree?: string; field?: string; location?: string;
+  startYear?: string; endYear?: string; year?: string;
+  gradeType?: string; grade?: string;
+}
 export interface CertificationItem {
   name?: string; issuer?: string; year?: string; link?: string;
   credentialId?: string; issued?: string; expiry?: string;

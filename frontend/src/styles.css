@@ -497,7 +497,9 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 .grid2 .full, .grid3 .full { grid-column: 1 / -1; }
-.repeat-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px; margin-bottom: 10px; background: var(--bg-elev); }
+.repeat-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px; margin-bottom: 10px; background: var(--bg-elev); }
+.check-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); margin: 10px 0 4px; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .repeat-row .rh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .kv-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
 .detail-grid { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 13px; }
