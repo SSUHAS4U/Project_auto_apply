@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { Job } from '../types';
 import { ApplyBadge, fmtDate, useToast } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
 export function DailyPicksPage() {
   const toast = useToast();
@@ -58,7 +59,7 @@ export function DailyPicksPage() {
 
       {briefing && (
         <div className="card card-pad" style={{ marginBottom: 18, borderLeft: '3px solid var(--accent)' }}>
-          <div className="section-title" style={{ marginBottom: 8 }}><span className="si">🧠</span>Today's briefing</div>
+          <div className="section-title" style={{ marginBottom: 8 }}><span className="si"><Icon name="bot" size={15} /></span>Today's briefing</div>
           <div className="pre" style={{ background: 'transparent', border: 'none', padding: 0 }}>{briefing}</div>
         </div>
       )}
@@ -66,7 +67,7 @@ export function DailyPicksPage() {
       {loading ? <div className="empty"><span className="spinner" /></div>
         : jobs.length === 0 ? (
           <div className="card card-pad empty">
-            <div className="big">☀️</div>
+            <div className="big"><Icon name="sun" size={34} /></div>
             No picks yet. They generate every morning at 9:00, or click <b>Run now</b>.
           </div>
         ) : (
@@ -89,7 +90,7 @@ export function DailyPicksPage() {
                   </div>
                   <div className="row" style={{ marginTop: 8, gap: 8 }}>
                     <ApplyBadge type={j.applyType} />
-                    {j.applyType === 'email' && j.applyEmail && <span className="faint" style={{ fontSize: 12 }}>✉ {j.applyEmail}</span>}
+                    {j.applyType === 'email' && j.applyEmail && <span className="faint meta-item" style={{ fontSize: 12 }}><Icon name="mail" size={12} /> {j.applyEmail}</span>}
                   </div>
                   {openId === j.id && j.description && (
                     <div className="job-desc" style={{ marginTop: 12 }}>{j.description}</div>

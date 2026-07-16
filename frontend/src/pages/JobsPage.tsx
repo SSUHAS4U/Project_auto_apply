@@ -3,6 +3,7 @@ import { api, isAdminUI, type JobFilters, type IngestSummary, type IngestMetrics
 import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 
 // Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
 function fmtNext(iso: string): string {
@@ -154,12 +155,12 @@ export function JobsPage() {
         </div>
         {admin && (
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn" onClick={openMetrics} title="Ingest metrics & live log">📊 Metrics</button>
+            <button className="btn" onClick={openMetrics} title="Ingest metrics & live log"><Icon name="chart" size={14} /> Metrics</button>
             <button className="btn btn-danger" onClick={wipeAndReingest} disabled={ingesting} title="Wipe all jobs and pull a fresh set">
-              🗑 Reset DB
+              <Icon name="x" size={14} /> Reset DB
             </button>
             <button className="btn btn-primary" onClick={runIngest} disabled={ingesting}>
-              {ingesting ? <span className="spinner" /> : '⟳'} Run ingest
+              {ingesting ? <span className="spinner" /> : <Icon name="refresh" size={14} />} Run ingest
             </button>
           </div>
         )}
@@ -168,7 +169,7 @@ export function JobsPage() {
       {/* Last-ingest summary — shown to everyone at the top of the board. */}
       {summary && (
         <div className="card card-pad" style={{ marginBottom: 14, fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 16 }}>📈</span>
+          <Icon name="chart" size={16} style={{ color: 'var(--accent)', flex: 'none' }} />
           {summary.lastRun ? (
             <span title="New = first-seen this run · Refreshed = already-listed jobs re-checked · Total = all live jobs on the board (includes earlier runs)">
               Last ingest <b>{fmtDate(summary.lastRun.finishedAt)}</b> · <b style={{ color: 'var(--accent)' }}>+{summary.lastRun.inserted}</b> new ·
@@ -178,7 +179,7 @@ export function JobsPage() {
             <span><b>{summary.totalJobs.toLocaleString()}</b> jobs on the board · last ingest time will show after the next run</span>
           )}
           {summary.nextRun && (
-            <span className="faint" style={{ marginLeft: 'auto' }}>⏭ next auto-ingest {fmtNext(summary.nextRun)}</span>
+            <span className="faint meta-item" style={{ marginLeft: 'auto' }}><Icon name="clock" size={13} /> next auto-ingest {fmtNext(summary.nextRun)}</span>
           )}
           {summary.running && <span className="row" style={{ gap: 6, color: 'var(--accent)' }}><span className="spinner" /> ingest running…</span>}
         </div>
@@ -187,14 +188,14 @@ export function JobsPage() {
       <div className="tabs">
         {([
           { k: '', label: 'All' },
-          { k: 'india', label: '🇮🇳 India' },
-          { k: 'remote', label: '🌐 Remote' },
+          { k: 'india', label: 'India' },
+          { k: 'remote', label: 'Remote' },
           { k: 'outside', label: 'Outside India' },
         ] as const).map((t) => (
           <div key={t.k} className={`tab ${(filters.region ?? '') === t.k ? 'active' : ''}`}
             onClick={() => apply({ region: t.k || undefined })}>{t.label}</div>
         ))}
-        <a className="tab" href="/daily" style={{ marginLeft: 'auto' }}>☀️ AI Picks →</a>
+        <a className="tab" href="/daily" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="sun" size={14} /> AI Picks</a>
       </div>
 
       <div className="stat-grid">
@@ -238,7 +239,7 @@ export function JobsPage() {
           {activeChips.map(([key, label]) => (
             <span key={key} className="filter-chip">
               {label}
-              <button className="filter-chip-x" title="Remove" onClick={() => clearOne(key)}>✕</button>
+              <button className="filter-chip-x" title="Remove" onClick={() => clearOne(key)}><Icon name="x" size={10} /></button>
             </span>
           ))}
           <button className="btn btn-ghost btn-sm" onClick={clearAll}>Clear all</button>
@@ -247,7 +248,7 @@ export function JobsPage() {
 
       {loading ? <div className="empty"><span className="spinner" /></div>
         : jobs.length === 0 ? (
-          <div className="card card-pad empty"><div className="big">🗂️</div>No jobs in this view. Adjust filters or click <b>Run ingest</b>.</div>
+          <div className="card card-pad empty"><div className="big"><Icon name="compass" size={34} /></div>No jobs in this view. Adjust filters or click <b>Run ingest</b>.</div>
         ) : view === 'cards' ? (
           <div className="job-grid">
             {jobs.map((j) => (
@@ -257,7 +258,7 @@ export function JobsPage() {
                   <ApplyBadge type={j.applyType} />
                 </div>
                 <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
-                <div className="muted" style={{ fontSize: 12.5, margin: '6px 0' }}>📍 {j.location ?? (j.remote ? 'Remote' : '—')} · {fmtDate(j.postedAt ?? j.fetchedAt)}</div>
+                <div className="muted meta-item" style={{ fontSize: 12.5, margin: '6px 0' }}><Icon name="compass" size={13} /> {j.location ?? (j.remote ? 'Remote' : '—')} · {fmtDate(j.postedAt ?? j.fetchedAt)}</div>
                 <div className="row" style={{ alignItems: 'center', gap: 10 }}>
                   <ScoreBar score={j.matchScore} />
                 </div>
@@ -344,7 +345,7 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
 
           {m.lastRun && (
             <div className="card card-pad" style={{ padding: 12, fontSize: 13, background: 'var(--accent-soft)' }}>
-              🕑 <b>Last completed ingest:</b> {fmtDate(m.lastRun.finishedAt)} —
+              <b>Last completed ingest:</b> {fmtDate(m.lastRun.finishedAt)} —
               {' '}+{m.lastRun.inserted} new, {m.lastRun.updated} refreshed, {m.lastRun.fetched} scanned in {m.lastRun.durationSec}s.
             </div>
           )}
@@ -411,9 +412,9 @@ function JobDetailModal({ job, onClose, onTrack, onApply }: {
   return (
     <Modal title={job.title} onClose={onClose} wide
       footer={<>
-        <a className="btn btn-ghost" href={job.url} target="_blank" rel="noreferrer">Open posting ↗</a>
+        <a className="btn btn-ghost" href={job.url} target="_blank" rel="noreferrer">Open posting <Icon name="external" size={13} /></a>
         <button className="btn" onClick={onTrack}>Track</button>
-        {job.applyType === 'email' && <button className="btn btn-primary" onClick={onApply}>✉ Email apply</button>}
+        {job.applyType === 'email' && <button className="btn btn-primary" onClick={onApply}><Icon name="mail" size={13} /> Email apply</button>}
       </>}>
       <dl className="detail-grid">
         <dt>Company</dt><dd>{job.company ?? '—'}</dd>
@@ -461,7 +462,7 @@ function EmailApplyModal({ job, onClose }: { job: Job; onClose: () => void }) {
         <>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={send} disabled={sending || loading}>
-            {sending ? <span className="spinner" /> : '✉'} Send to {job.applyEmail}
+            {sending ? <span className="spinner" /> : <Icon name="mail" size={13} />} Send to {job.applyEmail}
           </button>
         </>
       }

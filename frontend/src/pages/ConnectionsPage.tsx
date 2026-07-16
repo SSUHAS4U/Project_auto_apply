@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { DownloadDesktop } from '../components/DownloadDesktop';
+import { Icon } from '../components/Icon';
 
 /**
  * Connections — the "Connect" UX for the job portals. For LinkedIn/Naukri/Indeed the
@@ -128,7 +129,7 @@ export function ConnectionsPage() {
                   <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => connect(c.portal)}
                     disabled={busy === c.portal || c.status === 'connecting' || !online}
                     title={online ? '' : 'Open JobPilot Desktop first'}>
-                    {busy === c.portal || c.status === 'connecting' ? <span className="spinner" /> : '🔗'}{' '}
+                    {busy === c.portal || c.status === 'connecting' ? <span className="spinner" /> : <Icon name="link" size={14} />}{' '}
                     {c.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
                   </button>
                 )}

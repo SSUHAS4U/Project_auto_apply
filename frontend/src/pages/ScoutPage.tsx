@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type ScoutedJob } from '../api/client';
 import { fmtDate, useToast } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
 const SITE_META: Record<string, { label: string; color: string }> = {
   linkedin: { label: 'LinkedIn', color: '#0a66c2' },
@@ -66,7 +67,7 @@ export function ScoutPage() {
           </div>
         </div>
         <button className="btn btn-primary" onClick={runNow} disabled={running}>
-          {running ? <span className="spinner" /> : '🔎'} Scout now
+          {running ? <span className="spinner" /> : <Icon name="search" size={14} />} Scout now
         </button>
       </div>
 
@@ -87,7 +88,7 @@ export function ScoutPage() {
       {loading ? <div className="empty"><span className="spinner" /></div>
         : filtered.length === 0 ? (
           <div className="card card-pad empty">
-            <div className="big">🔎</div>
+            <div className="big"><Icon name="search" size={34} /></div>
             Nothing scouted yet. Click <b>Scout now</b> — results also arrive automatically every hour.
           </div>
         ) : (
@@ -123,17 +124,17 @@ export function ScoutPage() {
 
                   <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                     {j.emails?.split(',').map((e) => e.trim()).filter(Boolean).map((e) => (
-                      <a key={e} className="btn btn-sm" href={`mailto:${e}`} title="Email this contact">✉ {e}</a>
+                      <a key={e} className="btn btn-sm" href={`mailto:${e}`} title="Email this contact"><Icon name="mail" size={13} /> {e}</a>
                     ))}
                     {j.phones?.split(',').map((p) => p.trim()).filter(Boolean).map((p) => (
-                      <button key={p} className="btn btn-sm" onClick={() => copy(p)} title="Copy number">📞 {p}</button>
+                      <button key={p} className="btn btn-sm" onClick={() => copy(p)} title="Copy number"><Icon name="phone" size={13} /> {p}</button>
                     ))}
                     {j.matchedKeywords && (
                       <span className="faint" style={{ fontSize: 12 }}>matched: {j.matchedKeywords}</span>
                     )}
                     <span style={{ marginLeft: 'auto' }} />
                     <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
-                    <button className="btn btn-ghost btn-sm" onClick={() => remove(j.id)} title="Remove from scout list">✕</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => remove(j.id)} title="Remove from scout list"><Icon name="x" size={14} /></button>
                   </div>
                 </div>
               );

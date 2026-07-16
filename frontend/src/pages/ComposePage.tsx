@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../lib/ui';
 import { ModelSwitcher } from '../components/ModelSwitcher';
+import { Icon } from '../components/Icon';
 
 export function ComposePage() {
   const toast = useToast();
@@ -122,7 +123,7 @@ export function ComposePage() {
       <div style={{ maxWidth: 980, margin: '0 auto', marginBottom: 18 }}>
         <details className="card card-pad">
           <summary style={{ cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="si">📋</span> My templates <span className="faint" style={{ fontWeight: 400, fontSize: 12.5 }}>— the AI rewrites these for each role</span>
+            <span className="si"><Icon name="clipboard" size={15} /></span> My templates <span className="faint" style={{ fontWeight: 400, fontSize: 12.5 }}>— the AI rewrites these for each role</span>
           </summary>
           <div className="grid2" style={{ marginTop: 14, alignItems: 'start' }}>
             <label className="field">Email template
@@ -133,7 +134,7 @@ export function ComposePage() {
             </label>
           </div>
           <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={saveTemplates} disabled={savingTpl}>
-            {savingTpl ? <span className="spinner" /> : '💾'} Save templates
+            {savingTpl ? <span className="spinner" /> : <Icon name="check" size={14} />} Save templates
           </button>
         </details>
       </div>
@@ -154,7 +155,7 @@ export function ComposePage() {
           </label>
           <div className="row" style={{ marginTop: 14, justifyContent: 'space-between' }}>
             <button className="btn btn-primary" onClick={generate} disabled={generating || (ai !== null && !ai.enabled)}>
-              {generating ? <span className="spinner" /> : '✨'} {hasContent ? 'Regenerate' : 'Generate'}
+              {generating ? <span className="spinner" /> : <Icon name="sparkles" size={14} />} {hasContent ? 'Regenerate' : 'Generate'}
             </button>
             {ai !== null && !ai.enabled && <span className="faint" style={{ fontSize: 12 }}>Set an AI provider + key in Settings to enable.</span>}
           </div>
@@ -168,26 +169,26 @@ export function ComposePage() {
           </div>
           {!hasContent ? (
             <div className="empty" style={{ padding: '28px 20px' }}>
-              <div className="big">📝</div>
+              <div className="big"><Icon name="pen" size={34} /></div>
               Your cold email and cover letter will appear here after you generate.
             </div>
           ) : (
             <>
               <div className="grid2" style={{ alignItems: 'start' }}>
                 <div className="panel">
-                  <div className="panel-head">✉ Cold email
+                  <div className="panel-head"><span className="meta-item"><Icon name="mail" size={14} /> Cold email</span>
                     <span style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn copy-btn" onClick={() => downloadText(coldEmail, `ColdEmail_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}>⬇ Download</button>
+                      <button className="btn copy-btn" onClick={() => downloadText(coldEmail, `ColdEmail_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}><Icon name="download" size={12} /> Download</button>
                       <button className="btn copy-btn" onClick={() => copy(coldEmail, 'Cold email')}>Copy</button>
                     </span>
                   </div>
                   <textarea rows={12} value={coldEmail} onChange={(e) => setColdEmail(e.target.value)} placeholder="Generated cold email appears here…" />
                 </div>
                 <div className="panel">
-                  <div className="panel-head">📄 Cover letter
+                  <div className="panel-head"><span className="meta-item"><Icon name="file" size={14} /> Cover letter</span>
                     <span style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn copy-btn" onClick={downloadCoverPdf}>⬇ PDF</button>
-                      <button className="btn copy-btn" onClick={() => downloadText(coverLetter, `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}>⬇ .txt</button>
+                      <button className="btn copy-btn" onClick={downloadCoverPdf}><Icon name="download" size={12} /> PDF</button>
+                      <button className="btn copy-btn" onClick={() => downloadText(coverLetter, `CoverLetter_${(company || 'JobPilot').replace(/[^a-z0-9]/gi, '')}.txt`)}><Icon name="download" size={12} /> .txt</button>
                       <button className="btn copy-btn" onClick={() => copy(coverLetter, 'Cover letter')}>Copy</button>
                     </span>
                   </div>
@@ -201,7 +202,7 @@ export function ComposePage() {
                   onKeyDown={(e) => { if (e.key === 'Enter') refine(); }}
                   placeholder='Tell the AI how to tweak it — e.g. "make the email shorter", "mention my React projects", "more formal tone"' />
                 <button className="btn btn-primary" onClick={refine} disabled={refining}>
-                  {refining ? <span className="spinner" /> : '✨'} Refine
+                  {refining ? <span className="spinner" /> : <Icon name="sparkles" size={13} />} Refine
                 </button>
               </div>
             </>
@@ -229,7 +230,7 @@ export function ComposePage() {
             <input type="checkbox" checked={attachResume} onChange={(e) => setAttachResume(e.target.checked)} /> Attach my resume
           </label>
           <button className="btn btn-primary" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={send} disabled={sending || !hasContent}>
-            {sending ? <span className="spinner" /> : '✉'} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'email + cover letter'} to {to || 'recipient'}
+            {sending ? <span className="spinner" /> : <Icon name="send" size={14} />} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'email + cover letter'} to {to || 'recipient'}
           </button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import type {
 } from '../types';
 import { fmtDate, StatIcon, useToast } from '../lib/ui';
 import { DownloadDesktop } from '../components/DownloadDesktop';
+import { Icon } from '../components/Icon';
 
 /**
  * Agent — mission control for the LOCAL Playwright worker that drives the job portals
@@ -15,10 +16,19 @@ import { DownloadDesktop } from '../components/DownloadDesktop';
 type Tab = 'live' | 'activity' | 'network' | 'schedule' | 'connect';
 
 const PORTALS = ['naukri', 'linkedin', 'indeed'];
-const EVENT_ICON: Record<string, string> = {
-  post_analysed: '🔬', job_identified: '🎯', relevant: '⭐', applied: '📤', easy_apply: '⚡',
-  connection_sent: '🤝', message_sent: '💬', email_sent: '✉️', reply_received: '📩',
-  error: '⚠️', info: 'ℹ️',
+// Vector icon name + accent colour per event type (rendered via <Icon>).
+const EVENT_ICON: Record<string, { name: string; color: string }> = {
+  post_analysed: { name: 'search', color: '#60a5fa' },
+  job_identified: { name: 'target', color: '#818cf8' },
+  relevant: { name: 'sparkles', color: '#fbbf24' },
+  applied: { name: 'send', color: '#34d399' },
+  easy_apply: { name: 'bolt', color: '#818cf8' },
+  connection_sent: { name: 'link', color: '#60a5fa' },
+  message_sent: { name: 'send', color: '#a78bfa' },
+  email_sent: { name: 'mail', color: '#34d399' },
+  reply_received: { name: 'mail', color: '#2dd4bf' },
+  error: { name: 'alert', color: '#f87171' },
+  info: { name: 'circle', color: '#7d8595' },
 };
 
 function Chip({ text, color }: { text: string; color: string }) {
@@ -109,8 +119,8 @@ export function AgentPage() {
       </div>
 
       {status && !status.workerConfigured && (
-        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13 }}>
-          ⚠ JobPilot Desktop isn't connected yet. Open the <b>Connect</b> tab to set it up (one time).
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center' }}>
+          <Icon name="alert" size={16} style={{ color: '#f59e0b', flex: 'none' }} /> <span>JobPilot Desktop isn't connected yet. Open the <b>Connect</b> tab to set it up (one time).</span>
         </div>
       )}
 
@@ -129,11 +139,11 @@ export function AgentPage() {
       </div>
 
       <div className="row" style={{ gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {([['live', '📺 Watch Live'], ['activity', '📋 Activity'],
-           ['network', `🤝 Network${status?.pendingApprovals ? ` (${status.pendingApprovals})` : ''}`],
-           ['schedule', '🗓 Schedule'], ['connect', '🔌 Connect']] as [Tab, string][]).map(([t, label]) => (
+        {([['live', 'live', 'Watch Live'], ['activity', 'clipboard', 'Activity'],
+           ['network', 'user', `Network${status?.pendingApprovals ? ` (${status.pendingApprovals})` : ''}`],
+           ['schedule', 'clock', 'Schedule'], ['connect', 'link', 'Connect']] as [Tab, string, string][]).map(([t, ico, label]) => (
           <button key={t} className={`btn btn-sm ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>
-            {label}
+            <Icon name={ico} size={13} /> {label}
           </button>
         ))}
       </div>
@@ -181,7 +191,7 @@ function LiveTab({ run, live }: { run: AgentRun | null; live: boolean }) {
               style={{ width: '100%', maxHeight: 640, objectFit: 'contain' }} />
           ) : (
             <div className="faint" style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontSize: 40 }}>📺</div>
+              <div style={{ marginBottom: 8, opacity: .5 }}><Icon name="live" size={40} /></div>
               Waiting for JobPilot Desktop's screen feed.<br />Start it and queue a run.
             </div>
           )}
@@ -189,12 +199,12 @@ function LiveTab({ run, live }: { run: AgentRun | null; live: boolean }) {
       </div>
       {run && (
         <div className="card card-pad row" style={{ gap: 16, flexWrap: 'wrap', fontSize: 13 }}>
-          <span>🔎 searched <b>{run.searched}</b></span>
-          <span>⭐ relevant <b>{run.evaluated}</b></span>
-          <span>📤 applied <b>{run.applied}</b></span>
-          <span>🤝 connected <b>{run.connected}</b></span>
-          <span>💬 messaged <b>{run.messaged}</b></span>
-          <span>⚠️ failed <b>{run.failed}</b></span>
+          <span className="run-stat"><Icon name="search" size={14} /> searched <b>{run.searched}</b></span>
+          <span className="run-stat"><Icon name="sparkles" size={14} /> relevant <b>{run.evaluated}</b></span>
+          <span className="run-stat"><Icon name="send" size={14} /> applied <b>{run.applied}</b></span>
+          <span className="run-stat"><Icon name="link" size={14} /> connected <b>{run.connected}</b></span>
+          <span className="run-stat"><Icon name="mail" size={14} /> messaged <b>{run.messaged}</b></span>
+          <span className="run-stat"><Icon name="alert" size={14} /> failed <b>{run.failed}</b></span>
         </div>
       )}
     </div>
@@ -212,12 +222,13 @@ function ActivityTab() {
     return () => clearInterval(t);
   }, []);
 
-  if (events.length === 0) return <div className="card card-pad empty"><div className="big">📋</div>No activity yet.</div>;
+  if (events.length === 0) return <div className="card card-pad empty"><div className="big"><Icon name="clipboard" size={34} /></div>No activity yet.</div>;
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
       {events.map((e) => (
         <div key={e.id} className="row card-pad" style={{ gap: 10, alignItems: 'flex-start', borderBottom: '1px solid var(--border,#1f2530)' }}>
-          <span style={{ fontSize: 16 }}>{EVENT_ICON[e.type] ?? 'ℹ️'}</span>
+          {(() => { const ei = EVENT_ICON[e.type] ?? EVENT_ICON.info;
+            return <span className="ev-ico" style={{ color: ei.color, background: ei.color + '1f' }}><Icon name={ei.name} size={15} /></span>; })()}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13 }}>
               {e.title ? <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{e.title}</a> : <b>{e.type.replace('_', ' ')}</b>}
@@ -272,8 +283,8 @@ function NetworkTab({ onChange }: { onChange: () => void }) {
             <textarea className="input" style={{ width: '100%', minHeight: 70, fontSize: 13 }}
               defaultValue={mm.body} onChange={(e) => setEdit((s) => ({ ...s, [mm.id]: e.target.value }))} />
             <div className="row" style={{ gap: 8, marginTop: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={() => approve(mm)}>✓ Approve</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => reject(mm)}>✕ Reject</button>
+              <button className="btn btn-primary btn-sm" onClick={() => approve(mm)}><Icon name="check" size={13} /> Approve</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => reject(mm)}><Icon name="x" size={13} /> Reject</button>
             </div>
           </div>
         ))}

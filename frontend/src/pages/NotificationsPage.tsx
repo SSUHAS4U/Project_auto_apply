@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { Notification } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
-const ICON: Record<string, string> = { daily: '☀️', digest: '📧', ingest: '⟳', new_jobs: '🧭', reminder: '⏰' };
+const ICON: Record<string, string> = { daily: 'sun', digest: 'mail', ingest: 'refresh', new_jobs: 'compass', reminder: 'clock' };
 
 export function NotificationsPage() {
   const toast = useToast();
@@ -43,7 +44,7 @@ export function NotificationsPage() {
           <div className="page-sub">{unreadCount} unread · job alerts, daily picks & digests</div>
         </div>
         <div className="row">
-          {unreadCount > 0 && <button className="btn btn-sm" onClick={markAllRead}>✓ Mark all read</button>}
+          {unreadCount > 0 && <button className="btn btn-sm" onClick={markAllRead}><Icon name="check" size={13} /> Mark all read</button>}
           <button className="btn btn-sm" onClick={runDigest}>Run digest now</button>
         </div>
       </div>
@@ -54,12 +55,12 @@ export function NotificationsPage() {
       </div>
 
       {loading ? <div className="empty"><span className="spinner" /></div>
-        : rows.length === 0 ? <div className="card card-pad empty"><div className="big">🔔</div>{tab === 'unread' ? "You're all caught up." : 'No notifications yet.'}</div>
+        : rows.length === 0 ? <div className="card card-pad empty"><div className="big"><Icon name="bell" size={34} /></div>{tab === 'unread' ? "You're all caught up." : 'No notifications yet.'}</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {rows.map((n) => (
               <div key={n.id} className={`notif ${n.read ? 'read' : ''}`} onClick={() => !n.read && markRead(n)}>
-                <div className="notif-ico">{ICON[n.type] ?? '🔔'}</div>
+                <div className="notif-ico"><Icon name={ICON[n.type] ?? 'bell'} size={16} /></div>
                 <div className="grow">
                   <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ fontWeight: 600 }}>{n.title}{!n.read && <span className="notif-dot" />}</div>

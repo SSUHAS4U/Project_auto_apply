@@ -288,6 +288,14 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .modal-foot { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: var(--bg-card); }
 
+/* Agent event/run icon chips --------------------------------------------- */
+.ev-ico { width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center; }
+.run-stat { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.run-stat b { color: var(--text); }
+/* Inline metadata item (icon + text) used across job/application cards. */
+.meta-item { display: inline-flex; align-items: center; gap: 5px; }
+.meta-item svg { flex: none; opacity: .75; }
+
 /* Misc -------------------------------------------------------------------- */
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .grow { flex: 1; }

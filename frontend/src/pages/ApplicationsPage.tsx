@@ -4,6 +4,7 @@ import type { Application, ApplicationEvent, ApplicationStatus } from '../types'
 import { StatusSelect } from '../components/StatusSelect';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 
 const STATUSES: ApplicationStatus[] = ['interested', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'];
 
@@ -65,7 +66,7 @@ export function ApplicationsPage() {
 
       {loading ? <div className="empty"><span className="spinner" /></div>
         : rows.length === 0 ? (
-          <div className="card card-pad empty"><div className="big">📋</div>No applications in this view. Track a job from the Jobs or Daily picks page.</div>
+          <div className="card card-pad empty"><div className="big"><Icon name="clipboard" size={34} /></div>No applications in this view. Track a job from the Jobs or Daily picks page.</div>
         ) : (
           <>
             {/* Desktop: table */}
@@ -117,10 +118,10 @@ export function ApplicationsPage() {
                     {typeof a.job?.matchScore === 'number' && <span className="chip">{a.job.matchScore}</span>}
                   </div>
                   <div className="row" style={{ gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--muted)' }}>
-                    {a.job?.location && <span>📍 {a.job.location}</span>}
+                    {a.job?.location && <span className="meta-item"><Icon name="compass" size={13} /> {a.job.location}</span>}
                     {a.job?.applyType && <ApplyBadge type={a.job.applyType} />}
-                    {a.appliedAt && <span>✉ {fmtDate(a.appliedAt)}</span>}
-                    <span>↻ {fmtDate(a.updatedAt)}</span>
+                    {a.appliedAt && <span className="meta-item"><Icon name="mail" size={13} /> {fmtDate(a.appliedAt)}</span>}
+                    <span className="meta-item"><Icon name="refresh" size={13} /> {fmtDate(a.updatedAt)}</span>
                   </div>
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <StatusSelect value={a.status} onChange={(s) => move(a, s)} />

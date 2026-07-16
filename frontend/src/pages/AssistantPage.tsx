@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { AssistantJob } from '../types';
 import { ApplyBadge, useToast } from '../lib/ui';
 import { ModelSwitcher } from '../components/ModelSwitcher';
+import { Icon } from '../components/Icon';
 
 interface Msg { role: 'user' | 'assistant'; content: string; jobs?: AssistantJob[]; }
 
@@ -61,7 +62,7 @@ export function AssistantPage() {
           {msgs.map((m, i) => (
             <Fragment key={i}>
               <div className={`chat-row ${m.role}`}>
-                <div className={`chat-avatar ${m.role === 'user' ? 'me' : 'ai'}`}>{m.role === 'user' ? 'S' : '✦'}</div>
+                <div className={`chat-avatar ${m.role === 'user' ? 'me' : 'ai'}`}>{m.role === 'user' ? 'S' : <Icon name="bot" size={16} />}</div>
                 <div className={`bubble ${m.role}`}>{m.content}</div>
               </div>
               {m.jobs && m.jobs.length > 0 && (
@@ -81,7 +82,7 @@ export function AssistantPage() {
           ))}
           {busy && (
             <div className="chat-row assistant">
-              <div className="chat-avatar ai">✦</div>
+              <div className="chat-avatar ai"><Icon name="bot" size={16} /></div>
               <div className="bubble assistant"><span className="typing"><span /><span /><span /></span></div>
             </div>
           )}
