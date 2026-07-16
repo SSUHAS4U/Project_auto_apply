@@ -135,8 +135,8 @@ function SecretsManager() {
 
   const badge = (s: SecretStatus) => {
     if (s.source === 'saved') return <span className="badge badge-ats meta-item" title={s.updatedAt ? `Updated ${fmtDate(s.updatedAt)}` : ''}><Icon name="shield" size={12} /> Saved</span>;
-    if (s.source === 'env') return <span className="badge meta-item" style={{ background: 'var(--card2,#1a1f2b)' }}><Icon name="gear" size={12} /> From env</span>;
-    return <span className="badge" style={{ color: 'var(--text-faint,#7d8595)' }}>Not set</span>;
+    if (s.source === 'env') return <span className="badge badge-unknown meta-item"><Icon name="gear" size={12} /> From env</span>;
+    return <span className="badge badge-unknown" style={{ opacity: .7 }}>Not set</span>;
   };
 
   if (secrets === null) return <div className="card card-pad" style={{ marginBottom: 16 }}><span className="spinner" /></div>;

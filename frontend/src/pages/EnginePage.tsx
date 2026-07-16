@@ -17,13 +17,14 @@ import { Icon } from '../components/Icon';
 
 type Tab = 'setup' | 'jobs' | 'applications' | 'interview' | 'upskill';
 
-const VERDICT_COLOR: Record<string, string> = {
-  strong: '#34d399', good: '#60a5fa', moderate: '#fbbf24', weak: '#f59e0b', poor: '#f87171',
+// Semantic, theme-aware tones (see .tone-* in styles.css) — readable in light + dark.
+const VERDICT_TONE: Record<string, string> = {
+  strong: 'green', good: 'blue', moderate: 'amber', weak: 'amber', poor: 'red',
 };
-const STAGE_COLOR: Record<string, string> = {
-  parsing: '#7d8595', evaluating: '#60a5fa', drafting: '#a78bfa', reviewing: '#a78bfa',
-  revising: '#818cf8', compiling: '#22d3ee', verifying: '#2dd4bf',
-  ready: '#34d399', submitted: '#16a34a', failed: '#f87171', vetoed: '#f59e0b',
+const STAGE_TONE: Record<string, string> = {
+  parsing: 'slate', evaluating: 'blue', drafting: 'purple', reviewing: 'purple',
+  revising: 'indigo', compiling: 'blue', verifying: 'green',
+  ready: 'green', submitted: 'green', failed: 'red', vetoed: 'amber',
 };
 
 const DOC_LABELS: Record<string, string> = {
@@ -38,10 +39,8 @@ const DOC_FIELD: Record<string, keyof EngineProfile> = {
   interviewPrep: 'interviewPrepMd', searchQueries: 'searchQueries',
 };
 
-function Chip({ text, color }: { text: string; color: string }) {
-  return (
-    <span className="chip" style={{ background: color + '22', color, borderColor: color + '55' }}>{text}</span>
-  );
+function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
+  return <span className={`tone tone-${tone}`}>{text}</span>;
 }
 
 export function EnginePage() {
@@ -67,9 +66,9 @@ export function EnginePage() {
         <div>
           <h1 className="page-title">
             Auto Apply{' '}
-            <Chip text="AI Job Search engine" color="#818cf8" />
-            {status && !status.aiEnabled && <> <Chip text="AI off" color="#f87171" /></>}
-            {status?.setupReady && <> <Chip text="setup ready" color="#34d399" /></>}
+            <Chip text="AI Job Search engine" tone="indigo" />
+            {status && !status.aiEnabled && <> <Chip text="AI off" tone="red" /></>}
+            {status?.setupReady && <> <Chip text="setup ready" tone="green" /></>}
           </h1>
           <div className="page-sub">
             A self-contained replica of the ai-job-search workflow:
@@ -87,24 +86,24 @@ export function EnginePage() {
       </div>
 
       {status && !status.aiEnabled && (
-        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center' }}>
-          <Icon name="alert" size={16} style={{ color: '#f59e0b', flex: 'none' }} /> No AI provider configured — Setup, Rank and Apply need one. Add it in Settings → AI model.
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: 'var(--amber)', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center' }}>
+          <Icon name="alert" size={16} className="t-amber" style={{ flex: 'none' }} /> No AI provider configured — Setup, Rank and Apply need one. Add it in Settings → AI model.
         </div>
       )}
 
       {status && <AutopilotBanner status={status} onChange={loadStatus} />}
 
-      <div className="row" style={{ gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div className="tabs">
         {([
-          ['setup', '① Setup'],
-          ['jobs', `② Jobs${count(status?.jobStatusCounts)}`],
-          ['applications', `③ Applications${count(status?.appStageCounts)}`],
-          ['interview', '④ Interview'],
-          ['upskill', '⑤ Upskill'],
-        ] as [Tab, string][]).map(([t, label]) => (
-          <button key={t} className={`btn btn-sm ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>
-            {label}
-          </button>
+          ['setup', 'gear', 'Setup', ''],
+          ['jobs', 'compass', 'Jobs', count(status?.jobStatusCounts)],
+          ['applications', 'clipboard', 'Applications', count(status?.appStageCounts)],
+          ['interview', 'target', 'Interview', ''],
+          ['upskill', 'chart', 'Upskill', ''],
+        ] as [Tab, string, string, string][]).map(([t, ico, label, n]) => (
+          <div key={t} className={`tab meta-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+            <Icon name={ico} size={14} /> {label}{n && <span className="tab-count">{n.replace(/[()\s]/g, '')}</span>}
+          </div>
         ))}
       </div>
 
@@ -156,13 +155,13 @@ function AutopilotBanner({ status, onChange }: { status: EngineStatus; onChange:
   };
 
   return (
-    <div className="card card-pad" style={{ marginBottom: 14, borderColor: a.enabled ? '#34d399' : undefined }}>
+    <div className="card card-pad" style={{ marginBottom: 14, borderColor: a.enabled ? 'var(--green)' : undefined }}>
       <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icon name="bot" size={17} /> Autopilot{' '}
             <Chip text={a.enabled ? (a.running ? 'running now' : 'ON · daily 09:30') : 'off'}
-              color={a.enabled ? (a.running ? '#60a5fa' : '#34d399') : '#7d8595'} />
+              tone={a.enabled ? (a.running ? 'blue' : 'green') : 'slate'} />
           </div>
           <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>
             Runs the whole cycle by itself every day — scrape → rank → apply the top {a.dailyCap} best-fit jobs (fit ≥ {a.minFit}).
@@ -335,7 +334,7 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
           <button className="btn btn-primary" onClick={saveGuided} disabled={saving}>
             {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save &amp; make ready
           </button>
-          {status?.setupReady && <span className="chip" style={{ background: '#34d39922', color: '#34d399' }}>ready to scrape</span>}
+          {status?.setupReady && <Chip text="ready to scrape" tone="green" />}
         </div>
       </div>
 
@@ -469,15 +468,15 @@ function JobsTab({ status, onChange, onApplied }:
               </a>
               <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
                 {typeof j.fitScore === 'number' && j.verdict &&
-                  <Chip text={`${j.verdict} ${j.fitScore}/100`} color={VERDICT_COLOR[j.verdict] ?? '#7d8595'} />}
-                {j.urgent && <> <Chip text="urgent" color="#f59e0b" /></>}
-                {j.dealBreaker && <> <Chip text="deal-breaker" color="#f87171" /></>}
+                  <Chip text={`${j.verdict} ${j.fitScore}/100`} tone={VERDICT_TONE[j.verdict] ?? 'slate'} />}
+                {j.urgent && <> <Chip text="urgent" tone="amber" /></>}
+                {j.dealBreaker && <> <Chip text="deal-breaker" tone="red" /></>}
                 {j.company && <> · {j.company}</>}{j.location && <> · {j.location}</>}
                 {j.postedAt && <> · {j.postedAt}</>}
               </div>
-              {j.strengths && <div style={{ fontSize: 12.5, marginTop: 6, color: '#34d399', display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
-              {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 2, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
-              {j.dealBreaker && <div style={{ fontSize: 12.5, marginTop: 2, color: '#f87171', display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
+              {j.strengths && <div className="t-green" style={{ fontSize: 12.5, marginTop: 8, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
+              {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
+              {j.dealBreaker && <div className="t-red" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
             </div>
             <div className="row" style={{ gap: 6, flexShrink: 0 }}>
               {j.status !== 'applied' && j.status !== 'applying' && (
@@ -485,8 +484,8 @@ function JobsTab({ status, onChange, onApplied }:
                   {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
                 </button>
               )}
-              {j.status === 'applied' && <Chip text="applied" color="#16a34a" />}
-              {j.status === 'applying' && <Chip text="applying…" color="#818cf8" />}
+              {j.status === 'applied' && <Chip text="applied" tone="green" />}
+              {j.status === 'applying' && <Chip text="applying…" tone="indigo" />}
               <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
             </div>
           </div>
@@ -522,18 +521,18 @@ function ApplicationsTab() {
       {apps.length === 0 ? (
         <div className="card card-pad empty"><div className="big"><Icon name="pen" size={34} /></div>No applications yet — Apply to a job from the Jobs tab.</div>
       ) : apps.map((a) => (
-        <div key={a.id} className="card card-pad" style={{ cursor: 'pointer' }} onClick={() => open(a.id)}>
+        <div key={a.id} className={`card card-pad card-click ${openId === a.id ? 'open' : ''}`} onClick={() => open(a.id)}>
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
               <span className="pick-title">{a.postingTitle || 'Application'}</span>
               <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
-                <Chip text={inFlight(a.stage) ? `${a.stage}…` : a.stage} color={STAGE_COLOR[a.stage] ?? '#7d8595'} />
+                <Chip text={inFlight(a.stage) ? `${a.stage}…` : a.stage} tone={STAGE_TONE[a.stage] ?? 'slate'} />
                 {a.verdict && typeof a.fitScore === 'number' &&
-                  <> <Chip text={`${a.verdict} ${a.fitScore}/100`} color={VERDICT_COLOR[a.verdict] ?? '#7d8595'} /></>}
-                {a.outcome && <> <Chip text={a.outcome} color="#60a5fa" /></>}
+                  <> <Chip text={`${a.verdict} ${a.fitScore}/100`} tone={VERDICT_TONE[a.verdict] ?? 'slate'} /></>}
+                {a.outcome && <> <Chip text={a.outcome} tone="blue" /></>}
                 {a.postingCompany && <> · {a.postingCompany}</>}
               </div>
-              {a.error && <div style={{ fontSize: 12.5, marginTop: 4, color: '#f87171' }}>{a.error}</div>}
+              {a.error && <div className="t-red" style={{ fontSize: 12.5, marginTop: 4 }}>{a.error}</div>}
             </div>
             <div className="faint" style={{ fontSize: 12, textAlign: 'right', flexShrink: 0 }}>
               {inFlight(a.stage) && <span className="spinner" style={{ marginRight: 6 }} />}
@@ -582,7 +581,7 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
         <b>Timeline</b>
         {log.map((e, i) => (
           <div key={i} className="row" style={{ gap: 8, padding: '2px 0', flexWrap: 'wrap' }}>
-            <Chip text={e.stage} color={STAGE_COLOR[e.stage] ?? '#7d8595'} />
+            <Chip text={e.stage} tone={STAGE_TONE[e.stage] ?? 'slate'} />
             <span className="faint" style={{ fontSize: 12 }}>{fmtDate(e.at)}</span>
             <span>{e.note}</span>
           </div>
@@ -592,8 +591,8 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
       {typeof ev.overall === 'number' && (
         <div style={{ marginBottom: 10 }}>
           <b>Fit</b>{' '}
-          <Chip text={`${ev.verdict ?? ''} ${ev.overall}/100`} color={VERDICT_COLOR[String(ev.verdict)] ?? '#7d8595'} />
-          {Array.isArray(ev.strengths) && <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)', color: '#34d399' }} /><span>{(ev.strengths as string[]).join(' · ')}</span></div>}
+          <Chip text={`${ev.verdict ?? ''} ${ev.overall}/100`} tone={VERDICT_TONE[String(ev.verdict)] ?? 'slate'} />
+          {Array.isArray(ev.strengths) && <div className="t-green" style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{(ev.strengths as string[]).join(' · ')}</span></div>}
           {Array.isArray(ev.gaps) && <div className="faint" style={{ marginTop: 2, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{(ev.gaps as string[]).join(' · ')}</span></div>}
         </div>
       )}
@@ -602,9 +601,9 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
         <div style={{ marginBottom: 10 }}>
           <b>ATS verification</b>{' '}
           <Chip text={`${ats.requiredCoveragePct}% required keywords`}
-            color={(ats.requiredCoveragePct as number) >= 70 ? '#34d399' : (ats.requiredCoveragePct as number) >= 40 ? '#fbbf24' : '#f87171'} />
-          {' '}<Chip text={ats.hasEmail ? 'contact readable' : 'contact missing'} color={ats.hasEmail ? '#34d399' : '#f87171'} />
-          {ats.garbled ? <> <Chip text="garbled text" color="#f87171" /></> : null}
+            tone={(ats.requiredCoveragePct as number) >= 70 ? 'green' : (ats.requiredCoveragePct as number) >= 40 ? 'amber' : 'red'} />
+          {' '}<Chip text={ats.hasEmail ? 'contact readable' : 'contact missing'} tone={ats.hasEmail ? 'green' : 'red'} />
+          {ats.garbled ? <> <Chip text="garbled text" tone="red" /></> : null}
           {Array.isArray(ats.requiredMissingGap) && (ats.requiredMissingGap as string[]).length > 0 &&
             <div className="faint" style={{ marginTop: 4 }}>Honest gaps (never stuffed): {(ats.requiredMissingGap as string[]).join(', ')}</div>}
           {typeof d.cvPages === 'number' && <div className="faint" style={{ marginTop: 2 }}>CV {d.cvPages} page(s){d.cutReport ? ' · relevance-cut applied' : ''}</div>}
@@ -733,7 +732,7 @@ function UpskillTab() {
             {heat.heatmap && (
               <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 {heat.heatmap.map((h, i) => (
-                  <Chip key={i} text={`${h.skill} ·${h.demand}`} color={h.have ? '#34d399' : '#f59e0b'} />
+                  <Chip key={i} text={`${h.skill} ·${h.demand}`} tone={h.have ? 'green' : 'amber'} />
                 ))}
               </div>
             )}
