@@ -50,9 +50,18 @@ public class CoverLetterService {
     }
 
     public String generate(Job job, Profile profile) {
+        return generate(job, profile, null);
+    }
+
+    /**
+     * Same as {@link #generate(Job, Profile)} but accepts a pre-fetched job description so
+     * callers that already hold the posting text (e.g. the Auto Apply engine) skip the
+     * on-demand fetch. Falls back to the user's cover-letter template if AI is off/fails.
+     */
+    public String generate(Job job, Profile profile, String description) {
         if (!ai.isEnabled()) return template.generate(job, profile);
         try {
-            String desc = descriptions.fetch(job); // pull the real JD on demand for specificity
+            String desc = (description != null && !description.isBlank()) ? description : descriptions.fetch(job);
             // Not cacheable: we want fresh, varied output each time rather than a repeated blob.
             String letter = ai.complete(SYSTEM, CoverLetterPrompt.build(job, profile, desc), false, false);
             if (letter == null || letter.isBlank()) throw new IllegalStateException("empty letter");

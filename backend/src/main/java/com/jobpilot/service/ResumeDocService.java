@@ -367,6 +367,40 @@ public class ResumeDocService {
         return repo.save(d);
     }
 
+    /**
+     * Tailor the user's BASE résumé (Resumes → base) to a job description and return the
+     * LaTeX only — no new ResumeDoc is persisted, and it takes an explicit userId so it works
+     * from background threads (the Auto Apply engine) that have no UserContext.
+     * Returns {@code null} when the user has no base résumé, so callers can fall back.
+     * Same tailoring the "Tailor" button uses, so applications reuse the REAL résumé.
+     */
+    public String tailorLatex(UUID userId, String jdText) {
+        ResumeDoc base = repo.findFirstByUserIdAndBaseTrue(userId).orElse(null);
+        if (base == null || base.getLatex() == null || base.getLatex().isBlank()) return null;
+        String latex = base.getLatex();
+        if (jdText != null && !jdText.isBlank() && ai.isEnabled()) {
+            String jd = jdText.length() > 6000 ? jdText.substring(0, 6000) : jdText;
+            try {
+                String out = ai.complete(TAILOR_SYSTEM,
+                        "ORIGINAL RESUME (LaTeX):\n" + base.getLatex()
+                                + "\n\nJOB DESCRIPTION:\n" + jd + "\n\nTailored LaTeX:", false, true);
+                String stripped = stripFences(out);
+                int dc = stripped.indexOf("\\documentclass");
+                if (dc > 0) stripped = stripped.substring(dc);
+                if (stripped.contains("\\documentclass") && !stripped.contains("\\end{document}")
+                        && stripped.length() > base.getLatex().length() / 2) {
+                    stripped = stripped + "\n\\end{document}\n";
+                }
+                if (stripped.contains("\\documentclass") && stripped.contains("\\end{document}")) {
+                    latex = stripped; // accept only a full, compilable document
+                }
+            } catch (Exception e) {
+                log.warn("engine résumé tailor failed, using base as-is: {}", e.getMessage());
+            }
+        }
+        return latex;
+    }
+
     private static String stripFences(String s) {
         if (s == null) return "";
         String t = s.trim();

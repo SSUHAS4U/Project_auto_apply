@@ -42,8 +42,9 @@ public class EngineApplyService {
     private final AiService ai;
     private final MailService mail;
     private final com.jobpilot.service.SettingsService settings;
-    private final com.jobpilot.service.ResumeDocService resumeDocs;         // compileLatex (external)
-    private final com.jobpilot.repository.ResumeDocRepository resumeRepo;   // find base résumé by userId
+    private final com.jobpilot.service.ResumeDocService resumeDocs;         // tailor base résumé + compileLatex
+    private final com.jobpilot.service.cover.CoverLetterService coverLetters; // reuse the app's cover-letter service
+    private final com.jobpilot.repository.ProfileRepository profileRepo;      // app Profile by userId (for cover letter)
     private final ObjectMapper mapper = new ObjectMapper();
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "engine-apply");
@@ -56,7 +57,8 @@ public class EngineApplyService {
                               AiService ai, MailService mail,
                               com.jobpilot.service.SettingsService settings,
                               com.jobpilot.service.ResumeDocService resumeDocs,
-                              com.jobpilot.repository.ResumeDocRepository resumeRepo) {
+                              com.jobpilot.service.cover.CoverLetterService coverLetters,
+                              com.jobpilot.repository.ProfileRepository profileRepo) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;
@@ -65,7 +67,8 @@ public class EngineApplyService {
         this.mail = mail;
         this.settings = settings;
         this.resumeDocs = resumeDocs;
-        this.resumeRepo = resumeRepo;
+        this.coverLetters = coverLetters;
+        this.profileRepo = profileRepo;
     }
 
     // ---- entry points ---------------------------------------------------------
@@ -283,28 +286,13 @@ public class EngineApplyService {
               invented facts. End with: Sincerely, / Full Name.
             Output ONLY the markdown — no code fences, no commentary, no LaTeX.""";
 
-    private static final String CV_LATEX_SYS = """
-            You are the drafter. TAILOR the candidate's own LaTeX résumé (given below) to this
-            posting. Keep its preamble, packages and overall structure intact so it still
-            compiles. Reorder/reword content so the most posting-relevant items lead; use the
-            posting's exact terms for skills the candidate REALLY has. STRICT HONESTY — never
-            invent employers, titles, dates, degrees, metrics or skills; a required keyword the
-            résumé doesn't support stays absent. Keep it ~2 pages.
-            Output ONLY the complete LaTeX source — no commentary, no code fences.""";
-
     private String draftCv(EngineProfile p, EngineApplication a, JsonNode eval) {
-        // Hybrid: if the candidate has a real base résumé in Resumes, tailor THAT (their
-        // polished template); otherwise generate clean markdown. renderPdfs picks the right
-        // renderer and falls back safely.
-        String baseLatex = resumeRepo.findFirstByUserIdAndBaseTrue(a.getUserId())
-                .map(com.jobpilot.domain.ResumeDoc::getLatex).filter(s -> s != null && !s.isBlank()).orElse(null);
-        if (baseLatex != null) {
-            String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2400)
-                    + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
-                    + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2000)
-                    + "\n\nCANDIDATE'S BASE RÉSUMÉ (LaTeX — tailor this):\n" + cap(baseLatex, 5000);
-            return stripFences(completeRetry(CV_LATEX_SYS, user));
-        }
+        // Use the candidate's REAL résumé (Resumes → base), tailored to this posting via the
+        // same ResumeDocService the "Tailor" button uses, then compiled to a polished PDF.
+        // Only when there's no base résumé do we fall back to clean markdown generation.
+        String tailored = resumeDocs.tailorLatex(a.getUserId(), a.getPostingText());
+        if (tailored != null && !tailored.isBlank()) return tailored;
+
         String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2600)
                 + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
@@ -313,6 +301,21 @@ public class EngineApplyService {
     }
 
     private String draftCover(EngineProfile p, EngineApplication a, JsonNode eval) {
+        // Reuse the app's CoverLetterService (JD-grounded, honest, falls back to the user's
+        // saved cover-letter template) so the engine writes letters the same way Compose does.
+        com.jobpilot.domain.Profile prof = profileRepo.findByUserId(a.getUserId()).orElse(null);
+        if (prof != null) {
+            com.jobpilot.domain.Job job = new com.jobpilot.domain.Job();
+            job.setTitle(nz(a.getPostingTitle()));
+            job.setCompany(nz(a.getPostingCompany()));
+            job.setDescription(nz(a.getPostingText()));
+            try {
+                String letter = coverLetters.generate(job, prof, a.getPostingText());
+                if (letter != null && !letter.isBlank()) return letter;
+            } catch (Exception e) {
+                log.warn("engine cover via CoverLetterService failed, using engine drafter: {}", e.getMessage());
+            }
+        }
         String user = "POSTING (" + nz(a.getPostingTitle()) + " @ " + nz(a.getPostingCompany()) + "):\n"
                 + cap(nz(a.getPostingText()), 2600)
                 + "\n\nCANDIDATE'S TOP MATCHES: " + join(eval.path("strengths"))
