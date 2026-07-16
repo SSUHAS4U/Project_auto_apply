@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentEvent, AgentStatus, EngineStatus } from '../types';
 import { fmtDate, StatIcon } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
 /**
  * Dashboard — the landing page. One glance at what the automation did today: status, the
@@ -63,13 +64,10 @@ export function DashboardPage() {
           <div className="page-sub">Everything your automation did today, at a glance.</div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span className="chip" style={{
-            background: running ? '#16a34a18' : '#83849518', color: running ? '#16a34a' : '#838b98',
-            borderColor: running ? '#16a34a44' : '#83849544', padding: '5px 11px', fontWeight: 600,
-          }}>
-            {running ? <>● {agent?.activeRun?.portal} · scanning &amp; applying</> : '○ idle'}
+          <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
+            <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
           </span>
-          <button className="btn btn-primary btn-sm" onClick={() => nav('/agent')}>▶ Watch live</button>
+          <button className="btn btn-primary btn-sm" onClick={() => nav('/agent')}><Icon name="live" size={14} /> Watch live</button>
         </div>
       </div>
 
@@ -132,26 +130,47 @@ export function DashboardPage() {
           ))}
         </div>
 
-        <div className="card card-pad">
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Auto Apply engine</div>
-          <Row label="Autopilot" value={engine?.autopilot.enabled ? (engine.autopilot.running ? 'running' : 'on · daily') : 'off'} />
-          <Row label="Backlog jobs" value={String(engine?.jobStatusCounts?.['new'] ?? 0)} />
-          <Row label="Shortlisted" value={String(engine?.jobStatusCounts?.['shortlisted'] ?? 0)} />
-          <Row label="Applications" value={String(Object.values(engine?.appStageCounts ?? {}).reduce((a, b) => a + b, 0))} />
-          <button className="btn btn-sm" style={{ marginTop: 10, width: '100%' }} onClick={() => nav('/auto-apply')}>Open Auto Apply →</button>
-          {engine?.autopilot.lastRunSummary && (
-            <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Last run: {engine.autopilot.lastRunSummary}</div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="card card-pad">
+            <div className="card-title"><Icon name="bolt" size={15} /> Auto Apply engine</div>
+            <Row label="Autopilot" value={engine?.autopilot.enabled ? (engine.autopilot.running ? 'running' : 'on · daily') : 'off'} />
+            <Row label="Backlog jobs" value={String(engine?.jobStatusCounts?.['new'] ?? 0)} />
+            <Row label="Shortlisted" value={String(engine?.jobStatusCounts?.['shortlisted'] ?? 0)} />
+            <Row label="Applications" value={String(Object.values(engine?.appStageCounts ?? {}).reduce((a, b) => a + b, 0))} last />
+            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/auto-apply')}>Open Auto Apply <Icon name="external" size={13} /></button>
+            {engine?.autopilot.lastRunSummary && (
+              <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Last run: {engine.autopilot.lastRunSummary}</div>
+            )}
+          </div>
+
+          <div className="card card-pad">
+            <div className="card-title"><Icon name="live" size={15} /> Automation</div>
+            <Row label="Desktop worker" value={agent?.workerConfigured ? 'connected' : 'not connected'} tone={agent?.workerConfigured ? 'green' : 'slate'} />
+            <Row label="Active run" value={running ? (agent?.activeRun?.portal ?? 'running') : 'idle'} tone={running ? 'blue' : undefined} />
+            <Row label="Pending approvals" value={String(agent?.pendingApprovals ?? 0)} last />
+            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/agent')}><Icon name="live" size={13} /> Watch live</button>
+          </div>
+
+          <div className="card card-pad">
+            <div className="card-title"><Icon name="compass" size={15} /> Quick actions</div>
+            <div className="quick-grid">
+              <button className="quick-btn" onClick={() => nav('/connections')}><Icon name="link" size={16} /><span>Connect portals</span></button>
+              <button className="quick-btn" onClick={() => nav('/profile')}><Icon name="user" size={16} /><span>Edit profile</span></button>
+              <button className="quick-btn" onClick={() => nav('/resumes')}><Icon name="file" size={16} /><span>Resumes</span></button>
+              <button className="quick-btn" onClick={() => nav('/jobs')}><Icon name="compass" size={16} /><span>Browse jobs</span></button>
+            </div>
+          </div>
         </div>
       </div>
     </>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, tone, last }: { label: string; value: string; tone?: string; last?: boolean }) {
   return (
-    <div className="row" style={{ justifyContent: 'space-between', padding: '5px 0', fontSize: 13.5, borderBottom: '1px solid var(--border)' }}>
-      <span className="faint">{label}</span><b>{value}</b>
+    <div className="row" style={{ justifyContent: 'space-between', padding: '7px 0', fontSize: 13.5, borderBottom: last ? 'none' : '1px solid var(--border)' }}>
+      <span className="faint">{label}</span>
+      {tone ? <span className={`tone tone-${tone}`}>{value}</span> : <b>{value}</b>}
     </div>
   );
 }
