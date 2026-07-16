@@ -121,10 +121,13 @@ public class EngineApplyService {
             a.setFitScore(eval.path("overall").asInt(0));
             a.setVerdict(eval.path("verdict").asText(""));
             save(a);
-            if ("fail".equalsIgnoreCase(eval.path("location").path("result").asText(""))
-                    || eval.path("dealBreaker").asBoolean(false)) {
+            // Only veto on a real deal-breaker the candidate set. A location "FAIL" alone
+            // does NOT veto — the target locations were chosen deliberately, and the model
+            // wrongly flags any job outside the home city as "requires relocation". It's
+            // recorded as a note, not a silent kill.
+            if (eval.path("dealBreaker").asBoolean(false)) {
                 a.setStage("vetoed");
-                logStage(a, "vetoed", eval.path("recommendation").asText("Deal-breaker or location fail"));
+                logStage(a, "vetoed", eval.path("recommendation").asText("Deal-breaker matched"));
                 save(a);
                 return;
             }

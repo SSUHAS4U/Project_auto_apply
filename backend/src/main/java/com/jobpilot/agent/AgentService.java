@@ -41,6 +41,8 @@ public class AgentService {
     private final AgentMessageRepository messages;
     private final PortalConnectionRepository connections;
     private final com.jobpilot.service.ai.AiService ai;
+    private final com.jobpilot.engine.EngineProfileRepository engineProfiles;
+    private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
 
@@ -49,7 +51,8 @@ public class AgentService {
                         SettingsService settings, ProfileService profiles, KeywordMatchScorer scorer,
                         PortalContactRepository contacts, AgentMessageRepository messages,
                         PortalConnectionRepository connections,
-                        com.jobpilot.service.ai.AiService ai) {
+                        com.jobpilot.service.ai.AiService ai,
+                        com.jobpilot.engine.EngineProfileRepository engineProfiles) {
         this.runs = runs;
         this.events = events;
         this.schedules = schedules;
@@ -60,6 +63,7 @@ public class AgentService {
         this.contacts = contacts;
         this.messages = messages;
         this.connections = connections;
+        this.engineProfiles = engineProfiles;
         this.ai = ai;
     }
 
@@ -343,26 +347,48 @@ public class AgentService {
         return schedules.findByUserIdOrderByOrdAsc(userId);
     }
 
-    /** Search keywords + locations for a portal block: explicit override, else from profile. */
+    /**
+     * Search keywords + locations for a portal block. Priority:
+     *   1. an explicit per-portal schedule override, then
+     *   2. the target roles / locations you typed in Auto Apply → Setup (the SAME source
+     *      the engine uses, so the worker searches exactly what you configured), then
+     *   3. a last-resort fall back to the app Profile.
+     */
     public Map<String, Object> searchPlan(UUID userId, String portal) {
         Profile p = profiles.get();
         AgentSchedule block = schedules.findByUserIdOrderByOrdAsc(userId).stream()
                 .filter(b -> b.getPortal().equalsIgnoreCase(portal)).findFirst().orElse(null);
 
         List<String> keywords = new ArrayList<>();
-        if (block != null && block.getKeywords() != null && !block.getKeywords().isBlank()) {
+        List<String> locations = new ArrayList<>();
+
+        // 1. explicit per-portal override
+        if (block != null && block.getKeywords() != null && !block.getKeywords().isBlank())
             for (String k : block.getKeywords().split(",")) if (!k.isBlank()) keywords.add(k.trim());
-        } else {
+        if (block != null && block.getLocations() != null && !block.getLocations().isBlank())
+            for (String l : block.getLocations().split(",")) if (!l.isBlank()) locations.add(l.trim());
+
+        // 2. the Setup roles/locations you actually typed (engine search-queries JSON)
+        if (keywords.isEmpty() || locations.isEmpty()) {
+            engineProfiles.findByUserId(userId).ifPresent(eng -> {
+                if (eng.getSearchQueries() != null && !eng.getSearchQueries().isBlank()) {
+                    try {
+                        var n = json.readTree(eng.getSearchQueries());
+                        if (keywords.isEmpty()) n.path("keywords").forEach(x -> keywords.add(x.asText()));
+                        if (locations.isEmpty()) n.path("locations").forEach(x -> locations.add(x.asText()));
+                    } catch (Exception ignore) { /* fall through to profile */ }
+                }
+            });
+        }
+
+        // 3. last-resort: the app Profile
+        if (keywords.isEmpty()) {
             if (p.getCurrentTitle() != null && !p.getCurrentTitle().isBlank()) keywords.add(p.getCurrentTitle().trim());
             if (p.getHeadline() != null && !p.getHeadline().isBlank()) keywords.add(p.getHeadline().trim());
             if (p.getSkills() != null) p.getSkills().stream().limit(5).forEach(keywords::add);
         }
         if (keywords.isEmpty()) keywords.add("software engineer");
-
-        List<String> locations = new ArrayList<>();
-        if (block != null && block.getLocations() != null && !block.getLocations().isBlank()) {
-            for (String l : block.getLocations().split(",")) if (!l.isBlank()) locations.add(l.trim());
-        } else {
+        if (locations.isEmpty()) {
             if (p.getPreferredLocations() != null) locations.addAll(p.getPreferredLocations());
             if (p.getLocation() != null && !p.getLocation().isBlank()) locations.add(p.getLocation().trim());
         }
