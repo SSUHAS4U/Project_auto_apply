@@ -42,6 +42,8 @@ public class EngineApplyService {
     private final AiService ai;
     private final MailService mail;
     private final com.jobpilot.service.SettingsService settings;
+    private final com.jobpilot.service.ResumeDocService resumeDocs;         // compileLatex (external)
+    private final com.jobpilot.repository.ResumeDocRepository resumeRepo;   // find base résumé by userId
     private final ObjectMapper mapper = new ObjectMapper();
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "engine-apply");
@@ -52,7 +54,9 @@ public class EngineApplyService {
     public EngineApplyService(EngineApplicationRepository apps, EngineJobRepository jobs,
                               EngineSetupService setup, EngineScraperService scraper,
                               AiService ai, MailService mail,
-                              com.jobpilot.service.SettingsService settings) {
+                              com.jobpilot.service.SettingsService settings,
+                              com.jobpilot.service.ResumeDocService resumeDocs,
+                              com.jobpilot.repository.ResumeDocRepository resumeRepo) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;
@@ -60,6 +64,8 @@ public class EngineApplyService {
         this.ai = ai;
         this.mail = mail;
         this.settings = settings;
+        this.resumeDocs = resumeDocs;
+        this.resumeRepo = resumeRepo;
     }
 
     // ---- entry points ---------------------------------------------------------
@@ -277,7 +283,28 @@ public class EngineApplyService {
               invented facts. End with: Sincerely, / Full Name.
             Output ONLY the markdown — no code fences, no commentary, no LaTeX.""";
 
+    private static final String CV_LATEX_SYS = """
+            You are the drafter. TAILOR the candidate's own LaTeX résumé (given below) to this
+            posting. Keep its preamble, packages and overall structure intact so it still
+            compiles. Reorder/reword content so the most posting-relevant items lead; use the
+            posting's exact terms for skills the candidate REALLY has. STRICT HONESTY — never
+            invent employers, titles, dates, degrees, metrics or skills; a required keyword the
+            résumé doesn't support stays absent. Keep it ~2 pages.
+            Output ONLY the complete LaTeX source — no commentary, no code fences.""";
+
     private String draftCv(EngineProfile p, EngineApplication a, JsonNode eval) {
+        // Hybrid: if the candidate has a real base résumé in Resumes, tailor THAT (their
+        // polished template); otherwise generate clean markdown. renderPdfs picks the right
+        // renderer and falls back safely.
+        String baseLatex = resumeRepo.findFirstByUserIdAndBaseTrue(a.getUserId())
+                .map(com.jobpilot.domain.ResumeDoc::getLatex).filter(s -> s != null && !s.isBlank()).orElse(null);
+        if (baseLatex != null) {
+            String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2400)
+                    + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
+                    + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2000)
+                    + "\n\nCANDIDATE'S BASE RÉSUMÉ (LaTeX — tailor this):\n" + cap(baseLatex, 5000);
+            return stripFences(completeRetry(CV_LATEX_SYS, user));
+        }
         String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2600)
                 + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
@@ -341,12 +368,48 @@ public class EngineApplyService {
     // ---- stage 6: render PDFs in-process (no LaTeX, no external compile service) ------
 
     private void renderPdfs(EngineApplication a) {
-        byte[] cvPdf = DocPdfRenderer.render(a.getCvLatex());   // cvLatex now holds markdown
-        a.setCvPdf(cvPdf);
-        a.setCvPages(pageCount(cvPdf));
-        byte[] coverPdf = DocPdfRenderer.render(a.getCoverLatex());
-        a.setCoverPdf(coverPdf);
-        a.setCoverPages(pageCount(coverPdf));
+        a.setCvPdf(toPdf(a.getCvLatex(), "cv"));
+        a.setCvPages(pageCount(a.getCvPdf()));
+        a.setCoverPdf(toPdf(a.getCoverLatex(), "cover"));
+        a.setCoverPages(pageCount(a.getCoverPdf()));
+    }
+
+    /**
+     * Hybrid render: if the draft is LaTeX (the candidate's own tailored template), compile
+     * it via the external service for the polished look; if that fails, fall back to the
+     * in-process renderer so it NEVER hard-fails. Plain markdown drafts render in-process.
+     */
+    private byte[] toPdf(String content, String which) {
+        if (blank(content)) return DocPdfRenderer.render("# " + which);
+        boolean isLatex = content.contains("\\documentclass") || content.contains("\\begin{document}");
+        if (isLatex) {
+            try {
+                return resumeDocs.compileLatex(content);
+            } catch (Exception e) {
+                log.warn("LaTeX compile failed for {} — falling back to in-process render: {}", which, e.getMessage());
+                return DocPdfRenderer.render(latexToMarkdown(content));
+            }
+        }
+        return DocPdfRenderer.render(content);
+    }
+
+    /** Rough LaTeX → markdown so the in-process fallback stays readable when compile fails. */
+    private static String latexToMarkdown(String tex) {
+        String body = tex;
+        int begin = body.indexOf("\\begin{document}");
+        int end = body.indexOf("\\end{document}");
+        if (begin >= 0) body = body.substring(begin + 16, end > begin ? end : body.length());
+        return body
+                .replaceAll("\\\\(sub)?section\\*?\\{([^}]*)}", "\n## $2")
+                .replaceAll("\\\\cventry\\s*\\{[^}]*}\\{([^}]*)}\\{([^}]*)}.*", "\n### $1 — $2")
+                .replaceAll("\\\\textbf\\{([^}]*)}", "**$1**")
+                .replaceAll("\\\\(textit|emph)\\{([^}]*)}", "$2")
+                .replaceAll("\\\\item\\s*", "\n- ")
+                .replaceAll("\\\\[a-zA-Z]+\\*?(\\[[^]]*])?(\\{[^}]*})?", " ")
+                .replaceAll("[{}$&~^\\\\]", " ")
+                .replaceAll("[ \\t]+", " ")
+                .replaceAll("\\n{3,}", "\n\n")
+                .trim();
     }
 
     private int pageCount(byte[] pdf) {
