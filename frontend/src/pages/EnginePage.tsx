@@ -186,8 +186,8 @@ function AutopilotBanner({ status, onChange }: { status: EngineStatus; onChange:
             {a.running ? <span className="spinner" /> : <Icon name="play" size={13} />} Run now
           </button>
           <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}><Icon name="gear" size={13} /> Limits</button>
-          <button className={`btn btn-sm ${a.enabled ? '' : 'btn-primary'}`} onClick={toggle} disabled={busy || !status.setupReady}
-            style={a.enabled ? { background: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined}>
+          <button className={`btn btn-sm ${a.enabled ? 'btn-danger-solid' : 'btn-primary'}`} onClick={toggle}
+            disabled={busy || !status.setupReady}>
             {a.enabled ? 'Turn off' : 'Turn on'}
           </button>
         </div>

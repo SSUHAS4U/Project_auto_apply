@@ -31,8 +31,9 @@ const EVENT_ICON: Record<string, { name: string; color: string }> = {
   info: { name: 'circle', color: '#7d8595' },
 };
 
-function Chip({ text, color }: { text: string; color: string }) {
-  return <span className="chip" style={{ background: color + '22', color, borderColor: color + '55' }}>{text}</span>;
+// Theme-aware tones (see .tone-* in styles.css) — legible in light AND dark.
+function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
+  return <span className={`tone tone-${tone}`}>{text}</span>;
 }
 
 export function AgentPage() {
@@ -90,9 +91,9 @@ export function AgentPage() {
           <h1 className="page-title">
             Agent{' '}
             {status && (live
-              ? <Chip text={`● ${run?.portal} ${run?.status}`} color="#34d399" />
-              : status.paused ? <Chip text="paused" color="#fbbf24" /> : <Chip text="idle" color="#7d8595" />)}
-            {status && !status.workerConfigured && <> <Chip text="desktop not connected" color="#f87171" /></>}
+              ? <Chip text={`${run?.portal} ${run?.status}`} tone="green" />
+              : status.paused ? <Chip text="paused" tone="amber" /> : <Chip text="idle" tone="slate" />)}
+            {status && !status.workerConfigured && <> <Chip text="desktop not connected" tone="red" /></>}
           </h1>
           <div className="page-sub">
             JobPilot Desktop runs a real browser on your PC and applies with your own logged-in
@@ -102,19 +103,18 @@ export function AgentPage() {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-primary btn-sm" onClick={() => start('all')} disabled={busy || !status?.workerConfigured}
             title={status?.workerConfigured ? 'Run Naukri → LinkedIn → Indeed in sequence' : 'Set up JobPilot Desktop first'}>
-            ▶ Run all
+            <Icon name="play" size={13} /> Run all
           </button>
           {PORTALS.map((p) => (
             <button key={p} className="btn btn-sm" onClick={() => start(p)} disabled={busy || !status?.workerConfigured}
               title={status?.workerConfigured ? `Queue a ${p} run` : 'Set up JobPilot Desktop first'}>
-              ▶ {p}
+              <Icon name="play" size={13} /> {p}
             </button>
           ))}
-          <button className="btn btn-sm" onClick={pause} disabled={busy || !status}
-            style={status?.paused ? undefined : { background: '#dc2626', borderColor: '#dc2626', color: '#fff' }}>
-            {status?.paused ? '▶ Resume' : '⏸ Pause'}
+          <button className={`btn btn-sm ${status?.paused ? '' : 'btn-danger-solid'}`} onClick={pause} disabled={busy || !status}>
+            <Icon name={status?.paused ? 'play' : 'pause'} size={13} /> {status?.paused ? 'Resume' : 'Pause'}
           </button>
-          {live && <button className="btn btn-sm" onClick={stop} disabled={busy}>⏹ Stop</button>}
+          {live && <button className="btn btn-sm" onClick={stop} disabled={busy}><Icon name="x" size={13} /> Stop</button>}
         </div>
       </div>
 
@@ -270,7 +270,7 @@ function NetworkTab({ onChange }: { onChange: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div>
-        <h3 style={{ margin: '0 0 8px' }}>Approvals {pending.length > 0 && <Chip text={`${pending.length} waiting`} color="#fbbf24" />}</h3>
+        <h3 style={{ margin: '0 0 8px' }}>Approvals {pending.length > 0 && <Chip text={`${pending.length} waiting`} tone="amber" />}</h3>
         {pending.length === 0 ? (
           <div className="card card-pad faint" style={{ fontSize: 13 }}>
             No drafts waiting. Messages the worker wants to send appear here first — nothing goes out until you approve it.
@@ -300,7 +300,7 @@ function NetworkTab({ onChange }: { onChange: () => void }) {
               <a href={c.profileUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{c.name || 'Contact'}</a>
               <span className="faint" style={{ fontSize: 12.5 }}>{c.role ? ` · ${c.role}` : ''}{c.company ? ` · ${c.company}` : ''} · {c.portal}</span>
             </div>
-            <Chip text={c.connectionStatus} color={c.connectionStatus === 'replied' ? '#34d399' : c.connectionStatus === 'connected' ? '#60a5fa' : c.connectionStatus === 'pending' ? '#fbbf24' : '#7d8595'} />
+            <Chip text={c.connectionStatus} tone={c.connectionStatus === 'replied' ? 'green' : c.connectionStatus === 'connected' ? 'blue' : c.connectionStatus === 'pending' ? 'amber' : 'slate'} />
           </div>
         ))}
       </div>
@@ -371,7 +371,7 @@ function ConnectTab({ configured, onChange }: { configured: boolean; onChange: (
 
   return (
     <div className="card card-pad" style={{ maxWidth: 760 }}>
-      <h3 style={{ marginTop: 0 }}>Set up JobPilot Desktop {configured && <Chip text="connected" color="#16a34a" />}</h3>
+      <h3 style={{ marginTop: 0 }}>Set up JobPilot Desktop {configured && <Chip text="connected" tone="green" />}</h3>
       <p className="faint" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
         JobPilot Desktop is a tiny app that runs on your computer — the same idea as VS Code being installed.
         It opens a real browser so the agent can apply for you, using your own logins. Your passwords and

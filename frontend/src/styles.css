@@ -197,11 +197,26 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .btn:hover { background: var(--btn-bg-hover); border-color: var(--accent); color: var(--text); }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+/* Disabled: an explicit muted surface + readable label — never a faded one.
+   Fading .btn-primary (white text on an indigo gradient) with opacity turns it into
+   white-on-near-white in light mode, i.e. an invisible button. */
+.btn:disabled, .btn[disabled] {
+  cursor: not-allowed; opacity: 1; filter: none;
+  background: var(--btn-bg); background-image: none;
+  color: var(--text-faint); border-color: var(--border); box-shadow: none;
+}
+.btn:disabled:hover, .btn[disabled]:hover {
+  background: var(--btn-bg); border-color: var(--border); color: var(--text-faint); filter: none;
+}
+.btn:disabled:active, .btn[disabled]:active { transform: none; }
 .btn-primary { background: linear-gradient(135deg, var(--accent-hi), var(--accent)); border-color: transparent; color: white; box-shadow: 0 1px 2px rgba(79,70,229,.25), 0 6px 16px rgba(79,70,229,.18); }
 .btn-primary:hover { filter: brightness(1.06); border-color: transparent; color: #fff; box-shadow: 0 2px 4px rgba(79,70,229,.3), 0 8px 20px rgba(79,70,229,.22); }
 .btn-danger { background: color-mix(in srgb, var(--red) 12%, transparent); border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); }
 .btn-danger:hover { background: color-mix(in srgb, var(--red) 20%, transparent); border-color: var(--red); color: var(--red); }
+/* Solid destructive action (Turn off / Pause) — a class, not an inline style, so the
+   disabled rule above can still mute it. */
+.btn-danger-solid { background: var(--red); background-image: none; border-color: var(--red); color: #fff; }
+.btn-danger-solid:hover { filter: brightness(1.08); background: var(--red); border-color: var(--red); color: #fff; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn-ghost:hover { background: var(--btn-bg-hover); color: var(--text); border-color: var(--border-strong); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
@@ -565,7 +580,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 }
 .model-opt:hover:not(:disabled) { background: var(--bg-card-hover); }
 .model-opt.sel { background: var(--accent-soft); }
-.model-opt:disabled { opacity: .4; cursor: not-allowed; }
+.model-opt:disabled { opacity: 1; cursor: not-allowed; color: var(--text-faint); }
 .model-opt-sub { display: block; color: var(--text-faint); font-size: 11px; font-weight: 500; }
 .model-check { color: var(--accent-hi); font-weight: 800; }
 
@@ -714,7 +729,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .ov-btn:hover { border-color: var(--accent); }
-.ov-btn:disabled { opacity: .45; cursor: default; }
+.ov-btn:disabled { cursor: default; opacity: 1; filter: none; background: var(--btn-bg); color: var(--text-faint); border-color: var(--border); }
+.ov-btn:disabled:hover { border-color: var(--border); filter: none; }
 .ov-btn.green { background: #1f8b2e; border-color: #1f8b2e; color: #fff; }
 .ov-btn.green:hover { filter: brightness(1.1); }
 .ov-btn.danger:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
