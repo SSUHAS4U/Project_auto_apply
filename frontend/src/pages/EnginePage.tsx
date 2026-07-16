@@ -5,6 +5,7 @@ import type {
   EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
 } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -86,8 +87,8 @@ export function EnginePage() {
       </div>
 
       {status && !status.aiEnabled && (
-        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13 }}>
-          ⚠ No AI provider configured — Setup, Rank and Apply need one. Add it in Settings → AI model.
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center' }}>
+          <Icon name="alert" size={16} style={{ color: '#f59e0b', flex: 'none' }} /> No AI provider configured — Setup, Rank and Apply need one. Add it in Settings → AI model.
         </div>
       )}
 
@@ -158,8 +159,8 @@ function AutopilotBanner({ status, onChange }: { status: EngineStatus; onChange:
     <div className="card card-pad" style={{ marginBottom: 14, borderColor: a.enabled ? '#34d399' : undefined }}>
       <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>
-            🤖 Autopilot{' '}
+          <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="bot" size={17} /> Autopilot{' '}
             <Chip text={a.enabled ? (a.running ? 'running now' : 'ON · daily 09:30') : 'off'}
               color={a.enabled ? (a.running ? '#60a5fa' : '#34d399') : '#7d8595'} />
           </div>
@@ -171,9 +172,9 @@ function AutopilotBanner({ status, onChange }: { status: EngineStatus; onChange:
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm" onClick={runNow} disabled={busy || a.running || !status.setupReady}
             title={status.setupReady ? 'Run the full cycle now' : 'Finish Setup first'}>
-            {a.running ? <span className="spinner" /> : '▶'} Run now
+            {a.running ? <span className="spinner" /> : <Icon name="play" size={13} />} Run now
           </button>
-          <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}>⚙ Limits</button>
+          <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}><Icon name="gear" size={13} /> Limits</button>
           <button className={`btn btn-sm ${a.enabled ? '' : 'btn-primary'}`} onClick={toggle} disabled={busy || !status.setupReady}
             style={a.enabled ? { background: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined}>
             {a.enabled ? 'Turn off' : 'Turn on'}
@@ -288,7 +289,7 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
               <div><div className="faint" style={{ fontSize: 11 }}>PHONE</div>{me.phone || '—'}</div>
               <div><div className="faint" style={{ fontSize: 11 }}>CURRENT ROLE</div>{me.currentTitle || '—'}{me.currentCompany ? ` @ ${me.currentCompany}` : ''}</div>
               <div><div className="faint" style={{ fontSize: 11 }}>EXPERIENCE</div>{me.yearsExperience || '—'}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>RESUME</div>{me.hasResume ? '✓ uploaded' : '✕ none'}</div>
+              <div><div className="faint" style={{ fontSize: 11 }}>RESUME</div>{me.hasResume ? 'uploaded' : 'none'}</div>
             </div>
             {me.skills?.length > 0 && (
               <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
@@ -332,7 +333,7 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
         </div>
         <div className="row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={saveGuided} disabled={saving}>
-            {saving ? <span className="spinner" /> : '✓'} Save &amp; make ready
+            {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save &amp; make ready
           </button>
           {status?.setupReady && <span className="chip" style={{ background: '#34d39922', color: '#34d399' }}>ready to scrape</span>}
         </div>
@@ -347,13 +348,13 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
           not for finding jobs.
         </p>
         {!status?.aiEnabled ? (
-          <div style={{ fontSize: 13, color: '#fbbf24' }}>
-            ⚠ No AI provider is configured on the server, so this step is disabled. Set a free Groq or Gemini
-            key in the backend environment (<code>JOBPILOT_GROQ_API_KEY</code>) to enable it. Steps 1–2 work without it.
+          <div style={{ fontSize: 13, color: '#fbbf24', display: 'flex', gap: 8, alignItems: 'baseline' }}>
+            <Icon name="alert" size={14} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>No AI provider is configured on the server, so this step is disabled. Set a free Groq or Gemini
+            key in the backend environment (<code>JOBPILOT_GROQ_API_KEY</code>) to enable it. Steps 1–2 work without it.</span>
           </div>
         ) : (
           <button className="btn" onClick={enhance} disabled={enhancing}>
-            {enhancing ? <span className="spinner" /> : '✨'} Generate AI documents
+            {enhancing ? <span className="spinner" /> : <Icon name="sparkles" size={14} />} Generate AI documents
           </button>
         )}
       </div>
@@ -361,14 +362,14 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
       {/* Advanced — raw document editors */}
       <div className="card card-pad">
         <button className="btn btn-sm" onClick={() => setShowAdvanced((v) => !v)}>
-          {showAdvanced ? '▾' : '▸'} Advanced — edit the 8 documents directly
+          {showAdvanced ? '▾' : '▸'} Advanced — edit the documents directly
         </button>
         {showAdvanced && (
           <>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
               {Object.entries(DOC_LABELS).map(([k, label]) => (
                 <button key={k} className="btn btn-sm" onClick={() => openEditor(k)} style={{ opacity: checklist[k] ? 1 : 0.55 }}>
-                  {checklist[k] ? '✓' : '○'} {label}
+                  <Icon name={checklist[k] ? 'check' : 'circle'} size={13} /> {label}
                 </button>
               ))}
             </div>
@@ -434,10 +435,10 @@ function JobsTab({ status, onChange, onApplied }:
       <div className="card card-pad row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={scrape} disabled={status?.scrapeRunning || !status?.setupReady}
           title={status?.setupReady ? 'Search LinkedIn from your saved queries' : 'Run Setup first'}>
-          {status?.scrapeRunning ? <span className="spinner" /> : '🔎'} Scrape LinkedIn
+          {status?.scrapeRunning ? <span className="spinner" /> : <Icon name="search" size={14} />} Scrape LinkedIn
         </button>
         <button className="btn" onClick={rank} disabled={status?.rankRunning || !status?.aiEnabled}>
-          {status?.rankRunning ? <span className="spinner" /> : '⚖'} Rank new
+          {status?.rankRunning ? <span className="spinner" /> : <Icon name="scale" size={14} />} Rank new
         </button>
         <span className="faint" style={{ fontSize: 12.5 }}>
           {sc.new ?? 0} new · {sc.shortlisted ?? 0} shortlisted · {sc.ranked ?? 0} ranked ·
@@ -456,15 +457,15 @@ function JobsTab({ status, onChange, onApplied }:
 
       {jobs.length === 0 ? (
         <div className="card card-pad empty">
-          <div className="big">🔎</div>
+          <div className="big"><Icon name="search" size={34} /></div>
           {status?.setupReady ? 'No jobs yet. Scrape LinkedIn, then Rank.' : 'Run Setup first, then Scrape LinkedIn.'}
         </div>
       ) : jobs.map((j) => (
         <div key={j.id} className="card card-pad">
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <a href={j.url} target="_blank" rel="noreferrer" className="pick-title" style={{ textDecoration: 'none' }}>
-                {j.title} ↗
+              <a href={j.url} target="_blank" rel="noreferrer" className="pick-title" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {j.title} <Icon name="external" size={13} />
               </a>
               <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
                 {typeof j.fitScore === 'number' && j.verdict &&
@@ -474,19 +475,19 @@ function JobsTab({ status, onChange, onApplied }:
                 {j.company && <> · {j.company}</>}{j.location && <> · {j.location}</>}
                 {j.postedAt && <> · {j.postedAt}</>}
               </div>
-              {j.strengths && <div style={{ fontSize: 12.5, marginTop: 6, color: '#34d399' }}>💪 {j.strengths}</div>}
-              {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>🕳 {j.gaps}</div>}
-              {j.dealBreaker && <div style={{ fontSize: 12.5, marginTop: 2, color: '#f87171' }}>⛔ {j.dealBreaker}</div>}
+              {j.strengths && <div style={{ fontSize: 12.5, marginTop: 6, color: '#34d399', display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
+              {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 2, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
+              {j.dealBreaker && <div style={{ fontSize: 12.5, marginTop: 2, color: '#f87171', display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
             </div>
             <div className="row" style={{ gap: 6, flexShrink: 0 }}>
               {j.status !== 'applied' && j.status !== 'applying' && (
                 <button className="btn btn-primary btn-sm" onClick={() => apply(j)} disabled={applyingId === j.id || !status?.setupReady}>
-                  {applyingId === j.id ? <span className="spinner" /> : '✍'} Apply
+                  {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
                 </button>
               )}
-              {j.status === 'applied' && <Chip text="applied ✓" color="#16a34a" />}
+              {j.status === 'applied' && <Chip text="applied" color="#16a34a" />}
               {j.status === 'applying' && <Chip text="applying…" color="#818cf8" />}
-              <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)}>✕</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
             </div>
           </div>
         </div>
@@ -519,7 +520,7 @@ function ApplicationsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {apps.length === 0 ? (
-        <div className="card card-pad empty"><div className="big">✍</div>No applications yet — Apply to a job from the Jobs tab.</div>
+        <div className="card card-pad empty"><div className="big"><Icon name="pen" size={34} /></div>No applications yet — Apply to a job from the Jobs tab.</div>
       ) : apps.map((a) => (
         <div key={a.id} className="card card-pad" style={{ cursor: 'pointer' }} onClick={() => open(a.id)}>
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -592,8 +593,8 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
         <div style={{ marginBottom: 10 }}>
           <b>Fit</b>{' '}
           <Chip text={`${ev.verdict ?? ''} ${ev.overall}/100`} color={VERDICT_COLOR[String(ev.verdict)] ?? '#7d8595'} />
-          {Array.isArray(ev.strengths) && <div style={{ marginTop: 4 }}>💪 {(ev.strengths as string[]).join(' · ')}</div>}
-          {Array.isArray(ev.gaps) && <div className="faint" style={{ marginTop: 2 }}>🕳 {(ev.gaps as string[]).join(' · ')}</div>}
+          {Array.isArray(ev.strengths) && <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)', color: '#34d399' }} /><span>{(ev.strengths as string[]).join(' · ')}</span></div>}
+          {Array.isArray(ev.gaps) && <div className="faint" style={{ marginTop: 2, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{(ev.gaps as string[]).join(' · ')}</span></div>}
         </div>
       )}
 
@@ -605,17 +606,17 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
           {' '}<Chip text={ats.hasEmail ? 'contact readable' : 'contact missing'} color={ats.hasEmail ? '#34d399' : '#f87171'} />
           {ats.garbled ? <> <Chip text="garbled text" color="#f87171" /></> : null}
           {Array.isArray(ats.requiredMissingGap) && (ats.requiredMissingGap as string[]).length > 0 &&
-            <div className="faint" style={{ marginTop: 4 }}>✕ honest gaps (never stuffed): {(ats.requiredMissingGap as string[]).join(', ')}</div>}
+            <div className="faint" style={{ marginTop: 4 }}>Honest gaps (never stuffed): {(ats.requiredMissingGap as string[]).join(', ')}</div>}
           {typeof d.cvPages === 'number' && <div className="faint" style={{ marginTop: 2 }}>CV {d.cvPages} page(s){d.cutReport ? ' · relevance-cut applied' : ''}</div>}
         </div>
       )}
 
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-        {d.coverLatex && <button className="btn btn-sm" onClick={() => setShow(show === 'letter' ? '' : 'letter')}>✉ Letter</button>}
-        {d.reviewerFeedback && <button className="btn btn-sm" onClick={() => setShow(show === 'review' ? '' : 'review')}>🧐 Reviewer</button>}
-        {d.cvLatex && <button className="btn btn-sm" onClick={() => setShow(show === 'cv' ? '' : 'cv')}>📐 CV LaTeX</button>}
-        {d.cvPages ? <button className="btn btn-sm" onClick={() => download('cv', 'cv.pdf')}>⬇ CV PDF</button> : null}
-        {d.coverPages ? <button className="btn btn-sm" onClick={() => download('cover', 'cover-letter.pdf')}>⬇ Letter PDF</button> : null}
+        {d.coverLatex && <button className="btn btn-sm" onClick={() => setShow(show === 'letter' ? '' : 'letter')}><Icon name="mail" size={13} /> Letter</button>}
+        {d.reviewerFeedback && <button className="btn btn-sm" onClick={() => setShow(show === 'review' ? '' : 'review')}><Icon name="search" size={13} /> Reviewer</button>}
+        {d.cvLatex && <button className="btn btn-sm" onClick={() => setShow(show === 'cv' ? '' : 'cv')}><Icon name="file" size={13} /> CV source</button>}
+        {d.cvPages ? <button className="btn btn-sm" onClick={() => download('cv', 'cv.pdf')}><Icon name="download" size={13} /> CV PDF</button> : null}
+        {d.coverPages ? <button className="btn btn-sm" onClick={() => download('cover', 'cover-letter.pdf')}><Icon name="download" size={13} /> Letter PDF</button> : null}
       </div>
       {show === 'letter' && <pre style={preStyle}>{d.coverLatex}</pre>}
       {show === 'review' && <pre style={preStyle}>{d.reviewerFeedback}{d.revisionNotes ? `\n\n— ${d.revisionNotes}` : ''}</pre>}
@@ -679,7 +680,7 @@ function InterviewTab() {
           </select>
           <input className="input" style={{ maxWidth: 180 }} value={stage} onChange={(e) => setStage(e.target.value)} />
           <button className="btn btn-primary btn-sm" onClick={gen} disabled={running}>
-            {running ? <span className="spinner" /> : '🎯'} Build pack
+            {running ? <span className="spinner" /> : <Icon name="target" size={13} />} Build pack
           </button>
         </div>
       </div>
@@ -719,7 +720,7 @@ function UpskillTab() {
           <span className="faint" style={{ fontSize: 13 }}>Compares your profile against the postings you've tracked.</span>
         </div>
         <button className="btn btn-primary btn-sm" onClick={run} disabled={running}>
-          {running ? <span className="spinner" /> : '📊'} Run analysis
+          {running ? <span className="spinner" /> : <Icon name="chart" size={13} />} Run analysis
         </button>
       </div>
       {reports.map((r) => {
