@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jobpilot.service.MailAttachment;
 import com.jobpilot.service.MailService;
-import com.jobpilot.service.ResumeDocService;
 import com.jobpilot.service.ai.AiService;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -41,7 +40,6 @@ public class EngineApplyService {
     private final EngineSetupService setup;
     private final EngineScraperService scraper;
     private final AiService ai;
-    private final ResumeDocService latex;   // shared plumbing: compileLatex only
     private final MailService mail;
     private final com.jobpilot.service.SettingsService settings;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -53,14 +51,13 @@ public class EngineApplyService {
 
     public EngineApplyService(EngineApplicationRepository apps, EngineJobRepository jobs,
                               EngineSetupService setup, EngineScraperService scraper,
-                              AiService ai, ResumeDocService latex, MailService mail,
+                              AiService ai, MailService mail,
                               com.jobpilot.service.SettingsService settings) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;
         this.scraper = scraper;
         this.ai = ai;
-        this.latex = latex;
         this.mail = mail;
         this.settings = settings;
     }
@@ -150,9 +147,9 @@ public class EngineApplyService {
                 save(a);
             }
 
-            // 6. compile + page rules + relevance-weighted cutting
-            stage(a, "compiling", "Compiling PDFs (CV ≤ 2 pages, letter 1 page)");
-            compileWithRules(a, eval);
+            // 6. render the PDFs in-process (never fails on an external compile service)
+            stage(a, "compiling", "Building the CV + cover letter PDFs");
+            renderPdfs(a);
             save(a);
 
             // 7. ATS text-layer verification
@@ -243,31 +240,48 @@ public class EngineApplyService {
 
     // ---- stage 3: draft -----------------------------------------------------------
 
+    // Markdown (not LaTeX) — rendered to PDF in-process, so it never fails on a compile
+    // service, and it's far easier for the model to produce correctly.
     private static final String CV_SYS = """
-            You are the drafter. Produce a TAILORED LaTeX CV for this specific posting:
-            - Start from the base CV LaTeX and KEEP its preamble/structure compiling.
-            - Reorder and reword content so the most posting-relevant items lead.
-            - Use the posting's exact terminology for skills the candidate REALLY has.
-            - STRICT HONESTY: never invent employers, titles, dates, degrees, metrics or
-              skills. A required keyword the profile doesn't support stays absent.
-            - Follow the writing-style rules. Target 2 pages maximum.
-            Output ONLY the complete LaTeX source (no commentary, no fences).""";
+            You are the drafter. Produce a TAILORED résumé for this posting in clean, simple
+            MARKDOWN with this exact structure:
+              # Full Name
+              City · email · phone · links        (one line, right after the name)
+              ## Summary
+              a 2-3 line summary tailored to the role
+              ## Skills
+              - **Languages:** ...
+              - **Frameworks:** ...
+              - **Tools:** ...
+              ## Experience
+              ### Job Title — Company (dates)
+              - achievement bullet with a real outcome
+              ## Projects
+              ### Project — stack
+              - what it does and the result
+              ## Education
+              ### Degree, Field — Institution (years)
+            Rules: reorder/reword so the most posting-relevant items lead; use the posting's
+            exact terms for skills the candidate REALLY has; **bold** labels and titles;
+            STRICT HONESTY — never invent employers, titles, dates, degrees, metrics or skills;
+            a required keyword the profile doesn't support stays absent. Keep it concise (fits
+            ~2 pages). Output ONLY the markdown — no code fences, no commentary, no LaTeX.""";
 
     private static final String COVER_SYS = """
-            You are the drafter. Write a tailored cover letter as LaTeX using the given
-            template structure:
-            - Name 2-3 concrete needs from the posting and tie each to REAL experience.
-            - 180-260 words of body. Follow the writing-style rules; obey its banned
-              phrases. First person, specific, zero clichés, zero invented facts.
-            - Keep the template's preamble compiling; replace placeholders.
-            Output ONLY the complete LaTeX source (no commentary, no fences).""";
+            You are the drafter. Write a tailored cover letter in clean MARKDOWN:
+              # Full Name
+              email · phone · city
+              (blank line) Dear Hiring Manager, (or a named person if the posting gives one)
+              2-3 short paragraphs: name 2-3 concrete needs from the posting and tie each to
+              REAL experience; 180-260 words total; first person, specific, no clichés, no
+              invented facts. End with: Sincerely, / Full Name.
+            Output ONLY the markdown — no code fences, no commentary, no LaTeX.""";
 
     private String draftCv(EngineProfile p, EngineApplication a, JsonNode eval) {
         String user = "POSTING:\n" + cap(nz(a.getPostingText()), 2600)
                 + "\n\nREQUIRED KEYWORDS: " + join(eval.path("requiredKeywords"))
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
-                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2600)
-                + "\n\nBASE CV LATEX:\n" + cap(nz(p.getCvTemplateLatex()), 3200);
+                + "\n\nCANDIDATE PROFILE (source of truth — use these real facts):\n" + cap(nz(p.getCandidateMd()), 3200);
         return stripFences(completeRetry(CV_SYS, user));
     }
 
@@ -276,8 +290,7 @@ public class EngineApplyService {
                 + cap(nz(a.getPostingText()), 2600)
                 + "\n\nCANDIDATE'S TOP MATCHES: " + join(eval.path("strengths"))
                 + "\n\nWRITING STYLE RULES:\n" + cap(nz(p.getWritingStyleMd()), 800)
-                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 2600)
-                + "\n\nLETTER TEMPLATE LATEX:\n" + cap(nz(p.getCoverTemplateLatex()), 3000);
+                + "\n\nCANDIDATE PROFILE (source of truth):\n" + cap(nz(p.getCandidateMd()), 3000);
         return stripFences(completeRetry(COVER_SYS, user));
     }
 
@@ -325,58 +338,15 @@ public class EngineApplyService {
         a.setRevisionNotes("Reviewer critique applied where grounded in the profile.");
     }
 
-    // ---- stage 6: compile + page rules + relevance-weighted cutting -------------------
+    // ---- stage 6: render PDFs in-process (no LaTeX, no external compile service) ------
 
-    private static final String FIX_SYS = """
-            This LaTeX failed to compile. Fix ONLY the error (undefined commands, unclosed
-            environments, bad characters) without changing any content or meaning.
-            Output ONLY the corrected complete LaTeX source.""";
-
-    private static final String CUT_SYS = """
-            This CV compiles to MORE than 2 pages. Apply relevance-weighted cutting:
-            score each content line by (a) relevance to the posting, (b) uniqueness,
-            (c) recency — then REMOVE the lowest-scoring lines until the CV plausibly fits
-            2 pages. Never cut contact details, the current/most relevant role, or anything
-            the cover letter depends on. Keep the LaTeX compiling. After the LaTeX, output
-            nothing else. Output ONLY the complete trimmed LaTeX source.""";
-
-    private void compileWithRules(EngineApplication a, JsonNode eval) {
-        // CV: compile → repair once on error → cut down to 2 pages (max 2 passes)
-        byte[] cvPdf = compileWithRepair(a.getCvLatex(), latexUpdated -> a.setCvLatex(latexUpdated));
-        int pages = pageCount(cvPdf);
-        StringBuilder cuts = new StringBuilder();
-        for (int pass = 0; pages > 2 && pass < 2; pass++) {
-            cuts.append("Pass ").append(pass + 1).append(": CV was ").append(pages)
-                .append(" pages — relevance-weighted cut applied.\n");
-            String trimmed = stripFences(completeRetry(CUT_SYS,
-                    "POSTING KEYWORDS: " + join(eval.path("requiredKeywords"))
-                            + "\n\nPOSTING (for relevance):\n" + cap(nz(a.getPostingText()), 2500)
-                            + "\n\nCV LATEX:\n" + a.getCvLatex()));
-            if (blank(trimmed)) break;
-            a.setCvLatex(trimmed);
-            cvPdf = compileWithRepair(a.getCvLatex(), l -> a.setCvLatex(l));
-            pages = pageCount(cvPdf);
-        }
+    private void renderPdfs(EngineApplication a) {
+        byte[] cvPdf = DocPdfRenderer.render(a.getCvLatex());   // cvLatex now holds markdown
         a.setCvPdf(cvPdf);
-        a.setCvPages(pages);
-        if (!cuts.isEmpty()) a.setCutReport(cuts.toString().trim());
-
-        // Cover letter: compile → repair once; 1-page rule is checked, not force-cut.
-        byte[] coverPdf = compileWithRepair(a.getCoverLatex(), l -> a.setCoverLatex(l));
+        a.setCvPages(pageCount(cvPdf));
+        byte[] coverPdf = DocPdfRenderer.render(a.getCoverLatex());
         a.setCoverPdf(coverPdf);
         a.setCoverPages(pageCount(coverPdf));
-    }
-
-    private byte[] compileWithRepair(String source, java.util.function.Consumer<String> onFix) {
-        try {
-            return latex.compileLatex(source);
-        } catch (Exception first) {
-            String fixed = stripFences(completeRetry(FIX_SYS,
-                    "ERROR:\n" + cap(nz(first.getMessage()), 800) + "\n\nLATEX:\n" + source));
-            if (blank(fixed)) throw new IllegalStateException("LaTeX compile failed: " + first.getMessage());
-            onFix.accept(fixed);
-            return latex.compileLatex(fixed); // second failure propagates
-        }
     }
 
     private int pageCount(byte[] pdf) {
