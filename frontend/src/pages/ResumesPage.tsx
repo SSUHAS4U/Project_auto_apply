@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, type ResumeDoc } from '../api/client';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 import { fmtDate, useToast } from '../lib/ui';
 
 /**
@@ -186,7 +187,7 @@ export function ResumesPage() {
     disabled?: boolean; cls?: string; title?: string;
   }) => (
     <button className={`ov-btn ${cls ?? ''}`} onClick={onClick} disabled={disabled} title={title ?? label}>
-      {busy === id ? <span className="spinner" /> : ico}<span className="ov-label">{label}</span>
+      {busy === id ? <span className="spinner" /> : <Icon name={ico} size={14} />}{label && <span className="ov-label">{label}</span>}
     </button>
   );
 
@@ -203,20 +204,20 @@ export function ResumesPage() {
       <div className="ov-top">
         <button className="ov-btn ov-files-btn" title="Show / hide your resumes"
           onClick={() => { setFilesOpen((v) => !v); setFilesClosed((v) => !v); }}>
-          ☰<span className="ov-label">Files</span>
+          <Icon name="file" size={14} /><span className="ov-label">Files</span>
         </button>
         {sel ? (
           <>
             <input className="ov-name" value={name} placeholder="Resume name"
               onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-            <B id="save" label={dirty ? 'Save*' : 'Save'} ico="💾" onClick={save} disabled={!!busy || !dirty} />
-            <B id="compile" label="Recompile" ico="▶" cls="green" onClick={compile} disabled={!!busy} />
-            <B label="PDF" ico="⬇" onClick={download} disabled={!pdfUrl && !sel.hasPdf} title="Download PDF" />
-            <B label="Tailor" ico="🧵" onClick={() => setTailorOpen(true)} title="Tailor to a job description" />
+            <B id="save" label={dirty ? 'Save*' : 'Save'} ico="check" onClick={save} disabled={!!busy || !dirty} />
+            <B id="compile" label="Recompile" ico="play" cls="green" onClick={compile} disabled={!!busy} />
+            <B label="PDF" ico="download" onClick={download} disabled={!pdfUrl && !sel.hasPdf} title="Download PDF" />
+            <B label="Tailor" ico="sparkles" onClick={() => setTailorOpen(true)} title="Tailor to a job description" />
             <span style={{ flex: 1 }} />
-            {!sel.base && <B label="Base" ico="⭐" onClick={setBase} title="Make this the base resume" />}
-            <B id="dup" label="Copy" ico="⧉" onClick={duplicate} disabled={!!busy} title="Duplicate" />
-            <B label="" ico="🗑" cls="danger" onClick={remove} title="Delete" />
+            {!sel.base && <B label="Base" ico="star" onClick={setBase} title="Make this the base resume" />}
+            <B id="dup" label="Copy" ico="copy" onClick={duplicate} disabled={!!busy} title="Duplicate" />
+            <B label="" ico="trash" cls="danger" onClick={remove} title="Delete" />
             <div className="ov-seg">
               <button className={mobileTab === 'code' ? 'on' : ''} onClick={() => setMobileTab('code')}>Code</button>
               <button className={mobileTab === 'pdf' ? 'on' : ''} onClick={() => setMobileTab('pdf')}>PDF</button>
@@ -243,7 +244,7 @@ export function ResumesPage() {
             )}
             {docs.map((d) => (
               <div key={d.id} className={`ov-file ${sel?.id === d.id ? 'sel' : ''}`} onClick={() => pick(d)}>
-                <div className="ov-file-name">📄<span>{d.name}</span>{d.base && <span title="Base resume">⭐</span>}</div>
+                <div className="ov-file-name"><Icon name="file" size={14} style={{ flex: 'none' }} /><span>{d.name}</span>{d.base && <Icon name="star" size={13} style={{ flex: 'none', color: 'var(--amber)' }} />}</div>
                 <div className="ov-file-sub">
                   {d.hasPdf ? 'PDF ready' : 'not compiled'}{d.updatedAt ? ` · ${fmtDate(d.updatedAt)}` : ''}
                 </div>
@@ -259,7 +260,7 @@ export function ResumesPage() {
               {sel.tailorNotes && (
                 <div className="ov-notes">
                   <div className="ov-notes-head" onClick={() => setNotesOpen((v) => !v)}>
-                    🧵 What the AI changed for this JD {notesOpen ? '▾' : '▸'}
+                    <Icon name="sparkles" size={14} /> What the AI changed for this JD {notesOpen ? '▾' : '▸'}
                     {sel.jobUrl && (
                       <a href={sel.jobUrl} target="_blank" rel="noreferrer"
                         style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 12 }}
@@ -283,7 +284,7 @@ export function ResumesPage() {
         ) : (
           <section className="ov-edit">
             <div className="empty" style={{ margin: 'auto', maxWidth: 380 }}>
-              <div className="big">📄</div>
+              <div className="big"><Icon name="file" size={34} /></div>
               <b>＋ Profile</b> gives you a compilable one-page LaTeX starter pre-filled with your
               details; <b>＋ Blank</b> gives a minimal skeleton. Same LaTeX as Overleaf.
             </div>
@@ -297,13 +298,13 @@ export function ResumesPage() {
             <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setTailorOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={tailor} disabled={busy === 'tailor'}>
-                {busy === 'tailor' ? <span className="spinner" /> : '🧵'} Create tailored copy
+                {busy === 'tailor' ? <span className="spinner" /> : <Icon name="sparkles" size={14} />} Create tailored copy
               </button>
             </div>
           }>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="faint" style={{ fontSize: 13 }}>
-              The AI rewrites a COPY of your base resume (⭐) for this JD — reordering skills and
+              The AI rewrites a COPY of your base resume for this JD — reordering skills and
               bullets, mirroring the JD's keywords where you genuinely have them, never inventing
               experience. You'll get a "What changed" report on the copy. Your base stays untouched.
             </div>

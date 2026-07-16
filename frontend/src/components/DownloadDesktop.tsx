@@ -1,6 +1,8 @@
 // OS-aware "Download JobPilot Desktop" button. Serves the latest release binary for the
 // visitor's platform from GitHub Releases, with links for the other platforms.
 
+import { Icon } from './Icon';
+
 const RELEASE_BASE = 'https://github.com/SSUHAS4U/Project_auto_apply/releases/latest/download';
 const DOWNLOADS: Record<string, { label: string; file: string }> = {
   win: { label: 'Download for Windows', file: 'jobpilot-desktop-win-x64.exe' },
@@ -22,7 +24,7 @@ export function DownloadDesktop({ compact = false }: { compact?: boolean }) {
   return (
     <div>
       <a className="btn btn-primary" href={`${RELEASE_BASE}/${DOWNLOADS[primary].file}`} download>
-        ⬇ {DOWNLOADS[primary].label}
+        <Icon name="download" size={14} /> {DOWNLOADS[primary].label}
       </a>
       {!compact && (
         <>

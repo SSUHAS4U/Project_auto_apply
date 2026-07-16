@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../lib/ui';
+import { Icon } from './Icon';
 
 type Status = { enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] };
 
@@ -58,7 +59,7 @@ export function ModelSwitcher({ onChange }: { onChange?: (provider: string) => v
                 onClick={() => pick(id)} disabled={!cfg && id !== 'auto'}>
                 <span className="model-dot" style={{ background: meta.dot }} />
                 <span className="grow"><span className="model-name">{meta.label}</span><span className="model-opt-sub">{meta.sub}</span></span>
-                {current === id ? <span className="model-check">✓</span> : !cfg && <span className="model-opt-sub">no key</span>}
+                {current === id ? <span className="model-check"><Icon name="check" size={14} /></span> : !cfg && <span className="model-opt-sub">no key</span>}
               </button>
             );
           })}

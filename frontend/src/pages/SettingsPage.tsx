@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, getAdminToken, setAdminToken, isAdminUI } from '../api/client';
 import { useToast } from '../lib/ui';
+import { Icon } from '../components/Icon';
 
 type AiStatus = { enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] };
 
@@ -64,19 +65,19 @@ export function SettingsPage() {
       </div>
 
       <div className="card card-pad section" style={{ maxWidth: 720 }}>
-        <div className="section-title"><span className="si">🔌</span>API connection</div>
+        <div className="section-title"><span className="si"><Icon name="link" size={15} /></span>API connection</div>
         <label className="field">API token (X-Api-Token)
           <input className="input" type="password" value={token} onChange={(e) => setTok(e.target.value)} placeholder="matches backend JOBPILOT_API_TOKEN" />
         </label>
         <div className="row" style={{ marginTop: 12 }}>
           <button className="btn btn-primary" onClick={save}>Save token</button>
-          <button className="btn" onClick={test} disabled={checking}>{checking ? <span className="spinner" /> : '🔌'} Test connection</button>
+          <button className="btn" onClick={test} disabled={checking}>{checking ? <span className="spinner" /> : <Icon name="link" size={14} />} Test connection</button>
         </div>
       </div>
 
       {isAdminUI() && (
         <div className="card card-pad section" style={{ maxWidth: 720 }}>
-          <div className="section-title"><span className="si">✉️</span>Email
+          <div className="section-title"><span className="si"><Icon name="mail" size={15} /></span>Email
             <span className="section-sub">verify the mail transport (Brevo / SMTP) works end-to-end</span>
           </div>
           <label className="field">Send a test email to
@@ -85,7 +86,7 @@ export function SettingsPage() {
           </label>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn btn-primary" onClick={sendTestEmail} disabled={emailing}>
-              {emailing ? <span className="spinner" /> : '✉️'} Send test email
+              {emailing ? <span className="spinner" /> : <Icon name="mail" size={14} />} Send test email
             </button>
           </div>
           <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
@@ -96,7 +97,7 @@ export function SettingsPage() {
       )}
 
       <div className="card card-pad section" style={{ maxWidth: 720 }}>
-        <div className="section-title"><span className="si">🧠</span>AI model
+        <div className="section-title"><span className="si"><Icon name="bot" size={15} /></span>AI model
           <span className="section-sub">{ai ? `active: ${ai.provider} · ${ai.remainingToday < 0 ? 'unlimited' : ai.remainingToday + ' calls left today'}` : ''}</span>
         </div>
         <div className="grid2">
@@ -116,7 +117,7 @@ export function SettingsPage() {
                 <div className="row" style={{ marginTop: 10, gap: 6 }}>
                   <button className="btn btn-sm" disabled={active} onClick={() => switchModel(m.id)}>Use</button>
                   {m.id !== 'auto' && <button className="btn btn-ghost btn-sm" disabled={testing === m.id} onClick={() => testModel(m.id)}>{testing === m.id ? <span className="spinner" /> : 'Test'}</button>}
-                  {res && <span className={res.ok ? 'badge badge-email' : 'badge badge-url'} style={{ fontSize: 11 }}>{res.ok ? `✓ ${res.ms}ms` : `✗ ${(res.error || '').slice(0, 30)}`}</span>}
+                  {res && <span className={res.ok ? 'badge badge-email' : 'badge badge-url'} style={{ fontSize: 11 }}>{res.ok ? `${res.ms}ms` : `${(res.error || '').slice(0, 30)}`}</span>}
                 </div>
               </div>
             );
@@ -130,7 +131,7 @@ export function SettingsPage() {
       </div>
 
       <div className="card card-pad section" style={{ maxWidth: 720 }}>
-        <div className="section-title"><span className="si">🦙</span>Connect local Ollama to the cloud app
+        <div className="section-title"><span className="si"><Icon name="bot" size={15} /></span>Connect local Ollama to the cloud app
           <span className="section-sub">run your own free model from the deployed backend</span>
         </div>
         <div className="faint" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>

@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { SavedJob } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 
 export function SavedJobsPage() {
   const toast = useToast();
@@ -49,14 +50,14 @@ export function SavedJobsPage() {
           <h1 className="page-title">Saved jobs</h1>
           <div className="page-sub">Listings you captured with the browser extension</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setGuide(true)}>🧩 Set up the extension</button>
+        <button className="btn btn-primary" onClick={() => setGuide(true)}><Icon name="bolt" size={14} /> Set up the extension</button>
       </div>
 
       {guide && (
         <Modal title="Set up the JobPilot extension" onClose={() => setGuide(false)} wide
           footer={<button className="btn btn-primary" onClick={() => setGuide(false)}>Got it</button>}>
           <a className="btn btn-primary" href="/jobpilot-extension.zip" download="jobpilot-extension.zip"
-            style={{ marginBottom: 14 }}>⬇ Download extension (.zip)</a>
+            style={{ marginBottom: 14 }}><Icon name="download" size={14} /> Download extension (.zip)</a>
           <ol style={{ lineHeight: 1.8, fontSize: 14, paddingLeft: 18, margin: 0 }}>
             <li><b>Download</b> the zip above and <b>unzip</b> it to a folder you'll keep.</li>
             <li>Open Chrome/Edge/Brave → go to <code>chrome://extensions</code>.</li>
@@ -76,7 +77,7 @@ export function SavedJobsPage() {
       )}
 
       <div className="card card-pad" style={{ marginBottom: 18, display: 'flex', gap: 14, alignItems: 'flex-start', borderLeft: '3px solid var(--accent)' }}>
-        <span style={{ fontSize: 22 }}>🔖</span>
+        <Icon name="bookmark" size={20} />
         <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
           <b>What this is:</b> when you browse <b>LinkedIn / Naukri / Indeed</b> and find a job worth keeping,
           click the extension's <b>“Save to JobPilot”</b> button — it lands here. Then <b>Promote</b> a saved
@@ -88,7 +89,7 @@ export function SavedJobsPage() {
       {loading ? <div className="empty"><span className="spinner" /></div>
         : saved.length === 0 ? (
           <div className="card card-pad empty">
-            <div className="big">🗂️</div>
+            <div className="big"><Icon name="bookmark" size={34} /></div>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>No saved jobs yet</div>
             <div className="muted" style={{ maxWidth: 460, margin: '0 auto' }}>
               Install the extension (Settings → see the guide), open a job on LinkedIn/Naukri/Indeed,
@@ -119,19 +120,20 @@ export function SavedJobsPage() {
                   <>
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <a href={s.url} target="_blank" rel="noreferrer" className="job-title" style={{ fontSize: 15 }}>{s.title ?? 'Untitled listing'}</a>
-                      <span className="chip" title={s.sourceSite ?? 'web'}>
-                        {/form/.test(s.sourceSite ?? '') ? `📝 via form · ${s.sourceSite}` : `🌐 ${s.sourceSite ?? 'web'}`}
+                      <span className="chip meta-item" title={s.sourceSite ?? 'web'}>
+                        <Icon name={/form/.test(s.sourceSite ?? '') ? 'pen' : 'compass'} size={12} />
+                        {/form/.test(s.sourceSite ?? '') ? `via form · ${s.sourceSite}` : (s.sourceSite ?? 'web')}
                       </span>
                     </div>
                     <div className="muted" style={{ fontSize: 13 }}>{s.company ?? '—'}{s.location ? ` · ${s.location}` : ''}</div>
                     <div className="faint" style={{ fontSize: 12 }}>Captured {fmtDate(s.createdAt)}</div>
                     <div className="row" style={{ marginTop: 'auto', paddingTop: 8, gap: 8 }}>
                       {s.promotedJobId
-                        ? <span className="badge badge-ats">✓ Promoted</span>
+                        ? <span className="badge badge-ats meta-item"><Icon name="check" size={12} /> Promoted</span>
                         : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
-                      <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open ↗</a>
-                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} title="Edit details">✏️</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}>🗑 Delete</button>
+                      <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
+                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} title="Edit details"><Icon name="pen" size={13} /></button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}><Icon name="trash" size={13} /> Delete</button>
                     </div>
                   </>
                 )}

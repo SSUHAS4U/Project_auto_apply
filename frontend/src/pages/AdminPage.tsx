@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type AdminUser, type AdminUserDetail, type SecretStatus } from '../api/client';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 
 export function AdminPage() {
   const toast = useToast();
@@ -57,7 +58,7 @@ export function AdminPage() {
       </form>
 
       {loading ? <div className="empty"><span className="spinner" /></div>
-        : users.length === 0 ? <div className="card card-pad empty"><div className="big">👤</div>No users found.</div>
+        : users.length === 0 ? <div className="card card-pad empty"><div className="big"><Icon name="user" size={34} /></div>No users found.</div>
         : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 14 }}>
             {users.map((u) => (
@@ -74,15 +75,15 @@ export function AdminPage() {
                 </div>
 
                 <div className="row" style={{ gap: 14, fontSize: 12.5, color: 'var(--muted)' }}>
-                  <span>📋 {u.applications} apps</span>
-                  <span>🔖 {u.savedJobs} saved</span>
-                  {u.createdAt && <span>🗓 {fmtDate(u.createdAt)}</span>}
+                  <span className="meta-item"><Icon name="clipboard" size={13} /> {u.applications} apps</span>
+                  <span className="meta-item"><Icon name="bookmark" size={13} /> {u.savedJobs} saved</span>
+                  {u.createdAt && <span className="meta-item"><Icon name="clock" size={13} /> {fmtDate(u.createdAt)}</span>}
                 </div>
 
                 <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 6 }}>
-                  <button className="btn btn-sm" onClick={() => openView(u)}>👁 View</button>
+                  <button className="btn btn-sm" onClick={() => openView(u)}><Icon name="user" size={13} /> View</button>
                   {u.owner ? (
-                    <span className="chip" title="The owner account is protected">🔒 owner</span>
+                    <span className="chip meta-item" title="The owner account is protected"><Icon name="shield" size={13} /> owner</span>
                   ) : (
                     <>
                       {u.isAdmin
@@ -133,8 +134,8 @@ function SecretsManager() {
   };
 
   const badge = (s: SecretStatus) => {
-    if (s.source === 'saved') return <span className="badge badge-ats" title={s.updatedAt ? `Updated ${fmtDate(s.updatedAt)}` : ''}>🔒 Saved</span>;
-    if (s.source === 'env') return <span className="badge" style={{ background: 'var(--card2,#1a1f2b)' }}>⚙ From env</span>;
+    if (s.source === 'saved') return <span className="badge badge-ats meta-item" title={s.updatedAt ? `Updated ${fmtDate(s.updatedAt)}` : ''}><Icon name="shield" size={12} /> Saved</span>;
+    if (s.source === 'env') return <span className="badge meta-item" style={{ background: 'var(--card2,#1a1f2b)' }}><Icon name="gear" size={12} /> From env</span>;
     return <span className="badge" style={{ color: 'var(--text-faint,#7d8595)' }}>Not set</span>;
   };
 
@@ -143,7 +144,7 @@ function SecretsManager() {
 
   return (
     <div className="card card-pad" style={{ marginBottom: 18 }}>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🔑 API keys & secrets</div>
+      <div className="meta-item" style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}><Icon name="shield" size={16} /> API keys &amp; secrets</div>
       <div className="faint" style={{ fontSize: 12.5, marginBottom: 14 }}>
         Stored AES-256 encrypted. Values are <b>write-only</b> — once saved they can’t be viewed, only replaced or deleted.
         A saved value overrides the matching environment variable.
@@ -168,7 +169,7 @@ function SecretsManager() {
                   </button>
                   {s.source === 'saved' && (
                     <button className="btn btn-ghost btn-sm" disabled={busy === s.name} onClick={() => remove(s)}
-                      style={{ color: 'var(--danger,#ef4444)' }} title="Delete saved value">🗑</button>
+                      style={{ color: 'var(--danger,#ef4444)' }} title="Delete saved value"><Icon name="trash" size={14} /></button>
                   )}
                 </div>
               </div>

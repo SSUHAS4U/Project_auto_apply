@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export function Modal({
   title, onClose, children, footer, wide,
@@ -14,7 +15,7 @@ export function Modal({
       <div className="modal" style={wide ? { width: 'min(820px, 100%)' } : undefined} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
-          <button className="btn-ghost btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn-ghost btn btn-sm" onClick={onClose} aria-label="Close"><Icon name="x" size={15} /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}

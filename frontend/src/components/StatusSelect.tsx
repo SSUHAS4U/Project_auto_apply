@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ApplicationStatus } from '../types';
+import { Icon } from './Icon';
 
 const ALL: ApplicationStatus[] = ['interested', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'];
 const DOT: Record<ApplicationStatus, string> = {
@@ -85,7 +86,7 @@ export function StatusSelect({ value, onChange }: { value: ApplicationStatus; on
               className={`status-opt ${s === value ? 'sel' : ''}`} onClick={(e) => pick(s, e)}>
               <span className="status-dot" style={{ background: DOT[s], color: DOT[s] }} />
               <span className="grow">{s}</span>
-              {s === value && <span className="status-check">✓</span>}
+              {s === value && <span className="status-check"><Icon name="check" size={14} /></span>}
             </button>
           ))}
         </div>,

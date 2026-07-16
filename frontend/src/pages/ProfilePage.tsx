@@ -3,6 +3,7 @@ import { api, type QaPair, type DocItem } from '../api/client';
 import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 import { TagInput } from '../components/TagInput';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
@@ -35,11 +36,11 @@ function SavedAnswers() {
     finally { setBusy(null); }
   };
   return (
-    <Section ico="💬" title="Saved from the extension" sub="questions you clicked “Save” on while applying — reused to autofill matching forms">
+    <Section ico="clipboard" title="Saved from the extension" sub="questions you clicked “Save” on while applying — reused to autofill matching forms">
       {items === null ? <div className="empty"><span className="spinner" /></div>
         : items.length === 0 ? (
           <div className="faint" style={{ fontSize: 13 }}>
-            Nothing saved yet. On an application form, click the extension's <b>💾 Save</b> under a question to keep its answer here.
+            Nothing saved yet. On an application form, click the extension's <b>Save</b> under a question to keep its answer here.
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -59,9 +60,9 @@ function SavedAnswers() {
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                       <div style={{ fontWeight: 600, fontSize: 13.5 }}>{it.question}</div>
                       <div className="row" style={{ gap: 4, flexShrink: 0 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit">✏️</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit"><Icon name="pen" size={13} /></button>
                         <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
-                          style={{ color: 'var(--danger,#ef4444)' }} title="Delete">🗑</button>
+                          style={{ color: 'var(--danger,#ef4444)' }} title="Delete"><Icon name="trash" size={13} /></button>
                       </div>
                     </div>
                     <div className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{it.answer}</div>
@@ -78,12 +79,12 @@ function SavedAnswers() {
 
 type Tab = 'personal' | 'professional' | 'experience' | 'education' | 'autofill' | 'resume';
 const TABS: { id: Tab; label: string; ico: string }[] = [
-  { id: 'personal', label: 'Personal', ico: '👤' },
-  { id: 'professional', label: 'Professional', ico: '💼' },
-  { id: 'experience', label: 'Experience', ico: '🏢' },
-  { id: 'education', label: 'Education', ico: '🎓' },
-  { id: 'autofill', label: 'Autofill answers', ico: '⚡' },
-  { id: 'resume', label: 'Resume', ico: '📄' },
+  { id: 'personal', label: 'Personal', ico: 'user' },
+  { id: 'professional', label: 'Professional', ico: 'clipboard' },
+  { id: 'experience', label: 'Experience', ico: 'trophy' },
+  { id: 'education', label: 'Education', ico: 'file' },
+  { id: 'autofill', label: 'Autofill answers', ico: 'bolt' },
+  { id: 'resume', label: 'Resume', ico: 'file' },
 ];
 
 export function ProfilePage() {
@@ -145,7 +146,7 @@ export function ProfilePage() {
           <h1 className="page-title">Profile</h1>
           <div className="page-sub">Everything below feeds job matching, cover letters & extension autofill</div>
         </div>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <span className="spinner" /> : '💾'} Save all</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save all</button>
       </div>
 
       {(() => {
@@ -161,9 +162,9 @@ export function ProfilePage() {
               <div className="hero-name">{p.fullName || 'Your Name'}</div>
               <div className="muted" style={{ fontSize: 13 }}>{p.headline || 'Add a headline'} · {p.location || 'location'}</div>
               <div className="skill-row" style={{ marginTop: 8 }}>
-                <span className="chip">🧩 {(p.skills ?? []).length} skills</span>
-                <span className="chip">💼 {p.yearsExperience || '0'} yrs</span>
-                <span className="chip">{p.resumeFilename ? '📄 resume ✓' : '📄 no resume'}</span>
+                <span className="chip meta-item"><Icon name="bolt" size={12} /> {(p.skills ?? []).length} skills</span>
+                <span className="chip meta-item"><Icon name="trophy" size={12} /> {p.yearsExperience || '0'} yrs</span>
+                <span className="chip meta-item"><Icon name="file" size={12} /> {p.resumeFilename ? 'resume' : 'no resume'}</span>
               </div>
             </div>
             <div className="hero-pct">
@@ -177,13 +178,13 @@ export function ProfilePage() {
 
       <div className="tabs">
         {TABS.map((t) => (
-          <div key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>{t.ico} {t.label}</div>
+          <div key={t.id} className={`tab meta-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}><Icon name={t.ico} size={14} /> {t.label}</div>
         ))}
       </div>
 
       {tab === 'personal' && (
         <div style={{ maxWidth: 900 }}>
-          <Section ico="👤" title="Identity">
+          <Section ico="user" title="Identity">
             <div className="grid3">
               <Field label="Full name"><input className="input" value={p.fullName ?? ''} onChange={(e) => set({ fullName: e.target.value })} /></Field>
               <Field label="First name"><input className="input" value={p.firstName ?? ''} onChange={(e) => set({ firstName: e.target.value })} /></Field>
@@ -219,7 +220,7 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="📍" title="Current address">
+          <Section ico="compass" title="Current address">
             <div className="grid3">
               <Field label="Current location (short)"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
               <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} placeholder="Bengaluru" /></Field>
@@ -230,7 +231,7 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="🏠" title="Permanent / alternate address" sub="used when a form asks for a second address">
+          <Section ico="compass" title="Permanent / alternate address" sub="used when a form asks for a second address">
             <div className="grid3">
               <Field label="Location (short)"><input className="input" value={p.location2 ?? ''} onChange={(e) => set({ location2: e.target.value })} placeholder="home town" /></Field>
               <Field label="City"><input className="input" value={p.city2 ?? ''} onChange={(e) => set({ city2: e.target.value })} /></Field>
@@ -241,7 +242,7 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="🔗" title="Links">
+          <Section ico="link" title="Links">
             <div className="grid3">
               <Field label="GitHub"><input className="input" value={p.links?.github ?? ''} onChange={(e) => setLink('github', e.target.value)} /></Field>
               <Field label="LinkedIn"><input className="input" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
@@ -254,7 +255,7 @@ export function ProfilePage() {
 
       {tab === 'professional' && (
         <div style={{ maxWidth: 900 }}>
-          <Section ico="💼" title="Current role & compensation">
+          <Section ico="clipboard" title="Current role & compensation">
             <div className="grid3">
               <Field label="Current title"><input className="input" value={p.currentTitle ?? ''} onChange={(e) => set({ currentTitle: e.target.value })} /></Field>
               <Field label="Current company"><input className="input" value={p.currentCompany ?? ''} onChange={(e) => set({ currentCompany: e.target.value })} /></Field>
@@ -275,7 +276,7 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="✅" title="Work eligibility & preferences">
+          <Section ico="check" title="Work eligibility & preferences">
             <div className="grid3">
               <Field label="Work authorization">
                 <input className="input" list="workauth-list" placeholder="Indian citizen" value={p.workAuthorization ?? ''} onChange={(e) => set({ workAuthorization: e.target.value })} />
@@ -288,14 +289,14 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="🧩" title="Skills" sub="type to search, Enter to add, × to remove">
+          <Section ico="bolt" title="Skills" sub="type to search, Enter to add, × to remove">
             <TagInput value={p.skills ?? []} onChange={(v) => set({ skills: v })} suggestions={SKILL_SUGGESTIONS} placeholder="Start typing a skill — e.g. Java, React, Docker…" />
           </Section>
 
-          <Section ico="📝" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
+          <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
             <label className="field full">
               <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
-                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}>✨ AI suggest</button>
+                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}><Icon name="sparkles" size={12} /> AI suggest</button>
               </div>
               <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
             </label>
@@ -307,7 +308,7 @@ export function ProfilePage() {
       {tab === 'experience' && (
         <div style={{ maxWidth: 820 }}>
           <RepeatableList<ExperienceItem>
-            ico="🏢" title="Work experience"
+            ico="trophy" title="Work experience"
             items={p.experience ?? []}
             onChange={(items) => set({ experience: items })}
             empty={{ company: '', title: '', start: '', end: '', description: '' }}
@@ -329,7 +330,7 @@ export function ProfilePage() {
       {tab === 'education' && (
         <div style={{ maxWidth: 820 }}>
           <RepeatableList<EducationItem>
-            ico="🎓" title="Education"
+            ico="file" title="Education"
             items={p.education ?? []}
             onChange={(items) => set({ education: items })}
             empty={{ school: '', degree: '', field: '', year: '' }}
@@ -343,7 +344,7 @@ export function ProfilePage() {
             )}
           />
           <RepeatableList<CertificationItem>
-            ico="📜" title="Certifications"
+            ico="clipboard" title="Certifications"
             items={p.certifications ?? []}
             onChange={(items) => set({ certifications: items })}
             empty={{ name: '', issuer: '', year: '', link: '', credentialId: '', issued: '', expiry: '' }}
@@ -367,7 +368,7 @@ export function ProfilePage() {
 
       {tab === 'autofill' && (
         <div style={{ maxWidth: 760 }}>
-          <Section ico="⚡" title="Custom autofill answers" sub="label keyword → answer; the extension matches these on any form">
+          <Section ico="bolt" title="Custom autofill answers" sub="label keyword → answer; the extension matches these on any form">
             <KeyValueEditor map={p.fieldMap ?? {}} onChange={(m) => set({ fieldMap: m })} />
             <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
               Example: <code>why this company</code> → your standard answer, or <code>github</code> → your URL.
@@ -380,21 +381,21 @@ export function ProfilePage() {
 
       {tab === 'resume' && (
         <div style={{ maxWidth: 620 }}>
-          <Section ico="📄" title="Resume" sub="attached to email-apply jobs">
+          <Section ico="file" title="Resume" sub="attached to email-apply jobs">
             <div className="row">
-              <span className="muted">{p.resumeFilename ? `📄 ${p.resumeFilename}` : 'No resume uploaded'}</span>
+              <span className="muted meta-item">{p.resumeFilename ? <><Icon name="file" size={13} /> {p.resumeFilename}</> : 'No resume uploaded'}</span>
               <label className="btn btn-sm">Upload only
                 <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={(e) => onResume(e.target.files?.[0])} />
               </label>
             </div>
             <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>✨ Smart auto-fill</div>
+              <div className="meta-item" style={{ fontWeight: 600, marginBottom: 6 }}><Icon name="sparkles" size={14} /> Smart auto-fill</div>
               <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>
                 Upload a PDF/DOCX resume and AI extracts your name, contact, skills, experience &
                 education — then fills and saves the profile. You review and tweak.
               </div>
               <label className="btn btn-primary btn-sm">
-                {analyzing ? <span className="spinner" /> : '⚡'} Analyze resume & auto-fill
+                {analyzing ? <span className="spinner" /> : <Icon name="bolt" size={13} />} Analyze resume & auto-fill
                 <input type="file" accept=".pdf,.docx" style={{ display: 'none' }} disabled={analyzing} onChange={(e) => onAnalyze(e.target.files?.[0])} />
               </label>
             </div>
@@ -457,13 +458,13 @@ function DocumentsVault() {
   const kb = (n?: number) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '');
 
   return (
-    <Section ico="🔐" title="Document vault" sub="encrypted at rest · download asks for your password">
+    <Section ico="shield" title="Document vault" sub="encrypted at rest · download asks for your password">
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <select className="select" value={type} onChange={(e) => setType(e.target.value)} style={{ maxWidth: 200 }}>
           {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <label className="btn btn-primary btn-sm">
-          {busy ? <span className="spinner" /> : '⬆'} Upload document(s)
+          {busy ? <span className="spinner" /> : <Icon name="download" size={13} style={{ transform: 'rotate(180deg)' }} />} Upload document(s)
           <input type="file" multiple style={{ display: 'none' }} disabled={busy} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
         </label>
       </div>
@@ -479,7 +480,7 @@ function DocumentsVault() {
           borderRadius: 12, padding: '18px 14px', textAlign: 'center',
           fontSize: 13, color: 'var(--text-dim)', marginBottom: 12, transition: 'all .15s',
         }}>
-        {busy ? <span className="spinner" /> : <>📥 Drag &amp; drop files here — stored as “<b>{type}</b>”</>}
+        {busy ? <span className="spinner" /> : <>Drag &amp; drop files here — stored as “<b>{type}</b>”</>}
       </div>
 
       {docs === null ? <div className="empty"><span className="spinner" /></div>
@@ -493,8 +494,8 @@ function DocumentsVault() {
                   <div className="faint" style={{ fontSize: 12 }}>{d.type} · {kb(d.sizeBytes)}{d.createdAt ? ` · ${fmtDate(d.createdAt)}` : ''}</div>
                 </div>
                 <div className="row" style={{ gap: 6, flexShrink: 0 }}>
-                  <button className="btn btn-sm" onClick={() => { setPwFor(d); setPw(''); }}>⬇ Download</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} style={{ color: 'var(--danger,#ef4444)' }}>🗑</button>
+                  <button className="btn btn-sm" onClick={() => { setPwFor(d); setPw(''); }}><Icon name="download" size={13} /> Download</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} style={{ color: 'var(--danger,#ef4444)' }}><Icon name="trash" size={13} /></button>
                 </div>
               </div>
             ))}
@@ -505,7 +506,7 @@ function DocumentsVault() {
         <Modal title="Confirm your password to download" onClose={() => setPwFor(null)}
           footer={<>
             <button className="btn btn-ghost" onClick={() => setPwFor(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={doDownload} disabled={busy || !pw}>{busy ? <span className="spinner" /> : '⬇'} Download</button>
+            <button className="btn btn-primary" onClick={doDownload} disabled={busy || !pw}>{busy ? <span className="spinner" /> : <Icon name="download" size={14} />} Download</button>
           </>}>
           <div className="faint" style={{ fontSize: 13, marginBottom: 10 }}>
             “{pwFor.name}” is encrypted. Enter your account password to decrypt and download it.
@@ -522,7 +523,7 @@ function DocumentsVault() {
 function Section({ ico, title, sub, children }: { ico: string; title: string; sub?: string; children: React.ReactNode }) {
   return (
     <div className="card card-pad section">
-      <div className="section-title"><span className="si">{ico}</span>{title}{sub && <span className="section-sub">{sub}</span>}</div>
+      <div className="section-title"><span className="si"><Icon name={ico} size={15} /></span>{title}{sub && <span className="section-sub">{sub}</span>}</div>
       {children}
     </div>
   );
@@ -553,7 +554,7 @@ function RepeatableList<T>({
       {items.map((item, i) => (
         <div className="repeat-row" key={i}>
           <div className="rh"><span className="muted" style={{ fontSize: 12 }}>#{i + 1}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => remove(i)}>✕ Remove</button></div>
+            <button className="btn btn-ghost btn-sm" onClick={() => remove(i)}><Icon name="x" size={13} /> Remove</button></div>
           {render(item, (patch) => upd(i, patch))}
         </div>
       ))}
@@ -577,7 +578,7 @@ function KeyValueEditor({ map, onChange }: { map: Record<string, string>; onChan
         <div className="kv-row" key={k}>
           <input className="input" value={k} onChange={(e) => setKey(k, e.target.value)} placeholder="question keyword" />
           <input className="input" value={v} onChange={(e) => setVal(k, e.target.value)} placeholder="answer" />
-          <button className="btn btn-ghost btn-sm" onClick={() => remove(k)}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => remove(k)}><Icon name="x" size={13} /></button>
         </div>
       ))}
       <button className="btn btn-sm" onClick={() => onChange({ ...map, [`question ${entries.length + 1}`]: '' })}>+ Add answer</button>
