@@ -43,6 +43,18 @@ function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
   return <span className={`tone tone-${tone}`}>{text}</span>;
 }
 
+/** A prominent, at-a-glance fit score with a coloured ring (verdict-toned). */
+function FitScore({ score, verdict }: { score?: number; verdict?: string }) {
+  if (typeof score !== 'number') return null;
+  const tone = VERDICT_TONE[verdict ?? ''] ?? 'slate';
+  return (
+    <div className={`fit-score tone-${tone}`} title={verdict ? `${verdict} match` : 'fit score'}>
+      <span className="fit-num">{score}</span>
+      <span className="fit-cap">{verdict || 'fit'}</span>
+    </div>
+  );
+}
+
 export function EnginePage() {
   const toast = useToast();
   const [status, setStatus] = useState<EngineStatus | null>(null);
@@ -460,34 +472,34 @@ function JobsTab({ status, onChange, onApplied }:
           {status?.setupReady ? 'No jobs yet. Scrape LinkedIn, then Rank.' : 'Run Setup first, then Scrape LinkedIn.'}
         </div>
       ) : jobs.map((j) => (
-        <div key={j.id} className="card card-pad">
-          <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0 }}>
+        <div key={j.id} className="card card-pad eng-job">
+          <FitScore score={j.fitScore} verdict={j.verdict} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
               <a href={j.url} target="_blank" rel="noreferrer" className="pick-title" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                 {j.title} <Icon name="external" size={13} />
               </a>
-              <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
-                {typeof j.fitScore === 'number' && j.verdict &&
-                  <Chip text={`${j.verdict} ${j.fitScore}/100`} tone={VERDICT_TONE[j.verdict] ?? 'slate'} />}
-                {j.urgent && <> <Chip text="urgent" tone="amber" /></>}
-                {j.dealBreaker && <> <Chip text="deal-breaker" tone="red" /></>}
-                {j.company && <> · {j.company}</>}{j.location && <> · {j.location}</>}
-                {j.postedAt && <> · {j.postedAt}</>}
+              <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+                {j.status !== 'applied' && j.status !== 'applying' && (
+                  <button className="btn btn-primary btn-sm" onClick={() => apply(j)} disabled={applyingId === j.id || !status?.setupReady}>
+                    {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
+                  </button>
+                )}
+                {j.status === 'applied' && <Chip text="applied" tone="green" />}
+                {j.status === 'applying' && <Chip text="applying…" tone="indigo" />}
+                <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
               </div>
-              {j.strengths && <div className="t-green" style={{ fontSize: 12.5, marginTop: 8, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
-              {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
-              {j.dealBreaker && <div className="t-red" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
             </div>
-            <div className="row" style={{ gap: 6, flexShrink: 0 }}>
-              {j.status !== 'applied' && j.status !== 'applying' && (
-                <button className="btn btn-primary btn-sm" onClick={() => apply(j)} disabled={applyingId === j.id || !status?.setupReady}>
-                  {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
-                </button>
-              )}
-              {j.status === 'applied' && <Chip text="applied" tone="green" />}
-              {j.status === 'applying' && <Chip text="applying…" tone="indigo" />}
-              <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
+            <div className="job-meta">
+              {j.company && <span className="meta-item"><Icon name="clipboard" size={12} /> {j.company}</span>}
+              {j.location && <span className="meta-item"><Icon name="compass" size={12} /> {j.location}</span>}
+              {j.postedAt && <span className="meta-item"><Icon name="clock" size={12} /> {j.postedAt}</span>}
+              {j.urgent && <Chip text="urgent" tone="amber" />}
+              {j.dealBreaker && <Chip text="deal-breaker" tone="red" />}
             </div>
+            {j.strengths && <div className="t-green" style={{ fontSize: 12.5, marginTop: 8, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
+            {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
+            {j.dealBreaker && <div className="t-red" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
           </div>
         </div>
       ))}
