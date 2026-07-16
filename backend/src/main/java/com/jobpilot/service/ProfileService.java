@@ -65,6 +65,10 @@ public class ProfileService {
         p.setDateOfBirth(in.getDateOfBirth());
         p.setGender(in.getGender());
         p.setNationality(in.getNationality());
+        p.setAlternatePhone(in.getAlternatePhone());
+        p.setMaritalStatus(in.getMaritalStatus());
+        p.setFatherName(in.getFatherName());
+        p.setDisabilityStatus(in.getDisabilityStatus());
         // Professional
         p.setSeniority(in.getSeniority());
         p.setCurrentTitle(in.getCurrentTitle());

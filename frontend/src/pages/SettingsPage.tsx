@@ -106,18 +106,21 @@ export function SettingsPage() {
             const active = ai?.provider === m.id;
             const res = results[m.id];
             return (
-              <div key={m.id} className="repeat-row" style={{ borderColor: active ? 'var(--accent)' : undefined }}>
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{m.label} {active && <span className="chip">active</span>}</div>
-                    <div className="faint" style={{ fontSize: 12 }}>{m.desc}</div>
+              <div key={m.id} className={`opt-card ${active ? 'active' : ''}`}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="row" style={{ gap: 7 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.label}</span>
+                      {active && <span className="tone tone-indigo">active</span>}
+                    </div>
+                    <div className="faint" style={{ fontSize: 12, marginTop: 2 }}>{m.desc}</div>
                   </div>
-                  <span className={`badge ${cfg ? 'badge-email' : 'badge-unknown'}`}>{cfg ? 'configured' : 'no key'}</span>
+                  <span className={`tone ${cfg ? 'tone-green' : 'tone-slate'}`}>{cfg ? 'configured' : 'no key'}</span>
                 </div>
-                <div className="row" style={{ marginTop: 10, gap: 6 }}>
-                  <button className="btn btn-sm" disabled={active} onClick={() => switchModel(m.id)}>Use</button>
+                <div className="row" style={{ marginTop: 12, gap: 6, alignItems: 'center' }}>
+                  <button className={`btn btn-sm ${active ? '' : 'btn-primary'}`} disabled={active} onClick={() => switchModel(m.id)}>{active ? 'In use' : 'Use this'}</button>
                   {m.id !== 'auto' && <button className="btn btn-ghost btn-sm" disabled={testing === m.id} onClick={() => testModel(m.id)}>{testing === m.id ? <span className="spinner" /> : 'Test'}</button>}
-                  {res && <span className={res.ok ? 'badge badge-email' : 'badge badge-url'} style={{ fontSize: 11 }}>{res.ok ? `${res.ms}ms` : `${(res.error || '').slice(0, 30)}`}</span>}
+                  {res && <span className={`tone ${res.ok ? 'tone-green' : 'tone-red'}`}>{res.ok ? `${res.ms}ms` : `${(res.error || '').slice(0, 28)}`}</span>}
                 </div>
               </div>
             );
@@ -147,7 +150,7 @@ export function SettingsPage() {
             <li><b>Open a tunnel:</b> <code>cloudflared tunnel --url http://localhost:11434</code> — it prints a public <code>https://…trycloudflare.com</code> URL.</li>
             <li><b>For real auth</b> (recommended): in Cloudflare Zero Trust → Access, add a self-hosted app for that host and create a <b>Service Token</b>.</li>
             <li><b>Set these env vars on Render</b> (backend → Environment), then redeploy:
-              <pre style={{ background: '#11141b', padding: 10, borderRadius: 8, overflowX: 'auto', fontSize: 12, marginTop: 6 }}>{`JOBPILOT_AI_PROVIDER=ollama
+              <pre className="code-block" style={{ marginTop: 6 }}>{`JOBPILOT_AI_PROVIDER=ollama
 JOBPILOT_OLLAMA_URL=https://your-host.trycloudflare.com
 JOBPILOT_OLLAMA_MODEL=llama3.1
 JOBPILOT_OLLAMA_AUTH_HEADER=CF-Access-Client-Id
