@@ -126,7 +126,9 @@ button:focus:not(:focus-visible) { outline: none; }
 .nav-item:hover { background: var(--bg-card); color: var(--text); text-decoration: none; }
 .nav-item.active { background: var(--accent-soft); color: var(--accent-hi); position: relative; }
 .nav-item.active::before { content: ''; position: absolute; left: -16px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
-.nav-item .ico { width: 18px; text-align: center; }
+.nav-item .ico { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--text-faint); }
+.nav-item:hover .ico { color: var(--text-dim); }
+.nav-item.active .ico { color: var(--accent-hi); }
 .nav-badge {
   margin-left: auto; background: var(--accent); color: white;
   font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px;

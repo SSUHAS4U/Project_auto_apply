@@ -33,7 +33,9 @@ public class AiService {
     }
 
     private static final String K_PROVIDER = "ai_provider";
-    private static final List<String> AUTO_ORDER = List.of("groq", "gemini", "ollama");
+    // Gemini first: its free tier (huge TPM/RPD) handles the engine's bursts far better
+    // than Groq's 6000 TPM. Groq is the fallback, Ollama last (local only).
+    private static final List<String> AUTO_ORDER = List.of("gemini", "groq", "ollama");
 
     /** Configured provider — settings override the .env default; "auto" resolves at call time. */
     public String provider() {

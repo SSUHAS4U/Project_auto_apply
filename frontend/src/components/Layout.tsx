@@ -2,25 +2,26 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 import { getTheme, toggleTheme, type Theme } from '../lib/theme';
+import { Icon, Logo } from './Icon';
 
 const NAV = [
-  { to: '/', label: 'Dashboard', ico: '▦', end: true },
-  { to: '/auto-apply', label: 'Auto Apply', ico: '⚡' },
-  { to: '/agent', label: 'Agent · Live', ico: '📺' },
-  { to: '/connections', label: 'Connections', ico: '🔗' },
-  { to: '/jobs', label: 'Jobs', ico: '🧭' },
-  { to: '/daily', label: 'Daily picks', ico: '☀️' },
-  { to: '/scout', label: 'Scout', ico: '🔎' },
-  { to: '/resumes', label: 'Resumes', ico: '📄' },
-  { to: '/assistant', label: 'Assistant', ico: '🤖' },
-  { to: '/compose', label: 'Compose & send', ico: '✍️' },
-  { to: '/applications', label: 'Applications', ico: '📋' },
-  { to: '/saved', label: 'Saved', ico: '🔖' },
-  { to: '/notifications', label: 'Notifications', ico: '🔔', badge: true },
-  { to: '/profile', label: 'Profile', ico: '👤' },
-  { to: '/settings', label: 'Settings', ico: '⚙️' },
+  { to: '/', label: 'Dashboard', ico: 'dashboard', end: true },
+  { to: '/auto-apply', label: 'Auto Apply', ico: 'bolt' },
+  { to: '/agent', label: 'Agent · Live', ico: 'live' },
+  { to: '/connections', label: 'Connections', ico: 'link' },
+  { to: '/jobs', label: 'Jobs', ico: 'compass' },
+  { to: '/daily', label: 'Daily picks', ico: 'sun' },
+  { to: '/scout', label: 'Scout', ico: 'search' },
+  { to: '/resumes', label: 'Resumes', ico: 'file' },
+  { to: '/assistant', label: 'Assistant', ico: 'bot' },
+  { to: '/compose', label: 'Compose & send', ico: 'pen' },
+  { to: '/applications', label: 'Applications', ico: 'clipboard' },
+  { to: '/saved', label: 'Saved', ico: 'bookmark' },
+  { to: '/notifications', label: 'Notifications', ico: 'bell', badge: true },
+  { to: '/profile', label: 'Profile', ico: 'user' },
+  { to: '/settings', label: 'Settings', ico: 'gear' },
 ];
-const ADMIN_NAV = { to: '/admin', label: 'Admin', ico: '🛡️' };
+const ADMIN_NAV = { to: '/admin', label: 'Admin', ico: 'shield' };
 
 export function Layout() {
   const [unread, setUnread] = useState(0);
@@ -54,7 +55,7 @@ export function Layout() {
   const sidebar = (
     <aside className={`sidebar ${drawer ? 'open' : ''}`}>
       <div className="brand">
-        <div className="brand-logo">J</div>
+        <Logo />
         <div>
           <div className="brand-name">JobPilot</div>
           <div className="brand-sub">autonomous job agent</div>
@@ -63,7 +64,7 @@ export function Layout() {
       {navItems.map((n) => (
         <NavLink key={n.to} to={n.to} end={(n as { end?: boolean }).end}
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <span className="ico">{n.ico}</span>
+          <span className="ico"><Icon name={n.ico} size={18} /></span>
           <span>{n.label}</span>
           {(n as { badge?: boolean }).badge && unread > 0 && <span className="nav-badge">{unread}</span>}
         </NavLink>
@@ -91,7 +92,7 @@ export function Layout() {
         <button className="hamburger" aria-label="Menu" onClick={() => setDrawer((d) => !d)}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
         </button>
-        <div className="brand-logo sm">J</div>
+        <Logo size={26} />
         <span className="brand-name">JobPilot</span>
         {unread > 0 && <span className="nav-badge" style={{ marginLeft: 'auto' }}>{unread}</span>}
       </header>
