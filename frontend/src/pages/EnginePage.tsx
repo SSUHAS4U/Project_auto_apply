@@ -291,23 +291,26 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Step 1 — your details (from the app Profile) */}
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>1 · Your details</h3>
+        <div className="step-head">
+          <span className="step-num">1</span>
+          <div><div className="step-title">Your details</div><div className="step-sub">Pulled from your Profile — the engine uses these for matching &amp; CV tailoring.</div></div>
+        </div>
         {me ? (
           <>
-            <div className="row" style={{ gap: 18, flexWrap: 'wrap', fontSize: 13.5 }}>
-              <div><div className="faint" style={{ fontSize: 11 }}>NAME</div>{me.fullName || <em className="faint">— add in Profile</em>}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>EMAIL</div>{me.email || '—'}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>PHONE</div>{me.phone || '—'}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>CURRENT ROLE</div>{me.currentTitle || '—'}{me.currentCompany ? ` @ ${me.currentCompany}` : ''}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>EXPERIENCE</div>{me.yearsExperience || '—'}</div>
-              <div><div className="faint" style={{ fontSize: 11 }}>RESUME</div>{me.hasResume ? 'uploaded' : 'none'}</div>
+            <div className="kv-tiles">
+              <div className="kv-tile"><span className="kv-k">Name</span><span className="kv-v">{me.fullName || <em className="faint">add in Profile</em>}</span></div>
+              <div className="kv-tile"><span className="kv-k">Email</span><span className="kv-v">{me.email || '—'}</span></div>
+              <div className="kv-tile"><span className="kv-k">Phone</span><span className="kv-v">{me.phone || '—'}</span></div>
+              <div className="kv-tile"><span className="kv-k">Current role</span><span className="kv-v">{me.currentTitle || '—'}{me.currentCompany ? ` @ ${me.currentCompany}` : ''}</span></div>
+              <div className="kv-tile"><span className="kv-k">Experience</span><span className="kv-v">{me.yearsExperience || '—'}</span></div>
+              <div className="kv-tile"><span className="kv-k">Resume</span><span className="kv-v">{me.hasResume ? <Chip text="uploaded" tone="green" /> : <Chip text="none" tone="amber" />}</span></div>
             </div>
             {me.skills?.length > 0 && (
-              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
                 {me.skills.slice(0, 16).map((s) => <span key={s} className="chip">{s}</span>)}
               </div>
             )}
-            <div className="faint" style={{ fontSize: 12, marginTop: 10 }}>
+            <div className="faint" style={{ fontSize: 12, marginTop: 12 }}>
               These come from your <a href="/profile">Profile</a> — edit there. {!me.hasResume && 'Upload a resume in Profile to enable AI CV tailoring.'}
             </div>
           </>
@@ -316,8 +319,11 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
 
       {/* Step 2 — what you're looking for (no AI needed) */}
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>2 · What you're looking for</h3>
-        <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
+        <div className="step-head">
+          <span className="step-num">2</span>
+          <div><div className="step-title">What you're looking for</div><div className="step-sub">All the engine needs to find &amp; rank jobs — no AI required. Separate entries with commas.</div></div>
+        </div>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0, display: 'none' }}>
           This is all the engine needs to start finding &amp; ranking jobs — no AI required. Separate multiple entries with commas.
         </p>
         <div style={{ display: 'grid', gap: 12 }}>
@@ -352,8 +358,11 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
 
       {/* Step 3 — optional AI polish */}
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>3 · Polish with AI <span className="faint" style={{ fontSize: 13, fontWeight: 400 }}>(optional)</span></h3>
-        <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
+        <div className="step-head">
+          <span className="step-num">3</span>
+          <div><div className="step-title">Polish with AI <span className="faint" style={{ fontWeight: 400 }}>· optional</span></div><div className="step-sub">Richer tailoring documents for the best CV/cover-letter results — not needed to find jobs.</div></div>
+        </div>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0, display: 'none' }}>
           Turns your profile + resume into richer tailoring documents (behavioral profile, writing style,
           STAR interview stories, a tailored CV template). Needed for the best CV/cover-letter tailoring,
           not for finding jobs.

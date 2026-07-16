@@ -292,6 +292,12 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .modal-foot { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: var(--bg-card); }
 
+/* Key-value tiles (read-only detail grids) ------------------------------- */
+.kv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.kv-tile { display: flex; flex-direction: column; gap: 4px; padding: 11px 13px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 0; }
+.kv-k { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.kv-v { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Card title (icon + label) ---------------------------------------------- */
 .card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; margin-bottom: 10px; }
 .card-title svg { color: var(--accent-hi); flex: none; }
