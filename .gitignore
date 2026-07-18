@@ -31,3 +31,4 @@ backend/uploads/
 *.iml
 .DS_Store
 .playwright-mcp/
+jobpilot-prod.env
