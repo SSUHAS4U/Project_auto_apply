@@ -39,3 +39,23 @@ jobs:
           tags: ghcr.io/ssuhas4u/jobpilot-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # After the new image is published, SSH into the free GCP VM and roll it out.
+  # Requires repo secrets: VM_HOST (the VM's external IP), VM_USER, VM_SSH_KEY (private key).
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll out on the VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/jobpilot
+            sudo docker compose pull
+            sudo docker compose up -d
+            sudo docker image prune -f
+            echo "Deployed: $(sudo docker compose ps --format '{{.Name}} {{.Status}}')"
