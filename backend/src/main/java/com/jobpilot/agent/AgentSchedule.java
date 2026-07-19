@@ -52,6 +52,9 @@ public class AgentSchedule {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** 'apply' = Easy Apply only; 'outreach' = post scan + HR emails + connections. */
+    private String mode = "apply";
+
     @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
 }

@@ -103,8 +103,9 @@ export async function runIndeed(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
               title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: `fit ${score}` });
           } else if (result === 'external') {
-            await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
-              title: post.title, company: post.company, detail: 'employer-site apply — skipped' });
+            await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
+              title: post.title, company: post.company,
+              url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error', detail: String(e).slice(0, 160) });

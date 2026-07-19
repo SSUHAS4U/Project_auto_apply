@@ -51,10 +51,14 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let applied = 0;
 
-  // Phase 1 — scan hiring POSTS for recruiter emails (the outreach half of the flow).
-  // Backend stores each lead, and with Auto-email ON it tailors + emails an application.
-  try { await scanHiringPosts(page, api, plan, state); }
-  catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+  // Block modes (from the schedule): 'outreach' = posts + HR emails + connections only,
+  // with the WHOLE block's time; 'apply' = Easy Apply only. Default runs both phases.
+  const mode = plan.mode || 'all';
+  if (mode !== 'apply') {
+    try { await scanHiringPosts(page, api, plan, state, mode === 'outreach'); }
+    catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+  }
+  if (mode === 'outreach') return { applied };
 
   outer:
   for (const keyword of plan.keywords) {
@@ -106,8 +110,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'easy_apply',
               title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score}` });
           } else if (result === 'external') {
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title: post.title, company: post.company, detail: 'external apply — skipped' });
+            // No Easy Apply → the owner applies by hand; recorded as manual_apply so the
+            // dashboard lists it and the daily digest emails it.
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+              title: post.title, company: post.company,
+              url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score} — apply manually (external form)` });
           } else if (result === 'attention') {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title: post.title, company: post.company, detail: 'needs attention — an unanswerable question' });
@@ -134,13 +141,14 @@ const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|sup
  * the post text, so the engine can tailor + auto-email an application. Time-boxed and
  * capped so it never eats the Easy Apply phase.
  */
-async function scanHiringPosts(page, api, plan, state) {
-  const cap = 5;                                   // leads per block — human-scale
-  const phaseDeadline = Date.now() + 8 * 60_000;   // ≤8 minutes of the block
+async function scanHiringPosts(page, api, plan, state, dedicated = false) {
+  // Dedicated outreach block: the whole slot + a bigger lead cap and more keywords.
+  const cap = dedicated ? 15 : 5;
+  const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
   const seen = new Set();
 
-  for (const keyword of plan.keywords.slice(0, 2)) {
+  for (const keyword of plan.keywords.slice(0, dedicated ? 5 : 2)) {
     if (state.paused || Date.now() > phaseDeadline || found >= cap) break;
     state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });

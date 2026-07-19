@@ -43,6 +43,8 @@ public class AgentService {
     private final com.jobpilot.service.ai.AiService ai;
     private final com.jobpilot.engine.EngineProfileRepository engineProfiles;
     private final com.jobpilot.service.NotificationService notifications;
+    private final com.jobpilot.service.MailService mail;
+    private final com.jobpilot.repository.ProfileRepository profileRepo;
     private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
@@ -54,7 +56,9 @@ public class AgentService {
                         PortalConnectionRepository connections,
                         com.jobpilot.service.ai.AiService ai,
                         com.jobpilot.engine.EngineProfileRepository engineProfiles,
-                        com.jobpilot.service.NotificationService notifications) {
+                        com.jobpilot.service.NotificationService notifications,
+                        com.jobpilot.service.MailService mail,
+                        com.jobpilot.repository.ProfileRepository profileRepo) {
         this.runs = runs;
         this.events = events;
         this.schedules = schedules;
@@ -68,6 +72,53 @@ public class AgentService {
         this.engineProfiles = engineProfiles;
         this.ai = ai;
         this.notifications = notifications;
+        this.mail = mail;
+        this.profileRepo = profileRepo;
+    }
+
+    // ---- manual-apply daily digest ------------------------------------------
+
+    /**
+     * Once a day: email each user the jobs the automation FOUND but could not apply to
+     * (no Easy Apply / employer-site form) — the owner applies to those by hand.
+     */
+    @Transactional(readOnly = true)
+    public void emailManualApplyDigests() {
+        java.util.Set<UUID> users = new java.util.LinkedHashSet<>();
+        for (AgentSchedule b : schedules.findAll()) users.add(b.getUserId());
+        Instant since = Instant.now().minus(java.time.Duration.ofHours(24));
+        for (UUID u : users) {
+            try {
+                List<AgentEvent> manual = events.findByUserIdOrderByCreatedAtDesc(u, PageRequest.of(0, 300)).stream()
+                        .filter(e -> "manual_apply".equals(e.getType()) && e.getCreatedAt() != null
+                                && e.getCreatedAt().isAfter(since))
+                        .toList();
+                if (manual.isEmpty()) continue;
+                String to = profileRepo.findByUserId(u)
+                        .map(com.jobpilot.domain.Profile::getEmail).filter(s -> s != null && !s.isBlank())
+                        .orElse(null);
+                StringBuilder body = new StringBuilder("These jobs matched you today but need a MANUAL application "
+                        + "(no Easy Apply / employer-site form):\n\n");
+                for (AgentEvent e : manual) {
+                    body.append("• ").append(nz(e.getTitle(), "Job"))
+                        .append(e.getCompany() == null ? "" : " — " + e.getCompany())
+                        .append(" [").append(nz(e.getPortal(), "")).append("]\n");
+                    if (e.getUrl() != null) body.append("  ").append(e.getUrl()).append('\n');
+                    if (e.getDetail() != null) body.append("  ").append(e.getDetail()).append('\n');
+                    body.append('\n');
+                }
+                body.append("— JobPilot");
+                if (to != null) {
+                    mail.sendWithAttachments(to, "JobPilot — " + manual.size()
+                            + " job(s) to apply manually today", body.toString(), List.of(), null);
+                }
+                notifications.create(u, "reminder", manual.size() + " job(s) need a manual application",
+                        "The automation found matches it couldn't auto-apply to — check your email for the list.",
+                        Map.of("count", manual.size()));
+            } catch (Exception e) {
+                log.warn("manual-apply digest failed for {}: {}", u, e.getMessage());
+            }
+        }
     }
 
     // ---- worker heartbeat (is JobPilot Desktop actually running?) -----------
@@ -437,8 +488,43 @@ public class AgentService {
         plan.put("connectCap", block != null ? block.getConnectCap() : 100);
         plan.put("messageCap", block != null ? block.getMessageCap() : 50);
         plan.put("blockMinutes", block != null ? block.getDurationMins() : 120);
+        plan.put("mode", block == null || block.getMode() == null || block.getMode().isBlank()
+                ? "apply" : block.getMode());
         plan.putAll(flows()); // flow toggles ride along so the worker honours them
         return plan;
+    }
+
+    /**
+     * The recommended daily plan (owner's spec): Easy Apply TWICE a day per portal in
+     * short slots; outreach (posts + HR emails + connections) ONCE a day with a long
+     * evening slot so it lands more connections. Replaces the existing schedule.
+     */
+    @Transactional
+    public List<AgentSchedule> applyRecommendedSchedule(UUID userId) {
+        schedules.deleteAll(schedules.findByUserIdOrderByOrdAsc(userId));
+        record B(String portal, String start, int mins, String mode, int applyCap) {}
+        List<B> plan = List.of(
+                new B("linkedin", "09:00", 60, "apply", 40),
+                new B("indeed",   "10:30", 60, "apply", 40),
+                new B("linkedin", "17:00", 150, "outreach", 0),
+                new B("linkedin", "20:00", 60, "apply", 40),
+                new B("indeed",   "21:30", 60, "apply", 40));
+        List<AgentSchedule> out = new ArrayList<>();
+        int ord = 0;
+        for (B b : plan) {
+            AgentSchedule s = new AgentSchedule();
+            s.setUserId(userId);
+            s.setPortal(b.portal());
+            s.setOrd(ord++);
+            s.setStartTime(b.start());
+            s.setDurationMins(b.mins());
+            s.setMode(b.mode());
+            s.setApplyCap(b.applyCap());
+            s.setEnabled(true);
+            s.setUpdatedAt(Instant.now());
+            out.add(schedules.save(s));
+        }
+        return out;
     }
 
     // ---- flow controls (owner toggles on the Connections board) ---------------
@@ -593,10 +679,34 @@ public class AgentService {
         return messages.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, "approved", PageRequest.of(0, 50));
     }
 
+    private static final String MSG_TEMPLATE_KEY = "agent_message_template";
+
+    /** The owner's connection/outreach message template ([Name]/[Role]/[Company] fill in). */
+    public String messageTemplate() {
+        return settings.get(MSG_TEMPLATE_KEY).orElse("");
+    }
+
+    public void setMessageTemplate(String template) {
+        settings.put(MSG_TEMPLATE_KEY, template == null ? "" : template.trim());
+    }
+
+    /** Render the owner's template for a contact — [Name], [Role], [Company], [MyName], [MyRole]. */
+    private String renderTemplate(String template, PortalContact c, Profile p) {
+        String firstName = c == null || c.getName() == null || c.getName().isBlank()
+                ? "there" : c.getName().trim().split("\\s+")[0];
+        return template
+                .replace("[Name]", firstName)
+                .replace("[Role]", c == null ? "your team's roles" : nz(c.getRole(), "your team's roles"))
+                .replace("[Company]", c == null ? "your company" : nz(c.getCompany(), "your company"))
+                .replace("[MyName]", nz(p.getFullName(), ""))
+                .replace("[MyRole]", nz(p.getCurrentTitle(), nz(p.getHeadline(), "")));
+    }
+
     /**
-     * Draft-first: AI drafts a message (a connection note, or a reply to an incoming
-     * recruiter message) grounded in the profile, saved as pending_approval. It is NOT
-     * sent until the owner approves it in the dashboard.
+     * Outreach messages (connection notes / intros): when the owner saved a TEMPLATE and
+     * the Auto-message flow is ON, the message is rendered from the template and
+     * auto-approved — the worker sends it without waiting. Replies to a recruiter's
+     * incoming message stay DRAFT-FIRST always (those deserve human eyes).
      */
     @Transactional
     public AgentMessage draftMessage(UUID userId, UUID contactId, String incoming, String kind) {
@@ -615,6 +725,23 @@ public class AgentService {
         }
 
         Profile p = profiles.get();
+        boolean isReply = incoming != null && !incoming.isBlank();
+        String template = messageTemplate();
+        boolean autoMessage = Boolean.TRUE.equals(flows().get("autoMessage"));
+
+        // Owner's template + Auto-message ON + not a reply → render + auto-approve.
+        if (!isReply && autoMessage && !template.isBlank()) {
+            AgentMessage m = new AgentMessage();
+            m.setUserId(userId);
+            m.setContactId(contactId);
+            m.setPortal(c == null ? null : c.getPortal());
+            m.setDirection("out");
+            m.setBody(renderTemplate(template, c, p));
+            m.setStatus("approved");
+            m.setAiDrafted(false);
+            return messages.save(m);
+        }
+
         String draft;
         if (ai.isEnabled()) {
             String sys = """

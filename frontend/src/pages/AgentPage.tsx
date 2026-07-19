@@ -12,7 +12,7 @@ import { Icon } from '../components/Icon';
  * the daily rotation schedule, the draft-first message approvals, and worker onboarding.
  */
 
-type Tab = 'live' | 'flows' | 'activity' | 'network' | 'schedule';
+type Tab = 'live' | 'metrics' | 'flows' | 'activity' | 'network' | 'schedule';
 
 // Naukri automation is parked ("in progress") — it stays visible on Connections but gets
 // no run buttons here until it ships.
@@ -144,7 +144,8 @@ export function AgentPage() {
       </div>
 
       <div className="row" style={{ gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {([['live', 'live', 'Watch Live'], ['flows', 'bolt', 'Automations'], ['activity', 'clipboard', 'Activity'],
+        {([['live', 'live', 'Watch Live'], ['metrics', 'chart', 'Metrics'], ['flows', 'bolt', 'Automations'],
+           ['activity', 'clipboard', 'Activity'],
            ['network', 'user', `Network${status?.pendingApprovals ? ` (${status.pendingApprovals})` : ''}`],
            ['schedule', 'clock', 'Schedule']] as [Tab, string, string][]).map(([t, ico, label]) => (
           <button key={t} className={`btn btn-sm ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>
@@ -154,6 +155,7 @@ export function AgentPage() {
       </div>
 
       {tab === 'live' && <LiveTab run={run} live={live} />}
+      {tab === 'metrics' && <MetricsTab />}
       {tab === 'flows' && <FlowsTab onRun={start} busy={busy} workerReady={status?.workerConfigured ?? false} />}
       {tab === 'activity' && <ActivityTab />}
       {tab === 'network' && <NetworkTab onChange={loadStatus} />}
@@ -216,6 +218,77 @@ function LiveTab({ run, live }: { run: AgentRun | null; live: boolean }) {
   );
 }
 
+// ---- Metrics: per-portal breakdown (LinkedIn vs Indeed, separately) --------
+
+/**
+ * The owner's transparency view: for EACH portal — what was found, applied, emailed,
+ * connected, what failed, and (front and centre) the MANUAL list: matches the automation
+ * couldn't auto-apply to. Derived from the last ~300 events.
+ */
+function MetricsTab() {
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  useEffect(() => {
+    const pull = () => api.agentEvents(300).then(setEvents).catch(() => {});
+    pull();
+    const t = setInterval(pull, 8000);
+    return () => clearInterval(t);
+  }, []);
+
+  const portalBlock = (portal: 'linkedin' | 'indeed') => {
+    const ev = events.filter((e) => e.portal === portal);
+    const n = (t: string) => ev.filter((e) => e.type === t).length;
+    const applied = n('applied') + n('easy_apply');
+    const manual = ev.filter((e) => e.type === 'manual_apply');
+    const counts: [string, number, string][] = portal === 'linkedin'
+      ? [['Jobs found', n('job_identified'), 'indigo'], ['Relevant', n('relevant'), 'amber'],
+         ['Applied (Easy Apply)', applied, 'green'], ['Emails sent', n('email_sent'), 'green'],
+         ['Connections sent', n('connection_sent'), 'blue'], ['Replies', n('reply_received'), 'purple'],
+         ['Manual needed', manual.length, 'amber'], ['Failed', n('error'), 'red']]
+      : [['Jobs found', n('job_identified'), 'indigo'], ['Relevant', n('relevant'), 'amber'],
+         ['Applied', applied, 'green'], ['Manual needed', manual.length, 'amber'], ['Failed', n('error'), 'red']];
+    return (
+      <div className="card card-pad" key={portal}>
+        <div className="card-title">
+          <Icon name={portal === 'linkedin' ? 'link' : 'target'} size={15} />
+          {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
+          <span className="faint" style={{ fontWeight: 400, fontSize: 12 }}>· last {events.length ? '300 events' : '—'}</span>
+        </div>
+        <div className="metric-row">
+          {counts.map(([label, v, tone]) => (
+            <div key={label} className="metric-cell">
+              <span className={`tone tone-${tone}`} style={{ fontSize: 15, fontWeight: 750, padding: '4px 12px' }}>{v}</span>
+              <span className="faint" style={{ fontSize: 11.5 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {manual.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="kv-k" style={{ marginBottom: 8 }}>Apply manually — the automation couldn't ({manual.length})</div>
+            {manual.slice(0, 8).map((e) => (
+              <div key={e.id} className="row" style={{ gap: 8, padding: '6px 0', borderTop: '1px solid var(--border)', fontSize: 13 }}>
+                <Icon name="alert" size={13} className="t-amber" style={{ flex: 'none' }} />
+                <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
+                  {e.title || 'Job'}{e.company ? ` — ${e.company}` : ''}
+                </a>
+                <span className="faint" style={{ fontSize: 11.5, flex: 'none' }}>{fmtDate(e.createdAt)}</span>
+              </div>
+            ))}
+            <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>You also get these by email every evening (21:45 IST).</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {portalBlock('linkedin')}
+      {portalBlock('indeed')}
+    </div>
+  );
+}
+
 // ---- Automations: the two flow types, per portal ----------------------------
 
 /**
@@ -229,11 +302,20 @@ function FlowsTab({ onRun, busy, workerReady }: { onRun: (p: string) => void; bu
   const toast = useToast();
   const [flows, setFlows] = useState<Record<string, boolean>>({});
   const [pendingQs, setPendingQs] = useState(0);
+  const [template, setTemplate] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
 
   useEffect(() => {
     api.agentFlows().then(setFlows).catch(() => {});
+    api.agentMessageTemplate().then((r) => setTemplate(r.template)).catch(() => {});
     api.qaList().then((l) => setPendingQs(l.filter((q) => !(q.answer && q.answer.trim())).length)).catch(() => {});
   }, []);
+
+  const saveTemplate = async () => {
+    setSavingTpl(true);
+    try { await api.agentSetMessageTemplate(template); toast('Message template saved — connection notes now send automatically with it.', 'success'); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setSavingTpl(false); }
+  };
 
   const toggle = async (key: string) => {
     const next = !flows[key];
@@ -288,6 +370,22 @@ function FlowsTab({ onRun, busy, workerReady }: { onRun: (p: string) => void; bu
         <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={busy || !workerReady}
           onClick={() => onRun('indeed')} title={workerReady ? '' : 'Set up JobPilot Desktop first'}>
           <Icon name="play" size={13} /> Run Indeed now
+        </button>
+      </div>
+
+      {/* Connection-message template — with this saved + Auto-message ON, notes send
+          themselves; replies to recruiters always stay draft-first. */}
+      <div className="card card-pad">
+        <div className="card-title"><Icon name="send" size={15} /> Connection message template</div>
+        <div className="faint" style={{ fontSize: 12.5, marginTop: -4, marginBottom: 8 }}>
+          Sent automatically with connection requests when <b>Auto-message</b> is on.
+          Placeholders: <code>[Name]</code> <code>[Role]</code> <code>[Company]</code> <code>[MyName]</code> <code>[MyRole]</code>.
+          Replies to recruiters still wait for your approval.
+        </div>
+        <textarea className="input" rows={4} value={template} onChange={(e) => setTemplate(e.target.value)}
+          placeholder={"Hi [Name], I'm [MyName], a [MyRole]. I'm actively looking for [Role] opportunities and would love to connect regarding openings at [Company]."} />
+        <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={saveTemplate} disabled={savingTpl}>
+          {savingTpl ? <span className="spinner" /> : <Icon name="check" size={13} />} Save template
         </button>
       </div>
 
@@ -413,18 +511,34 @@ function ScheduleTab() {
     try { setBlocks(await api.agentSaveSchedule(blocks)); toast('Schedule saved', 'success'); }
     catch (e) { toast((e as Error).message, 'error'); }
   };
+  const usePreset = async () => {
+    if (!window.confirm('Replace your schedule with the recommended plan? (Easy Apply 2×/day per portal + one long evening outreach slot)')) return;
+    try { setBlocks(await api.agentSchedulePreset()); toast('Recommended plan applied', 'success'); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  };
 
   return (
     <div className="card card-pad">
-      <h3 style={{ marginTop: 0 }}>Daily rotation</h3>
-      <p className="faint" style={{ fontSize: 13, marginTop: 0 }}>
-        The worker runs these blocks in order — e.g. Naukri 09:00 for 2h, then LinkedIn, then Indeed.
-        Leave keywords/locations blank to derive them from your profile.
-      </p>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Daily rotation</h3>
+          <p className="faint" style={{ fontSize: 13, margin: '4px 0 12px' }}>
+            <b>Apply</b> blocks run Easy Apply only; the <b>Outreach</b> block scans posts, harvests
+            HR emails and sends connections — give it the most time. Blank keywords/locations = from your profile.
+          </p>
+        </div>
+        <button className="btn btn-sm" onClick={usePreset}><Icon name="sparkles" size={13} /> Use recommended plan</button>
+      </div>
       {blocks.map((b, i) => (
         <div key={i} className="card card-pad" style={{ marginBottom: 8, background: 'var(--bg-elev,#0f1219)' }}>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <b style={{ textTransform: 'capitalize', minWidth: 72 }}>{b.portal}</b>
+            <label style={{ fontSize: 12 }}>Mode
+              <select className="select" style={{ width: 110 }} value={b.mode ?? 'apply'}
+                onChange={(e) => upd(i, { mode: e.target.value })}>
+                <option value="apply">Apply</option>
+                <option value="outreach">Outreach</option>
+              </select></label>
             <label style={{ fontSize: 12 }}>Start
               <input className="input" style={{ width: 90 }} value={b.startTime ?? ''} placeholder="09:00"
                 onChange={(e) => upd(i, { startTime: e.target.value })} /></label>

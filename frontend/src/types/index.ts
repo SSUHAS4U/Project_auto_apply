@@ -247,6 +247,8 @@ export interface AgentSchedule {
   connectCap: number;
   messageCap: number;
   enabled: boolean;
+  /** 'apply' = Easy Apply only · 'outreach' = posts + HR emails + connections */
+  mode?: string;
 }
 
 export interface PortalConnection {

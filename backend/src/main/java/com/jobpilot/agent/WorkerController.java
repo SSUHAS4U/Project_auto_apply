@@ -29,23 +29,25 @@ public class WorkerController {
     private final ProfileService profiles;
     private final AiService ai;
     private final com.jobpilot.service.AssistService assist;
-    private final com.jobpilot.engine.EngineApplyService engineApply;
+    private final com.jobpilot.service.ComposeService compose;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
                             com.jobpilot.service.AssistService assist,
-                            com.jobpilot.engine.EngineApplyService engineApply) {
+                            com.jobpilot.service.ComposeService compose) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
         this.assist = assist;
-        this.engineApply = engineApply;
+        this.compose = compose;
     }
 
     /**
      * An HR/recruiter email the worker harvested from a hiring post. Stores the lead
-     * (deduped by email) + rings the bell; when the Auto-email flow is ON and the post
-     * text is usable, the engine tailors a CV + cover letter and EMAILS it automatically
-     * once the package passes verification.
+     * (deduped by email) + rings the bell; when the Auto-email flow is ON, sends the
+     * application through the SAME pipeline as Compose &amp; send: a cold email tailored
+     * to the post (from the user's email template), the user's uploaded resume attached
+     * AS-IS, and a cover letter PDF from their template. Owner's decision: no CV
+     * tailoring here — the starred resume is what gets sent.
      */
     @PostMapping("/hr-lead")
     public Map<String, Object> hrLead(@RequestBody Map<String, String> b) {
@@ -58,16 +60,25 @@ public class WorkerController {
 
         boolean autoEmail = Boolean.TRUE.equals(agent.flows().get("autoEmail"));
         String postText = nz(b.get("postText"));
-        boolean applying = false;
+        boolean sent = false;
         if (autoEmail && postText.length() > 120 && ai.isEnabled()) {
             try {
-                engineApply.startForLead(u, b.get("url"), postText, email);
-                applying = true;
+                String role = nz(b.get("title"));
+                Map<String, String> docs = compose.generate(role, "", postText);
+                String subject = nz(docs.get("subject"));
+                if (subject.isBlank()) subject = "Application — " + nz(profiles.get().getFullName());
+                compose.send(email, subject, docs.get("coldEmail"), docs.get("coverLetter"), true);
+                sent = true;
+                agent.recordEvent(u, uuid(b.get("runId")), null, b.get("portal"), "email_sent",
+                        "Auto-emailed: " + email, null, b.get("url"), role);
             } catch (Exception e) {
-                log.warn("auto-apply for lead {} failed to start: {}", email, e.getMessage());
+                log.warn("auto-email to lead {} failed: {}", email, e.getMessage());
+                agent.recordEvent(u, uuid(b.get("runId")), null, b.get("portal"), "error",
+                        "Auto-email to " + email + " failed", null, b.get("url"),
+                        String.valueOf(e.getMessage()).substring(0, Math.min(180, String.valueOf(e.getMessage()).length())));
             }
         }
-        return Map.of("ok", true, "applying", applying);
+        return Map.of("ok", true, "applying", sent);
     }
 
     /**

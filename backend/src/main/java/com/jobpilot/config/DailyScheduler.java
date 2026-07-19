@@ -50,6 +50,16 @@ public class DailyScheduler {
         }
     }
 
+    /** Evening digest: jobs the automation found but could NOT auto-apply to (manual). */
+    @Scheduled(cron = "${jobpilot.schedule.manual-digest-cron:0 45 21 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    public void runManualApplyDigest() {
+        try {
+            agent.emailManualApplyDigests();
+        } catch (Exception e) {
+            log.warn("manual-apply digest failed: {}", e.getMessage());
+        }
+    }
+
     /** Daily Engine autopilot — for every profile that turned it on, run the full
      *  ai-job-search cycle: scrape → rank → auto-apply the best-fit shortlist. */
     @Scheduled(cron = "${jobpilot.schedule.auto-apply-cron:0 30 9 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")

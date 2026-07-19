@@ -94,6 +94,20 @@ public class AgentController {
         return agent.flows();
     }
 
+    /** The owner's outreach message template ([Name]/[Role]/[Company]/[MyName]/[MyRole]). */
+    @GetMapping("/message-template")
+    public Map<String, String> messageTemplate() {
+        UserContext.require();
+        return Map.of("template", agent.messageTemplate());
+    }
+
+    @PutMapping("/message-template")
+    public Map<String, String> setMessageTemplate(@RequestBody Map<String, String> b) {
+        UserContext.require();
+        agent.setMessageTemplate(b.get("template"));
+        return Map.of("template", agent.messageTemplate());
+    }
+
     @PostMapping("/run/{id}/stop")
     public Map<String, Object> stopRun(@PathVariable UUID id) {
         UUID u = UserContext.require();
@@ -149,6 +163,12 @@ public class AgentController {
     @GetMapping("/schedule")
     public List<AgentSchedule> schedule() {
         return agent.schedule(UserContext.require());
+    }
+
+    /** One-click recommended plan: Easy Apply 2×/day per portal + one long outreach slot. */
+    @PostMapping("/schedule/preset")
+    public List<AgentSchedule> schedulePreset() {
+        return agent.applyRecommendedSchedule(UserContext.require());
     }
 
     @PutMapping("/schedule")

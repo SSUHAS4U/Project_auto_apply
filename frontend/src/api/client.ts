@@ -250,6 +250,10 @@ export const api = {
     req<AgentMessage>(`/api/agent/messages/${id}/reject`, { method: 'POST' }),
   agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
   agentFlows: () => req<Record<string, boolean>>('/api/agent/flows'),
+  agentMessageTemplate: () => req<{ template: string }>('/api/agent/message-template'),
+  agentSetMessageTemplate: (template: string) =>
+    req<{ template: string }>('/api/agent/message-template', { method: 'PUT', body: JSON.stringify({ template }) }),
+  agentSchedulePreset: () => req<AgentSchedule[]>('/api/agent/schedule/preset', { method: 'POST' }),
   agentSetFlows: (flows: Record<string, boolean>) =>
     req<Record<string, boolean>>('/api/agent/flows', { method: 'PUT', body: JSON.stringify(flows) }),
   agentConnections: () => req<PortalConnection[]>('/api/agent/connections'),
