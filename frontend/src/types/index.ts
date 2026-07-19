@@ -93,6 +93,15 @@ export interface Profile {
   maritalStatus?: string;
   fatherName?: string;
   disabilityStatus?: string;
+  // extras common on Indian application forms
+  openToShifts?: string;
+  leetcodeUrl?: string;
+  leetcodeScore?: string;
+  codechefUrl?: string;
+  codechefScore?: string;
+  codeforcesUrl?: string;
+  codeforcesScore?: string;
+  laptopConfig?: string;
   gender?: string;
   nationality?: string;
   // professional

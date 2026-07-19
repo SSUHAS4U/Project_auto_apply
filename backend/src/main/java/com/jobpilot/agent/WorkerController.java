@@ -28,11 +28,28 @@ public class WorkerController {
     private final AgentService agent;
     private final ProfileService profiles;
     private final AiService ai;
+    private final com.jobpilot.service.AssistService assist;
 
-    public WorkerController(AgentService agent, ProfileService profiles, AiService ai) {
+    public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
+                            com.jobpilot.service.AssistService assist) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
+        this.assist = assist;
+    }
+
+    /**
+     * A screening question the automation could not answer — stored as PENDING in the
+     * answer bank so the owner fills it once (Profile → Autofill answers) and every later
+     * application with the same question is answered automatically.
+     */
+    @PostMapping("/question")
+    public Map<String, Object> pendingQuestion(@RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        String q = b.getOrDefault("question", "");
+        if (q.isBlank()) return Map.of("ok", false);
+        assist.recordPending(u, q);
+        return Map.of("ok", true);
     }
 
     /** Handshake so the worker can confirm its token + show whose account it drives. */

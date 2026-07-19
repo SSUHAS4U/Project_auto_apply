@@ -89,6 +89,25 @@ public class Profile {
     private String gender;
     private String nationality;
 
+    // --- Extras many Indian application forms require -----------------------
+    @Column(name = "open_to_shifts")
+    private String openToShifts;          // "yes" / "no" / blank
+
+    @Column(name = "leetcode_url")
+    private String leetcodeUrl;
+    @Column(name = "leetcode_score")
+    private String leetcodeScore;
+    @Column(name = "codechef_url")
+    private String codechefUrl;
+    @Column(name = "codechef_score")
+    private String codechefScore;
+    @Column(name = "codeforces_url")
+    private String codeforcesUrl;
+    @Column(name = "codeforces_score")
+    private String codeforcesScore;
+    @Column(name = "laptop_config")
+    private String laptopConfig;
+
     // --- Professional -------------------------------------------------------
     private String seniority;
 

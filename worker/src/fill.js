@@ -85,7 +85,12 @@ export async function fillForm(page, profile, api) {
           options = await el.$$eval('option', (os) => os.map((o) => o.textContent.trim()).filter(Boolean));
         }
         const ans = await api.answer(label, options);
-        if (ans.needsAttention || !ans.answer) { attention.push(label); continue; }
+        if (ans.needsAttention || !ans.answer) {
+          attention.push(label);
+          // store it as PENDING so the owner answers it once in Profile → Autofill answers
+          await api.recordQuestion(label).catch(() => {});
+          continue;
+        }
         value = ans.answer;
       }
       if (!value) continue;

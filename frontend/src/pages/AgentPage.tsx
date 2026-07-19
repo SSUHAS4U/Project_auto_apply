@@ -13,7 +13,7 @@ import { Icon } from '../components/Icon';
  * the daily rotation schedule, the draft-first message approvals, and worker onboarding.
  */
 
-type Tab = 'live' | 'activity' | 'network' | 'schedule' | 'connect';
+type Tab = 'live' | 'flows' | 'activity' | 'network' | 'schedule' | 'connect';
 
 // Naukri automation is parked ("in progress") — it stays visible on Connections but gets
 // no run buttons here until it ships.
@@ -143,7 +143,7 @@ export function AgentPage() {
       </div>
 
       <div className="row" style={{ gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {([['live', 'live', 'Watch Live'], ['activity', 'clipboard', 'Activity'],
+        {([['live', 'live', 'Watch Live'], ['flows', 'bolt', 'Automations'], ['activity', 'clipboard', 'Activity'],
            ['network', 'user', `Network${status?.pendingApprovals ? ` (${status.pendingApprovals})` : ''}`],
            ['schedule', 'clock', 'Schedule'], ['connect', 'link', 'Connect']] as [Tab, string, string][]).map(([t, ico, label]) => (
           <button key={t} className={`btn btn-sm ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>
@@ -153,6 +153,7 @@ export function AgentPage() {
       </div>
 
       {tab === 'live' && <LiveTab run={run} live={live} />}
+      {tab === 'flows' && <FlowsTab onRun={start} busy={busy} workerReady={status?.workerConfigured ?? false} />}
       {tab === 'activity' && <ActivityTab />}
       {tab === 'network' && <NetworkTab onChange={loadStatus} />}
       {tab === 'schedule' && <ScheduleTab />}
@@ -211,6 +212,93 @@ function LiveTab({ run, live }: { run: AgentRun | null; live: boolean }) {
           <span className="run-stat"><Icon name="alert" size={14} /> failed <b>{run.failed}</b></span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- Automations: the two flow types, per portal ----------------------------
+
+/**
+ * The daily automation, made explicit. Two kinds of work:
+ *  1. OUTREACH  — connections, messages, HR emails (LinkedIn).
+ *  2. AUTO APPLY — Easy Apply / Indeed Apply with the screening-answer bank.
+ * Each portal card spells out its pipeline; toggles are the same master switches as the
+ * Connections board (/api/agent/flows).
+ */
+function FlowsTab({ onRun, busy, workerReady }: { onRun: (p: string) => void; busy: boolean; workerReady: boolean }) {
+  const toast = useToast();
+  const [flows, setFlows] = useState<Record<string, boolean>>({});
+  const [pendingQs, setPendingQs] = useState(0);
+
+  useEffect(() => {
+    api.agentFlows().then(setFlows).catch(() => {});
+    api.qaList().then((l) => setPendingQs(l.filter((q) => !(q.answer && q.answer.trim())).length)).catch(() => {});
+  }, []);
+
+  const toggle = async (key: string) => {
+    const next = !flows[key];
+    setFlows((f) => ({ ...f, [key]: next }));
+    try { setFlows(await api.agentSetFlows({ [key]: next })); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  };
+
+  const Row = ({ ico, children }: { ico: string; children: React.ReactNode }) => (
+    <div className="flow-step"><Icon name={ico} size={14} /><span>{children}</span></div>
+  );
+  const Toggle = ({ k, label }: { k: string; label: string }) => (
+    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+      <button role="switch" aria-checked={!!flows[k]} aria-label={label}
+        className={`switch ${flows[k] ? 'on' : ''}`} onClick={() => toggle(k)}><span className="knob" /></button>
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{label}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14 }}>
+      {/* LinkedIn — outreach + easy apply */}
+      <div className="card card-pad">
+        <div className="card-title"><Icon name="link" size={15} /> LinkedIn — daily outreach &amp; Easy Apply</div>
+        <Row ico="search">Search posts &amp; jobs for your keywords</Row>
+        <Row ico="bolt">Easy Apply where available</Row>
+        <Row ico="bookmark">No Easy Apply → saved for <b>manual apply</b> (Activity feed)</Row>
+        <Row ico="mail">HR email found → auto-email with the job-tailored resume</Row>
+        <Row ico="user">Connection requests + messages to recruiters</Row>
+        <div className="row" style={{ gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
+          <Toggle k="autoEasyApply" label="Easy Apply" />
+          <Toggle k="autoEmail" label="Auto-email" />
+          <Toggle k="autoMessage" label="Auto-message" />
+        </div>
+        <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={busy || !workerReady}
+          onClick={() => onRun('linkedin')} title={workerReady ? '' : 'Set up JobPilot Desktop first'}>
+          <Icon name="play" size={13} /> Run LinkedIn now
+        </button>
+      </div>
+
+      {/* Indeed — auto apply + question bank */}
+      <div className="card card-pad">
+        <div className="card-title"><Icon name="target" size={15} /> Indeed — daily Auto Apply</div>
+        <Row ico="search">Search jobs for your keywords &amp; locations</Row>
+        <Row ico="scale">Relevance check against your profile</Row>
+        <Row ico="bolt">Indeed Apply on your logged-in session</Row>
+        <Row ico="gap">Unknown screening questions are <b>saved for you to answer once</b> — after that they autofill forever</Row>
+        <a className={`btn btn-sm ${pendingQs > 0 ? '' : 'btn-ghost'}`} style={{ marginTop: 12 }} href="/profile">
+          <Icon name="pen" size={13} /> Answer bank
+          {pendingQs > 0 && <span className="tone tone-amber">{pendingQs} waiting</span>}
+        </a>
+        <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={busy || !workerReady}
+          onClick={() => onRun('indeed')} title={workerReady ? '' : 'Set up JobPilot Desktop first'}>
+          <Icon name="play" size={13} /> Run Indeed now
+        </button>
+      </div>
+
+      {/* Naukri — parked */}
+      <div className="card card-pad" style={{ opacity: .85 }}>
+        <div className="card-title"><Icon name="clock" size={15} /> Naukri — in progress</div>
+        <div className="conn-note">
+          Naukri automation is being built. The portal stays visible on Connections but no
+          automated actions run against it yet.
+        </div>
+      </div>
     </div>
   );
 }

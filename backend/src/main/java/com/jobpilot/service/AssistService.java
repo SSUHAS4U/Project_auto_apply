@@ -87,14 +87,15 @@ public class AssistService {
         UUID userId = UserContext.require();
         String key = normalize(question);
 
-        // 1. Exact key match in the bank.
-        Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key);
+        // 1. Exact key match in the bank (skip PENDING pairs — blank answers awaiting the user).
+        Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key)
+                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
         if (exact.isPresent()) {
             return Map.of("answer", exact.get().getAnswer(), "source", "saved");
         }
         // 2. Fuzzy match against the bank (token overlap) — reuse a similar answer.
         QaPair similar = bestMatch(qaRepo.findByUserIdOrderByUpdatedAtDesc(userId), key);
-        if (similar != null) {
+        if (similar != null && similar.getAnswer() != null && !similar.getAnswer().isBlank()) {
             return Map.of("answer", similar.getAnswer(), "source", "saved");
         }
         // 3. Factual field (or a value-typed control): the literal profile value, not prose.
@@ -493,6 +494,27 @@ public class AssistService {
 
     public List<QaPair> listQa() {
         return qaRepo.findByUserIdOrderByUpdatedAtDesc(UserContext.require());
+    }
+
+    /**
+     * Record a screening question the automation could NOT answer, as a PENDING entry
+     * (blank answer) in the bank. The user fills it once in Profile → Autofill answers;
+     * every later application with the same question is then answered automatically.
+     * Deduped by the normalised question key; never overwrites an answered pair.
+     */
+    @Transactional
+    public QaPair recordPending(UUID userId, String question) {
+        if (question == null || question.isBlank()) throw new IllegalArgumentException("question required");
+        String key = normalize(question);
+        Optional<QaPair> existing = qaRepo.findByUserIdAndQuestionKey(userId, key);
+        if (existing.isPresent()) return existing.get();
+        QaPair q = new QaPair();
+        q.setUserId(userId);
+        q.setQuestion(question.trim());
+        q.setQuestionKey(key);
+        q.setAnswer("");
+        q.setSource("pending");
+        return qaRepo.save(q);
     }
 
     @Transactional

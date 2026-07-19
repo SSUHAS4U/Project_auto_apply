@@ -15,7 +15,12 @@ function SavedAnswers() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftQ, setDraftQ] = useState('');
   const [draftA, setDraftA] = useState('');
-  const load = () => api.qaList().then(setItems).catch(() => setItems([]));
+  // Pending (blank-answer) questions first — those are the ones the automation hit and
+  // needs YOU to answer once; after that they autofill forever.
+  const load = () => api.qaList()
+    .then((list) => setItems([...list].sort((a, b) =>
+      Number(!!(a.answer && a.answer.trim())) - Number(!!(b.answer && b.answer.trim())))))
+    .catch(() => setItems([]));
   useEffect(() => { load(); }, []);
   const remove = async (it: QaPair) => {
     if (!window.confirm('Delete this saved answer?')) return;
@@ -58,7 +63,10 @@ function SavedAnswers() {
                 ) : (
                   <>
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{it.question}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                        {it.question}{' '}
+                        {!(it.answer && it.answer.trim()) && <span className="tone tone-amber">needs your answer</span>}
+                      </div>
                       <div className="row" style={{ gap: 4, flexShrink: 0 }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit"><Icon name="pen" size={13} /></button>
                         <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
@@ -293,6 +301,36 @@ export function ProfilePage() {
             <TagInput value={p.skills ?? []} onChange={(v) => set({ skills: v })} suggestions={SKILL_SUGGESTIONS} placeholder="Start typing a skill — e.g. Java, React, Docker…" />
           </Section>
 
+          <Section ico="chart" title="Coding profiles & scores" sub="asked on most Indian tech application forms — used by autofill">
+            <div className="grid3">
+              <Field label="LeetCode profile URL"><input className="input" type="url" placeholder="https://leetcode.com/u/…" value={p.leetcodeUrl ?? ''} onChange={(e) => set({ leetcodeUrl: e.target.value })} /></Field>
+              <Field label="LeetCode score / rating"><input className="input" placeholder="1417" value={p.leetcodeScore ?? ''} onChange={(e) => set({ leetcodeScore: e.target.value })} /></Field>
+              <Field label="GitHub profile URL"><input className="input" type="url" placeholder="https://github.com/…" value={p.links?.github ?? ''} onChange={(e) => set({ links: { ...(p.links ?? {}), github: e.target.value } })} /></Field>
+              <Field label="CodeChef profile URL"><input className="input" type="url" placeholder="https://www.codechef.com/users/…" value={p.codechefUrl ?? ''} onChange={(e) => set({ codechefUrl: e.target.value })} /></Field>
+              <Field label="CodeChef score / rating"><input className="input" placeholder="1533" value={p.codechefScore ?? ''} onChange={(e) => set({ codechefScore: e.target.value })} /></Field>
+              <span />
+              <Field label="Codeforces profile URL"><input className="input" type="url" placeholder="https://codeforces.com/profile/…" value={p.codeforcesUrl ?? ''} onChange={(e) => set({ codeforcesUrl: e.target.value })} /></Field>
+              <Field label="Codeforces score / rating"><input className="input" placeholder="643" value={p.codeforcesScore ?? ''} onChange={(e) => set({ codeforcesScore: e.target.value })} /></Field>
+            </div>
+          </Section>
+
+          <Section ico="gear" title="Work setup" sub="shift willingness + machine details — common screening questions">
+            <div className="grid2">
+              <Field label="Open to working in shifts?">
+                <select className="select" value={p.openToShifts ?? ''} onChange={(e) => set({ openToShifts: e.target.value })}>
+                  <option value="">Select…</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="depends">Depends on the shift/allowance</option>
+                </select>
+              </Field>
+              <Field label="Laptop / PC configuration">
+                <input className="input" placeholder="e.g. RTX 3050, 16 GB RAM, 512 GB SSD, Intel i5 12th gen"
+                  value={p.laptopConfig ?? ''} onChange={(e) => set({ laptopConfig: e.target.value })} />
+              </Field>
+            </div>
+          </Section>
+
           <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
             <label className="field full">
               <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
@@ -386,6 +424,7 @@ export function ProfilePage() {
               </>
             )}
           />
+          <Marksheets />
         </div>
       )}
 
@@ -430,7 +469,61 @@ export function ProfilePage() {
   );
 }
 
-const DOC_TYPES = ['certificate', 'transcript', 'id-proof', 'offer-letter', 'experience-letter', 'cover-letter', 'other'];
+const DOC_TYPES = ['certificate', 'transcript', 'id-proof', 'offer-letter', 'experience-letter', 'cover-letter',
+  '10th-marksheet', '12th-marksheet', 'graduation-marksheet', 'other'];
+
+/** Fixed, labelled upload slots for the marksheets Indian forms require — stored in the
+ *  encrypted document vault (AES at rest; download asks for your password). */
+function Marksheets() {
+  const toast = useToast();
+  const [docs, setDocs] = useState<DocItem[] | null>(null);
+  const [busy, setBusy] = useState('');
+  const load = () => api.docList().then(setDocs).catch(() => setDocs([]));
+  useEffect(() => { load(); }, []);
+
+  const SLOTS = [
+    { type: '10th-marksheet', label: '10th (SSC) marksheet' },
+    { type: '12th-marksheet', label: '12th / Intermediate marksheet' },
+    { type: 'graduation-marksheet', label: 'Latest college marksheet (graduation)' },
+  ];
+
+  const upload = async (type: string, file?: File | null) => {
+    if (!file) return;
+    setBusy(type);
+    try { await api.docUpload(file, file.name, type); toast('Uploaded & encrypted ✓', 'success'); load(); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(''); }
+  };
+
+  return (
+    <Section ico="shield" title="Marksheets" sub="encrypted in your document vault · PDF or image">
+      <div style={{ display: 'grid', gap: 10 }}>
+        {SLOTS.map((s) => {
+          const doc = (docs ?? []).find((d) => d.type === s.type);
+          return (
+            <div key={s.type} className="repeat-row" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 0 }}>
+              <span className="flow-ico"><Icon name="file" size={16} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 650, fontSize: 13.5 }}>{s.label}</div>
+                {doc
+                  ? <div className="t-green meta-item" style={{ fontSize: 12.5 }}><Icon name="check" size={12} /> {doc.name}</div>
+                  : <div className="faint" style={{ fontSize: 12.5 }}>Not uploaded yet</div>}
+              </div>
+              <label className={`btn btn-sm ${doc ? '' : 'btn-primary'}`}>
+                {busy === s.type ? <span className="spinner" /> : <Icon name="download" size={13} style={{ transform: 'rotate(180deg)' }} />}
+                {doc ? 'Replace' : 'Upload'}
+                <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} disabled={busy === s.type}
+                  onChange={(e) => { upload(s.type, e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            </div>
+          );
+        })}
+      </div>
+      <div className="faint" style={{ fontSize: 12, marginTop: 10 }}>
+        Files live in the Document vault (Resume tab) — encrypted at rest, download requires your password.
+      </div>
+    </Section>
+  );
+}
 
 /** Encrypted document vault: upload, list, password-gated download, delete. */
 function DocumentsVault() {

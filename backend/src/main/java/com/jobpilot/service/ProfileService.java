@@ -69,6 +69,14 @@ public class ProfileService {
         p.setMaritalStatus(in.getMaritalStatus());
         p.setFatherName(in.getFatherName());
         p.setDisabilityStatus(in.getDisabilityStatus());
+        p.setOpenToShifts(in.getOpenToShifts());
+        p.setLeetcodeUrl(in.getLeetcodeUrl());
+        p.setLeetcodeScore(in.getLeetcodeScore());
+        p.setCodechefUrl(in.getCodechefUrl());
+        p.setCodechefScore(in.getCodechefScore());
+        p.setCodeforcesUrl(in.getCodeforcesUrl());
+        p.setCodeforcesScore(in.getCodeforcesScore());
+        p.setLaptopConfig(in.getLaptopConfig());
         // Professional
         p.setSeniority(in.getSeniority());
         p.setCurrentTitle(in.getCurrentTitle());

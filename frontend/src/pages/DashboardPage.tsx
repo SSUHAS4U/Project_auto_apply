@@ -17,6 +17,14 @@ const EVENT_LABEL: Record<string, string> = {
   message_sent: 'Message sent', email_sent: 'Email sent', reply_received: 'Reply received',
   error: 'Issue', info: 'Update',
 };
+// Status chip per event type (HireDue-style "SUCCESS / PENDING" markers on tile recents).
+const EVENT_STATUS: Record<string, { label: string; tone: string }> = {
+  applied: { label: 'success', tone: 'green' }, easy_apply: { label: 'success', tone: 'green' },
+  email_sent: { label: 'sent', tone: 'green' }, message_sent: { label: 'sent', tone: 'purple' },
+  connection_sent: { label: 'pending', tone: 'blue' }, reply_received: { label: 'reply', tone: 'green' },
+  relevant: { label: 'relevant', tone: 'amber' }, job_identified: { label: 'new', tone: 'indigo' },
+  post_analysed: { label: 'scanned', tone: 'slate' }, error: { label: 'issue', tone: 'red' },
+};
 
 export function DashboardPage() {
   const nav = useNavigate();
@@ -100,9 +108,16 @@ export function DashboardPage() {
               <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>Recent</div>
                 {recent.slice(0, 2).map((e) => (
-                  <div key={e.id} style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <span style={{ fontWeight: 600 }}>{e.title || EVENT_LABEL[e.type]}</span>
-                    {e.company && <span className="faint"> · {e.company}</span>}
+                  <div key={e.id} className="row" style={{ fontSize: 12.5, gap: 8, flexWrap: 'nowrap', padding: '2px 0' }}>
+                    <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {e.title || EVENT_LABEL[e.type]}
+                      {e.company && <span className="faint" style={{ fontWeight: 400 }}> · {e.company}</span>}
+                    </span>
+                    {EVENT_STATUS[e.type] && (
+                      <span className={`tone tone-${EVENT_STATUS[e.type].tone}`} style={{ flex: 'none', textTransform: 'uppercase', fontSize: 10 }}>
+                        {EVENT_STATUS[e.type].label}
+                      </span>
+                    )}
                   </div>
                 ))}
                 {recent.length === 0 && <div className="faint" style={{ fontSize: 12.5 }}>—</div>}
