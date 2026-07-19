@@ -42,6 +42,9 @@ export class Api {
   answer(question, options) { return this.#req('/api/worker/answer', { method: 'POST', body: { question, options } }); }
   // A question we couldn't answer → stored as PENDING so the owner fills it once.
   recordQuestion(question) { return this.#req('/api/worker/question', { method: 'POST', body: { question } }); }
+  // HR email harvested from a hiring post → backend stores the lead and (when Auto-email
+  // is on) tailors + emails an application automatically.
+  hrLead(lead) { return this.#req('/api/worker/hr-lead', { method: 'POST', body: lead }); }
   upsertContact(c) { return this.#req('/api/worker/contact', { method: 'POST', body: c }); }
   draftMessage(m) { return this.#req('/api/worker/message/draft', { method: 'POST', body: m }); }
   approvedMessages() { return this.#req('/api/worker/messages/approved'); }

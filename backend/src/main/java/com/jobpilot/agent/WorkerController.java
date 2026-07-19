@@ -29,13 +29,45 @@ public class WorkerController {
     private final ProfileService profiles;
     private final AiService ai;
     private final com.jobpilot.service.AssistService assist;
+    private final com.jobpilot.engine.EngineApplyService engineApply;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
-                            com.jobpilot.service.AssistService assist) {
+                            com.jobpilot.service.AssistService assist,
+                            com.jobpilot.engine.EngineApplyService engineApply) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
         this.assist = assist;
+        this.engineApply = engineApply;
+    }
+
+    /**
+     * An HR/recruiter email the worker harvested from a hiring post. Stores the lead
+     * (deduped by email) + rings the bell; when the Auto-email flow is ON and the post
+     * text is usable, the engine tailors a CV + cover letter and EMAILS it automatically
+     * once the package passes verification.
+     */
+    @PostMapping("/hr-lead")
+    public Map<String, Object> hrLead(@RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        String email = nz(b.get("email")).trim();
+        if (email.isBlank() || !email.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}")) return Map.of("ok", false);
+        PortalContact lead = agent.recordHrLead(u, b.get("portal"), b.get("name"), email,
+                b.get("url"), b.get("title"));
+        if (lead == null) return Map.of("ok", true, "duplicate", true);
+
+        boolean autoEmail = Boolean.TRUE.equals(agent.flows().get("autoEmail"));
+        String postText = nz(b.get("postText"));
+        boolean applying = false;
+        if (autoEmail && postText.length() > 120 && ai.isEnabled()) {
+            try {
+                engineApply.startForLead(u, b.get("url"), postText, email);
+                applying = true;
+            } catch (Exception e) {
+                log.warn("auto-apply for lead {} failed to start: {}", email, e.getMessage());
+            }
+        }
+        return Map.of("ok", true, "applying", applying);
     }
 
     /**

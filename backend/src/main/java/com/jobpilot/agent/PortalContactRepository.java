@@ -15,4 +15,6 @@ public interface PortalContactRepository extends JpaRepository<PortalContact, UU
             UUID userId, String connectionStatus, Pageable page);
 
     Optional<PortalContact> findByUserIdAndPortalAndProfileUrl(UUID userId, String portal, String profileUrl);
+
+    Optional<PortalContact> findFirstByUserIdAndEmailIgnoreCase(UUID userId, String email);
 }

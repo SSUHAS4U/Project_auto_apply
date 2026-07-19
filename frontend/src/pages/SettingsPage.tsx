@@ -59,7 +59,7 @@ export function SettingsPage() {
   ];
 
   return (
-    <>
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div className="page-head">
         <div><h1 className="page-title">Settings</h1><div className="page-sub">API connection & AI models</div></div>
       </div>
@@ -164,6 +164,6 @@ JOBPILOT_OLLAMA_AUTH_VALUE=<your-service-token>`}</pre>
           </div>
         </details>
       </div>
-    </>
+    </div>
   );
 }

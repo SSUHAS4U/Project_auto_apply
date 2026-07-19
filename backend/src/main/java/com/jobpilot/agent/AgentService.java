@@ -551,6 +551,34 @@ public class AgentService {
         return contacts.save(c);
     }
 
+    /**
+     * An HR email harvested from a hiring post. Returns the contact, or null when this
+     * email is already known — the caller must NOT auto-apply twice to the same address.
+     */
+    @Transactional
+    public PortalContact recordHrLead(UUID userId, String portal, String name, String email,
+                                      String postUrl, String title) {
+        if (contacts.findFirstByUserIdAndEmailIgnoreCase(userId, email).isPresent()) return null;
+        PortalContact c = new PortalContact();
+        c.setUserId(userId);
+        c.setPortal(nz(portal, "linkedin"));
+        c.setName(nz(name, email));
+        c.setEmail(email);
+        c.setProfileUrl(postUrl);
+        c.setRole(title);
+        c.setConnectionStatus("lead");
+        c.setUpdatedAt(Instant.now());
+        PortalContact saved = contacts.save(c);
+        recordEvent(userId, null, null, portal, "info",
+                "HR email found: " + email, null, postUrl, nz(title, "hiring post"));
+        try {
+            notifications.create(userId, "agent_reply", "HR email found — " + email,
+                    nz(title, "From a hiring post") + (postUrl == null ? "" : " · " + postUrl),
+                    Map.of("email", email));
+        } catch (Exception ex) { log.warn("lead notification failed: {}", ex.getMessage()); }
+        return saved;
+    }
+
     public List<AgentMessage> messages(UUID userId, String status, int limit) {
         return status == null
                 ? messages.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, limit))

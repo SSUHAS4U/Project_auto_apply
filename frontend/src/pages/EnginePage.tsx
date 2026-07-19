@@ -6,6 +6,7 @@ import type {
 } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { JobProfileEditor } from '../components/JobProfileEditor';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -27,16 +28,26 @@ const STAGE_TONE: Record<string, string> = {
   ready: 'green', submitted: 'green', failed: 'red', vetoed: 'amber',
 };
 
+// The engine's internal steering documents (from the ai-job-search framework). The CV and
+// cover TEMPLATES are intentionally absent: the engine now tailors your BASE résumé from
+// the Resumes section and writes covers via your saved cover-letter template.
 const DOC_LABELS: Record<string, string> = {
-  candidate: '01 · Candidate profile', behavioral: '02 · Behavioral profile',
-  writingStyle: '03 · Writing style', evaluation: '04 · Evaluation lens',
-  cvTemplate: '05 · CV template (LaTeX)', coverTemplate: '06 · Cover template (LaTeX)',
-  interviewPrep: '07 · Interview prep', searchQueries: 'Search queries (JSON)',
+  candidate: 'Candidate profile', behavioral: 'Behavioral profile',
+  writingStyle: 'Writing style', evaluation: 'Evaluation lens',
+  interviewPrep: 'Interview prep', searchQueries: 'Search queries (JSON)',
 };
 const DOC_FIELD: Record<string, keyof EngineProfile> = {
   candidate: 'candidateMd', behavioral: 'behavioralMd', writingStyle: 'writingStyleMd',
-  evaluation: 'evaluationMd', cvTemplate: 'cvTemplateLatex', coverTemplate: 'coverTemplateLatex',
-  interviewPrep: 'interviewPrepMd', searchQueries: 'searchQueries',
+  evaluation: 'evaluationMd', interviewPrep: 'interviewPrepMd', searchQueries: 'searchQueries',
+};
+// What each steering document steers — shown in the Advanced section so it isn't a mystery.
+const DOC_HELP: Record<string, string> = {
+  candidate: 'The facts the AI is allowed to use about you (source of truth for tailoring).',
+  behavioral: 'How you work & what you value — used for culture-fit scoring.',
+  writingStyle: 'Tone rules the AI follows when writing your documents.',
+  evaluation: 'Your goals, must-haves and deal-breakers — the lens jobs are scored through.',
+  interviewPrep: 'Your STAR stories & talking points — used to build interview packs.',
+  searchQueries: 'The exact keywords + locations the scraper searches (JSON).',
 };
 
 function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
@@ -356,6 +367,9 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
         </div>
       </div>
 
+      {/* Job profile — desired roles, projects, achievements (owner wanted it HERE, not in Profile) */}
+      <JobProfileEditor />
+
       {/* Step 3 — optional AI polish */}
       <div className="card card-pad">
         <div className="step-head">
@@ -382,13 +396,21 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
       {/* Advanced — raw document editors */}
       <div className="card card-pad">
         <button className="btn btn-sm" onClick={() => setShowAdvanced((v) => !v)}>
-          {showAdvanced ? '▾' : '▸'} Advanced — edit the documents directly
+          {showAdvanced ? '▾' : '▸'} Advanced — the engine's steering documents
         </button>
         {showAdvanced && (
           <>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+            <p className="faint" style={{ fontSize: 12.5, margin: '10px 0 4px', lineHeight: 1.6 }}>
+              These are the internal notes the AI reads before evaluating or writing anything —
+              Setup and "Generate AI documents" fill them for you. Edit one only when you want to
+              override what the AI believes (e.g. sharpen your deal-breakers). A ✓ means it has
+              content. Your CV/cover templates are NOT here — the engine uses your base résumé
+              (Resumes) and your cover-letter template (Profile).
+            </p>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap', margin: '10px 0' }}>
               {Object.entries(DOC_LABELS).map(([k, label]) => (
-                <button key={k} className="btn btn-sm" onClick={() => openEditor(k)} style={{ opacity: checklist[k] ? 1 : 0.55 }}>
+                <button key={k} className="btn btn-sm" onClick={() => openEditor(k)}
+                  title={DOC_HELP[k]} style={{ opacity: checklist[k] ? 1 : 0.55 }}>
                   <Icon name={checklist[k] ? 'check' : 'circle'} size={13} /> {label}
                 </button>
               ))}

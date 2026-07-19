@@ -76,6 +76,18 @@ public class EngineApplyService {
 
     // ---- entry points ---------------------------------------------------------
 
+    /**
+     * HR-lead entry point: a hiring post with a recruiter email. Runs the normal pipeline
+     * and — because autoSendTo is set — emails the tailored package automatically the
+     * moment it's ready. This is the "found an HR email → apply by mail" automation.
+     */
+    public EngineApplication startForLead(UUID userId, String url, String postText, String email) {
+        EngineApplication a = start(userId, null, url, postText);
+        a.setAutoSendTo(email);
+        save(a);
+        return a;
+    }
+
     /** Start /apply for a scraped job, a raw URL, or pasted posting text. Async. */
     public EngineApplication start(UUID userId, UUID jobId, String url, String pastedText) {
         if (!ai.isEnabled()) throw new IllegalStateException("No AI provider configured.");
@@ -176,6 +188,18 @@ public class EngineApplyService {
             notify(a, "engine_ready", "Application ready — " + nz(a.getPostingTitle()),
                     (blank(a.getPostingCompany()) ? "" : a.getPostingCompany() + " · ")
                             + "CV + cover letter tailored & verified. Open Auto Apply → Applications to send.");
+            // HR-lead auto-send: package ready + a recruiter email attached → mail it now.
+            if (!blank(a.getAutoSendTo())) {
+                try {
+                    submitByEmail(a.getUserId(), a.getId(), a.getAutoSendTo());
+                    notify(a, "agent_applied", "Auto-emailed — " + nz(a.getPostingTitle()),
+                            "Tailored CV + cover letter sent to " + a.getAutoSendTo());
+                } catch (Exception e) {
+                    log.warn("auto-send to {} failed: {}", a.getAutoSendTo(), e.getMessage());
+                    notify(a, "engine_failed", "Auto-email failed — " + nz(a.getPostingTitle()),
+                            "Package is ready but sending to " + a.getAutoSendTo() + " failed: " + e.getMessage());
+                }
+            }
         } catch (Exception e) {
             log.warn("apply pipeline failed for {}: {}", appId, e.getMessage());
             a.setStage("failed");

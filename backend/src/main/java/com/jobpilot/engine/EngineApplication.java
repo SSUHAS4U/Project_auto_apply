@@ -91,6 +91,11 @@ public class EngineApplication {
     @Column(columnDefinition = "text")
     private String error;
 
+    /** When set, the package is emailed to this address automatically the moment it's ready
+     *  (the HR-lead pipeline: post scanned → email found → tailor → auto-send). */
+    @Column(name = "auto_send_to")
+    private String autoSendTo;
+
     /** /outcome: applied | interview_1 | interview_2 | offer | rejected | withdrawn */
     private String outcome;
 

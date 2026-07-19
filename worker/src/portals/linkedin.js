@@ -51,6 +51,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let applied = 0;
 
+  // Phase 1 — scan hiring POSTS for recruiter emails (the outreach half of the flow).
+  // Backend stores each lead, and with Auto-email ON it tailors + emails an application.
+  try { await scanHiringPosts(page, api, plan, state); }
+  catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
@@ -115,6 +120,74 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     }
   }
   return { applied };
+}
+
+// ---- Phase 1: hiring-post scan → HR email extraction ------------------------
+
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Obvious non-recruiter addresses — never lead on these.
+const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|support@|help@|info@linkedin/i;
+
+/**
+ * Search LinkedIn CONTENT (posts) for each keyword, scroll a few pages, and pull
+ * recruiter emails out of hiring posts. Each email goes to the backend as a lead with
+ * the post text, so the engine can tailor + auto-email an application. Time-boxed and
+ * capped so it never eats the Easy Apply phase.
+ */
+async function scanHiringPosts(page, api, plan, state) {
+  const cap = 5;                                   // leads per block — human-scale
+  const phaseDeadline = Date.now() + 8 * 60_000;   // ≤8 minutes of the block
+  let found = 0;
+  const seen = new Set();
+
+  for (const keyword of plan.keywords.slice(0, 2)) {
+    if (state.paused || Date.now() > phaseDeadline || found >= cap) break;
+    state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
+    await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
+
+    const url = 'https://www.linkedin.com/search/results/content/?keywords='
+      + encodeURIComponent(`${keyword} hiring`) + '&sortBy=%22date_posted%22';
+    await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await humanDelay(2500, 4000);
+    if (/\/login|\/authwall|signup/i.test(page.url())) return; // not logged in — skip quietly
+
+    for (let scroll = 0; scroll < 4 && found < cap && Date.now() < phaseDeadline; scroll++) {
+      // read every post currently rendered
+      const posts = await page.$$eval('div.feed-shared-update-v2, li.artdeco-card', (els) =>
+        els.slice(0, 30).map((el) => {
+          const name = el.querySelector('.update-components-actor__title span[aria-hidden]')?.textContent?.trim() || '';
+          const link = el.querySelector('a.app-aware-link[href*="/feed/update/"]')?.href || '';
+          return { name, link, text: (el.innerText || '').slice(0, 4500) };
+        })).catch(() => []);
+
+      for (const post of posts) {
+        const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
+        for (const email of emails) {
+          if (seen.has(email.toLowerCase()) || found >= cap) continue;
+          seen.add(email.toLowerCase());
+          state.action = `HR email found: ${email}`;
+          const r = await api.hrLead({
+            portal: 'linkedin', email, name: post.name,
+            url: post.link || page.url(),
+            title: post.text.split('\n').find((l) => l.trim().length > 10)?.slice(0, 90) || 'hiring post',
+            postText: post.text,
+          }).catch(() => ({ ok: false }));
+          if (r.ok && !r.duplicate) {
+            found++;
+            await api.event({ runId: state.runId, portal: 'linkedin', type: r.applying ? 'email_sent' : 'info',
+              title: `HR lead: ${email}`, url: post.link || undefined,
+              detail: r.applying ? 'tailoring application — will auto-email when ready' : 'lead saved (auto-email off or post too short)' });
+          }
+        }
+      }
+      await page.mouse.wheel(0, 2400).catch(() => {});
+      await humanDelay(2200, 3800);
+    }
+  }
+  if (found > 0) {
+    await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+      detail: `post scan done — ${found} HR lead(s) captured` });
+  }
 }
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */

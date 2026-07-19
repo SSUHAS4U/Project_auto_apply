@@ -35,6 +35,9 @@ public class PortalContact {
     @Column(name = "source_job_url")
     private String sourceJobUrl;
 
+    /** HR/recruiter email harvested from a hiring post (the lead pipeline). */
+    private String email;
+
     /** none | pending | connected | replied */
     @Column(name = "connection_status", nullable = false)
     private String connectionStatus = "none";
