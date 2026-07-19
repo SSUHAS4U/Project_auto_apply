@@ -81,7 +81,7 @@ export function DashboardPage() {
       </div>
 
       {/* Metric tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginBottom: 14 }}>
+      <div className="dash-tiles">
         {tiles.map((t) => {
           const recent = (recentByType[t.key === 'posts' ? 'post_analysed'
             : t.key === 'target' ? 'job_identified' : t.key === 'star' ? 'relevant'
@@ -113,7 +113,7 @@ export function DashboardPage() {
       </div>
 
       {/* Recent actions + engine snapshot */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 14 }}>
+      <div className="dash-cols">
         <div className="card" style={{ overflow: 'hidden' }}>
           <div className="card-pad" style={{ borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Recent actions</div>
           {events.length === 0 ? (

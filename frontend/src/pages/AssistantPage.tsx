@@ -19,7 +19,7 @@ const SUGGESTIONS = [
   'How many jobs have I applied to?',
 ];
 
-export function AssistantPage() {
+export function AssistantPage({ embedded = false }: { embedded?: boolean }) {
   const toast = useToast();
   const [msgs, setMsgs] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState('');
@@ -49,15 +49,17 @@ export function AssistantPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Assistant</h1>
-          <div className="page-sub">Find jobs from your database · get profile help</div>
+      {!embedded && (
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">Assistant</h1>
+            <div className="page-sub">Find jobs from your database · get profile help</div>
+          </div>
+          <ModelSwitcher />
         </div>
-        <ModelSwitcher />
-      </div>
+      )}
 
-      <div className="chat-wrap">
+      <div className={`chat-wrap ${embedded ? 'chat-embedded' : ''}`}>
         <div className="chat-log" ref={logRef}>
           {msgs.map((m, i) => (
             <Fragment key={i}>

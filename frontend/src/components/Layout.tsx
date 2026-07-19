@@ -3,25 +3,57 @@ import { useEffect, useState } from 'react';
 import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 import { getTheme, toggleTheme, type Theme } from '../lib/theme';
 import { Icon, Logo } from './Icon';
+import { AssistantWidget } from './AssistantWidget';
 
-const NAV = [
-  { to: '/', label: 'Dashboard', ico: 'dashboard', end: true },
-  { to: '/auto-apply', label: 'Auto Apply', ico: 'bolt' },
-  { to: '/agent', label: 'Agent · Live', ico: 'live' },
-  { to: '/connections', label: 'Connections', ico: 'link' },
-  { to: '/jobs', label: 'Jobs', ico: 'compass' },
-  { to: '/daily', label: 'Daily picks', ico: 'sun' },
-  { to: '/scout', label: 'Scout', ico: 'search' },
-  { to: '/resumes', label: 'Resumes', ico: 'file' },
-  { to: '/assistant', label: 'Assistant', ico: 'bot' },
-  { to: '/compose', label: 'Compose & send', ico: 'pen' },
-  { to: '/applications', label: 'Applications', ico: 'clipboard' },
-  { to: '/saved', label: 'Saved', ico: 'bookmark' },
-  { to: '/notifications', label: 'Notifications', ico: 'bell', badge: true },
-  { to: '/profile', label: 'Profile', ico: 'user' },
-  { to: '/settings', label: 'Settings', ico: 'gear' },
+/**
+ * Sidebar navigation, grouped: top-level destinations with collapsible children so the
+ * menu stays short. Notifications live as a bell in the user row (with unread badge);
+ * the Assistant is a floating chat widget, not a nav destination.
+ */
+type NavChild = { to: string; label: string; ico: string; admin?: boolean };
+type NavEntry = { label: string; ico: string; to?: string; end?: boolean; children?: NavChild[] };
+
+const NAV: NavEntry[] = [
+  { label: 'Dashboard', ico: 'dashboard', to: '/', end: true },
+  {
+    label: 'Auto Apply', ico: 'bolt',
+    children: [
+      { to: '/auto-apply', label: 'Engine', ico: 'gear' },
+      { to: '/agent', label: 'Agent · Live', ico: 'live' },
+      { to: '/connections', label: 'Connections', ico: 'link' },
+    ],
+  },
+  {
+    label: 'Jobs', ico: 'compass',
+    children: [
+      { to: '/jobs', label: 'Job board', ico: 'compass' },
+      { to: '/daily', label: 'Daily picks', ico: 'sun' },
+      { to: '/scout', label: 'Scout', ico: 'search' },
+    ],
+  },
+  {
+    label: 'Documents', ico: 'file',
+    children: [
+      { to: '/resumes', label: 'Resumes', ico: 'file' },
+      { to: '/compose', label: 'Compose & send', ico: 'pen' },
+    ],
+  },
+  {
+    label: 'Applications', ico: 'clipboard',
+    children: [
+      { to: '/applications', label: 'Tracker', ico: 'clipboard' },
+      { to: '/saved', label: 'Saved jobs', ico: 'bookmark' },
+    ],
+  },
+  {
+    label: 'Settings', ico: 'gear',
+    children: [
+      { to: '/settings', label: 'Preferences', ico: 'gear' },
+      { to: '/profile', label: 'Profile', ico: 'user' },
+      { to: '/admin', label: 'Admin', ico: 'shield', admin: true },
+    ],
+  },
 ];
-const ADMIN_NAV = { to: '/admin', label: 'Admin', ico: 'shield' };
 
 export function Layout() {
   const [unread, setUnread] = useState(0);
@@ -32,13 +64,16 @@ export function Layout() {
   const location = useLocation();
   const nav = useNavigate();
 
+  // Which group is expanded — default to the group owning the current route.
+  const groupOf = (path: string) =>
+    NAV.find((g) => g.children?.some((c) => path.startsWith(c.to)))?.label ?? '';
+  const [open, setOpen] = useState<string>(groupOf(location.pathname));
+
   // Re-check role from the server (handles grants/revokes + sessions predating roles).
   useEffect(() => {
     api.me().then((u) => { setEmail(u.email); setAdmin(!!u.isAdmin); setAdminUI(!!u.isAdmin); }).catch(() => {});
   }, []);
   const logout = () => { clearJwt(); nav('/login'); };
-
-  const navItems = admin ? [...NAV, ADMIN_NAV] : NAV;
 
   useEffect(() => {
     let active = true;
@@ -49,8 +84,8 @@ export function Layout() {
     return () => { active = false; clearInterval(t); };
   }, []);
 
-  // Close the mobile drawer on navigation.
-  useEffect(() => { setDrawer(false); }, [location.pathname]);
+  // Close the mobile drawer on navigation; keep the owning group expanded.
+  useEffect(() => { setDrawer(false); setOpen(groupOf(location.pathname)); }, [location.pathname]);
 
   const sidebar = (
     <aside className={`sidebar ${drawer ? 'open' : ''}`}>
@@ -61,17 +96,45 @@ export function Layout() {
           <div className="brand-sub">autonomous job agent</div>
         </div>
       </div>
-      {navItems.map((n) => (
-        <NavLink key={n.to} to={n.to} end={(n as { end?: boolean }).end}
+
+      {NAV.map((g) => g.children ? (
+        <div key={g.label} className="nav-group">
+          <button
+            className={`nav-item nav-parent ${groupOf(location.pathname) === g.label ? 'active' : ''}`}
+            onClick={() => setOpen((o) => (o === g.label ? '' : g.label))}
+            aria-expanded={open === g.label}>
+            <span className="ico"><Icon name={g.ico} size={18} /></span>
+            <span>{g.label}</span>
+            <span className={`nav-caret ${open === g.label ? 'open' : ''}`}><Icon name="chevron" size={14} /></span>
+          </button>
+          {open === g.label && (
+            <div className="nav-children">
+              {g.children.filter((c) => !c.admin || admin).map((c) => (
+                <NavLink key={c.to} to={c.to}
+                  className={({ isActive }) => `nav-item nav-child ${isActive ? 'active' : ''}`}>
+                  <span className="ico"><Icon name={c.ico} size={15} /></span>
+                  <span>{c.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <NavLink key={g.to} to={g.to!} end={g.end}
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <span className="ico"><Icon name={n.ico} size={18} /></span>
-          <span>{n.label}</span>
-          {(n as { badge?: boolean }).badge && unread > 0 && <span className="nav-badge">{unread}</span>}
+          <span className="ico"><Icon name={g.ico} size={18} /></span>
+          <span>{g.label}</span>
         </NavLink>
       ))}
+
       <div className="sidebar-user">
         <div className="su-avatar">{(email[0] || 'U').toUpperCase()}</div>
         <div className="su-email" title={email}>{email || 'account'}</div>
+        <button className="su-logout su-bell" onClick={() => nav('/notifications')}
+          title="Notifications" aria-label="Notifications">
+          <Icon name="bell" size={16} />
+          {unread > 0 && <span className="su-bell-badge">{unread > 99 ? '99+' : unread}</span>}
+        </button>
         <button className="su-logout" onClick={() => setTheme(toggleTheme())}
           title={theme === 'light' ? 'Switch to dark' : 'Switch to light'} aria-label="Toggle theme">
           {theme === 'light'
@@ -94,15 +157,23 @@ export function Layout() {
         </button>
         <Logo size={26} />
         <span className="brand-name">JobPilot</span>
-        {unread > 0 && <span className="nav-badge" style={{ marginLeft: 'auto' }}>{unread}</span>}
+        <button className="su-logout su-bell" style={{ marginLeft: 'auto' }} onClick={() => nav('/notifications')}
+          title="Notifications" aria-label="Notifications">
+          <Icon name="bell" size={17} />
+          {unread > 0 && <span className="su-bell-badge">{unread > 99 ? '99+' : unread}</span>}
+        </button>
       </header>
 
       {sidebar}
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
 
       <main className="main">
-        <Outlet />
+        <div className="page">
+          <Outlet />
+        </div>
       </main>
+
+      <AssistantWidget />
     </div>
   );
 }
