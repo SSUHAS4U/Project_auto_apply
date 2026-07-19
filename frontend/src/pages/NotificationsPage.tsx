@@ -4,7 +4,12 @@ import type { Notification } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 
-const ICON: Record<string, string> = { daily: 'sun', digest: 'mail', ingest: 'refresh', new_jobs: 'compass', reminder: 'clock' };
+const ICON: Record<string, string> = {
+  daily: 'sun', digest: 'mail', ingest: 'refresh', new_jobs: 'compass', reminder: 'clock',
+  // automation events (agent + engine)
+  agent_applied: 'send', agent_reply: 'mail', agent_attention: 'alert',
+  autopilot: 'bot', engine_ready: 'check', engine_failed: 'alert',
+};
 
 export function NotificationsPage() {
   const toast = useToast();

@@ -249,6 +249,9 @@ export const api = {
   agentRejectMessage: (id: string) =>
     req<AgentMessage>(`/api/agent/messages/${id}/reject`, { method: 'POST' }),
   agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
+  agentFlows: () => req<Record<string, boolean>>('/api/agent/flows'),
+  agentSetFlows: (flows: Record<string, boolean>) =>
+    req<Record<string, boolean>>('/api/agent/flows', { method: 'PUT', body: JSON.stringify(flows) }),
   agentConnections: () => req<PortalConnection[]>('/api/agent/connections'),
   agentConnect: (portal: string) => req<PortalConnection>(`/api/agent/connections/${portal}/connect`, { method: 'POST' }),
   agentDisconnect: (portal: string) => req<PortalConnection>(`/api/agent/connections/${portal}/disconnect`, { method: 'POST' }),

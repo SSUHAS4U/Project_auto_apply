@@ -42,6 +42,7 @@ public class AgentService {
     private final PortalConnectionRepository connections;
     private final com.jobpilot.service.ai.AiService ai;
     private final com.jobpilot.engine.EngineProfileRepository engineProfiles;
+    private final com.jobpilot.service.NotificationService notifications;
     private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
@@ -52,7 +53,8 @@ public class AgentService {
                         PortalContactRepository contacts, AgentMessageRepository messages,
                         PortalConnectionRepository connections,
                         com.jobpilot.service.ai.AiService ai,
-                        com.jobpilot.engine.EngineProfileRepository engineProfiles) {
+                        com.jobpilot.engine.EngineProfileRepository engineProfiles,
+                        com.jobpilot.service.NotificationService notifications) {
         this.runs = runs;
         this.events = events;
         this.schedules = schedules;
@@ -65,6 +67,7 @@ public class AgentService {
         this.connections = connections;
         this.engineProfiles = engineProfiles;
         this.ai = ai;
+        this.notifications = notifications;
     }
 
     // ---- worker heartbeat (is JobPilot Desktop actually running?) -----------
@@ -210,10 +213,19 @@ public class AgentService {
     @Transactional
     public AgentRun setRunStatus(UUID userId, UUID runId, String status, String currentAction) {
         AgentRun r = runs.findById(runId).orElseThrow();
+        boolean becameAttention = "needs_attention".equals(status) && !"needs_attention".equals(r.getStatus());
         if (status != null) r.setStatus(status);
         if (currentAction != null) r.setCurrentAction(currentAction);
         if ("done".equals(status) || "failed".equals(status)) r.setEndedAt(Instant.now());
-        return runs.save(r);
+        AgentRun saved = runs.save(r);
+        if (becameAttention) {
+            try {
+                notifications.create(userId, "agent_attention", "Agent needs attention — " + r.getPortal(),
+                        nz(currentAction, "A checkpoint/captcha is blocking the run. Open the app and solve it."),
+                        Map.of("portal", nz(r.getPortal(), "")));
+            } catch (Exception ex) { log.warn("notification create failed: {}", ex.getMessage()); }
+        }
+        return saved;
     }
 
     public List<AgentRun> recentRuns(UUID userId, int limit) {
@@ -246,7 +258,26 @@ public class AgentService {
         e.setDetail(detail);
         AgentEvent saved = events.save(e);
         if (runId != null) bumpRunCounter(runId, type);
+        // Surface the moments the owner actually cares about as notifications (the bell):
+        // every application sent, and replies received. Searching/info stay in the activity
+        // feed only — notifying those would bury the signal.
+        try {
+            if ("applied".equals(type) || "easy_apply".equals(type)) {
+                notifications.create(userId, "agent_applied", "Applied: " + nz(title, "a job"),
+                        (company == null ? "" : company + " · ") + nz(portal, "") + " — sent by the agent",
+                        Map.of("url", nz(url, ""), "portal", nz(portal, "")));
+            } else if ("reply_received".equals(type)) {
+                notifications.create(userId, "agent_reply", "Reply received" + (company == null ? "" : " — " + company),
+                        nz(detail, "A recruiter replied — open Network to respond."), Map.of("portal", nz(portal, "")));
+            }
+        } catch (Exception ex) {
+            log.warn("notification create failed: {}", ex.getMessage());
+        }
         return saved;
+    }
+
+    private static String nz(String s, String fallback) {
+        return s == null || s.isBlank() ? fallback : s;
     }
 
     private void bumpRunCounter(UUID runId, String type) {
@@ -402,7 +433,28 @@ public class AgentService {
         plan.put("connectCap", block != null ? block.getConnectCap() : 100);
         plan.put("messageCap", block != null ? block.getMessageCap() : 50);
         plan.put("blockMinutes", block != null ? block.getDurationMins() : 120);
+        plan.putAll(flows()); // flow toggles ride along so the worker honours them
         return plan;
+    }
+
+    // ---- flow controls (owner toggles on the Connections board) ---------------
+
+    private static final Map<String, String> FLOW_KEYS = Map.of(
+            "autoMessage", "agent_auto_message",
+            "autoEmail", "agent_auto_email",
+            "autoEasyApply", "agent_auto_easy_apply");
+
+    /** The three automation toggles; default ON. */
+    public Map<String, Object> flows() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        FLOW_KEYS.forEach((name, key) ->
+                out.put(name, settings.get(key).map(Boolean::parseBoolean).orElse(true)));
+        return out;
+    }
+
+    public void setFlow(String name, boolean value) {
+        String key = FLOW_KEYS.get(name);
+        if (key != null) settings.put(key, String.valueOf(value));
     }
 
     // ---- time-based rotation (Naukri 09:00 → LinkedIn → Indeed, unattended) ---
@@ -444,6 +496,8 @@ public class AgentService {
         int nowMin = java.time.LocalTime.now(ZONE).toSecondOfDay() / 60;
         AgentSchedule block = activeBlock(blocks, nowMin);
         if (block == null) return "no active block now";
+        // Naukri automation is parked — never auto-start it from the rotation.
+        if ("naukri".equalsIgnoreCase(block.getPortal())) return "naukri parked (in progress)";
 
         AgentRun live = activeRun(userId);
         if (live != null) {

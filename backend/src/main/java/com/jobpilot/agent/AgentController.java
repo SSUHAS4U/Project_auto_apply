@@ -65,13 +65,33 @@ public class AgentController {
 
     // ---- run control ----------------------------------------------------------
 
-    /** "Start Naukri now" — create/attach a run the worker will pick up. */
+    /** Start a portal run the worker will pick up. */
     @PostMapping("/run")
     public Map<String, Object> startRun(@RequestBody Map<String, String> b) {
         UUID u = UserContext.require();
-        String portal = b.getOrDefault("portal", "naukri").toLowerCase(Locale.ROOT);
+        String portal = b.getOrDefault("portal", "linkedin").toLowerCase(Locale.ROOT);
+        // Naukri automation is parked ("in progress") — owner decision: keep the portal
+        // visible but reject any automation action against it for now.
+        if ("naukri".equals(portal)) {
+            throw new IllegalArgumentException("Naukri automation is in progress — not available yet.");
+        }
         if (agent.isPaused()) agent.setPaused(false);
         return runView(agent.startOrGetRun(u, portal));
+    }
+
+    // ---- flow controls (Auto-message / Auto-email / Auto Easy Apply) -----------
+
+    @GetMapping("/flows")
+    public Map<String, Object> flows() {
+        UserContext.require();
+        return agent.flows();
+    }
+
+    @PutMapping("/flows")
+    public Map<String, Object> setFlows(@RequestBody Map<String, Object> b) {
+        UserContext.require();
+        b.forEach((k, v) -> agent.setFlow(k, Boolean.parseBoolean(String.valueOf(v))));
+        return agent.flows();
     }
 
     @PostMapping("/run/{id}/stop")

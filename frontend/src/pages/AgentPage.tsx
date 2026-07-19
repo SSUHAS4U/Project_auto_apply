@@ -15,7 +15,9 @@ import { Icon } from '../components/Icon';
 
 type Tab = 'live' | 'activity' | 'network' | 'schedule' | 'connect';
 
-const PORTALS = ['naukri', 'linkedin', 'indeed'];
+// Naukri automation is parked ("in progress") — it stays visible on Connections but gets
+// no run buttons here until it ships.
+const PORTALS = ['linkedin', 'indeed'];
 // Vector icon name + accent colour per event type (rendered via <Icon>).
 const EVENT_ICON: Record<string, { name: string; color: string }> = {
   post_analysed: { name: 'search', color: '#60a5fa' },
@@ -96,8 +98,10 @@ export function AgentPage() {
             {status && !status.workerConfigured && <> <Chip text="desktop not connected" tone="red" /></>}
           </h1>
           <div className="page-sub">
-            JobPilot Desktop runs a real browser on your PC and applies with your own logged-in
-            sessions — you watch it live here. The backend schedules, scores, answers, and records everything.
+            <b>The hands.</b> JobPilot Desktop drives a real browser on your PC and clicks through
+            portals (LinkedIn / Indeed) with your own logged-in sessions — Easy Apply, connections,
+            messages — while you watch live. The <b>Engine</b> is the brain that finds &amp; ranks jobs
+            and writes your documents; this page is where those applications physically happen.
           </div>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>

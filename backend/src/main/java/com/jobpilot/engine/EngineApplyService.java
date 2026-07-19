@@ -45,6 +45,7 @@ public class EngineApplyService {
     private final com.jobpilot.service.ResumeDocService resumeDocs;         // tailor base résumé + compileLatex
     private final com.jobpilot.service.cover.CoverLetterService coverLetters; // reuse the app's cover-letter service
     private final com.jobpilot.repository.ProfileRepository profileRepo;      // app Profile by userId (for cover letter)
+    private final com.jobpilot.service.NotificationService notifications;     // bell: package ready / failed
     private final ObjectMapper mapper = new ObjectMapper();
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "engine-apply");
@@ -58,7 +59,8 @@ public class EngineApplyService {
                               com.jobpilot.service.SettingsService settings,
                               com.jobpilot.service.ResumeDocService resumeDocs,
                               com.jobpilot.service.cover.CoverLetterService coverLetters,
-                              com.jobpilot.repository.ProfileRepository profileRepo) {
+                              com.jobpilot.repository.ProfileRepository profileRepo,
+                              com.jobpilot.service.NotificationService notifications) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;
@@ -69,6 +71,7 @@ public class EngineApplyService {
         this.resumeDocs = resumeDocs;
         this.coverLetters = coverLetters;
         this.profileRepo = profileRepo;
+        this.notifications = notifications;
     }
 
     // ---- entry points ---------------------------------------------------------
@@ -170,12 +173,26 @@ public class EngineApplyService {
             logStage(a, "ready", "Application package ready — CV " + a.getCvPages() + "p, letter "
                     + a.getCoverPages() + "p");
             save(a);
+            notify(a, "engine_ready", "Application ready — " + nz(a.getPostingTitle()),
+                    (blank(a.getPostingCompany()) ? "" : a.getPostingCompany() + " · ")
+                            + "CV + cover letter tailored & verified. Open Auto Apply → Applications to send.");
         } catch (Exception e) {
             log.warn("apply pipeline failed for {}: {}", appId, e.getMessage());
             a.setStage("failed");
             a.setError(e.getMessage());
             logStage(a, "failed", e.getMessage());
             save(a);
+            notify(a, "engine_failed", "Application failed — " + nz(a.getPostingTitle()), e.getMessage());
+        }
+    }
+
+    /** Bell notification for pipeline milestones; never lets a notify error break the run. */
+    private void notify(EngineApplication a, String type, String title, String body) {
+        try {
+            notifications.create(a.getUserId(), type, title, body,
+                    Map.of("applicationId", String.valueOf(a.getId())));
+        } catch (Exception e) {
+            log.warn("notification failed: {}", e.getMessage());
         }
     }
 

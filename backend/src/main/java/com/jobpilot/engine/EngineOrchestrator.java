@@ -35,6 +35,7 @@ public class EngineOrchestrator {
     private final EngineApplyService apply;
     private final EngineSetupService setup;
     private final AiService ai;
+    private final com.jobpilot.service.NotificationService notifications;
 
     /** One cycle per user at a time. */
     private final Map<UUID, AtomicBoolean> running = new ConcurrentHashMap<>();
@@ -42,7 +43,8 @@ public class EngineOrchestrator {
     public EngineOrchestrator(EngineProfileRepository profiles, EngineJobRepository jobs,
                               EngineApplicationRepository apps, EngineScraperService scraper,
                               EngineRankService rank, EngineApplyService apply,
-                              EngineSetupService setup, AiService ai) {
+                              EngineSetupService setup, AiService ai,
+                              com.jobpilot.service.NotificationService notifications) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.apps = apps;
@@ -51,6 +53,7 @@ public class EngineOrchestrator {
         this.apply = apply;
         this.setup = setup;
         this.ai = ai;
+        this.notifications = notifications;
     }
 
     public boolean isRunning(UUID userId) {
@@ -137,6 +140,12 @@ public class EngineOrchestrator {
         p.setLastRunAt(Instant.now());
         p.setLastRunSummary(summary);
         profiles.save(p);
+        try {
+            notifications.create(p.getUserId(), "autopilot", "Autopilot cycle finished",
+                    summary, Map.of("scraped", scraped, "ranked", ranked, "started", started));
+        } catch (Exception e) {
+            log.warn("autopilot notification failed: {}", e.getMessage());
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("status", "done");
         out.put("scraped", scraped);

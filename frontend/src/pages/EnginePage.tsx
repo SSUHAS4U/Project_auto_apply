@@ -83,10 +83,10 @@ export function EnginePage() {
             {status?.setupReady && <> <Chip text="setup ready" tone="green" /></>}
           </h1>
           <div className="page-sub">
-            A self-contained replica of the ai-job-search workflow:
-            {' '}<b>Setup</b> your profile → <b>Scrape</b> LinkedIn → <b>Rank</b> the matches →
-            {' '}<b>Apply</b> (draft · independent review · revise · compile · ATS-verify) →
-            {' '}record <b>Outcome</b> → <b>Interview</b> prep → <b>Upskill</b>.
+            <b>The brain.</b> Finds jobs, scores your fit, and builds a tailored CV + cover letter
+            for each one: <b>Setup</b> → <b>Scrape</b> → <b>Rank</b> → <b>Apply</b> (tailor · compile ·
+            ATS-verify) → <b>Outcome</b> → <b>Interview</b> → <b>Upskill</b>. The <b>Agent</b> page is
+            the hands — it clicks through the portals on your PC with your own sessions.
           </div>
         </div>
         {busy && (
