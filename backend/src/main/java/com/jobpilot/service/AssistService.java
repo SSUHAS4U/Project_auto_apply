@@ -429,6 +429,41 @@ public class AssistService {
         if (p.getSkills() != null && !p.getSkills().isEmpty()) line(sb, "Skills", String.join(", ", p.getSkills()));
         if (p.getLinks() != null) p.getLinks().forEach((k, v) -> line(sb, "Link (" + k + ")", v));
 
+        // Job profile + screening extras — LeetCode/CodeChef scores, shifts, machine specs
+        // are standard Indian-form questions; having them here lets autofill answer directly.
+        line(sb, "Desired job titles", p.getDesiredTitles());
+        line(sb, "Experience level sought", p.getExperienceLevel());
+        line(sb, "Job type sought", p.getJobType());
+        line(sb, "Open to working in shifts", p.getOpenToShifts());
+        line(sb, "LeetCode profile URL", p.getLeetcodeUrl());
+        line(sb, "LeetCode score/rating", p.getLeetcodeScore());
+        line(sb, "CodeChef profile URL", p.getCodechefUrl());
+        line(sb, "CodeChef score/rating", p.getCodechefScore());
+        line(sb, "Codeforces profile URL", p.getCodeforcesUrl());
+        line(sb, "Codeforces score/rating", p.getCodeforcesScore());
+        line(sb, "Laptop/PC configuration", p.getLaptopConfig());
+        if (p.getProjects() != null && !p.getProjects().isEmpty()) {
+            sb.append("Projects:\n");
+            for (Map<String, Object> pr : p.getProjects()) {
+                if (s(pr.get("name")).isBlank()) continue;
+                sb.append("  - ").append(s(pr.get("name")));
+                if (!s(pr.get("skills")).isBlank()) sb.append(" | Skills: ").append(s(pr.get("skills")));
+                if (!s(pr.get("demoLink")).isBlank()) sb.append(" | Link: ").append(s(pr.get("demoLink")));
+                String desc = s(pr.get("description"));
+                if (!desc.isBlank()) sb.append(" | ").append(desc.length() > 200 ? desc.substring(0, 200) : desc);
+                sb.append('\n');
+            }
+        }
+        if (p.getAchievements() != null && !p.getAchievements().isEmpty()) {
+            sb.append("Achievements:\n");
+            for (Map<String, Object> a : p.getAchievements()) {
+                if (s(a.get("title")).isBlank()) continue;
+                sb.append("  - ").append(s(a.get("title")));
+                if (!s(a.get("description")).isBlank()) sb.append(" — ").append(s(a.get("description")));
+                sb.append('\n');
+            }
+        }
+
         // Structured education — so labels like "School or University", "Degree" and
         // "Field of Study" map to the right value (not the headline/summary).
         if (p.getEducation() != null && !p.getEducation().isEmpty()) {

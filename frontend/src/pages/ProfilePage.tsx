@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type QaPair, type DocItem } from '../api/client';
-import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
+import type { AchievementItem, CertificationItem, EducationItem, ExperienceItem, ProjectItem, Profile } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
@@ -85,9 +85,10 @@ function SavedAnswers() {
   );
 }
 
-type Tab = 'personal' | 'professional' | 'experience' | 'education' | 'autofill' | 'resume';
+type Tab = 'personal' | 'jobprofile' | 'professional' | 'experience' | 'education' | 'autofill' | 'resume';
 const TABS: { id: Tab; label: string; ico: string }[] = [
   { id: 'personal', label: 'Personal', ico: 'user' },
+  { id: 'jobprofile', label: 'Job profile', ico: 'target' },
   { id: 'professional', label: 'Professional', ico: 'clipboard' },
   { id: 'experience', label: 'Experience', ico: 'trophy' },
   { id: 'education', label: 'Education', ico: 'file' },
@@ -261,6 +262,74 @@ export function ProfilePage() {
         </div>
       )}
 
+      {tab === 'jobprofile' && (
+        <div style={{ maxWidth: 820 }}>
+          <Section ico="target" title="What you're hunting for" sub="drives the automation's searches & form answers">
+            <Field label="Desired job titles — comma-separated" full>
+              <input className="input" value={p.desiredTitles ?? ''} onChange={(e) => set({ desiredTitles: e.target.value })}
+                placeholder="Full-Stack Software Engineer, Backend Developer, Software Engineer" />
+            </Field>
+            <div className="grid2" style={{ marginTop: 12 }}>
+              <Field label="Experience level">
+                <select className="select" value={p.experienceLevel ?? ''} onChange={(e) => set({ experienceLevel: e.target.value })}>
+                  <option value="">Select…</option>
+                  {['0-2 Years', '2-5 Years', '5-8 Years', '8+ Years'].map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </Field>
+              <Field label="Job type">
+                <select className="select" value={p.jobType ?? ''} onChange={(e) => set({ jobType: e.target.value })}>
+                  <option value="">Select…</option>
+                  {['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance'].map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </Field>
+              <Field label="Compensation expected (annual)">
+                <input className="input" placeholder="800000" value={p.expectedCtc ?? ''} onChange={(e) => set({ expectedCtc: e.target.value })} />
+              </Field>
+              <Field label="Current compensation (annual)">
+                <input className="input" placeholder="e.g. 800000" value={p.currentCtc ?? ''} onChange={(e) => set({ currentCtc: e.target.value })} />
+              </Field>
+            </div>
+          </Section>
+
+          <RepeatableList<ProjectItem>
+            ico="bolt" title="Projects"
+            sub="your showcase — used in tailored resumes, cover letters & form answers"
+            items={p.projects ?? []}
+            onChange={(items) => set({ projects: items })}
+            empty={{ name: '', skills: '', demoLink: '', description: '' }}
+            render={(item, upd) => (
+              <>
+                <div className="grid2">
+                  <Field label="Project name"><input className="input" placeholder="ProteinPro – Nutrition Tracking Platform" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
+                  <Field label="Demo / repo link"><input className="input" type="url" placeholder="https://…" value={item.demoLink ?? ''} onChange={(e) => upd({ demoLink: e.target.value })} /></Field>
+                </div>
+                <Field label="Skill set used — comma-separated" full>
+                  <input className="input" placeholder="Spring Boot, React, PostgreSQL, REST APIs, JWT" value={item.skills ?? ''} onChange={(e) => upd({ skills: e.target.value })} />
+                </Field>
+                <Field label="Description — what it does & what you achieved" full>
+                  <textarea className="input" rows={3} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })}
+                    placeholder="- Built a full-stack health-tracking platform…&#10;- Integrated external APIs…" />
+                </Field>
+              </>
+            )}
+          />
+
+          <RepeatableList<AchievementItem>
+            ico="trophy" title="Achievements"
+            sub="awards, ranks, certifications-of-merit — great cover-letter material"
+            items={p.achievements ?? []}
+            onChange={(items) => set({ achievements: items })}
+            empty={{ title: '', description: '' }}
+            render={(item, upd) => (
+              <>
+                <Field label="Title" full><input className="input" placeholder="Winner — Smart India Hackathon 2025" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
+                <Field label="Details (optional)" full><textarea className="input" rows={2} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })} /></Field>
+              </>
+            )}
+          />
+        </div>
+      )}
+
       {tab === 'professional' && (
         <div style={{ maxWidth: 900 }}>
           <Section ico="clipboard" title="Current role & compensation">
@@ -380,13 +449,20 @@ export function ProfilePage() {
             sub="school, degree, field, dates and score — used for eligibility filters & autofill"
             items={p.education ?? []}
             onChange={(items) => set({ education: items })}
-            empty={{ school: '', degree: '', field: '', location: '', startYear: '', endYear: '', gradeType: 'CGPA', grade: '' }}
+            empty={{ school: '', degree: '', field: '', location: '', startYear: '', endYear: '', gradeType: 'CGPA', grade: '', institutionType: '', specialization: '', current: false }}
             render={(item, upd) => (
               <>
                 <div className="grid2">
                   <Field label="School / University"><input className="input" value={item.school ?? ''} onChange={(e) => upd({ school: e.target.value })} /></Field>
+                  <Field label="Institution type">
+                    <select className="select" value={item.institutionType ?? ''} onChange={(e) => upd({ institutionType: e.target.value })}>
+                      <option value="">Select…</option>
+                      {['University', 'College', 'Junior College', 'School'].map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Degree"><input className="input" placeholder="B.Tech, 12th (Intermediate), 10th…" value={item.degree ?? ''} onChange={(e) => upd({ degree: e.target.value })} /></Field>
                   <Field label="Field of study / stream"><input className="input" placeholder="Computer Science, MPC…" value={item.field ?? ''} onChange={(e) => upd({ field: e.target.value })} /></Field>
+                  <Field label="Specialization (optional)"><input className="input" placeholder="DevOps, AI/ML…" value={item.specialization ?? ''} onChange={(e) => upd({ specialization: e.target.value })} /></Field>
                   <Field label="Location"><input className="input" placeholder="City, Country" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
                 </div>
                 <div className="grid3">
@@ -401,6 +477,7 @@ export function ProfilePage() {
                     </div>
                   </Field>
                 </div>
+                <label className="check-row"><input type="checkbox" checked={!!item.current} onChange={(e) => upd({ current: e.target.checked })} /> I currently study here</label>
               </>
             )}
           />

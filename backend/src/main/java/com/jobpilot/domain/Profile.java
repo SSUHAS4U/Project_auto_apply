@@ -108,6 +108,24 @@ public class Profile {
     @Column(name = "laptop_config")
     private String laptopConfig;
 
+    // --- Job profile (what the candidate hunts for + showcase material) ------
+    @Column(name = "desired_titles")
+    private String desiredTitles;         // comma-separated, feeds search keywords
+
+    @Column(name = "experience_level")
+    private String experienceLevel;       // e.g. "0-2 Years"
+
+    @Column(name = "job_type")
+    private String jobType;               // e.g. "Full-time"
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private List<Map<String, Object>> projects = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private List<Map<String, Object>> achievements = new ArrayList<>();
+
     // --- Professional -------------------------------------------------------
     private String seniority;
 

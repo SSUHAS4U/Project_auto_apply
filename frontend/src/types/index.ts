@@ -60,7 +60,12 @@ export interface EducationItem {
   school?: string; degree?: string; field?: string; location?: string;
   startYear?: string; endYear?: string; year?: string;
   gradeType?: string; grade?: string;
+  institutionType?: string; specialization?: string; current?: boolean;
 }
+export interface ProjectItem {
+  name?: string; skills?: string; demoLink?: string; description?: string;
+}
+export interface AchievementItem { title?: string; description?: string; }
 export interface CertificationItem {
   name?: string; issuer?: string; year?: string; link?: string;
   credentialId?: string; issued?: string; expiry?: string;
@@ -102,6 +107,12 @@ export interface Profile {
   codeforcesUrl?: string;
   codeforcesScore?: string;
   laptopConfig?: string;
+  // job profile
+  desiredTitles?: string;
+  experienceLevel?: string;
+  jobType?: string;
+  projects?: ProjectItem[];
+  achievements?: AchievementItem[];
   gender?: string;
   nationality?: string;
   // professional

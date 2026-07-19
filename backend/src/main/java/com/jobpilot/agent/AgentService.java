@@ -412,7 +412,11 @@ public class AgentService {
             });
         }
 
-        // 3. last-resort: the app Profile
+        // 3. last-resort: the app Profile — the Job Profile's desired titles are what the
+        //    candidate actually WANTS (beats their current title as a search term).
+        if (keywords.isEmpty() && p.getDesiredTitles() != null && !p.getDesiredTitles().isBlank()) {
+            for (String t : p.getDesiredTitles().split(",")) if (!t.isBlank()) keywords.add(t.trim());
+        }
         if (keywords.isEmpty()) {
             if (p.getCurrentTitle() != null && !p.getCurrentTitle().isBlank()) keywords.add(p.getCurrentTitle().trim());
             if (p.getHeadline() != null && !p.getHeadline().isBlank()) keywords.add(p.getHeadline().trim());

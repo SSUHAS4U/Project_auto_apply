@@ -77,6 +77,12 @@ public class ProfileService {
         p.setCodeforcesUrl(in.getCodeforcesUrl());
         p.setCodeforcesScore(in.getCodeforcesScore());
         p.setLaptopConfig(in.getLaptopConfig());
+        // Job profile
+        p.setDesiredTitles(in.getDesiredTitles());
+        p.setExperienceLevel(in.getExperienceLevel());
+        p.setJobType(in.getJobType());
+        if (in.getProjects() != null) p.setProjects(in.getProjects());
+        if (in.getAchievements() != null) p.setAchievements(in.getAchievements());
         // Professional
         p.setSeniority(in.getSeniority());
         p.setCurrentTitle(in.getCurrentTitle());
