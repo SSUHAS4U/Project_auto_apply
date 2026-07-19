@@ -182,36 +182,54 @@ function SecretsManager() {
 }
 
 function UserModal({ u, onClose }: { u: AdminUserDetail; onClose: () => void }) {
-  const row = (label: string, value?: string | number | null) =>
+  const tile = (label: string, value?: string | number | null) =>
     (value === undefined || value === null || value === '') ? null : (
-      <div className="kv-row" style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 8, padding: '6px 0', borderTop: '1px solid var(--border)' }}>
-        <div className="faint" style={{ fontSize: 13 }}>{label}</div>
-        <div style={{ fontSize: 13.5 }}>{value}</div>
+      <div className="kv-tile">
+        <span className="kv-k">{label}</span>
+        <span className="kv-v" style={{ whiteSpace: 'normal' }}>{value}</span>
       </div>
     );
   return (
-    <Modal title={u.fullName || u.email} onClose={onClose} wide
+    <Modal title="" onClose={onClose} wide
       footer={<button className="btn btn-primary" onClick={onClose}>Close</button>}>
-      <div style={{ display: 'grid', gap: 2 }}>
-        {row('Email', u.email)}
-        {row('Role', u.role)}
-        {row('Phone', u.phone)}
-        {row('Location', u.location)}
-        {row('Headline', u.headline)}
-        {row('Current role', [u.currentTitle, u.currentCompany].filter(Boolean).join(' · '))}
-        {row('Experience', u.yearsExperience ? `${u.yearsExperience} yrs` : undefined)}
-        {row('Skills', u.skills && u.skills.length ? u.skills.join(', ') : undefined)}
-        {row('Resume', u.resumeFilename)}
-        {row('Applications', u.applications)}
-        {row('Saved jobs', u.savedJobs)}
-        {row('Joined', u.createdAt ? fmtDate(u.createdAt) : undefined)}
-        {u.summary && (
-          <div style={{ marginTop: 10 }}>
-            <div className="faint" style={{ fontSize: 13, marginBottom: 4 }}>Summary</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{u.summary}</div>
+      {/* identity header */}
+      <div className="row" style={{ gap: 14, alignItems: 'center', marginBottom: 16 }}>
+        <div className="hero-avatar" style={{ width: 50, height: 50, fontSize: 22, borderRadius: 14 }}>
+          {(u.fullName?.[0] || u.email?.[0] || 'U').toUpperCase()}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 750, fontSize: 18, letterSpacing: '-0.02em' }}>{u.fullName || u.email}</div>
+          <div className="row" style={{ gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+            <span className={`tone ${u.role === 'ADMIN' ? 'tone-indigo' : 'tone-slate'}`}>{u.role}</span>
+            {u.headline && <span className="faint" style={{ fontSize: 12.5 }}>{u.headline}</span>}
           </div>
-        )}
+        </div>
       </div>
+
+      <div className="kv-tiles">
+        {tile('Email', u.email)}
+        {tile('Phone', u.phone)}
+        {tile('Location', u.location)}
+        {tile('Current role', [u.currentTitle, u.currentCompany].filter(Boolean).join(' · '))}
+        {tile('Experience', u.yearsExperience ? `${u.yearsExperience} yrs` : undefined)}
+        {tile('Resume', u.resumeFilename)}
+        {tile('Applications', u.applications)}
+        {tile('Saved jobs', u.savedJobs)}
+        {tile('Joined', u.createdAt ? fmtDate(u.createdAt) : undefined)}
+      </div>
+
+      {u.skills && u.skills.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div className="kv-k" style={{ marginBottom: 6 }}>Skills</div>
+          <div className="skill-row">{u.skills.slice(0, 24).map((s) => <span key={s} className="chip">{s}</span>)}</div>
+        </div>
+      )}
+      {u.summary && (
+        <div style={{ marginTop: 14 }}>
+          <div className="kv-k" style={{ marginBottom: 6 }}>Summary</div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{u.summary}</div>
+        </div>
+      )}
     </Modal>
   );
 }

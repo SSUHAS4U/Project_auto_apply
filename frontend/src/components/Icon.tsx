@@ -1,5 +1,6 @@
 // A small, consistent inline-SVG icon set (Lucide-style, 24×24, 2px stroke) so the app
 // uses real vector icons instead of emoji. currentColor lets them theme automatically.
+import React from 'react';
 
 const PATHS: Record<string, JSX.Element> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>,
@@ -59,7 +60,10 @@ export function Icon({ name, size = 18, className, style }:
 
 /** The JobPilot brand mark — a paper-plane (send) in a rounded gradient tile. */
 export function Logo({ size = 34 }: { size?: number }) {
-  const id = 'jp-logo-grad';
+  // Unique per instance: a duplicated SVG gradient id breaks when the first copy sits in
+  // a display:none container (the mobile topbar) — Chrome then renders NO fill at all,
+  // which is why the sidebar logo vanished on desktop.
+  const id = React.useId();
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-label="JobPilot">
       <defs>

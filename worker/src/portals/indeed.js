@@ -44,6 +44,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let applied = 0;
+  let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 
   outer:
   for (const keyword of plan.keywords) {
@@ -56,12 +57,23 @@ export async function runIndeed(page, api, plan, state, ctx) {
       await humanDelay(2800, 5000);
 
       if (await looksBlocked(page)) {
+        blockedStreak++;
         state.action = 'Indeed checkpoint — needs attention';
+        // Previously this looped per keyword×location and flooded the activity feed with
+        // hundreds of identical errors. Three walls in a row = Indeed is not letting us in
+        // this session: flag needs_attention (rings the bell) and END the block cleanly.
+        if (blockedStreak >= 3) {
+          await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+            detail: 'checkpoint/captcha persists — pausing Indeed for this block. Solve it in the browser, then run again.' });
+          await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha — solve it in the browser').catch(() => {});
+          return { applied };
+        }
         await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
           detail: 'checkpoint/captcha — solve it in the browser, then it resumes' });
         await sleep(15000);
         continue;
       }
+      blockedStreak = 0;
 
       const keys = await collectJobKeys(page);
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info',

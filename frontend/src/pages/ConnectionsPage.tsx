@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { DesktopSetup } from '../components/DesktopSetup';
 
 /**
  * Connections — the board of everything the agent works through: portal sessions
@@ -92,11 +93,8 @@ export function ConnectionsPage() {
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--amber)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <Icon name="alert" size={16} className="t-amber" style={{ flex: 'none' }} />
           <span style={{ fontSize: 13.5 }}>
-            Connecting needs the JobPilot Desktop app running on your PC.
+            Connecting needs the JobPilot Desktop app running on your PC — set it up below (one time).
           </span>
-          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => nav('/agent')}>
-            Set up / get connect code <Icon name="external" size={12} />
-          </button>
         </div>
       )}
 
@@ -177,6 +175,11 @@ export function ConnectionsPage() {
             </button>
           </div>
         ))}
+      </div>
+
+      {/* Desktop app onboarding — download + connect code (moved here from Agent) */}
+      <div style={{ marginTop: 18 }}>
+        <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
       </div>
 
       <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>

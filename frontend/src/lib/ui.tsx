@@ -59,18 +59,22 @@ const ToastCtx = createContext<(msg: string, kind?: Toast['kind']) => void>(() =
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  // ONE toast at a time — a new message replaces the previous one instead of stacking.
+  const [toast, setToast] = useState<Toast | null>(null);
   const push = useCallback((msg: string, kind: Toast['kind'] = 'info') => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
+    setToast({ id, msg, kind });
+    setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), 4000);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.kind}`}>{t.msg}</div>
-      ))}
+      {toast && (
+        <div key={toast.id} className={`toast ${toast.kind}`}>
+          <span style={{ flex: 1, minWidth: 0 }}>{toast.msg}</span>
+          <button className="toast-x" onClick={() => setToast(null)} aria-label="Dismiss">×</button>
+        </div>
+      )}
     </ToastCtx.Provider>
   );
 }

@@ -4,7 +4,6 @@ import type {
   AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentSchedule, AgentStatus, PortalContact,
 } from '../types';
 import { fmtDate, StatIcon, useToast } from '../lib/ui';
-import { DownloadDesktop } from '../components/DownloadDesktop';
 import { Icon } from '../components/Icon';
 
 /**
@@ -13,7 +12,7 @@ import { Icon } from '../components/Icon';
  * the daily rotation schedule, the draft-first message approvals, and worker onboarding.
  */
 
-type Tab = 'live' | 'flows' | 'activity' | 'network' | 'schedule' | 'connect';
+type Tab = 'live' | 'flows' | 'activity' | 'network' | 'schedule';
 
 // Naukri automation is parked ("in progress") — it stays visible on Connections but gets
 // no run buttons here until it ships.
@@ -123,8 +122,10 @@ export function AgentPage() {
       </div>
 
       {status && !status.workerConfigured && (
-        <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#f59e0b', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center' }}>
-          <Icon name="alert" size={16} style={{ color: '#f59e0b', flex: 'none' }} /> <span>JobPilot Desktop isn't connected yet. Open the <b>Connect</b> tab to set it up (one time).</span>
+        <div className="card card-pad" style={{ marginBottom: 14, borderColor: 'var(--amber)', fontSize: 13, display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Icon name="alert" size={16} className="t-amber" style={{ flex: 'none' }} />
+          <span>JobPilot Desktop isn't connected yet — set it up once on the Connections page.</span>
+          <a className="btn btn-sm" style={{ marginLeft: 'auto' }} href="/connections">Open Connections <Icon name="external" size={12} /></a>
         </div>
       )}
 
@@ -145,7 +146,7 @@ export function AgentPage() {
       <div className="row" style={{ gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {([['live', 'live', 'Watch Live'], ['flows', 'bolt', 'Automations'], ['activity', 'clipboard', 'Activity'],
            ['network', 'user', `Network${status?.pendingApprovals ? ` (${status.pendingApprovals})` : ''}`],
-           ['schedule', 'clock', 'Schedule'], ['connect', 'link', 'Connect']] as [Tab, string, string][]).map(([t, ico, label]) => (
+           ['schedule', 'clock', 'Schedule']] as [Tab, string, string][]).map(([t, ico, label]) => (
           <button key={t} className={`btn btn-sm ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>
             <Icon name={ico} size={13} /> {label}
           </button>
@@ -157,7 +158,6 @@ export function AgentPage() {
       {tab === 'activity' && <ActivityTab />}
       {tab === 'network' && <NetworkTab onChange={loadStatus} />}
       {tab === 'schedule' && <ScheduleTab />}
-      {tab === 'connect' && <ConnectTab configured={status?.workerConfigured ?? false} onChange={loadStatus} />}
     </>
   );
 }
@@ -446,53 +446,6 @@ function ScheduleTab() {
         </div>
       ))}
       <button className="btn btn-primary btn-sm" onClick={save} style={{ marginTop: 8 }}>Save schedule</button>
-    </div>
-  );
-}
-
-// ---- Connect (JobPilot Desktop onboarding) ----------------------------------
-
-function ConnectTab({ configured, onChange }: { configured: boolean; onChange: () => void }) {
-  const toast = useToast();
-  const [code, setCode] = useState('');
-  const issue = async () => {
-    try { const r = await api.agentIssueToken(); setCode(r.token); toast('Connect code generated — paste it into JobPilot Desktop.', 'success'); onChange(); }
-    catch (e) { toast((e as Error).message, 'error'); }
-  };
-  const copy = () => { navigator.clipboard?.writeText(code).then(() => toast('Copied ✓', 'success')).catch(() => {}); };
-
-  return (
-    <div className="card card-pad" style={{ maxWidth: 760 }}>
-      <h3 style={{ marginTop: 0 }}>Set up JobPilot Desktop {configured && <Chip text="connected" tone="green" />}</h3>
-      <p className="faint" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-        JobPilot Desktop is a tiny app that runs on your computer — the same idea as VS Code being installed.
-        It opens a real browser so the agent can apply for you, using your own logins. Your passwords and
-        cookies stay on your machine and never reach our servers. You set it up <b>once</b>:
-      </p>
-      <ol style={{ fontSize: 13.5, lineHeight: 1.9 }}>
-        <li><b>Download JobPilot Desktop</b> for your computer and open it (Windows may warn on an unknown
-          app — choose “More info → Run anyway”).</li>
-        <li>Generate your connect code below and paste it when the app asks (just once).</li>
-        <li>Done. A browser opens — now use the <b>Connect</b> buttons on the Connections page to sign into each portal.</li>
-      </ol>
-      <DownloadDesktop />
-      <div style={{ height: 12 }} />
-      <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
-        <button className="btn btn-primary btn-sm" onClick={issue}>
-          {configured ? 'Regenerate connect code' : 'Generate connect code'}
-        </button>
-        {configured && <span className="faint" style={{ fontSize: 12 }}>Already connected — regenerate only if you're setting up a new computer.</span>}
-      </div>
-      {code && (
-        <div style={{ marginTop: 12 }}>
-          <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>Your connect code (paste it into JobPilot Desktop):</div>
-          <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
-            <pre style={{ userSelect: 'all', flex: 1, background: 'var(--bg-elev)', border: '1px solid var(--border)', padding: 10, borderRadius: 8, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{code}</pre>
-            <button className="btn btn-sm" onClick={copy}>Copy</button>
-          </div>
-          <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>Shown once — regenerating replaces the old one.</div>
-        </div>
-      )}
     </div>
   );
 }

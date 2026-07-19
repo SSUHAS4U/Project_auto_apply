@@ -127,23 +127,27 @@ export function Layout() {
         </NavLink>
       ))}
 
-      <div className="sidebar-user">
-        <div className="su-avatar">{(email[0] || 'U').toUpperCase()}</div>
-        <div className="su-email" title={email}>{email || 'account'}</div>
-        <button className="su-logout su-bell" onClick={() => nav('/notifications')}
-          title="Notifications" aria-label="Notifications">
-          <Icon name="bell" size={16} />
-          {unread > 0 && <span className="su-bell-badge">{unread > 99 ? '99+' : unread}</span>}
-        </button>
-        <button className="su-logout" onClick={() => setTheme(toggleTheme())}
-          title={theme === 'light' ? 'Switch to dark' : 'Switch to light'} aria-label="Toggle theme">
-          {theme === 'light'
-            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>}
-        </button>
-        <button className="su-logout" onClick={logout} title="Sign out">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-        </button>
+      <div className="sidebar-user su-col">
+        <div className="su-id">
+          <div className="su-avatar">{(email[0] || 'U').toUpperCase()}</div>
+          <div className="su-email" title={email}>{email || 'account'}</div>
+        </div>
+        <div className="su-actions">
+          <button className="su-act su-bell" onClick={() => nav('/notifications')}
+            title="Notifications" aria-label="Notifications">
+            <Icon name="bell" size={16} />
+            {unread > 0 && <span className="su-bell-badge">{unread > 99 ? '99+' : unread}</span>}
+          </button>
+          <button className="su-act" onClick={() => setTheme(toggleTheme())}
+            title={theme === 'light' ? 'Switch to dark' : 'Switch to light'} aria-label="Toggle theme">
+            {theme === 'light'
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>}
+          </button>
+          <button className="su-act" onClick={logout} title="Sign out" aria-label="Sign out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
   );

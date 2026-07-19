@@ -81,7 +81,33 @@ public class ResumeDocService {
         } else if (blank) {
             d.setLatex(BLANK_TEMPLATE);
         } else {
-            d.setLatex(starterTemplate(profiles.get()));
+            // "+ Profile": start from the user's OWN base résumé template when one exists —
+            // their layout, refreshed with current profile facts by the AI (falls back to
+            // the base as-is, and to the generic starter only when there is no base yet).
+            ResumeDoc base = repo.findFirstByUserIdAndBaseTrue(userId).orElse(null);
+            if (base != null && base.getLatex() != null && !base.getLatex().isBlank()) {
+                String refreshed = base.getLatex();
+                if (ai.isEnabled()) {
+                    try {
+                        String out = ai.complete("""
+                                Update this LaTeX résumé's CONTENT with the candidate's current profile facts
+                                (name, contact, role, skills, education) while keeping its preamble, layout and
+                                section structure EXACTLY as-is so it still compiles. Never invent facts.
+                                Output ONLY the complete LaTeX source — no commentary, no code fences.""",
+                                "PROFILE FACTS:\n" + profileFacts(profiles.get())
+                                        + "\n\nBASE RESUME (LaTeX):\n" + base.getLatex(), false, false);
+                        String stripped = stripFences(out);
+                        if (stripped.contains("\\documentclass") && stripped.contains("\\end{document}")) {
+                            refreshed = stripped;
+                        }
+                    } catch (Exception e) {
+                        log.warn("profile-refresh of base template failed, copying base as-is: {}", e.getMessage());
+                    }
+                }
+                d.setLatex(refreshed);
+            } else {
+                d.setLatex(starterTemplate(profiles.get()));
+            }
         }
         // First-ever document becomes the base automatically.
         if (repo.findFirstByUserIdAndBaseTrue(userId).isEmpty()) d.setBase(true);
@@ -143,22 +169,31 @@ public class ResumeDocService {
     public byte[] compileLatex(String latex) {
         if (latex == null || latex.isBlank()) throw new IllegalArgumentException("empty LaTeX source");
         String engine = engineFor(latex);
-        // Two independent free services: texlive.net first, latex.ytotech.com as the
-        // fallback (texlive.net rejects some datacenter IPs — e.g. Render's — with a
-        // block page instead of compiling).
-        try {
-            return compileViaTexlive(latex, engine);
-        } catch (RuntimeException first) {
-            // A real LaTeX error is the same on any service — don't retry those.
-            if (first.getMessage() != null && first.getMessage().contains("LaTeX Error")) throw first;
-            log.warn("texlive.net compile failed ({}), trying latex.ytotech.com", first.getMessage());
+        // Two independent free services (texlive.net, latex.ytotech.com), and the whole
+        // chain retried up to 3 rounds with a short pause. The free services fail
+        // transiently ALL the time — this is why "Recompile" used to need 2-3 clicks:
+        // each click was one un-retried attempt. Now one click does the clicking for you.
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                return compileViaYtotech(latex, engine);
-            } catch (RuntimeException second) {
-                throw new IllegalStateException(second.getMessage() + " [texlive.net also failed: "
-                        + first.getMessage() + "]", second);
+                return compileViaTexlive(latex, engine);
+            } catch (RuntimeException first) {
+                // A real LaTeX error is the same on any service — don't retry those.
+                if (first.getMessage() != null && first.getMessage().contains("LaTeX Error")) throw first;
+                log.warn("texlive.net compile failed ({}), trying latex.ytotech.com", first.getMessage());
+                try {
+                    return compileViaYtotech(latex, engine);
+                } catch (RuntimeException second) {
+                    if (second.getMessage() != null && second.getMessage().contains("LaTeX Error")) throw second;
+                    last = new IllegalStateException(second.getMessage() + " [texlive.net also failed: "
+                            + first.getMessage() + "]", second);
+                    log.warn("compile round {} failed on both services; retrying", attempt + 1);
+                    try { Thread.sleep(1200L * (attempt + 1)); }
+                    catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw last; }
+                }
             }
         }
+        throw last;
     }
 
     private byte[] compileViaTexlive(String latex, String engine) {
@@ -423,6 +458,29 @@ public class ResumeDocService {
 
             \\end{document}
             """;
+
+    /** Compact plain-text profile facts for the AI (refreshing a base template's content). */
+    private static String profileFacts(Profile p) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Name: ").append(or(p.getFullName(), "")).append('\n');
+        sb.append("Email: ").append(or(p.getEmail(), "")).append('\n');
+        sb.append("Phone: ").append(or(p.getPhone(), "")).append('\n');
+        sb.append("Location: ").append(or(p.getLocation(), "")).append('\n');
+        sb.append("Headline/current role: ").append(or(p.getHeadline(), or(p.getCurrentTitle(), ""))).append('\n');
+        if (p.getYearsExperience() != null) sb.append("Years of experience: ").append(p.getYearsExperience()).append('\n');
+        if (p.getSkills() != null && !p.getSkills().isEmpty())
+            sb.append("Skills: ").append(String.join(", ", p.getSkills())).append('\n');
+        if (p.getLinks() != null && !p.getLinks().isEmpty())
+            p.getLinks().forEach((k, v) -> sb.append(k).append(": ").append(v).append('\n'));
+        if (p.getEducation() != null)
+            for (Map<String, Object> e : p.getEducation())
+                sb.append("Education: ").append(str(e.get("degree"))).append(' ')
+                        .append(str(e.get("field"))).append(" — ").append(str(e.get("school")))
+                        .append(' ').append(str(e.get("endYear") == null ? e.get("year") : e.get("endYear"))).append('\n');
+        if (p.getSummary() != null && !p.getSummary().isBlank())
+            sb.append("Summary: ").append(p.getSummary().length() > 400 ? p.getSummary().substring(0, 400) : p.getSummary()).append('\n');
+        return sb.toString();
+    }
 
     /** A clean, compilable one-page starter pre-filled from the profile. */
     String starterTemplate(Profile p) {
