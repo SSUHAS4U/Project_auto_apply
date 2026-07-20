@@ -148,8 +148,13 @@ export function PortalMetrics({ kind }: { kind?: 'all' | 'applied' }) {
     return () => clearInterval(t);
   }, []);
 
+  // TODAY only — otherwise stale errors from earlier days (e.g. the old captcha loop) pile
+  // up here and read as "161 failed" even when nothing ran today.
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const todays = events.filter((e) => e.createdAt && new Date(e.createdAt) >= startOfToday);
+
   const block = (portal: 'linkedin' | 'indeed') => {
-    const ev = events.filter((e) => e.portal === portal);
+    const ev = todays.filter((e) => e.portal === portal);
     const n = (t: string) => ev.filter((e) => e.type === t).length;
     const applied = n('applied') + n('easy_apply');
     const manual = ev.filter((e) => e.type === 'manual_apply');
@@ -252,47 +257,78 @@ export function ScheduleEditor() {
     catch (e) { toast((e as Error).message, 'error'); }
   };
 
+  const PORTAL: Record<string, { color: string; letter: string; parked?: boolean }> = {
+    linkedin: { color: '#0A66C2', letter: 'in' },
+    indeed: { color: '#2557A7', letter: 'i' },
+    naukri: { color: '#6D28D9', letter: 'n', parked: true },
+  };
+
   return (
-    <div className="card card-pad">
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h3 style={{ margin: 0 }}>Daily schedule</h3>
-          <p className="faint" style={{ fontSize: 13, margin: '4px 0 12px', maxWidth: 620, lineHeight: 1.6 }}>
-            The automation runs these blocks each day. <b>Apply</b> blocks do Easy Apply only;
-            the <b>Outreach</b> block scans posts, harvests HR emails and sends connections — give it the most time.
-            Blank keywords/locations = derived from your Job profile.
-          </p>
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div className="card card-pad" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <Icon name="clock" size={16} style={{ color: 'var(--accent-hi)', flex: 'none', transform: 'translateY(1px)' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14.5 }}>Runs automatically, every day</div>
+          <div className="faint" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
+            When JobPilot Desktop is connected, each block below starts on its own at its time.
+            <b> Apply</b> = Easy Apply only · <b>Outreach</b> = scan posts, harvest HR emails, send connections
+            (give it the most time). Blank keywords/locations come from your Job profile.
+          </div>
         </div>
-        <button className="btn btn-sm" onClick={usePreset}><Icon name="sparkles" size={13} /> Use recommended plan</button>
+        <button className="btn btn-sm" onClick={usePreset} style={{ flex: 'none' }}><Icon name="sparkles" size={13} /> Recommended plan</button>
       </div>
-      {blocks.length === 0 && <div className="faint" style={{ fontSize: 13 }}>No schedule yet — click “Use recommended plan”.</div>}
-      {blocks.map((b, i) => (
-        <div key={i} className="card card-pad" style={{ marginBottom: 8, background: 'var(--bg-elev)' }}>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <b style={{ textTransform: 'capitalize', minWidth: 72 }}>{b.portal}</b>
-            <label style={{ fontSize: 12 }}>Mode
-              <select className="select" style={{ width: 110 }} value={b.mode ?? 'apply'} onChange={(e) => upd(i, { mode: e.target.value })}>
-                <option value="apply">Apply</option>
-                <option value="outreach">Outreach</option>
-              </select></label>
-            <label style={{ fontSize: 12 }}>Start
-              <input className="input" style={{ width: 90 }} value={b.startTime ?? ''} placeholder="09:00" onChange={(e) => upd(i, { startTime: e.target.value })} /></label>
-            <label style={{ fontSize: 12 }}>Mins
-              <input className="input" type="number" style={{ width: 80 }} value={b.durationMins} onChange={(e) => upd(i, { durationMins: +e.target.value })} /></label>
-            <label style={{ fontSize: 12 }}>Apply cap
-              <input className="input" type="number" style={{ width: 80 }} value={b.applyCap} onChange={(e) => upd(i, { applyCap: +e.target.value })} /></label>
-            <label className="row" style={{ fontSize: 12, gap: 4, alignItems: 'center' }}>
-              <input type="checkbox" checked={b.enabled} onChange={(e) => upd(i, { enabled: e.target.checked })} /> on</label>
+
+      {blocks.length === 0 && (
+        <div className="card card-pad empty"><div className="big"><Icon name="clock" size={32} /></div>No schedule yet — click “Recommended plan” to set the daily runs.</div>
+      )}
+
+      {blocks.map((b, i) => {
+        const meta = PORTAL[b.portal] ?? { color: 'var(--accent)', letter: b.portal[0] };
+        return (
+          <div key={i} className={`card sched-card ${b.enabled && !meta.parked ? '' : 'off'}`}>
+            <div className="sched-head">
+              <div className="conn-logo" style={{ width: 40, height: 40, borderRadius: 11, fontSize: 15, background: meta.color }}>{meta.letter}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="conn-name" style={{ textTransform: 'capitalize' }}>{b.portal}
+                  {meta.parked && <span className="tone tone-amber" style={{ marginLeft: 8 }}>in progress</span>}</div>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  {b.mode === 'outreach' ? 'Outreach — posts, HR emails, connections' : 'Easy Apply'} · {b.startTime || '—'} for {b.durationMins}m
+                </div>
+              </div>
+              <button role="switch" aria-checked={b.enabled} aria-label={`${b.portal} enabled`}
+                className={`switch ${b.enabled ? 'on' : ''}`} onClick={() => upd(i, { enabled: !b.enabled })} disabled={meta.parked}>
+                <span className="knob" />
+              </button>
+            </div>
+
+            <div className="sched-grid">
+              <label className="field">Mode
+                <select className="select" value={b.mode ?? 'apply'} onChange={(e) => upd(i, { mode: e.target.value })} disabled={meta.parked}>
+                  <option value="apply">Apply</option><option value="outreach">Outreach</option>
+                </select>
+              </label>
+              <label className="field">Start time
+                <input className="input" value={b.startTime ?? ''} placeholder="09:00" onChange={(e) => upd(i, { startTime: e.target.value })} disabled={meta.parked} />
+              </label>
+              <label className="field">Duration (min)
+                <input className="input" type="number" value={b.durationMins} onChange={(e) => upd(i, { durationMins: +e.target.value })} disabled={meta.parked} />
+              </label>
+              <label className="field">Apply cap
+                <input className="input" type="number" value={b.applyCap} onChange={(e) => upd(i, { applyCap: +e.target.value })} disabled={meta.parked} />
+              </label>
+            </div>
+            <div className="grid2" style={{ marginTop: 10 }}>
+              <label className="field">Keywords <span className="faint">— blank = from profile</span>
+                <input className="input" value={b.keywords ?? ''} onChange={(e) => upd(i, { keywords: e.target.value })} disabled={meta.parked} />
+              </label>
+              <label className="field">Locations
+                <input className="input" value={b.locations ?? ''} onChange={(e) => upd(i, { locations: e.target.value })} disabled={meta.parked} />
+              </label>
+            </div>
           </div>
-          <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <input className="input" style={{ flex: 1, minWidth: 180 }} placeholder="keywords (comma-sep, blank = from profile)"
-              value={b.keywords ?? ''} onChange={(e) => upd(i, { keywords: e.target.value })} />
-            <input className="input" style={{ flex: 1, minWidth: 180 }} placeholder="locations (comma-sep)"
-              value={b.locations ?? ''} onChange={(e) => upd(i, { locations: e.target.value })} />
-          </div>
-        </div>
-      ))}
-      {blocks.length > 0 && <button className="btn btn-primary btn-sm" onClick={save} style={{ marginTop: 8 }}>Save schedule</button>}
+        );
+      })}
+      {blocks.length > 0 && <div><button className="btn btn-primary" onClick={save}><Icon name="check" size={14} /> Save schedule</button></div>}
     </div>
   );
 }

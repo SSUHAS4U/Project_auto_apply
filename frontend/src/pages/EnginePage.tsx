@@ -483,7 +483,7 @@ function JobsTab({ status, onChange, onApplied }:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Per-portal — this run</div>
+      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Per-portal — today</div>
       <PortalMetrics />
       <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="compass" size={15} /> Ranked matches (Engine)</div>
       <div className="card card-pad row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

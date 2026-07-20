@@ -408,6 +408,14 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .metric-row { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 .metric-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 84px; }
 
+/* Schedule cards ------------------------------------------------------------- */
+.sched-card { padding: 18px; transition: border-color .15s, box-shadow .15s, opacity .15s; }
+.sched-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.sched-card.off { opacity: .6; }
+.sched-head { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.sched-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .sched-grid { grid-template-columns: 1fr 1fr; } }
+
 /* Job-profile sub-section headings ------------------------------------------ */
 .jp-subhead { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin: 20px 0 10px; }
 .jp-subhead svg { color: var(--accent-hi); }
@@ -522,12 +530,14 @@ tbody tr:hover { background: var(--bg-card-hover); }
 }
 .empty .spinner { width: 30px; height: 30px; border-width: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* Bottom-LEFT so it never sits under the assistant chat bubble (bottom-right). */
-.toast { position: fixed; bottom: 22px; left: 22px; display: flex; align-items: flex-start; gap: 10px;
-  background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 12px 12px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 95; max-width: 380px; animation: slideIn .25s ease; }
+/* Bottom-CENTER: clear of the sidebar (left) and the assistant bubble (right). */
+.toast { position: fixed; bottom: 24px; left: 50%; display: flex; align-items: flex-start; gap: 10px;
+  background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 12px 12px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 95; max-width: 420px; animation: toastIn .25s ease; }
 .toast-x { border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 17px; line-height: 1; padding: 0 2px; flex: none; border-radius: 5px; }
 .toast-x:hover { color: var(--text); background: var(--btn-bg-hover); }
-@media (max-width: 640px) { .toast { left: 12px; right: 76px; max-width: none; } }
+@keyframes toastIn { from { transform: translateX(-50%) translateY(14px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+.toast { transform: translateX(-50%); }
+@media (max-width: 640px) { .toast { left: 12px; right: 12px; transform: none; max-width: none; } @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } } }
 .toast.error { border-left-color: var(--red); }
 .toast.success { border-left-color: var(--green); }
 @keyframes slideIn { from { transform: translateY(12px); opacity: 0; } }
