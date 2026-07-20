@@ -7,6 +7,7 @@ import type {
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
+import { WatchLiveButton, PortalMetrics, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -16,7 +17,7 @@ import { JobProfileEditor } from '../components/JobProfileEditor';
  *       → Outcome → Interview → Upskill.
  */
 
-type Tab = 'setup' | 'jobs' | 'applications' | 'interview' | 'upskill';
+type Tab = 'setup' | 'jobs' | 'applications' | 'interview' | 'upskill' | 'activity' | 'schedule';
 
 // Semantic, theme-aware tones (see .tone-* in styles.css) — readable in light + dark.
 const VERDICT_TONE: Record<string, string> = {
@@ -97,23 +98,19 @@ export function EnginePage() {
         <div>
           <h1 className="page-title">
             Auto Apply{' '}
-            <Chip text="AI Job Search engine" tone="indigo" />
-            {status && !status.aiEnabled && <> <Chip text="AI off" tone="red" /></>}
+            {status && !status.aiEnabled && <Chip text="AI off" tone="red" />}
             {status?.setupReady && <> <Chip text="setup ready" tone="green" /></>}
           </h1>
           <div className="page-sub">
-            <b>The brain.</b> Finds jobs, scores your fit, and builds a tailored CV + cover letter
-            for each one: <b>Setup</b> → <b>Scrape</b> → <b>Rank</b> → <b>Apply</b> (tailor · compile ·
-            ATS-verify) → <b>Outcome</b> → <b>Interview</b> → <b>Upskill</b>. The <b>Agent</b> page is
-            the hands — it clicks through the portals on your PC with your own sessions.
+            One automation, on a schedule: it finds jobs on <b>LinkedIn</b> &amp; <b>Indeed</b>, scores
+            your fit, Easy-Applies, scans hiring posts for HR emails, sends tailored emails +
+            connection requests — and mails you anything it can’t apply to itself. Watch it live any time.
           </div>
         </div>
-        {busy && (
-          <div className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
-            <span className="spinner" />
-            {status?.scrapeProgress || status?.rankProgress || 'Working…'}
-          </div>
-        )}
+        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {busy && <span className="row" style={{ gap: 6, fontSize: 13 }}><span className="spinner" />{status?.scrapeProgress || status?.rankProgress || 'Working…'}</span>}
+          <WatchLiveButton />
+        </div>
       </div>
 
       {status && !status.aiEnabled && (
@@ -131,6 +128,8 @@ export function EnginePage() {
           ['applications', 'clipboard', 'Applications', count(status?.appStageCounts)],
           ['interview', 'target', 'Interview', ''],
           ['upskill', 'chart', 'Upskill', ''],
+          ['activity', 'live', 'Activity', ''],
+          ['schedule', 'clock', 'Schedule', ''],
         ] as [Tab, string, string, string][]).map(([t, ico, label, n]) => (
           <div key={t} className={`tab meta-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
             <Icon name={ico} size={14} /> {label}{n && <span className="tab-count">{n.replace(/[()\s]/g, '')}</span>}
@@ -143,6 +142,8 @@ export function EnginePage() {
       {tab === 'applications' && <ApplicationsTab />}
       {tab === 'interview' && <InterviewTab />}
       {tab === 'upskill' && <UpskillTab />}
+      {tab === 'activity' && <ActivityFeed />}
+      {tab === 'schedule' && <ScheduleEditor />}
     </>
   );
 }
@@ -482,6 +483,9 @@ function JobsTab({ status, onChange, onApplied }:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Per-portal — this run</div>
+      <PortalMetrics />
+      <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="compass" size={15} /> Ranked matches (Engine)</div>
       <div className="card card-pad row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={scrape} disabled={status?.scrapeRunning || !status?.setupReady}
           title={status?.setupReady ? 'Search LinkedIn from your saved queries' : 'Run Setup first'}>
@@ -569,6 +573,9 @@ function ApplicationsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Applied — per portal</div>
+      <PortalMetrics kind="applied" />
+      <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="clipboard" size={15} /> Application packages (Engine)</div>
       <div className="card card-pad" style={{ fontSize: 12.5, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
         <Icon name="alert" size={15} className="t-amber" style={{ flex: 'none', transform: 'translateY(1px)' }} />
         <span className="faint">

@@ -11,7 +11,6 @@ import { Layout } from './components/Layout';
 import { DashboardPage } from './pages/DashboardPage';
 import { JobsPage } from './pages/JobsPage';
 import { EnginePage } from './pages/EnginePage';
-import { AgentPage } from './pages/AgentPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { SavedJobsPage } from './pages/SavedJobsPage';
@@ -45,7 +44,7 @@ const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'jobs', element: <JobsPage /> },
       { path: 'auto-apply', element: <EnginePage /> },
-      { path: 'agent', element: <AgentPage /> },
+      { path: 'agent', element: <Navigate to="/auto-apply" replace /> },
       { path: 'connections', element: <ConnectionsPage /> },
       { path: 'daily', element: <DailyPicksPage /> },
       { path: 'scout', element: <ScoutPage /> },

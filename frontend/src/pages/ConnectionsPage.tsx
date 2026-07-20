@@ -37,6 +37,8 @@ export function ConnectionsPage() {
   const [conns, setConns] = useState<PortalConnection[]>([]);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [flows, setFlows] = useState<Record<string, boolean>>({});
+  const [template, setTemplate] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
   const [busy, setBusy] = useState('');
 
   const load = useCallback(() => {
@@ -47,9 +49,16 @@ export function ConnectionsPage() {
   useEffect(() => {
     load();
     api.agentFlows().then(setFlows).catch(() => {});
+    api.agentMessageTemplate().then((r) => setTemplate(r.template)).catch(() => {});
     const t = setInterval(load, 4000); // live: flips to Active seconds after you sign in
     return () => clearInterval(t);
   }, [load]);
+
+  const saveTemplate = async () => {
+    setSavingTpl(true);
+    try { await api.agentSetMessageTemplate(template); toast('Message template saved.', 'success'); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setSavingTpl(false); }
+  };
 
   const online = status?.workerOnline ?? false;
 
@@ -177,8 +186,24 @@ export function ConnectionsPage() {
         ))}
       </div>
 
+      {/* Connection-message template — sent automatically with connection requests when
+          Auto-message is on. Replies to recruiters always stay manual (you reply). */}
+      <div className="card card-pad" style={{ marginTop: 18 }}>
+        <div className="card-title"><Icon name="send" size={15} /> Connection message template</div>
+        <div className="faint" style={{ fontSize: 12.5, marginTop: -4, marginBottom: 8 }}>
+          Sent automatically with connection requests when <b>Auto-message</b> is on. Placeholders:
+          <code> [Name]</code> <code>[Role]</code> <code>[Company]</code> <code>[MyName]</code> <code>[MyRole]</code>.
+          When a recruiter replies, the automation stops — you reply from your own account.
+        </div>
+        <textarea className="input" rows={4} value={template} onChange={(e) => setTemplate(e.target.value)}
+          placeholder={"Hi [Name], I'm [MyName], a [MyRole]. I'm actively looking for [Role] roles and would love to connect regarding openings at [Company]."} />
+        <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={saveTemplate} disabled={savingTpl}>
+          {savingTpl ? <span className="spinner" /> : <Icon name="check" size={13} />} Save template
+        </button>
+      </div>
+
       {/* Desktop app onboarding — download + connect code (moved here from Agent) */}
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 16 }}>
         <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
       </div>
 
