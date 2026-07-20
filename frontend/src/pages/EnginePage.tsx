@@ -7,7 +7,7 @@ import type {
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
-import { WatchLiveButton, PortalMetrics, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
+import { RunControls, PortalMetrics, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -109,7 +109,7 @@ export function EnginePage() {
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {busy && <span className="row" style={{ gap: 6, fontSize: 13 }}><span className="spinner" />{status?.scrapeProgress || status?.rankProgress || 'Working…'}</span>}
-          <WatchLiveButton />
+          <RunControls />
         </div>
       </div>
 

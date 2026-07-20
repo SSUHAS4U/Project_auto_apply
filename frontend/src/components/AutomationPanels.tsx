@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { AgentEvent, AgentFrame, AgentSchedule } from '../types';
+import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
@@ -26,7 +26,70 @@ const EVENT_ICON: Record<string, { name: string; color: string }> = {
   info: { name: 'circle', color: '#7d8595' },
 };
 
-// ---- Watch live (button + popup) --------------------------------------------
+// ---- Run controls + Watch live (the header actions) -------------------------
+
+/**
+ * Start the automation NOW (or pause/stop a live run) + Watch live. The scheduled blocks
+ * run automatically, but this lets you kick off a run immediately once JobPilot Desktop is
+ * connected — which is what you need when it says "waiting for a run".
+ */
+export function RunControls() {
+  const toast = useToast();
+  const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.agentStatus().then(setStatus).catch(() => {});
+  useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
+
+  const online = status?.workerOnline ?? false;
+  const run = status?.activeRun ?? null;
+  const live = !!run && ['running', 'queued', 'needs_attention'].includes(run.status);
+
+  const start = async (portal: string) => {
+    setBusy(true);
+    try { await api.agentStartRun(portal); toast(`${portal} run queued — JobPilot Desktop will start it within seconds.`, 'success'); load(); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+  const stop = async () => {
+    if (!run) return;
+    setBusy(true);
+    try { await api.agentStopRun(run.id); toast('Run stopped.', 'success'); load(); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+  const pause = async () => {
+    setBusy(true);
+    try { await api.agentPause(!status?.paused); load(); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className={`tone ${live ? 'tone-green live-pulse' : online ? 'tone-blue' : 'tone-slate'}`} style={{ padding: '5px 11px' }}>
+        <span className="live-dot" /> {live ? `running · ${run?.portal}` : online ? 'desktop ready' : 'desktop offline'}
+      </span>
+      {live ? (
+        <>
+          <button className="btn btn-sm" onClick={pause} disabled={busy}>
+            <Icon name={status?.paused ? 'play' : 'pause'} size={13} /> {status?.paused ? 'Resume' : 'Pause'}
+          </button>
+          <button className="btn btn-sm btn-danger-solid" onClick={stop} disabled={busy}><Icon name="x" size={13} /> Stop</button>
+        </>
+      ) : (
+        <>
+          <button className="btn btn-primary btn-sm" onClick={() => start('linkedin')} disabled={busy || !online}
+            title={online ? 'Run a LinkedIn block now' : 'Open JobPilot Desktop first (Connections)'}>
+            <Icon name="play" size={13} /> Run LinkedIn
+          </button>
+          <button className="btn btn-sm" onClick={() => start('indeed')} disabled={busy || !online}
+            title={online ? 'Run an Indeed block now' : 'Open JobPilot Desktop first (Connections)'}>
+            <Icon name="play" size={13} /> Run Indeed
+          </button>
+        </>
+      )}
+      <WatchLiveButton />
+    </div>
+  );
+}
 
 export function WatchLiveButton() {
   const [open, setOpen] = useState(false);
