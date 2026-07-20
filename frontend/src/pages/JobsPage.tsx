@@ -373,9 +373,8 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
 
           <div>
             <div className="section-title" style={{ fontSize: 13 }}>What's happening</div>
-            <div ref={logRef} style={{
-              maxHeight: 220, overflowY: 'auto', background: '#0c0f15', borderRadius: 8, padding: 10,
-              fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+            <div ref={logRef} className="code-block" style={{
+              maxHeight: 220, overflowY: 'auto', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap',
             }}>
               {m.log.length ? m.log.join('\n') : 'No activity yet. Click “Run ingest” to start.'}
             </div>

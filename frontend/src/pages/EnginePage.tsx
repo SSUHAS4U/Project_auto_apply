@@ -25,7 +25,15 @@ const VERDICT_TONE: Record<string, string> = {
 const STAGE_TONE: Record<string, string> = {
   parsing: 'slate', evaluating: 'blue', drafting: 'purple', reviewing: 'purple',
   revising: 'indigo', compiling: 'blue', verifying: 'green',
-  ready: 'green', submitted: 'green', failed: 'red', vetoed: 'amber',
+  ready: 'amber', submitted: 'green', failed: 'red', vetoed: 'amber',
+};
+// Human labels — "ready" confused people ("is it applied?"). It means the tailored CV +
+// cover are BUILT and waiting to be sent (by email) or applied on the portal by the Agent.
+const STAGE_LABEL: Record<string, string> = {
+  parsing: 'Reading posting', evaluating: 'Scoring fit', drafting: 'Tailoring CV + letter',
+  reviewing: 'Reviewing', revising: 'Revising', compiling: 'Building PDFs',
+  verifying: 'ATS check', ready: 'Ready to send', submitted: 'Sent', failed: 'Failed',
+  vetoed: 'Vetoed',
 };
 
 // The engine's internal steering documents (from the ai-job-search framework). The CV and
@@ -561,6 +569,14 @@ function ApplicationsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="card card-pad" style={{ fontSize: 12.5, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+        <Icon name="alert" size={15} className="t-amber" style={{ flex: 'none', transform: 'translateY(1px)' }} />
+        <span className="faint">
+          <b className="t-amber">Ready to send</b> means the tailored CV + cover letter are built and verified —
+          the Engine has done its job. It's <b>not submitted yet</b>: open one and hit <b>Send by email</b> for
+          email-apply roles, or let the <b>Agent</b> apply it on the portal (Easy Apply). Only <b>Sent</b> means it went out.
+        </span>
+      </div>
       {apps.length === 0 ? (
         <div className="card card-pad empty"><div className="big"><Icon name="pen" size={34} /></div>No applications yet — Apply to a job from the Jobs tab.</div>
       ) : apps.map((a) => (
@@ -569,7 +585,7 @@ function ApplicationsTab() {
             <div style={{ minWidth: 0 }}>
               <span className="pick-title">{a.postingTitle || 'Application'}</span>
               <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
-                <Chip text={inFlight(a.stage) ? `${a.stage}…` : a.stage} tone={STAGE_TONE[a.stage] ?? 'slate'} />
+                <Chip text={inFlight(a.stage) ? `${STAGE_LABEL[a.stage] ?? a.stage}…` : (STAGE_LABEL[a.stage] ?? a.stage)} tone={STAGE_TONE[a.stage] ?? 'slate'} />
                 {a.verdict && typeof a.fitScore === 'number' &&
                   <> <Chip text={`${a.verdict} ${a.fitScore}/100`} tone={VERDICT_TONE[a.verdict] ?? 'slate'} /></>}
                 {a.outcome && <> <Chip text={a.outcome} tone="blue" /></>}

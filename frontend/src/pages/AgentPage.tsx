@@ -530,7 +530,7 @@ function ScheduleTab() {
         <button className="btn btn-sm" onClick={usePreset}><Icon name="sparkles" size={13} /> Use recommended plan</button>
       </div>
       {blocks.map((b, i) => (
-        <div key={i} className="card card-pad" style={{ marginBottom: 8, background: 'var(--bg-elev,#0f1219)' }}>
+        <div key={i} className="card card-pad" style={{ marginBottom: 8, background: 'var(--bg-elev)' }}>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <b style={{ textTransform: 'capitalize', minWidth: 72 }}>{b.portal}</b>
             <label style={{ fontSize: 12 }}>Mode

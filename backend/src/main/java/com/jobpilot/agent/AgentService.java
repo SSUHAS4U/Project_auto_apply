@@ -665,6 +665,37 @@ public class AgentService {
         return saved;
     }
 
+    /**
+     * A recruiter replied. We only LOG it, flag the contact as replied, and notify the
+     * owner — the automation deliberately does NOT draft or send a response. The owner
+     * takes the conversation from here (that's the point: the automation lays the
+     * foundation — connection + first message — and hands off to a human for the reply).
+     */
+    @Transactional
+    public AgentMessage recordIncomingReply(UUID userId, UUID contactId, String incoming) {
+        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
+        AgentMessage in = new AgentMessage();
+        in.setUserId(userId);
+        in.setContactId(contactId);
+        in.setPortal(c == null ? null : c.getPortal());
+        in.setDirection("in");
+        in.setBody(incoming);
+        in.setStatus("received");
+        AgentMessage saved = messages.save(in);
+        if (c != null) { c.setConnectionStatus("replied"); c.setLastMessageAt(Instant.now()); contacts.save(c); }
+        recordEvent(userId, null, null, c == null ? null : c.getPortal(), "reply_received",
+                (c == null ? "A recruiter" : nz(c.getName(), "A recruiter")) + " replied",
+                c == null ? null : c.getCompany(), c == null ? null : c.getProfileUrl(),
+                incoming.length() > 140 ? incoming.substring(0, 140) + "…" : incoming);
+        try {
+            notifications.create(userId, "agent_reply", "Recruiter replied — reply from your own account",
+                    (c == null ? "" : nz(c.getName(), "") + (c.getCompany() == null ? "" : " · " + c.getCompany()) + " — ")
+                            + (incoming.length() > 160 ? incoming.substring(0, 160) + "…" : incoming),
+                    Map.of("contactId", String.valueOf(contactId)));
+        } catch (Exception ex) { log.warn("reply notification failed: {}", ex.getMessage()); }
+        return saved;
+    }
+
     public List<AgentMessage> messages(UUID userId, String status, int limit) {
         return status == null
                 ? messages.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, limit))
@@ -703,34 +734,27 @@ public class AgentService {
     }
 
     /**
-     * Outreach messages (connection notes / intros): when the owner saved a TEMPLATE and
-     * the Auto-message flow is ON, the message is rendered from the template and
-     * auto-approved — the worker sends it without waiting. Replies to a recruiter's
-     * incoming message stay DRAFT-FIRST always (those deserve human eyes).
+     * Outbound OUTREACH only (connection notes / intros). When the owner saved a TEMPLATE
+     * and Auto-message is ON, the note is rendered + auto-approved so the worker sends it
+     * without waiting; otherwise it's drafted for approval.
+     *
+     * Recruiter REPLIES are handled separately by {@link #recordIncomingReply} — the
+     * automation NEVER drafts or sends a reply. The owner replies to real conversations.
      */
     @Transactional
     public AgentMessage draftMessage(UUID userId, UUID contactId, String incoming, String kind) {
-        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
+        // A reply came in → just log it + notify; no outbound automation whatsoever.
         if (incoming != null && !incoming.isBlank()) {
-            // log the recruiter's inbound message and mark the contact as replied
-            AgentMessage in = new AgentMessage();
-            in.setUserId(userId);
-            in.setContactId(contactId);
-            in.setPortal(c == null ? null : c.getPortal());
-            in.setDirection("in");
-            in.setBody(incoming);
-            in.setStatus("received");
-            messages.save(in);
-            if (c != null) { c.setConnectionStatus("replied"); c.setLastMessageAt(Instant.now()); contacts.save(c); }
+            return recordIncomingReply(userId, contactId, incoming);
         }
 
+        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
         Profile p = profiles.get();
-        boolean isReply = incoming != null && !incoming.isBlank();
         String template = messageTemplate();
         boolean autoMessage = Boolean.TRUE.equals(flows().get("autoMessage"));
 
-        // Owner's template + Auto-message ON + not a reply → render + auto-approve.
-        if (!isReply && autoMessage && !template.isBlank()) {
+        // Owner's template + Auto-message ON → render + auto-approve (worker sends it).
+        if (autoMessage && !template.isBlank()) {
             AgentMessage m = new AgentMessage();
             m.setUserId(userId);
             m.setContactId(contactId);
@@ -745,17 +769,14 @@ public class AgentService {
         String draft;
         if (ai.isEnabled()) {
             String sys = """
-                    You draft short, warm, professional messages a job seeker sends to a
-                    recruiter/hiring contact. 40-70 words, first person, specific, no clichés,
-                    no fabricated facts. If replying, address their message directly. Never
-                    negotiate salary or commit to interview times — defer those politely to
-                    the person. Output only the message text.""";
+                    You draft short, warm, professional connection/intro notes a job seeker sends
+                    to a recruiter/hiring contact. 40-70 words, first person, specific, no clichés,
+                    no fabricated facts. Output only the message text.""";
             String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
                     + "\nSKILLS: " + (p.getSkills() == null ? "" : String.join(", ", p.getSkills()))
                     + "\nCONTACT: " + (c == null ? "recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
                     + "\nKIND: " + nz(kind)
-                    + (incoming != null && !incoming.isBlank() ? "\nTHEIR MESSAGE: " + incoming
-                       : "\nGOAL: a brief connection/intro note about fit for their roles.");
+                    + "\nGOAL: a brief connection/intro note about fit for their roles.";
             draft = nz(ai.complete(sys, user, false, false)).trim();
         } else {
             draft = "Hi" + (c != null && c.getName() != null ? " " + c.getName().split(" ")[0] : "")

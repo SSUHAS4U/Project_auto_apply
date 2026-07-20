@@ -19,6 +19,7 @@
   --red: #f87171;
   --blue: #60a5fa;
   --purple: #a78bfa;
+  --danger: var(--red);
   --btn-bg: #1b1e27;
   --btn-bg-hover: #262a36;
   --radius: 14px;
@@ -52,6 +53,7 @@
   --red: #dc2626;
   --blue: #2563eb;
   --purple: #7c3aed;
+  --danger: var(--red);
   --btn-bg: #f0f1f5;        /* clearly distinct from white cards */
   --btn-bg-hover: #e3e5ec;  /* visibly darker on hover */
   --shadow-sm: 0 1px 2px rgba(18,22,31,.05);
@@ -244,10 +246,13 @@ button:focus:not(:focus-visible) { outline: none; }
 
 /* Dashboard layout: chart+feed left, side cards right; stacks on small screens. */
 .dash-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
-.dash-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-bottom: 14px; }
+/* Even 4-up rows (8 tiles = 4 + 4). Equal-width columns so every card is the same size. */
+.dash-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.dash-tiles .card { padding: 20px; min-height: 132px; display: flex; flex-direction: column; }
+.dash-tiles .stat-value, .dash-tiles [data-tilevalue] { font-size: 34px; }
+@media (max-width: 1100px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1000px) { .dash-cols { grid-template-columns: 1fr; } }
-@media (max-width: 640px) { .dash-tiles { grid-template-columns: 1fr 1fr; gap: 10px; } }
-@media (max-width: 420px) { .dash-tiles { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .dash-tiles { grid-template-columns: 1fr; } }
 
 /* Mobile top bar + drawer scrim (hidden on desktop) */
 .topbar { display: none; }

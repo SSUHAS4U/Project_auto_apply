@@ -101,11 +101,11 @@ export function DashboardPage() {
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div className="faint" style={{ fontSize: 11.5, letterSpacing: '.04em', textTransform: 'uppercase' }}>{t.label}</div>
-                  <div style={{ fontSize: 30, fontWeight: 750, marginTop: 2, letterSpacing: '-.02em' }}>{t.value}</div>
+                  <div data-tilevalue style={{ fontWeight: 750, marginTop: 4, letterSpacing: '-.02em', lineHeight: 1 }}>{t.value}</div>
                 </div>
                 <StatIcon name={t.key} color={t.color} />
               </div>
-              <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>Recent</div>
                 {recent.slice(0, 2).map((e) => (
                   <div key={e.id} className="row" style={{ fontSize: 12.5, gap: 8, flexWrap: 'nowrap', padding: '2px 0' }}>

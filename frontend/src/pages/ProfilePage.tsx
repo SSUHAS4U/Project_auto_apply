@@ -85,11 +85,10 @@ function SavedAnswers() {
   );
 }
 
-type Tab = 'personal' | 'professional' | 'experience' | 'education' | 'autofill' | 'resume';
+type Tab = 'personal' | 'professional' | 'education' | 'autofill' | 'resume';
 const TABS: { id: Tab; label: string; ico: string }[] = [
   { id: 'personal', label: 'Personal', ico: 'user' },
   { id: 'professional', label: 'Professional', ico: 'clipboard' },
-  { id: 'experience', label: 'Experience', ico: 'trophy' },
   { id: 'education', label: 'Education', ico: 'file' },
   { id: 'autofill', label: 'Autofill answers', ico: 'bolt' },
   { id: 'resume', label: 'Resume', ico: 'file' },
@@ -331,20 +330,6 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
-            <label className="field full">
-              <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
-                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}><Icon name="sparkles" size={12} /> AI suggest</button>
-              </div>
-              <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
-            </label>
-            <Field label="Cover-letter style/notes (optional)" full><textarea className="input" rows={3} value={p.coverLetterTemplate ?? ''} onChange={(e) => set({ coverLetterTemplate: e.target.value })} placeholder="Tone, things to emphasize, custom intro…" /></Field>
-          </Section>
-        </div>
-      )}
-
-      {tab === 'experience' && (
-        <div style={{ maxWidth: 820 }}>
           <RepeatableList<ExperienceItem>
             ico="trophy" title="Work experience"
             items={p.experience ?? []}
@@ -370,6 +355,35 @@ export function ProfilePage() {
               </>
             )}
           />
+
+          <RepeatableList<CertificationItem>
+            ico="clipboard" title="Certifications"
+            sub="drop the file itself in Resume → Document vault"
+            items={p.certifications ?? []}
+            onChange={(items) => set({ certifications: items })}
+            empty={{ name: '', issuer: '', link: '', credentialId: '', issued: '', expiry: '' }}
+            render={(item, upd) => (
+              <>
+                <div className="grid2">
+                  <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
+                  <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
+                  <Field label="Credential ID / no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
+                  <Field label="Issued"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
+                </div>
+                <Field label="Credential link" full><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
+              </>
+            )}
+          />
+
+          <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
+            <label className="field full">
+              <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
+                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}><Icon name="sparkles" size={12} /> AI suggest</button>
+              </div>
+              <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
+            </label>
+            <Field label="Cover-letter style/notes (optional)" full><textarea className="input" rows={3} value={p.coverLetterTemplate ?? ''} onChange={(e) => set({ coverLetterTemplate: e.target.value })} placeholder="Tone, things to emphasize, custom intro…" /></Field>
+          </Section>
         </div>
       )}
 
@@ -409,26 +423,6 @@ export function ProfilePage() {
                   </Field>
                 </div>
                 <label className="check-row"><input type="checkbox" checked={!!item.current} onChange={(e) => upd({ current: e.target.checked })} /> I currently study here</label>
-              </>
-            )}
-          />
-          <RepeatableList<CertificationItem>
-            ico="clipboard" title="Certifications"
-            items={p.certifications ?? []}
-            onChange={(items) => set({ certifications: items })}
-            empty={{ name: '', issuer: '', year: '', link: '', credentialId: '', issued: '', expiry: '' }}
-            render={(item, upd) => (
-              <>
-                <div className="grid3">
-                  <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
-                  <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
-                  <Field label="Credential / certificate no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
-                  <Field label="Issued"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
-                  <Field label="Expiry (blank = never)"><input className="input" type="month" value={item.expiry ?? ''} onChange={(e) => upd({ expiry: e.target.value })} /></Field>
-                  <Field label="Year (legacy)"><input className="input" value={item.year ?? ''} onChange={(e) => upd({ year: e.target.value })} /></Field>
-                </div>
-                <Field label="Credential link"><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
-                <div className="faint" style={{ fontSize: 12 }}>Drop the certificate file in the <b>Resume → Document vault</b> tab (drag &amp; drop supported).</div>
               </>
             )}
           />
