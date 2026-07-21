@@ -33,8 +33,8 @@ export function JobProfileEditor() {
       <div className="step-head">
         <span className="step-num"><Icon name="target" size={14} /></span>
         <div>
-          <div className="step-title">Job profile</div>
-          <div className="step-sub">Compensation, projects &amp; achievements — used for CV tailoring and screening answers. Roles &amp; locations come from step 2 above.</div>
+          <div className="step-title">Compensation &amp; showcase</div>
+          <div className="step-sub">Pay expectations, projects &amp; achievements — used for screening answers and CV tailoring. Your roles &amp; locations are set in step 2 above.</div>
         </div>
       </div>
 

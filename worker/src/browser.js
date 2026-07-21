@@ -64,9 +64,14 @@ export function startFrameStreamer(page, api, state) {
         const shot = open.length ? open[open.length - 1] : page;
         if (!shot.isClosed()) {
           const buf = await shot.screenshot({ type: 'jpeg', quality: 38 });
+          // Label the frame by what's ACTUALLY on screen (the shot tab's URL), so the caption
+          // can't say "linkedin" while showing an Indeed tab. Fall back to the run's portal.
+          const u = (() => { try { return shot.url(); } catch { return ''; } })();
+          const shownPortal = /linkedin\./i.test(u) ? 'linkedin'
+            : /indeed\./i.test(u) ? 'indeed' : state.portal;
           const r = await api.frame({
             runId: state.runId,
-            portal: state.portal,
+            portal: shownPortal,
             action: state.action,
             imageB64: buf.toString('base64'),
           });

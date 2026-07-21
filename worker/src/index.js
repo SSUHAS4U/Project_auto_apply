@@ -10,14 +10,13 @@
 //   2) set two env vars (or create worker.config.json — see README):
 //        JOBPILOT_BACKEND_URL=https://your-backend
 //        JOBPILOT_WORKER_TOKEN=<minted in dashboard → Auto Apply → Agent → "Connect worker">
-//   3) npm start   → a browser opens; log into Naukri; hit "Start Naukri" in the dashboard.
+//   3) npm start   → a browser opens; log into LinkedIn; hit ▶ for a portal in the dashboard.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { Api } from './api.js';
 import { launchBrowser, startFrameStreamer, sleep, APP_DIR } from './browser.js';
-import { runNaukri } from './portals/naukri.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import { reportSessions, handleConnectionActions } from './connections.js';
@@ -56,10 +55,10 @@ async function loadConfig() {
   return { backendUrl: backendUrl || DEFAULT_BACKEND, token };
 }
 
-/** Run every portal one after another in a single block (Naukri → LinkedIn → Indeed). */
+/** Run every portal one after another in a single block (LinkedIn → Indeed). */
 async function runAll(page, api, plan, state, ctx) {
   let total = 0;
-  for (const [name, fn] of [['naukri', runNaukri], ['linkedin', runLinkedIn], ['indeed', runIndeed]]) {
+  for (const [name, fn] of [['linkedin', runLinkedIn], ['indeed', runIndeed]]) {
     if (state.paused) break;
     state.portal = name;
     await api.runStatus(state.runId, 'running', `Working ${name}`);
@@ -74,7 +73,7 @@ async function runAll(page, api, plan, state, ctx) {
   return { applied: total };
 }
 
-const ADAPTERS = { naukri: runNaukri, linkedin: runLinkedIn, indeed: runIndeed, all: runAll };
+const ADAPTERS = { linkedin: runLinkedIn, indeed: runIndeed, all: runAll };
 
 async function main() {
   const { backendUrl, token } = await loadConfig();
@@ -86,11 +85,10 @@ async function main() {
 
   const { ctx, page } = await launchBrowser();
   console.log('\n  Browser is open. Log into the portals you want to use:');
-  console.log('   • Naukri:   https://www.naukri.com/');
   console.log('   • LinkedIn: https://www.linkedin.com/');
   console.log('   • Indeed:   https://www.indeed.com/');
   console.log('  (log in once — the session is remembered). Then hit ▶ for a portal in the dashboard.\n');
-  await page.goto('https://www.naukri.com/').catch(() => {});
+  await page.goto('https://www.linkedin.com/').catch(() => {});
 
   const state = { runId: null, portal: null, action: 'Idle — waiting for a run', paused: false };
   const stopStream = startFrameStreamer(page, api, state);
@@ -106,7 +104,9 @@ async function main() {
     // Connection handling every loop: act on Connect/Disconnect requests, and report
     // session status periodically (every ~6th idle tick) so the dashboard stays live.
     await handleConnectionActions(ctx, page, api).catch(() => {});
-    if (sessionTick++ % 6 === 0) await reportSessions(ctx, api).catch(() => {});
+    // Report session status often when idle so the Connections cards stay accurate (a watcher
+    // in handleConnectionActions also flips a card to Active seconds after sign-in).
+    if (sessionTick++ % 2 === 0) await reportSessions(ctx, api).catch(() => {});
 
     let order;
     try { order = await api.next(); } catch (e) { console.error('poll error:', e.message); await sleep(5000); continue; }
@@ -138,6 +138,7 @@ async function main() {
       await api.runStatus(order.runId, 'failed', e.message.slice(0, 120));
     }
     state.runId = null; state.portal = null; state.action = 'Idle — waiting for a run';
+    await reportSessions(ctx, api).catch(() => {}); // refresh cards right after a block
     await sleep(3000);
   }
 }

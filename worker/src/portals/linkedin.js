@@ -70,7 +70,9 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // invites go out in outreach/default blocks; strict 'apply' blocks stay focused on applying.
   if (plan.autoMessage !== false) {
     try {
-      if (mode !== 'apply') await sendConnectionRequests(page, api, plan, state);
+      // Send fresh invites on every run (the default block mode is 'apply', so gating this on
+      // non-apply meant invites never went out). Bounded by connectCap inside the function.
+      await sendConnectionRequests(page, api, plan, state);
       await checkAcceptances(page, api, state);
       await sendApprovedMessages(page, api, resume, state);
     } catch (e) {
@@ -226,10 +228,19 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */
 async function easyApply(page, api, profile, resume, state) {
-  const btn = await page.$('button.jobs-apply-button, button[aria-label*="Easy Apply"]');
+  // The search is Easy-Apply-only (f_AL=true), so the detail pane WILL have an Easy Apply
+  // button once it finishes loading. The pane loads async after the card click, so poll for
+  // the button for a few seconds before giving up — otherwise a slow render was being
+  // misread as "no Easy Apply" and the job wrongly pushed to the manual list.
+  let btn = null;
+  for (let i = 0; i < 5 && !btn; i++) {
+    btn = await page.$('button.jobs-apply-button:has-text("Easy Apply"), button[aria-label^="Easy Apply"], button[aria-label*="Easy Apply"], button.jobs-apply-button');
+    if (!btn) { await scrollTopCardIntoView(page); await humanDelay(700, 1300); }
+  }
   if (!btn) {
-    // external "Apply" that navigates off-site
-    const ext = await page.$('a[aria-label*="Apply"], button[aria-label*="Apply on company"]');
+    // Only call it external when there's an EXPLICIT off-site apply control — never on a
+    // loose "Apply" match (that false-positive was sending real Easy-Apply jobs to manual).
+    const ext = await page.$('button[aria-label*="Apply on company"], a[aria-label*="Apply on company"], a.jobs-apply-button[href^="http"]');
     return ext ? 'external' : 'none';
   }
   state.action = 'Easy Apply — opening the form';
@@ -277,6 +288,14 @@ async function dismissPostSubmit(page) {
   // "Application sent" confirmation → close it.
   const done = await page.$('button[aria-label="Dismiss"], button[aria-label="Done"]');
   if (done) await done.click({ timeout: 3000 }).catch(() => {});
+}
+
+/** Nudge the job detail pane so its top card (where Easy Apply lives) is on screen. */
+async function scrollTopCardIntoView(page) {
+  await page.evaluate(() => {
+    const el = document.querySelector('.job-details-jobs-unified-top-card, .jobs-unified-top-card, .jobs-details');
+    if (el) el.scrollIntoView({ block: 'center' });
+  }).catch(() => {});
 }
 
 async function closeModal(page) {

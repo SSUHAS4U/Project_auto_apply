@@ -15,7 +15,6 @@ import { DesktopSetup } from '../components/DesktopSetup';
 const PORTALS: Record<string, { name: string; color: string; letter: string; sub: string; parked?: boolean }> = {
   linkedin: { name: 'LinkedIn', color: '#0A66C2', letter: 'in', sub: 'Easy Apply · connections · messages' },
   indeed: { name: 'Indeed', color: '#2557A7', letter: 'i', sub: 'Indeed Apply on your session' },
-  naukri: { name: 'Naukri', color: '#6D28D9', letter: 'n', sub: 'Automation coming soon', parked: true },
 };
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -110,7 +109,8 @@ export function ConnectionsPage() {
         {Object.keys(PORTALS).map((key) => {
           const p = PORTALS[key];
           const c = conns.find((x) => x.portal === key);
-          const s = p.parked ? { label: 'In progress', tone: 'amber' } : (STATUS[c?.status ?? 'disconnected'] ?? STATUS.disconnected);
+          const connected = c?.status === 'connected';
+          const s = STATUS[c?.status ?? 'disconnected'] ?? STATUS.disconnected;
           return (
             <div key={key} className="card conn-card">
               <div className="conn-top">
@@ -119,33 +119,26 @@ export function ConnectionsPage() {
                   <div className="conn-name">{p.name}</div>
                   <div className="faint" style={{ fontSize: 12.5 }}>{p.sub}</div>
                 </div>
-                <span className={`tone tone-${s.tone}`}>{s.label}</span>
+                <span className={`tone tone-${connected ? 'green live-pulse' : s.tone}`}>
+                  {connected && <span className="live-dot" />}{s.label}
+                </span>
               </div>
-              {p.parked ? (
-                <div className="conn-note">
-                  Naukri automation is being built — the connection is parked and no actions run
-                  against it yet. It will light up here when it's ready.
-                </div>
+              {connected ? (
+                <button className="btn" style={{ width: '100%' }} onClick={() => disconnect(key)} disabled={busy === key}>
+                  Disconnect {p.name}
+                </button>
               ) : (
-                <>
-                  {c?.status === 'connected' ? (
-                    <button className="btn" style={{ width: '100%' }} onClick={() => disconnect(key)} disabled={busy === key}>
-                      Disconnect {p.name}
-                    </button>
-                  ) : (
-                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => connect(key)}
-                      disabled={busy === key || c?.status === 'connecting' || !online}
-                      title={online ? '' : 'Open JobPilot Desktop first'}>
-                      {busy === key || c?.status === 'connecting' ? <span className="spinner" /> : <Icon name="link" size={14} />}{' '}
-                      {c?.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
-                    </button>
-                  )}
-                  {c?.detail && c.status !== 'connected' && (
-                    <div className={c.status === 'connecting' ? 'faint' : 't-amber'} style={{ fontSize: 12, marginTop: 8 }}>{c.detail}</div>
-                  )}
-                  {c?.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}
-                </>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => connect(key)}
+                  disabled={busy === key || c?.status === 'connecting' || !online}
+                  title={online ? '' : 'Open JobPilot Desktop first'}>
+                  {busy === key || c?.status === 'connecting' ? <span className="spinner" /> : <Icon name="link" size={14} />}{' '}
+                  {c?.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
+                </button>
               )}
+              {c?.detail && !connected && (
+                <div className={c.status === 'connecting' ? 'faint' : 't-amber'} style={{ fontSize: 12, marginTop: 8 }}>{c.detail}</div>
+              )}
+              {c?.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}
             </div>
           );
         })}
@@ -161,6 +154,26 @@ export function ConnectionsPage() {
             <span className="tone tone-green">Active</span>
           </div>
           <button className="btn" style={{ width: '100%' }} onClick={() => nav('/settings')}>Manage in Settings</button>
+        </div>
+
+        {/* Desktop app — the engine that runs the portal automation on the user's PC */}
+        <div className="card conn-card">
+          <div className="conn-top">
+            <div className="conn-logo" style={{ background: 'linear-gradient(135deg, var(--accent-hi), var(--accent))' }}>
+              <Icon name="terminal" size={18} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="conn-name">JobPilot Desktop</div>
+              <div className="faint" style={{ fontSize: 12.5 }}>Runs the automation on your computer</div>
+            </div>
+            <span className={`tone tone-${online ? 'green live-pulse' : 'slate'}`}>
+              {online && <span className="live-dot" />}{online ? 'Running' : 'Offline'}
+            </span>
+          </div>
+          <button className="btn" style={{ width: '100%' }}
+            onClick={() => document.getElementById('desktop-setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            {online ? 'Manage below' : 'Set up the app'}
+          </button>
         </div>
       </div>
 
@@ -202,7 +215,7 @@ export function ConnectionsPage() {
       </div>
 
       {/* Desktop app onboarding — download + connect code (moved here from Agent) */}
-      <div style={{ marginTop: 16 }}>
+      <div id="desktop-setup" style={{ marginTop: 16, scrollMarginTop: 16 }}>
         <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
       </div>
 

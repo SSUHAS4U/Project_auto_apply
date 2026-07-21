@@ -9,8 +9,7 @@ import { humanDelay } from './browser.js';
 
 const PORTALS = {
   linkedin: { home: 'https://www.linkedin.com', login: 'https://www.linkedin.com/login', cookie: 'li_at' },
-  naukri:   { home: 'https://www.naukri.com',   login: 'https://www.naukri.com/nlogin/login', cookie: 'nauk_at' },
-  indeed:   { home: 'https://www.indeed.com',    login: 'https://secure.indeed.com/account/login', cookie: 'SHOE_B' },
+  indeed:   { home: 'https://www.indeed.com',    login: 'https://secure.indeed.com/account/login', cookie: 'PPID' },
 };
 
 /** True if the persistent context holds this portal's auth cookie. */
@@ -25,6 +24,25 @@ async function isLoggedIn(ctx, portal) {
   } catch {
     return false;
   }
+}
+
+/**
+ * After we open a portal's login tab, poll (up to ~3 min) and report the session as soon as
+ * the auth cookie appears — so the dashboard flips to "Active" within seconds of sign-in.
+ * Detached on purpose: it must keep working even while a block is running.
+ */
+function watchLogin(ctx, api, portal) {
+  (async () => {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        if (await isLoggedIn(ctx, portal)) {
+          await api.session(portal, true, 'session active').catch(() => {});
+          return;
+        }
+      } catch { /* keep polling */ }
+    }
+  })();
 }
 
 /** Report all portal session states to the backend (best-effort). */
@@ -57,6 +75,9 @@ export async function handleConnectionActions(ctx, page, api) {
         await p.bringToFront().catch(() => {});
         await p.goto(spec.login, { waitUntil: 'domcontentloaded' }).catch(() => {});
         openedLogin = true;
+        // Flip the card to "Active" the moment sign-in completes, without waiting for the
+        // periodic sweep. Detached watcher (doesn't block the main loop or a running block).
+        watchLogin(ctx, api, portal);
         console.log(`\n  → Connect ${portal}: log in in the opened tab. It auto-detects when you're in.\n`);
       } catch { /* ignore */ }
     } else if (action === 'disconnect') {
