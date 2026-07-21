@@ -210,6 +210,18 @@ public class WorkerController {
         m.put("disability_status", nz(p.getDisabilityStatus()));
         m.put("requires_sponsorship", yesNo(p.getRequiresSponsorship()));
         m.put("willing_to_relocate", yesNo(p.getWillingToRelocate()));
+        m.put("phone_country_code", nz(p.getPhoneCountryCode()));
+        m.put("willing_remote", yesNo(p.getWillingRemote()));
+        m.put("willing_onsite", yesNo(p.getWillingOnsite()));
+        m.put("security_clearance", yesNo(p.getSecurityClearance()));
+        m.put("highest_education", nz(p.getHighestEducation()));
+        m.put("gpa", nz(p.getGpa()));
+        m.put("completed_bachelors", yesNo(p.getCompletedBachelors()));
+        m.put("ethnicity", nz(p.getEthnicity()));
+        m.put("veteran_status", nz(p.getVeteranStatus()));
+        m.put("hispanic_latino", yesNo(p.getHispanicLatino()));
+        m.put("how_did_you_hear", nz(p.getHowDidYouHear()));
+        m.put("skills_experience", p.getSkillsExperience() == null ? Map.of() : p.getSkillsExperience());
         m.put("skills", p.getSkills() == null ? List.of() : p.getSkills());
         m.put("links", p.getLinks() == null ? Map.of() : p.getLinks());
         m.put("field_map", p.getFieldMap() == null ? Map.of() : p.getFieldMap());

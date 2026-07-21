@@ -162,6 +162,33 @@ public class Profile {
     @Column(name = "willing_to_relocate")
     private Boolean willingToRelocate;
 
+    // ---- Easy-Apply autofill answers (all optional) -------------------------
+    @Column(name = "phone_country_code")
+    private String phoneCountryCode;      // e.g. "+91"
+    @Column(name = "willing_remote")
+    private Boolean willingRemote;
+    @Column(name = "willing_onsite")
+    private Boolean willingOnsite;
+    @Column(name = "security_clearance")
+    private Boolean securityClearance;
+    @Column(name = "highest_education")
+    private String highestEducation;      // e.g. "B.Tech"
+    private String gpa;
+    @Column(name = "tier_one_institution")
+    private Boolean tierOneInstitution;
+    @Column(name = "completed_bachelors")
+    private Boolean completedBachelors;
+    private String ethnicity;
+    @Column(name = "veteran_status")
+    private String veteranStatus;
+    @Column(name = "hispanic_latino")
+    private Boolean hispanicLatino;
+    @Column(name = "how_did_you_hear")
+    private String howDidYouHear;
+    /** Per-skill years, e.g. {"java":"3","react":"1"}. */
+    @Column(name = "skills_experience", columnDefinition = "jsonb")
+    private Map<String, String> skillsExperience = new LinkedHashMap<>();
+
     @Type(ListArrayType.class)
     @Column(name = "preferred_locations", columnDefinition = "text[]")
     private List<String> preferredLocations = new ArrayList<>();

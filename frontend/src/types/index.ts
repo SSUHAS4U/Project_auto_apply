@@ -128,6 +128,20 @@ export interface Profile {
   workAuthorization?: string;
   requiresSponsorship?: boolean | null;
   willingToRelocate?: boolean | null;
+  // Easy-Apply autofill answers
+  phoneCountryCode?: string;
+  willingRemote?: boolean | null;
+  willingOnsite?: boolean | null;
+  securityClearance?: boolean | null;
+  highestEducation?: string;
+  gpa?: string;
+  tierOneInstitution?: boolean | null;
+  completedBachelors?: boolean | null;
+  ethnicity?: string;
+  veteranStatus?: string;
+  hispanicLatino?: boolean | null;
+  howDidYouHear?: string;
+  skillsExperience?: Record<string, string>;
   preferredLocations?: string[];
   languages?: string[];
   skills?: string[];

@@ -96,6 +96,20 @@ public class ProfileService {
         p.setWorkAuthorization(in.getWorkAuthorization());
         p.setRequiresSponsorship(in.getRequiresSponsorship());
         p.setWillingToRelocate(in.getWillingToRelocate());
+        // Easy-Apply autofill answers
+        p.setPhoneCountryCode(in.getPhoneCountryCode());
+        p.setWillingRemote(in.getWillingRemote());
+        p.setWillingOnsite(in.getWillingOnsite());
+        p.setSecurityClearance(in.getSecurityClearance());
+        p.setHighestEducation(in.getHighestEducation());
+        p.setGpa(in.getGpa());
+        p.setTierOneInstitution(in.getTierOneInstitution());
+        p.setCompletedBachelors(in.getCompletedBachelors());
+        p.setEthnicity(in.getEthnicity());
+        p.setVeteranStatus(in.getVeteranStatus());
+        p.setHispanicLatino(in.getHispanicLatino());
+        p.setHowDidYouHear(in.getHowDidYouHear());
+        if (in.getSkillsExperience() != null) p.setSkillsExperience(in.getSkillsExperience());
         if (in.getPreferredLocations() != null) p.setPreferredLocations(in.getPreferredLocations());
         if (in.getLanguages() != null) p.setLanguages(in.getLanguages());
         if (in.getSkills() != null) p.setSkills(in.getSkills());
