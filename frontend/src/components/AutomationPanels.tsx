@@ -137,7 +137,7 @@ export function LiveView() {
 
 // ---- Per-portal metrics (LinkedIn vs Indeed) --------------------------------
 
-export function PortalMetrics({ kind }: { kind?: 'all' | 'applied' }) {
+export function PortalMetrics() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => {
     const pull = () => api.agentEvents(400).then(setEvents).catch(() => {});
@@ -151,52 +151,123 @@ export function PortalMetrics({ kind }: { kind?: 'all' | 'applied' }) {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
   const todays = events.filter((e) => e.createdAt && new Date(e.createdAt) >= startOfToday);
 
+  const [sel, setSel] = useState<{ portal: string; label: string } | null>(null);
+  const [done, setDone] = useState<Set<string>>(() => loadDone());
+  const dismiss = (key: string) => setDone((prev) => {
+    const next = new Set(prev); next.add(key);
+    try { localStorage.setItem(doneKey(), JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
+
   const block = (portal: 'linkedin' | 'indeed') => {
     const ev = todays.filter((e) => e.portal === portal);
-    const n = (t: string) => ev.filter((e) => e.type === t).length;
-    const applied = n('applied') + n('easy_apply');
-    const manual = ev.filter((e) => e.type === 'manual_apply');
-    const cells: [string, number, string][] = portal === 'linkedin'
-      ? [['Jobs found', n('job_identified'), 'indigo'], ['Relevant', n('relevant'), 'amber'],
-         ['Applied (Easy Apply)', applied, 'green'], ['Emails sent', n('email_sent'), 'green'],
-         ['Connections sent', n('connection_sent'), 'blue'], ['Replies', n('reply_received'), 'purple'],
-         ['Manual needed', manual.length, 'amber'], ['Failed', n('error'), 'red']]
-      : [['Jobs found', n('job_identified'), 'indigo'], ['Relevant', n('relevant'), 'amber'],
-         ['Applied', applied, 'green'], ['Manual needed', manual.length, 'amber'], ['Failed', n('error'), 'red']];
+    const list = (types: string[]) => ev.filter((e) => types.includes(e.type));
+    type Cell = { label: string; tone: string; types: string[] };
+    const cells: Cell[] = portal === 'linkedin'
+      ? [{ label: 'Jobs found', tone: 'indigo', types: ['job_identified'] },
+         { label: 'Relevant', tone: 'amber', types: ['relevant'] },
+         { label: 'Applied (Easy Apply)', tone: 'green', types: ['applied', 'easy_apply'] },
+         { label: 'Emails sent', tone: 'green', types: ['email_sent'] },
+         { label: 'Connections sent', tone: 'blue', types: ['connection_sent'] },
+         { label: 'Replies', tone: 'purple', types: ['reply_received'] },
+         { label: 'Manual needed', tone: 'amber', types: ['manual_apply'] },
+         { label: 'Failed', tone: 'red', types: ['error'] }]
+      : [{ label: 'Jobs found', tone: 'indigo', types: ['job_identified'] },
+         { label: 'Relevant', tone: 'amber', types: ['relevant'] },
+         { label: 'Applied', tone: 'green', types: ['applied', 'easy_apply'] },
+         { label: 'Manual needed', tone: 'amber', types: ['manual_apply'] },
+         { label: 'Failed', tone: 'red', types: ['error'] }];
+
+    const count = (c: Cell) => c.types.includes('manual_apply')
+      ? list(c.types).filter((e) => !done.has(e.url || e.id)).length
+      : list(c.types).length;
+    const selectedCell = sel?.portal === portal ? cells.find((c) => c.label === sel.label) : null;
+
     return (
       <div className="card card-pad" key={portal}>
         <div className="card-title">
           <Icon name={portal === 'linkedin' ? 'link' : 'target'} size={15} />
           {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
+          <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a tile to see the jobs</span>
         </div>
         <div className="mtile-grid">
-          {cells.map(([label, v, tone]) => (
-            <div key={label} className="mtile" style={mtileStyle(v ? TONE_COLOR[tone] : 'var(--text-faint)')}>
-              <span className="mtile-num">{v}</span>
-              <span className="mtile-label">{label}</span>
-            </div>
-          ))}
+          {cells.map((c) => {
+            const v = count(c);
+            const active = selectedCell?.label === c.label;
+            return (
+              <button key={c.label} className={`mtile mtile-btn ${active ? 'sel' : ''}`}
+                style={mtileStyle(v ? TONE_COLOR[c.tone] : 'var(--text-faint)')}
+                onClick={() => setSel(active ? null : { portal, label: c.label })}>
+                <span className="mtile-num">{v}</span>
+                <span className="mtile-label">{c.label}</span>
+              </button>
+            );
+          })}
         </div>
-        {kind !== 'applied' && manual.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div className="kv-k" style={{ marginBottom: 8 }}>Apply manually — automation couldn't ({manual.length})</div>
-            {manual.slice(0, 6).map((e) => (
-              <div key={e.id} className="row" style={{ gap: 8, padding: '6px 0', borderTop: '1px solid var(--border)', fontSize: 13 }}>
-                <Icon name="alert" size={13} className="t-amber" style={{ flex: 'none' }} />
-                <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
-                  {e.title || 'Job'}{e.company ? ` — ${e.company}` : ''}
-                </a>
-                <span className="faint" style={{ fontSize: 11.5, flex: 'none' }}>{fmtDate(e.createdAt)}</span>
-              </div>
-            ))}
-            <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>Also emailed to you each evening (21:45 IST).</div>
-          </div>
+        {selectedCell && (
+          <MetricList portal={portal} cell={selectedCell} rows={list(selectedCell.types)}
+            done={done} onDone={dismiss} />
         )}
       </div>
     );
   };
 
   return <div style={{ display: 'grid', gap: 14 }}>{block('linkedin')}{block('indeed')}</div>;
+}
+
+// Manual-apply completions are tracked per-day in localStorage, so the list resets every
+// day on its own (a new date → a fresh, empty key).
+const doneKey = () => `manualDone:${new Date().toISOString().slice(0, 10)}`;
+function loadDone(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(doneKey()) || '[]')); } catch { return new Set(); }
+}
+
+/** The expandable list under a selected metric tile. */
+function MetricList({ portal, cell, rows, done, onDone }: {
+  portal: string; cell: { label: string; types: string[] };
+  rows: AgentEvent[]; done: Set<string>; onDone: (key: string) => void;
+}) {
+  const [asked, setAsked] = useState<Record<string, boolean>>({});
+  const isManual = cell.types.includes('manual_apply');
+  const visible = isManual ? rows.filter((e) => !done.has(e.url || e.id)) : rows;
+
+  if (visible.length === 0) {
+    return <div className="metric-list faint" style={{ fontSize: 12.5 }}>
+      Nothing under “{cell.label}” yet today.
+    </div>;
+  }
+  return (
+    <div className="metric-list">
+      {isManual && <div className="kv-k" style={{ marginBottom: 6 }}>
+        Open each and apply on {portal === 'linkedin' ? 'LinkedIn' : 'the site'} — we’ll ask if you did.
+      </div>}
+      {visible.slice(0, 25).map((e) => {
+        const key = e.url || e.id;
+        return (
+          <div key={e.id} className="metric-row">
+            <a href={e.url} target="_blank" rel="noreferrer" className="metric-row-title"
+              onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
+              {e.title || 'Job'}{e.company ? <span className="faint"> · {e.company}</span> : ''}
+            </a>
+            {isManual && asked[key] ? (
+              <span className="row" style={{ gap: 6, flex: 'none' }}>
+                <span className="faint" style={{ fontSize: 12 }}>Applied?</span>
+                <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Yes</button>
+                <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
+              </span>
+            ) : (
+              <span className="faint" style={{ fontSize: 11.5, flex: 'none' }}>
+                {e.url && <Icon name="external" size={12} style={{ marginRight: 6 }} />}{fmtDate(e.createdAt)}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {isManual && <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+        This list clears itself every day. Also emailed to you each evening.
+      </div>}
+    </div>
+  );
 }
 
 // ---- Activity feed ----------------------------------------------------------

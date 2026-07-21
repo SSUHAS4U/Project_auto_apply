@@ -566,7 +566,7 @@ function ApplicationsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Applied — per portal</div>
-      <PortalMetrics kind="applied" />
+      <PortalMetrics />
       <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="clipboard" size={15} /> Application packages (Engine)</div>
       <div className="card card-pad" style={{ fontSize: 12.5, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
         <Icon name="alert" size={15} className="t-amber" style={{ flex: 'none', transform: 'translateY(1px)' }} />
