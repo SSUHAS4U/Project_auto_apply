@@ -7,10 +7,9 @@ import { Icon } from '../components/Icon';
 import { DesktopSetup } from '../components/DesktopSetup';
 
 /**
- * Connections — the board of everything the agent works through: portal sessions
- * (sign-in stays on YOUR machine, like VS Code ↔ GitHub) + email, and the flow-control
- * toggles that govern what the automation may do. Desktop setup / connect code lives in
- * Auto Apply → Agent → Connect, not here.
+ * Connections — the board of everything the agent works through: portal sessions (sign-in
+ * stays on the user's machine) + email, and the flow-control toggles that govern what the
+ * automation may do. Desktop-app setup lives at the bottom of this page (DesktopSetup).
  */
 
 const PORTALS: Record<string, { name: string; color: string; letter: string; sub: string; parked?: boolean }> = {
@@ -210,10 +209,9 @@ export function ConnectionsPage() {
       <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
         <b>What happens when you click Connect</b>
         <p className="faint" style={{ margin: '6px 0 0', lineHeight: 1.7 }}>
-          A browser opens on that portal's login page. You sign in once — the login is saved on your computer
-          (never on our servers), and the card turns <b className="t-green">Active</b> within seconds.
-          From then on the agent can search and apply there for you. It's the same idea as signing into GitHub
-          from VS Code: the app on your machine handles the sign-in; we only ever see “connected: yes”.
+          A browser opens on that portal's login page. You sign in once — the login is saved on your computer,
+          never on our servers — and the card turns <b className="t-green">Active</b> within seconds. From then
+          on the agent can search and apply there for you.
         </p>
       </div>
     </>

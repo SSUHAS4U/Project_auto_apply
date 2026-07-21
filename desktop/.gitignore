@@ -1,0 +1,4 @@
+node_modules/
+dist/
+out/
+desktop.config.json

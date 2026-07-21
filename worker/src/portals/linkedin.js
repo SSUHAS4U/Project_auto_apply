@@ -6,8 +6,15 @@
 // "Apply on company website" links.
 import { humanDelay, sleep } from '../browser.js';
 import { fillForm, uploadResume } from '../fill.js';
+import { sendConnectionRequests, checkAcceptances, sendApprovedMessages } from './outreach.js';
 
-const FIT_THRESHOLD = 45;
+// You already searched YOUR keywords with the Easy-Apply filter on, so a listing here is
+// something you asked for. We don't re-gate it hard on a keyword-overlap number (that
+// silently skipped everything). We only skip the two clear cases: an obviously senior role,
+// or a posting we could read well AND that scored genuinely poor. Anything else we apply to
+// — trusting your own search, the way a person would.
+const FIT_THRESHOLD = 25;
+const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
 function searchUrl(keyword, location) {
   const p = new URLSearchParams({ keywords: keyword, f_AL: 'true', sortBy: 'DD' }); // f_AL = Easy Apply only
@@ -51,12 +58,24 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let applied = 0;
 
-  // Block modes (from the schedule): 'outreach' = posts + HR emails + connections only,
-  // with the WHOLE block's time; 'apply' = Easy Apply only. Default runs both phases.
+  // Every run scans hiring posts first (harvests recruiter emails → the backend auto-emails
+  // a tailored application). It's short in 'apply' mode and gets the whole slot in 'outreach'
+  // mode. Only a strict 'outreach' block stops there; otherwise we go on to Easy Apply.
   const mode = plan.mode || 'all';
-  if (mode !== 'apply') {
-    try { await scanHiringPosts(page, api, plan, state, mode === 'outreach'); }
-    catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+  try { await scanHiringPosts(page, api, plan, state, mode === 'outreach'); }
+  catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+
+  // Connection outreach (gated by the Auto-message toggle). Every run FOLLOWS UP any invites
+  // that were accepted — marks them connected and DMs them with the résumé attached. New
+  // invites go out in outreach/default blocks; strict 'apply' blocks stay focused on applying.
+  if (plan.autoMessage !== false) {
+    try {
+      if (mode !== 'apply') await sendConnectionRequests(page, api, plan, state);
+      await checkAcceptances(page, api, state);
+      await sendApprovedMessages(page, api, resume, state);
+    } catch (e) {
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `outreach ended: ${String(e).slice(0, 120)}` });
+    }
   }
   if (mode === 'outreach') return { applied };
 
@@ -96,13 +115,20 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/` });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
-          if (score < FIT_THRESHOLD) {
+          const canJudge = (post.description || '').length > 60; // did we actually read the posting?
+          if (SENIOR_RE.test(post.title || '')) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title: post.title, company: post.company, detail: `skip — fit ${score}` });
+              title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
+            continue;
+          }
+          if (canJudge && score < FIT_THRESHOLD) {
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+              title: post.title, company: post.company, detail: `skip — low fit ${score}` });
             continue;
           }
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'relevant',
-            title: post.title, company: post.company, detail: `fit ${score}` });
+            title: post.title, company: post.company,
+            detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
 
           const result = await easyApply(page, api, profile, resume, state);
           if (result === 'applied') {

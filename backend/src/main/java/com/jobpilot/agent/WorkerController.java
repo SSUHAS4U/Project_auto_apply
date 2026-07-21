@@ -258,6 +258,39 @@ public class WorkerController {
         return Map.of("id", c.getId().toString(), "connectionStatus", c.getConnectionStatus());
     }
 
+    /** Contacts we've invited and are waiting on — the worker checks these for acceptance. */
+    @GetMapping("/contacts/pending")
+    public List<Map<String, Object>> pendingConnections() {
+        UUID u = UserContext.require();
+        return agent.pendingConnections(u).stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", c.getId().toString());
+            m.put("name", nz(c.getName()));
+            m.put("profileUrl", nz(c.getProfileUrl()));
+            m.put("company", nz(c.getCompany()));
+            m.put("role", nz(c.getRole()));
+            return m;
+        }).toList();
+    }
+
+    /** Advance a contact's invite lifecycle (connection_sent → pending, or connected). */
+    @PostMapping("/contact/{id}/connection-status")
+    public Map<String, Object> connectionStatus(@PathVariable UUID id, @RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        PortalContact c = agent.setConnectionStatus(u, id, b.getOrDefault("status", "pending"));
+        if ("pending".equals(c.getConnectionStatus()))
+            agent.recordEvent(u, uuid(b.get("runId")), null, c.getPortal(), "connection_sent",
+                    "Invite sent: " + nz(c.getName()), c.getCompany(), c.getProfileUrl(), b.get("note"));
+        return Map.of("id", c.getId().toString(), "connectionStatus", c.getConnectionStatus());
+    }
+
+    /** The short, AI-optimized note to attach to a connection request for this contact. */
+    @PostMapping("/connection-note")
+    public Map<String, Object> connectionNote(@RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        return Map.of("note", agent.connectionNote(u, uuid(b.get("contactId"))));
+    }
+
     /**
      * Draft-first messaging: the worker asks the brain to draft a message (connection note
      * or a reply to an incoming recruiter message). It is saved as pending_approval — the
@@ -279,6 +312,11 @@ public class WorkerController {
             x.put("id", m.getId().toString());
             x.put("contactId", m.getContactId() == null ? null : m.getContactId().toString());
             x.put("body", nz(m.getBody()));
+            // include the target so the worker can open the right thread + attach the résumé
+            PortalContact c = agent.contactById(u, m.getContactId());
+            x.put("profileUrl", c == null ? "" : nz(c.getProfileUrl()));
+            x.put("name", c == null ? "" : nz(c.getName()));
+            x.put("portal", c == null ? nz(m.getPortal()) : nz(c.getPortal()));
             return x;
         }).toList();
     }

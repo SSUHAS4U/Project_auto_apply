@@ -49,4 +49,8 @@ export class Api {
   draftMessage(m) { return this.#req('/api/worker/message/draft', { method: 'POST', body: m }); }
   approvedMessages() { return this.#req('/api/worker/messages/approved'); }
   markSent(id) { return this.#req(`/api/worker/messages/${id}/sent`, { method: 'POST' }); }
+  // Connection outreach: invites we're waiting on, the short note to attach, and lifecycle.
+  pendingConnections() { return this.#req('/api/worker/contacts/pending'); }
+  connectionNote(contactId) { return this.#req('/api/worker/connection-note', { method: 'POST', body: { contactId } }); }
+  setConnectionStatus(id, body) { return this.#req(`/api/worker/contact/${id}/connection-status`, { method: 'POST', body }); }
 }

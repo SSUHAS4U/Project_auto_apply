@@ -6,7 +6,11 @@
 import { humanDelay, sleep } from '../browser.js';
 import { fillForm, uploadResume } from '../fill.js';
 
-const FIT_THRESHOLD = 45;
+// See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
+// keyword-overlap number. Skip only clearly senior roles or postings we read well that
+// scored genuinely poor; apply to the rest.
+const FIT_THRESHOLD = 25;
+const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
 function searchUrl(keyword, location) {
   const p = new URLSearchParams({ q: keyword, sort: 'date' });
@@ -93,9 +97,20 @@ export async function runIndeed(page, api, plan, state, ctx) {
             title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}` });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
-          if (score < FIT_THRESHOLD) continue;
+          const canJudge = (post.description || '').length > 60;
+          if (SENIOR_RE.test(post.title || '')) {
+            await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+              title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
+            continue;
+          }
+          if (canJudge && score < FIT_THRESHOLD) {
+            await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+              title: post.title, company: post.company, detail: `skip — low fit ${score}` });
+            continue;
+          }
           await api.event({ runId: state.runId, portal: 'indeed', type: 'relevant',
-            title: post.title, company: post.company, detail: `fit ${score}` });
+            title: post.title, company: post.company,
+            detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
 
           const result = await indeedApply(jobPage, api, profile, resume, state, ctx);
           if (result === 'applied') {

@@ -4,6 +4,7 @@ import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../type
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
+import { DesktopTerminal } from './DesktopTerminal';
 
 /**
  * Shared automation panels for the unified Engine page: a Watch-Live popup, per-portal
@@ -87,6 +88,7 @@ export function RunControls() {
         </>
       )}
       <WatchLiveButton />
+      <DesktopTerminal />
     </div>
   );
 }

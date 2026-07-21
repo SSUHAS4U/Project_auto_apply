@@ -1,13 +1,13 @@
 name: Build JobPilot Desktop
 
-# Builds the downloadable JobPilot Desktop app and publishes each binary to a GitHub
-# Release as soon as it's built — the dashboard's "Download" button links to
-# /releases/latest/download/<asset>.
+# Builds the installable JobPilot desktop app (Electron) and publishes each installer to a
+# GitHub Release, so the dashboard's "Download" button (/releases/latest/download/<asset>)
+# always points at a real installer.
 #
-# Each platform publishes independently, so a fast runner (Windows/Linux) makes the
-# download live in a couple of minutes without waiting on the slower macOS queue.
+# The installer bundles the built dashboard + the automation worker, so end users just run
+# it, sign in, and click Connect in the built-in terminal.
 #
-# Trigger: push a tag like `desktop-v3` (or run manually from the Actions tab).
+# Trigger: push a tag like `desktop-v4` (or run manually from the Actions tab).
 
 on:
   push:
@@ -24,14 +24,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            script: build:win
-            out: jobpilot-desktop-win-x64.exe
+            script: dist:win
+            out: JobPilot-Windows-Setup.exe
           - os: ubuntu-latest
-            script: build:linux
-            out: jobpilot-desktop-linux-x64
+            script: dist:linux
+            out: JobPilot-Linux.AppImage
           - os: macos-14
-            script: build:mac-arm64
-            out: jobpilot-desktop-macos-arm64
+            script: dist:mac
+            out: JobPilot-macOS.dmg
     runs-on: ${{ matrix.os }}
     # A slow/failed platform never blocks the others — each publishes on its own.
     continue-on-error: true
@@ -40,24 +40,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # 1) Build the dashboard the app serves. (The backend URL is injected at runtime by the
+      #    Electron shell from desktop.config.json, so no VITE_API_BASE is needed here.)
+      - name: Build dashboard
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # 2) Worker deps — bundled into the app as resources (Playwright drives system Chrome).
       - name: Install worker deps
         working-directory: worker
+        run: npm install --omit=dev
+
+      # 3) Point the app + worker at the production backend (secret, else the committed default).
+      - name: Write backend config
+        shell: bash
+        run: |
+          URL="${{ secrets.DESKTOP_BACKEND_URL }}"
+          if [ -n "$URL" ]; then
+            echo "{ \"backendUrl\": \"$URL\" }" > desktop/desktop.config.json
+          fi
+
+      # 4) Build the installer.
+      - name: Install desktop deps
+        working-directory: desktop
         run: npm install
-      - name: Bundle + package executable
-        working-directory: worker
+      - name: Build installer
+        working-directory: desktop
         run: npm run ${{ matrix.script }}
-      - name: Publish this binary to the release
+
+      - name: Publish installer to the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: JobPilot Desktop ${{ github.ref_name }}
+          name: JobPilot ${{ github.ref_name }}
           body: |
-            Download the app for your computer, open it, and paste the connect code from
-            your JobPilot dashboard (Agent → Connect). Requires Google Chrome installed.
+            Install JobPilot, sign in with your account, and click **Connect** in the built-in
+            terminal (next to Watch live). Requires Google Chrome installed.
 
-            - Windows: `jobpilot-desktop-win-x64.exe`
-            - macOS (Apple Silicon): `jobpilot-desktop-macos-arm64`
-            - Linux: `jobpilot-desktop-linux-x64`
-          files: worker/dist/${{ matrix.out }}
+            - Windows: `JobPilot-Windows-Setup.exe`  (unknown-publisher warning → More info → Run anyway)
+            - macOS (Apple Silicon): `JobPilot-macOS.dmg`
+            - Linux: `JobPilot-Linux.AppImage`  (`chmod +x` once, then run)
+          files: desktop/dist/${{ matrix.out }}
           make_latest: true

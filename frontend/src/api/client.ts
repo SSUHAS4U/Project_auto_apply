@@ -7,7 +7,11 @@ import type {
   PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalConnection, PortalContact, Profile, SavedJob,
 } from '../types';
 
-const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
+// Inside the desktop app the backend URL is injected at runtime (window.jobpilot.backendUrl)
+// so one config drives both; in the browser it's the build-time VITE_API_BASE.
+const BASE = (typeof window !== 'undefined' && (window as any).jobpilot?.backendUrl)
+  || import.meta.env.VITE_API_BASE
+  || 'http://localhost:8080';
 
 const JWT_KEY = 'jobpilot_jwt';        // user auth (Bearer)
 const ADMIN_KEY = 'jobpilot_admin_token'; // ops/cron admin token (X-Api-Token)

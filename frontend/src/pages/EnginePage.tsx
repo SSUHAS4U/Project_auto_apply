@@ -343,9 +343,6 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
           <span className="step-num">2</span>
           <div><div className="step-title">What you're looking for</div><div className="step-sub">All the engine needs to find &amp; rank jobs — no AI required. Separate entries with commas.</div></div>
         </div>
-        <p className="faint" style={{ fontSize: 13, marginTop: 0, display: 'none' }}>
-          This is all the engine needs to start finding &amp; ranking jobs — no AI required. Separate multiple entries with commas.
-        </p>
         <div style={{ display: 'grid', gap: 12 }}>
           <label style={{ fontSize: 13 }}>Target roles <span className="faint">— job titles to search</span>
             <input className="input" style={{ width: '100%' }} value={roles} onChange={(e) => setRoles(e.target.value)}
@@ -385,11 +382,6 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
           <span className="step-num">3</span>
           <div><div className="step-title">Polish with AI <span className="faint" style={{ fontWeight: 400 }}>· optional</span></div><div className="step-sub">Richer tailoring documents for the best CV/cover-letter results — not needed to find jobs.</div></div>
         </div>
-        <p className="faint" style={{ fontSize: 13, marginTop: 0, display: 'none' }}>
-          Turns your profile + resume into richer tailoring documents (behavioral profile, writing style,
-          STAR interview stories, a tailored CV template). Needed for the best CV/cover-letter tailoring,
-          not for finding jobs.
-        </p>
         {!status?.aiEnabled ? (
           <div style={{ fontSize: 13, color: '#fbbf24', display: 'flex', gap: 8, alignItems: 'baseline' }}>
             <Icon name="alert" size={14} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>No AI provider is configured on the server, so this step is disabled. Set a free Groq or Gemini

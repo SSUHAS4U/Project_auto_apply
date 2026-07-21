@@ -572,6 +572,16 @@ public class AgentService {
         }
     }
 
+    /** Today's start-of-window instant for a block (its start time, IST), or null if unparseable. */
+    private static Instant blockStartInstant(AgentSchedule block) {
+        Integer start = parseHhmm(block.getStartTime());
+        if (start == null) return null;
+        return java.time.LocalDate.now(ZONE)
+                .atTime(start / 60, start % 60)
+                .atZone(ZONE)
+                .toInstant();
+    }
+
     /**
      * Start the portal whose scheduled block is active right now, if nothing is already
      * running for this user. Conservative: it never interrupts a live run — the worker's
@@ -595,6 +605,18 @@ public class AgentService {
                     ? "already running " + block.getPortal()
                     : "waiting — " + live.getPortal() + " still finishing";
         }
+
+        // Start each block ONCE per window. The rotation ticks every ~5 min, so without this
+        // guard a block whose run finished early (nothing to apply to / not logged in) would
+        // be re-started every 5 minutes for the block's whole duration — the "0 applied" spam
+        // and the "it stops and restarts every 5 minutes" the owner saw. If a run for this
+        // portal already started at/after this block's start time today, don't launch another.
+        Instant blockStart = blockStartInstant(block);
+        if (blockStart != null && runs.existsByUserIdAndPortalAndCreatedAtGreaterThanEqual(
+                userId, block.getPortal(), blockStart)) {
+            return block.getPortal() + " already ran this block";
+        }
+
         startOrGetRun(userId, block.getPortal());
         log.info("Rotation started {} for user {}", block.getPortal(), userId);
         return "started " + block.getPortal();
@@ -619,6 +641,59 @@ public class AgentService {
 
     public List<PortalContact> contacts(UUID userId, int limit) {
         return contacts.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, limit));
+    }
+
+    /** A single contact, scoped to the owner (null if missing or not theirs). */
+    public PortalContact contactById(UUID userId, UUID contactId) {
+        if (contactId == null) return null;
+        return contacts.findById(contactId).filter(c -> c.getUserId().equals(userId)).orElse(null);
+    }
+
+    // ---- connection outreach (invite → accept → message with résumé) ----------
+
+    /** Contacts we've sent an invite to and are waiting on — the worker checks these for acceptance. */
+    public List<PortalContact> pendingConnections(UUID userId) {
+        return contacts.findByUserIdAndConnectionStatusOrderByUpdatedAtDesc(userId, "pending", PageRequest.of(0, 100));
+    }
+
+    /** Move a contact along the invite lifecycle: none → pending → connected. */
+    @Transactional
+    public PortalContact setConnectionStatus(UUID userId, UUID contactId, String status) {
+        PortalContact c = contacts.findById(contactId).orElseThrow();
+        if (!c.getUserId().equals(userId)) throw new IllegalStateException("not your contact");
+        c.setConnectionStatus(status);
+        if ("connection_sent".equals(status)) c.setConnectionStatus("pending");
+        c.setUpdatedAt(Instant.now());
+        return contacts.save(c);
+    }
+
+    /**
+     * The short note that rides along with a connection request. Rendered from the owner's
+     * template (or a sensible default) and — when AI is on — rewritten for higher acceptance,
+     * kept under LinkedIn's ~300-char note limit and never fabricating anything.
+     */
+    public String connectionNote(UUID userId, UUID contactId) {
+        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
+        Profile p = profiles.get();
+        String template = messageTemplate();
+        String first = c == null || c.getName() == null || c.getName().isBlank()
+                ? "there" : c.getName().trim().split("\\s+")[0];
+        String base = !template.isBlank() ? renderTemplate(template, c, p)
+                : "Hi " + first + ", I'm " + nz(p.getFullName()) + ", a " + nz(p.getCurrentTitle())
+                  + ". I'd love to connect regarding relevant openings"
+                  + (c != null && c.getCompany() != null && !c.getCompany().isBlank() ? " at " + c.getCompany() : "") + ".";
+        if (ai.isEnabled()) {
+            String sys = """
+                    Rewrite this LinkedIn connection note for a higher acceptance rate: warm, specific,
+                    human, first person, UNDER 280 characters, no clichés, no fabricated facts. Keep any
+                    real name/role/company. Output ONLY the note text.""";
+            String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
+                    + "\nCONTACT: " + (c == null ? "a recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
+                    + "\nDRAFT: " + base;
+            String opt = nz(ai.complete(sys, user, true, false)).trim();
+            if (!opt.isBlank() && opt.length() <= 300) base = opt;
+        }
+        return base.length() > 300 ? base.substring(0, 297) + "…" : base;
     }
 
     @Transactional
@@ -753,16 +828,30 @@ public class AgentService {
         String template = messageTemplate();
         boolean autoMessage = Boolean.TRUE.equals(flows().get("autoMessage"));
 
-        // Owner's template + Auto-message ON → render + auto-approve (worker sends it).
+        // Owner's template + Auto-message ON → render (+ optional AI polish for reach) and
+        // auto-approve, so the worker can send it with the résumé attached.
         if (autoMessage && !template.isBlank()) {
+            String body = renderTemplate(template, c, p);
+            boolean polished = false;
+            if (ai.isEnabled()) {
+                String sys = """
+                        Rewrite this LinkedIn direct message to a new connection for a higher reply rate:
+                        warm, specific, first person, 40-90 words. The candidate is ATTACHING their résumé,
+                        so it may briefly reference that. No clichés, no fabricated facts. Output ONLY the message.""";
+                String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
+                        + "\nCONTACT: " + (c == null ? "a recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
+                        + "\nDRAFT: " + body;
+                String opt = nz(ai.complete(sys, user, false, false)).trim();
+                if (!opt.isBlank()) { body = opt; polished = true; }
+            }
             AgentMessage m = new AgentMessage();
             m.setUserId(userId);
             m.setContactId(contactId);
             m.setPortal(c == null ? null : c.getPortal());
             m.setDirection("out");
-            m.setBody(renderTemplate(template, c, p));
+            m.setBody(body);
             m.setStatus("approved");
-            m.setAiDrafted(false);
+            m.setAiDrafted(polished);
             return messages.save(m);
         }
 

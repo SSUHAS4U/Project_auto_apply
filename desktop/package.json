@@ -1,0 +1,43 @@
+{
+  "name": "jobpilot-desktop-app",
+  "productName": "JobPilot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JobPilot desktop app — the full dashboard plus the local automation worker and its live terminal, in one window. No separate browser tab, no console.",
+  "main": "main.js",
+  "author": "JobPilot",
+  "scripts": {
+    "build:frontend": "cd ../frontend && npm run build",
+    "build:worker": "cd ../worker && npm run build:win",
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "app.jobpilot.desktop",
+    "productName": "JobPilot",
+    "files": [
+      "main.js",
+      "preload.js",
+      "static-server.js",
+      "worker-manager.js",
+      "desktop.config.json",
+      "desktop.config.example.json",
+      "icons/**"
+    ],
+    "extraResources": [
+      { "from": "../frontend/dist", "to": "frontend" },
+      { "from": "../worker", "to": "worker", "filter": ["src/**", "package.json", "node_modules/**"] }
+    ],
+    "win": { "target": ["nsis"], "icon": "icons/icon.ico", "artifactName": "JobPilot-Windows-Setup.${ext}" },
+    "mac": { "target": ["dmg"], "icon": "icons/icon.icns", "artifactName": "JobPilot-macOS.${ext}" },
+    "linux": { "target": ["AppImage"], "icon": "icons/icon.png", "artifactName": "JobPilot-Linux.${ext}" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}

@@ -1,13 +1,13 @@
-// OS-aware "Download JobPilot Desktop" button. Serves the latest release binary for the
+// OS-aware "Download JobPilot" button. Serves the latest desktop-app installer for the
 // visitor's platform from GitHub Releases, with links for the other platforms.
 
 import { Icon } from './Icon';
 
 const RELEASE_BASE = 'https://github.com/SSUHAS4U/Project_auto_apply/releases/latest/download';
 const DOWNLOADS: Record<string, { label: string; file: string }> = {
-  win: { label: 'Download for Windows', file: 'jobpilot-desktop-win-x64.exe' },
-  macArm: { label: 'Download for Mac', file: 'jobpilot-desktop-macos-arm64' },
-  linux: { label: 'Download for Linux', file: 'jobpilot-desktop-linux-x64' },
+  win: { label: 'Download for Windows', file: 'JobPilot-Windows-Setup.exe' },
+  macArm: { label: 'Download for Mac', file: 'JobPilot-macOS.dmg' },
+  linux: { label: 'Download for Linux', file: 'JobPilot-Linux.AppImage' },
 };
 
 function detectOS(): string {
@@ -35,8 +35,8 @@ export function DownloadDesktop({ compact = false }: { compact?: boolean }) {
             ))}
           </div>
           <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
-            Requires Google Chrome installed. On Mac/Linux, make it executable once:
-            {' '}<code>chmod +x jobpilot-desktop-*</code>, then run it.
+            Requires Google Chrome installed. Run the installer, sign in, and click Connect in the
+            built-in terminal. On Linux, make the AppImage executable once: <code>chmod +x JobPilot-Linux.AppImage</code>.
           </div>
         </>
       )}
