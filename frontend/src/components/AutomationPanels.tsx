@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { api } from '../api/client';
 import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
@@ -26,6 +27,13 @@ const EVENT_ICON: Record<string, { name: string; color: string }> = {
   error: { name: 'alert', color: '#f87171' },
   info: { name: 'circle', color: '#7d8595' },
 };
+
+// Semantic tone → CSS var, for the stat tiles (a real value lights up in its tone; zero stays muted).
+const TONE_COLOR: Record<string, string> = {
+  green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)',
+  blue: 'var(--blue)', purple: 'var(--purple)', indigo: 'var(--accent-hi)', slate: 'var(--text-dim)',
+};
+const statStyle = (color: string): CSSProperties => ({ ['--stat-c']: color } as CSSProperties);
 
 // ---- Run controls + Watch live (the header actions) -------------------------
 
@@ -173,11 +181,11 @@ export function PortalMetrics({ kind }: { kind?: 'all' | 'applied' }) {
           <Icon name={portal === 'linkedin' ? 'link' : 'target'} size={15} />
           {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
         </div>
-        <div className="metric-row">
+        <div className="stat-grid">
           {cells.map(([label, v, tone]) => (
-            <div key={label} className="metric-cell">
-              <span className={`tone tone-${tone}`} style={{ fontSize: 16, fontWeight: 750, padding: '5px 13px' }}>{v}</span>
-              <span className="faint" style={{ fontSize: 11.5, textAlign: 'center' }}>{label}</span>
+            <div key={label} className="stat" style={statStyle(v ? TONE_COLOR[tone] : 'var(--text-faint)')}>
+              <span className="stat-num">{v}</span>
+              <span className="stat-label">{label}</span>
             </div>
           ))}
         </div>

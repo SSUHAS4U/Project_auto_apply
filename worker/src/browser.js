@@ -52,11 +52,18 @@ export function humanDelay(min = 700, max = 1800) {
  */
 export function startFrameStreamer(page, api, state) {
   let stopped = false;
+  let fails = 0;         // consecutive failed ticks
+  let reported = false;  // surfaced the cause to the dashboard already?
   const tick = async () => {
     while (!stopped) {
       try {
-        if (!page.isClosed()) {
-          const buf = await page.screenshot({ type: 'jpeg', quality: 40 });
+        // Screenshot the tab work is actually happening on — apply flows (Indeed) and
+        // outreach open NEW tabs, so always grab the newest open page, not the first one.
+        const ctx = page.context();
+        const open = ctx.pages().filter((p) => !p.isClosed());
+        const shot = open.length ? open[open.length - 1] : page;
+        if (!shot.isClosed()) {
+          const buf = await shot.screenshot({ type: 'jpeg', quality: 38 });
           const r = await api.frame({
             runId: state.runId,
             portal: state.portal,
@@ -64,8 +71,21 @@ export function startFrameStreamer(page, api, state) {
             imageB64: buf.toString('base64'),
           });
           if (r && r.paused) state.paused = true;
+          fails = 0; reported = false;
         }
-      } catch { /* a navigation mid-shot is fine; try again next tick */ }
+      } catch (e) {
+        // One-off navigation errors are normal. But if it keeps failing, Watch Live stays
+        // blank with no clue why — so after several in a row, surface the reason ONCE to the
+        // console AND the dashboard activity feed (covers a rejected payload, an auth issue,
+        // a screenshot problem — whatever it actually is).
+        const msg = String((e && e.message) || e);
+        console.error('  Live view tick failed:', msg);
+        if (++fails >= 5 && !reported) {
+          reported = true;
+          api.event({ runId: state.runId, portal: state.portal, type: 'info',
+            detail: `Live view unavailable: ${msg.slice(0, 160)}` }).catch(() => {});
+        }
+      }
       await sleep(1200);
     }
   };

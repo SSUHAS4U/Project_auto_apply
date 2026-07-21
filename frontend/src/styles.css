@@ -408,6 +408,20 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .metric-row { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 .metric-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 84px; }
 
+/* Stat tiles (per-portal metrics): a number that lights up in its tone when it has a
+   value, and recedes to muted grey at zero — so an idle board reads calm, not a wall of
+   colour, and real activity pops. Tabular figures keep the row from jittering as counts change. */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
+.stat { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 13px 14px 12px 16px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden;
+  transition: border-color .15s; }
+.stat:hover { border-color: var(--border-strong); }
+.stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--stat-c, var(--border-strong)); }
+.stat-num { font-size: 23px; font-weight: 750; line-height: 1.05; letter-spacing: -.01em;
+  color: var(--stat-c, var(--text)); font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 11.5px; font-weight: 500; color: var(--text-dim); }
+
 /* Schedule cards ------------------------------------------------------------- */
 .sched-card { padding: 18px; transition: border-color .15s, box-shadow .15s, opacity .15s; }
 .sched-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
@@ -446,10 +460,11 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .opt-card.active { border-color: var(--accent); box-shadow: var(--glow); background: var(--accent-soft); }
 
 /* Key-value tiles (read-only detail grids) ------------------------------- */
-.kv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.kv-tile { display: flex; flex-direction: column; gap: 4px; padding: 11px 13px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 0; }
-.kv-k { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
-.kv-v { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 11px; }
+.kv-tile { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; transition: border-color .15s; }
+.kv-tile:hover { border-color: var(--border-strong); }
+.kv-k { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint); }
+.kv-v { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Card title (icon + label) ---------------------------------------------- */
 .card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; margin-bottom: 10px; }

@@ -34,15 +34,11 @@ export function JobProfileEditor() {
         <span className="step-num"><Icon name="target" size={14} /></span>
         <div>
           <div className="step-title">Job profile</div>
-          <div className="step-sub">Desired roles, compensation, projects &amp; achievements — powers searches, tailoring and screening answers.</div>
+          <div className="step-sub">Compensation, projects &amp; achievements — used for CV tailoring and screening answers. Roles &amp; locations come from step 2 above.</div>
         </div>
       </div>
 
-      <Field label="Desired job titles — comma-separated" full>
-        <input className="input" value={p.desiredTitles ?? ''} onChange={(e) => set({ desiredTitles: e.target.value })}
-          placeholder="Full-Stack Software Engineer, Backend Developer, Software Engineer" />
-      </Field>
-      <div className="grid2" style={{ marginTop: 12 }}>
+      <div className="grid2">
         <Field label="Experience level">
           <select className="select" value={p.experienceLevel ?? ''} onChange={(e) => set({ experienceLevel: e.target.value })}>
             <option value="">Select…</option>
