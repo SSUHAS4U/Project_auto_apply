@@ -4,6 +4,9 @@ import { api } from '../api/client';
 import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
+import { Modal } from './Modal';
+import { TerminalConsole } from './DesktopTerminal';
+import { isDesktopApp } from '../lib/desktop';
 
 /**
  * Shared automation panels for the unified Engine page: a Watch-Live popup, per-portal
@@ -93,7 +96,46 @@ export function RunControls() {
           </button>
         </>
       )}
+      {/* Watch live + Terminal stay right here in the Auto Apply header (they're ALSO in the
+          floating hub for every other page). */}
+      <WatchLiveButton />
+      <TerminalButton />
     </div>
+  );
+}
+
+/** "Watch live" button for the Auto Apply header — opens the live feed in a modal. */
+export function WatchLiveButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
+        <Icon name="live" size={14} /> Watch live
+      </button>
+      {open && (
+        <Modal title="Watch live — what the automation is doing" onClose={() => setOpen(false)} wide>
+          <div style={{ height: '62vh' }}><LiveView /></div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** "Terminal" button for the Auto Apply header (desktop app only) — opens the console. */
+function TerminalButton() {
+  const [open, setOpen] = useState(false);
+  if (!isDesktopApp()) return null;
+  return (
+    <>
+      <button className="btn btn-sm" onClick={() => setOpen(true)}>
+        <Icon name="terminal" size={14} /> Terminal
+      </button>
+      {open && (
+        <Modal title="Automation terminal" onClose={() => setOpen(false)} wide>
+          <div style={{ height: '62vh' }}><TerminalConsole /></div>
+        </Modal>
+      )}
+    </>
   );
 }
 
