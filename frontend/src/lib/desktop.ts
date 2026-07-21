@@ -12,6 +12,7 @@ interface JobPilotBridge {
   stopWorker: () => Promise<WorkerStatus>;
   getWorkerStatus: () => Promise<WorkerStatus>;
   getSavedToken: () => Promise<string>;
+  getRecentLog?: () => Promise<string>;
   onWorkerLog: (cb: (line: string) => void) => () => void;
   onWorkerStatus: (cb: (s: WorkerStatus) => void) => () => void;
 }

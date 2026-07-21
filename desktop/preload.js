@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('jobpilot', {
   stopWorker: () => ipcRenderer.invoke('worker:stop'),
   getWorkerStatus: () => ipcRenderer.invoke('worker:status'),
   getSavedToken: () => ipcRenderer.invoke('worker:savedToken'),
+  getRecentLog: () => ipcRenderer.invoke('worker:recentLog'),
 
   // ---- live streams (return an unsubscribe fn) ----
   onWorkerLog: (cb) => {

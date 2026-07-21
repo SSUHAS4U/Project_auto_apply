@@ -26,6 +26,9 @@ export function DesktopTerminal() {
   useEffect(() => {
     if (!d) return;
     d.getWorkerStatus().then((s) => setRunning(s.running)).catch(() => {});
+    // Replay anything the worker already printed before this panel mounted (otherwise the
+    // first lines are lost and it looks like nothing is streaming).
+    d.getRecentLog?.().then((buf) => { if (buf) setLog((prev) => prev || buf.replace(/\r/g, '')); }).catch(() => {});
     const offLog = d.onWorkerLog((chunk) => {
       setLog((prev) => (prev + chunk.replace(/\r/g, '')).slice(-80000));
     });

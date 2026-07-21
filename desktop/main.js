@@ -43,7 +43,14 @@ function persistToken(t) {
   try { if (t) fs.writeFileSync(TOKEN_FILE, t); } catch { /* non-fatal */ }
 }
 
-function sendLog(line) { if (win && !win.isDestroyed()) win.webContents.send('worker:log', line); }
+// Keep a capped rolling buffer of worker output so the terminal can REPLAY it on mount —
+// otherwise any line emitted before the renderer subscribed (or after a re-mount) is lost,
+// which looked like "nothing is streaming" even though the worker was talking.
+let logBuffer = '';
+function sendLog(line) {
+  logBuffer = (logBuffer + line).slice(-100000);
+  if (win && !win.isDestroyed()) win.webContents.send('worker:log', line);
+}
 function sendStatus(s) { if (win && !win.isDestroyed()) win.webContents.send('worker:status', s); }
 
 async function createWindow() {
@@ -91,6 +98,7 @@ async function createWindow() {
 // ---- IPC --------------------------------------------------------------------
 ipcMain.on('app:backendUrl', (e) => { e.returnValue = BACKEND_URL; });
 ipcMain.handle('worker:savedToken', () => savedToken());
+ipcMain.handle('worker:recentLog', () => logBuffer);
 ipcMain.handle('worker:status', () => (worker ? worker.status() : { running: false }));
 ipcMain.handle('worker:start', (_e, token) => {
   const t = (token || savedToken() || '').trim();
