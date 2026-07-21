@@ -352,18 +352,6 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
             <input className="input" style={{ width: '100%' }} value={locations} onChange={(e) => setLocations(e.target.value)}
               placeholder="e.g. Bengaluru, Hyderabad, Remote" />
           </label>
-          <label style={{ fontSize: 13 }}>Career goal <span className="faint">— one line</span>
-            <input className="input" style={{ width: '100%' }} value={careerGoal} onChange={(e) => setCareerGoal(e.target.value)}
-              placeholder="e.g. Grow into a backend-heavy full-stack role at a product company" />
-          </label>
-          <label style={{ fontSize: 13 }}>Deal-breakers <span className="faint">— auto-reject if a job has these</span>
-            <input className="input" style={{ width: '100%' }} value={dealBreakers} onChange={(e) => setDealBreakers(e.target.value)}
-              placeholder="e.g. unpaid, pure sales, on-site only in another city" />
-          </label>
-          <label style={{ fontSize: 13 }}>Biggest wins <span className="faint">— optional, strengthens tailoring</span>
-            <textarea className="input" style={{ width: '100%', minHeight: 70 }} value={wins} onChange={(e) => setWins(e.target.value)}
-              placeholder="e.g. Cut API latency 60%; shipped a payments feature used by 40k users" />
-          </label>
         </div>
         <div className="row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={saveGuided} disabled={saving}>
