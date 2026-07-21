@@ -49,7 +49,12 @@ public class OpenAiCompatAiClient implements AiClient {
     @Override
     public String complete(String system, String user, boolean fast) {
         JobPilotProperties.Gateway g = props.getGateway();
-        String model = fast ? g.getFastModel() : g.getModel();
+        // Use the fast model only when it's a real id; otherwise fall back to the main model.
+        // (Providers like OpenRouter need a concrete model id — a bare "auto" isn't valid there,
+        //  though OmniRoute understands it, so we keep "auto" as the main model in that case.)
+        String fastModel = g.getFastModel();
+        boolean fastUsable = fastModel != null && !fastModel.isBlank() && !"auto".equalsIgnoreCase(fastModel);
+        String model = (fast && fastUsable) ? fastModel : g.getModel();
         Map<String, Object> body = Map.of(
                 "model", model,
                 "temperature", 0.6,
