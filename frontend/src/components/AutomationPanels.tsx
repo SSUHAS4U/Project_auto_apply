@@ -33,7 +33,7 @@ const TONE_COLOR: Record<string, string> = {
   green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)',
   blue: 'var(--blue)', purple: 'var(--purple)', indigo: 'var(--accent-hi)', slate: 'var(--text-dim)',
 };
-const statStyle = (color: string): CSSProperties => ({ ['--stat-c']: color } as CSSProperties);
+const mtileStyle = (color: string): CSSProperties => ({ ['--mtile-c']: color } as CSSProperties);
 
 // ---- Run controls + Watch live (the header actions) -------------------------
 
@@ -181,11 +181,11 @@ export function PortalMetrics({ kind }: { kind?: 'all' | 'applied' }) {
           <Icon name={portal === 'linkedin' ? 'link' : 'target'} size={15} />
           {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
         </div>
-        <div className="stat-grid">
+        <div className="mtile-grid">
           {cells.map(([label, v, tone]) => (
-            <div key={label} className="stat" style={statStyle(v ? TONE_COLOR[tone] : 'var(--text-faint)')}>
-              <span className="stat-num">{v}</span>
-              <span className="stat-label">{label}</span>
+            <div key={label} className="mtile" style={mtileStyle(v ? TONE_COLOR[tone] : 'var(--text-faint)')}>
+              <span className="mtile-num">{v}</span>
+              <span className="mtile-label">{label}</span>
             </div>
           ))}
         </div>
