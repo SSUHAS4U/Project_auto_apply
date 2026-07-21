@@ -28,16 +28,15 @@
       "static-server.js",
       "worker-manager.js",
       "desktop.config.json",
-      "desktop.config.example.json",
-      "icons/**"
+      "desktop.config.example.json"
     ],
     "extraResources": [
       { "from": "../frontend/dist", "to": "frontend" },
       { "from": "../worker", "to": "worker", "filter": ["src/**", "package.json", "node_modules/**"] }
     ],
-    "win": { "target": ["nsis"], "icon": "icons/icon.ico", "artifactName": "JobPilot-Windows-Setup.${ext}" },
-    "mac": { "target": ["dmg"], "icon": "icons/icon.icns", "artifactName": "JobPilot-macOS.${ext}" },
-    "linux": { "target": ["AppImage"], "icon": "icons/icon.png", "artifactName": "JobPilot-Linux.${ext}" },
+    "win": { "target": ["nsis"], "artifactName": "JobPilot-Windows-Setup.${ext}" },
+    "mac": { "target": ["dmg"], "artifactName": "JobPilot-macOS.${ext}" },
+    "linux": { "target": ["AppImage"], "artifactName": "JobPilot-Linux.${ext}" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }
 }
