@@ -198,6 +198,18 @@ public class WorkerController {
         m.put("expected_ctc", nz(p.getExpectedCtc()));
         m.put("notice_period", nz(p.getNoticePeriod()));
         m.put("work_authorization", nz(p.getWorkAuthorization()));
+        // More Easy-Apply autofill answers, straight from the profile.
+        m.put("first_name_alt", nz(p.getFirstName()));
+        m.put("headline", nz(p.getHeadline()));
+        m.put("address", nz(p.getAddress()));
+        m.put("experience_level", nz(p.getExperienceLevel()));
+        m.put("job_type", nz(p.getJobType()));
+        m.put("available_from", nz(p.getAvailableFrom()));
+        m.put("gender", nz(p.getGender()));
+        m.put("nationality", nz(p.getNationality()));
+        m.put("disability_status", nz(p.getDisabilityStatus()));
+        m.put("requires_sponsorship", yesNo(p.getRequiresSponsorship()));
+        m.put("willing_to_relocate", yesNo(p.getWillingToRelocate()));
         m.put("skills", p.getSkills() == null ? List.of() : p.getSkills());
         m.put("links", p.getLinks() == null ? Map.of() : p.getLinks());
         m.put("field_map", p.getFieldMap() == null ? Map.of() : p.getFieldMap());
@@ -335,4 +347,5 @@ public class WorkerController {
     }
     private static String str(Object o) { return o == null ? null : o.toString(); }
     private static String nz(String s) { return s == null ? "" : s; }
+    private static String yesNo(Boolean b) { return b == null ? "" : (b ? "Yes" : "No"); }
 }

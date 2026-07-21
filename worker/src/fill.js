@@ -3,25 +3,37 @@
 // AI (/answer), which stays honest — it returns NEEDS_ATTENTION rather than inventing.
 import { humanDelay } from './browser.js';
 
-// profile key → label keywords that imply it
+// profile key → label keywords that imply it. Ordered most-specific first (matchKey returns
+// the first hit), so e.g. "first name" wins over the generic "name". Covers the common
+// LinkedIn/Indeed Easy-Apply screening questions from the profile the backend sends.
 const SYNONYMS = {
-  full_name: ['full name', 'your name', 'name'],
   first_name: ['first name', 'given name'],
   last_name: ['last name', 'surname', 'family name'],
+  full_name: ['full name', 'your name', 'legal name', 'name'],
   email: ['email', 'e-mail'],
-  phone: ['phone', 'mobile', 'contact number', 'contact no'],
-  location: ['current location', 'location', 'city'],
+  phone: ['phone', 'mobile', 'contact number', 'contact no', 'cell'],
+  headline: ['headline', 'professional title'],
+  address: ['street address', 'address line', 'address'],
   city: ['city', 'town'],
-  state: ['state', 'province'],
+  state: ['state', 'province', 'region'],
   country: ['country'],
-  postal_code: ['pin', 'zip', 'postal'],
-  current_title: ['current designation', 'job title', 'designation', 'current role'],
-  current_company: ['current company', 'employer', 'organisation', 'organization'],
-  years_experience: ['total experience', 'years of experience', 'experience', 'exp'],
-  current_ctc: ['current ctc', 'current salary'],
-  expected_ctc: ['expected ctc', 'expected salary'],
-  notice_period: ['notice period', 'notice'],
-  work_authorization: ['work authorization', 'work permit', 'visa'],
+  postal_code: ['pin code', 'pincode', 'zip', 'postal', 'pin'],
+  location: ['current location', 'location'],
+  current_title: ['current designation', 'job title', 'current title', 'designation', 'current role'],
+  current_company: ['current company', 'current employer', 'employer', 'organisation', 'organization'],
+  years_experience: ['years of experience', 'total experience', 'how many years', 'relevant experience', 'experience in years', 'years exp', 'experience', ' exp'],
+  experience_level: ['experience level', 'seniority'],
+  job_type: ['job type', 'employment type'],
+  current_ctc: ['current ctc', 'current salary', 'current compensation', 'present salary'],
+  expected_ctc: ['expected ctc', 'expected salary', 'expected compensation', 'desired salary', 'salary expectation'],
+  notice_period: ['notice period', 'notice', 'how soon can you join', 'availability to start'],
+  available_from: ['start date', 'available from', 'earliest start', 'joining date', 'available to start'],
+  work_authorization: ['work authorization', 'work authorisation', 'authorized to work', 'legally authorized', 'work permit', 'right to work', 'visa'],
+  requires_sponsorship: ['sponsorship', 'require sponsorship', 'need sponsorship', 'visa sponsorship'],
+  willing_to_relocate: ['relocate', 'willing to relocate', 'open to relocation'],
+  gender: ['gender', 'sex'],
+  nationality: ['nationality', 'citizenship'],
+  disability_status: ['disability', 'disabled'],
 };
 
 function labelFor(el) {
