@@ -33,9 +33,11 @@ public class AiService {
     }
 
     private static final String K_PROVIDER = "ai_provider";
-    // Gemini first: its free tier (huge TPM/RPD) handles the engine's bursts far better
-    // than Groq's 6000 TPM. Groq is the fallback, Ollama last (local only).
-    private static final List<String> AUTO_ORDER = List.of("gemini", "groq", "ollama");
+    // Gateway first: if an OmniRoute (or any OpenAI-compatible) gateway is configured, route
+    // everything through it — it fans out across many providers with its own smart fallback
+    // and token compression. It's skipped when unconfigured, so the effective default stays
+    // Gemini (huge free TPM/RPD) → Groq → Ollama (local only), exactly as before.
+    private static final List<String> AUTO_ORDER = List.of("gateway", "gemini", "groq", "ollama");
 
     /** Configured provider — settings override the .env default; "auto" resolves at call time. */
     public String provider() {
@@ -65,7 +67,7 @@ public class AiService {
     /** Per-provider configured + reachable status (for the Settings test panel). */
     public List<Map<String, Object>> providerStatus() {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
-        for (String name : List.of("groq", "gemini", "ollama")) {
+        for (String name : List.of("gateway", "groq", "gemini", "ollama")) {
             AiClient c = clients.get(name);
             out.add(Map.of("provider", name, "configured", c != null && c.isConfigured()));
         }

@@ -75,6 +75,15 @@ jobpilot:
   ai:
     provider: ${JOBPILOT_AI_PROVIDER:template}
     daily-limit: ${JOBPILOT_AI_DAILY_LIMIT:0}   # 0 = unlimited (free Groq/Gemini self-limit)
+  # Optional OpenAI-compatible AI gateway. Set the URL to an OmniRoute instance
+  # (http://host:20128/v1/chat/completions) to route through its many providers + compression,
+  # or any other /v1 endpoint. Blank = disabled (falls back to Gemini/Groq directly).
+  gateway:
+    url: ${JOBPILOT_GATEWAY_URL:}
+    api-key: ${JOBPILOT_GATEWAY_API_KEY:}
+    model: ${JOBPILOT_GATEWAY_MODEL:auto}
+    fast-model: ${JOBPILOT_GATEWAY_FAST_MODEL:auto}
+    max-tokens: ${JOBPILOT_GATEWAY_MAX_TOKENS:4000}
   groq:
     api-key: ${JOBPILOT_GROQ_API_KEY:}
     model: ${JOBPILOT_GROQ_MODEL:llama-3.3-70b-versatile}

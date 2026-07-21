@@ -54,6 +54,7 @@ public class JobPilotProperties {
     private CoverLetter coverletter = new CoverLetter();
     private Ai ai = new Ai();
     private Groq groq = new Groq();
+    private Gateway gateway = new Gateway();
     private Ollama ollama = new Ollama();
     private Gemini gemini = new Gemini();
     private Adzuna adzuna = new Adzuna();
@@ -77,6 +78,20 @@ public class JobPilotProperties {
         private String fastModel = "llama-3.1-8b-instant";
         private String url = "https://api.groq.com/openai/v1/chat/completions";
         /** Reserved output tokens. Free tier = 6000 TPM, so keep this well under it. */
+        private int maxTokens = 4000;
+    }
+
+    @Data
+    public static class Gateway {
+        /** OpenAI-compatible chat-completions endpoint. Point this at an OmniRoute instance
+         *  (e.g. http://host:20128/v1/chat/completions) to route through its 271+ providers,
+         *  smart fallback and token compression — or at any other /v1-compatible provider.
+         *  Blank = disabled: JobPilot then uses Gemini/Groq directly, exactly as before. */
+        private String url = "";
+        private String apiKey = "";
+        /** OmniRoute understands "auto" (its own smart routing). For a raw provider set a real model id. */
+        private String model = "auto";
+        private String fastModel = "auto";
         private int maxTokens = 4000;
     }
 
