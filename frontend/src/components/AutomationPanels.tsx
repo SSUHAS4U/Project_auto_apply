@@ -4,8 +4,6 @@ import { api } from '../api/client';
 import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
-import { Modal } from './Modal';
-import { DesktopTerminal } from './DesktopTerminal';
 
 /**
  * Shared automation panels for the unified Engine page: a Watch-Live popup, per-portal
@@ -95,25 +93,15 @@ export function RunControls() {
           </button>
         </>
       )}
-      <WatchLiveButton />
-      <DesktopTerminal />
     </div>
   );
 }
 
-export function WatchLiveButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="btn btn-primary" onClick={() => setOpen(true)}>
-        <Icon name="live" size={15} /> Watch live
-      </button>
-      {open && <LiveModal onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-function LiveModal({ onClose }: { onClose: () => void }) {
+/**
+ * Live screen feed — the polling status pill + the streamed frame. Extracted so it can live
+ * inside the floating hub (Watch-live tab) instead of a separate modal/button.
+ */
+export function LiveView() {
   const [frame, setFrame] = useState<AgentFrame | null>(null);
   useEffect(() => {
     let stop = false;
@@ -123,8 +111,8 @@ function LiveModal({ onClose }: { onClose: () => void }) {
     return () => { stop = true; clearInterval(t); };
   }, []);
   return (
-    <Modal title="Watch live — what the automation is doing" onClose={onClose} wide>
-      <div className="row" style={{ gap: 10, marginBottom: 10, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div className="row" style={{ gap: 10, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className={`tone ${frame?.hasFrame ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
           <span className="live-dot" /> {frame?.action || 'Idle — waiting for a run'}
         </span>
@@ -132,18 +120,18 @@ function LiveModal({ onClose }: { onClose: () => void }) {
           {frame?.portal ? `${frame.portal} · ` : ''}{frame?.updatedAt ? fmtDate(frame.updatedAt) : 'no feed yet'}
         </span>
       </div>
-      <div style={{ background: '#000', borderRadius: 12, minHeight: 320, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 240, background: '#000', borderRadius: 12, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
         {frame?.hasFrame ? (
           <img src={`data:image/jpeg;base64,${frame.imageB64}`} alt="live"
-            style={{ width: '100%', maxHeight: '64vh', objectFit: 'contain' }} />
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         ) : (
-          <div className="faint" style={{ padding: 48, textAlign: 'center' }}>
-            <div style={{ opacity: .5, marginBottom: 10 }}><Icon name="live" size={44} /></div>
+          <div className="faint" style={{ padding: 40, textAlign: 'center' }}>
+            <div style={{ opacity: .5, marginBottom: 10 }}><Icon name="live" size={40} /></div>
             Waiting for JobPilot Desktop's screen feed.<br />Start the app and queue a run — the automation streams here.
           </div>
         )}
       </div>
-    </Modal>
+    </div>
   );
 }
 

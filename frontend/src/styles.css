@@ -195,6 +195,26 @@ button:focus:not(:focus-visible) { outline: none; }
   .chatw-fab { right: 14px; bottom: 14px; width: 48px; height: 48px; }
   .chatw-panel { right: 8px; bottom: 70px; }
 }
+
+/* Floating hub: Assistant + Watch-live + Terminal in one launcher. Wider/taller than the
+   old chat-only panel because it now shows a live screen feed and a console. */
+.hub-panel {
+  position: fixed; right: 22px; bottom: 86px; z-index: 90;
+  width: min(560px, calc(100vw - 32px)); height: min(640px, calc(100dvh - 120px));
+  background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 16px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+  animation: chatwIn .2s ease;
+}
+.hub-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.hub-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; }
+.hub-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: none; background: transparent;
+  color: var(--text-dim); font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 8px; white-space: nowrap;
+  transition: background .15s, color .15s; }
+.hub-tab:hover { color: var(--text); background: var(--bg-elev); }
+.hub-tab.active { color: var(--accent-hi); background: var(--accent-soft); }
+.hub-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
+.hub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+@media (max-width: 620px) { .hub-panel { right: 8px; bottom: 70px; } }
 .sidebar-foot { margin-top: auto; font-size: 11px; color: var(--text-faint); padding: 8px; }
 .sidebar-user { margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 10px 8px 4px; border-top: 1px solid var(--border); }
 /* Column layout: identity row on top, the three action buttons below it. */
