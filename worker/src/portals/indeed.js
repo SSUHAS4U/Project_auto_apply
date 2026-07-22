@@ -35,6 +35,8 @@ async function readPosting(page) {
     company: await text('[data-testid="inlineHeader-companyName"], .jobsearch-CompanyInfoContainer a'),
     location: await text('[data-testid="inlineHeader-companyLocation"], [data-testid="job-location"]'),
     description: await text('#jobDescriptionText, .jobsearch-JobComponent-description'),
+    salary: (await text('#salaryInfoAndJobType [data-testid="attribute_snippet_testid"], #salaryInfoAndJobType .attribute_snippet, .jobsearch-JobMetadataHeader-item'))
+      .replace(/\s+/g, ' ').slice(0, 90),
   };
 }
 
@@ -94,7 +96,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
           const post = await readPosting(jobPage);
           state.action = `Reviewing: ${post.title}`;
           await api.event({ runId: state.runId, portal: 'indeed', type: 'job_identified',
-            title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}` });
+            title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}`,
+            salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
           const canJudge = (post.description || '').length > 60;

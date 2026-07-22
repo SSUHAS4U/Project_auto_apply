@@ -185,6 +185,8 @@ public class AgentController {
             m.put("company", e.getCompany());
             m.put("url", e.getUrl());
             m.put("detail", e.getDetail());
+            if (e.getSalary() != null) m.put("salary", e.getSalary());
+            if (e.getDescription() != null) m.put("description", e.getDescription());
             m.put("createdAt", e.getCreatedAt());
             return m;
         }).toList();

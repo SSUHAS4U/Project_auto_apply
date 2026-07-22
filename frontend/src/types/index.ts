@@ -238,6 +238,8 @@ export interface AgentEvent {
   company?: string;
   url?: string;
   detail?: string;
+  salary?: string;
+  description?: string;
   createdAt: string;
 }
 

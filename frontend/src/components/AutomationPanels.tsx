@@ -301,8 +301,10 @@ function MetricList({ portal, cell, rows, done, onDone }: {
               </a>
               <div className="jobrow-sub">
                 <span>{e.company || 'Company'}</span>
+                {e.salary && <span className="jobrow-salary">{e.salary}</span>}
                 {fit && <span className="jobrow-fit">fit {fit}</span>}
               </div>
+              {e.description && <div className="jobrow-desc">{e.description}</div>}
             </div>
             {isManual && asked[key] ? (
               <span className="row" style={{ gap: 6, flex: 'none' }}>

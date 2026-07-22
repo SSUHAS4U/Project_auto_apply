@@ -44,11 +44,22 @@ async function collectJobCards(page) {
 
 async function readPosting(page) {
   const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => '');
+  // Salary is sparse on LinkedIn — scan the top-card "insight" pills for a pay pattern.
+  const salary = await page.$$eval(
+    '.job-details-jobs-unified-top-card__job-insight, .jobs-unified-top-card__job-insight',
+    (els) => {
+      for (const el of els) {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (/[₹$€£]\s?\d|\d[\d,.]*\s*(per|\/)\s*(year|yr|hour|hr|month|annum)|lpa|\bk\/yr\b/i.test(t)) return t.slice(0, 90);
+      }
+      return '';
+    }).catch(() => '');
   return {
     title: await text('.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1'),
     company: await text('.job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name'),
     location: await text('.job-details-jobs-unified-top-card__primary-description-container, .jobs-unified-top-card__bullet'),
     description: await text('#job-details, .jobs-description__content, .jobs-box__html-content'),
+    salary,
   };
 }
 
@@ -114,7 +125,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           const post = await readPosting(page);
           state.action = `Reviewing: ${post.title}`;
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'job_identified',
-            title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/` });
+            title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+            salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
           const canJudge = (post.description || '').length > 60; // did we actually read the posting?

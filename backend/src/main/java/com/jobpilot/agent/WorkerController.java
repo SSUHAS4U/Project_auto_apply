@@ -132,7 +132,8 @@ public class WorkerController {
         UUID u = UserContext.require();
         AgentEvent e = agent.recordEvent(u, uuid(b.get("runId")), uuid(b.get("taskId")),
                 b.get("portal"), b.getOrDefault("type", "info"),
-                b.get("title"), b.get("company"), b.get("url"), b.get("detail"));
+                b.get("title"), b.get("company"), b.get("url"), b.get("detail"),
+                b.get("salary"), b.get("description"));
         return Map.of("id", e.getId().toString());
     }
 

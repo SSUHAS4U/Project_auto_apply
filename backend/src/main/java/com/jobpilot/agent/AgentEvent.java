@@ -43,6 +43,12 @@ public class AgentEvent {
     @Column(columnDefinition = "text")
     private String detail;
 
+    /** Optional job details for job cards (blank when the portal didn't expose them). */
+    private String salary;
+
+    @Column(columnDefinition = "text")
+    private String description;
+
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 }

@@ -315,6 +315,12 @@ public class AgentService {
     @Transactional
     public AgentEvent recordEvent(UUID userId, UUID runId, UUID taskId, String portal, String type,
                                   String title, String company, String url, String detail) {
+        return recordEvent(userId, runId, taskId, portal, type, title, company, url, detail, null, null);
+    }
+
+    public AgentEvent recordEvent(UUID userId, UUID runId, UUID taskId, String portal, String type,
+                                  String title, String company, String url, String detail,
+                                  String salary, String description) {
         AgentEvent e = new AgentEvent();
         e.setUserId(userId);
         e.setRunId(runId);
@@ -325,6 +331,8 @@ public class AgentService {
         e.setCompany(company);
         e.setUrl(url);
         e.setDetail(detail);
+        e.setSalary(salary);
+        e.setDescription(description == null ? null : (description.length() > 600 ? description.substring(0, 600) : description));
         AgentEvent saved = events.save(e);
         if (runId != null) bumpRunCounter(runId, type);
         // Surface the moments the owner actually cares about as notifications (the bell):
