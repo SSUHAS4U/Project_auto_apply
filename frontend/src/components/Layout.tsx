@@ -19,9 +19,10 @@ const NAV: NavEntry[] = [
     label: 'Auto Apply', ico: 'bolt',
     children: [
       { to: '/auto-apply', label: 'Automation', ico: 'live', end: true },
+      { to: '/auto-apply/setup', label: 'Setup', ico: 'gear' },
       { to: '/connections', label: 'Connections', ico: 'link' },
-      { to: '/auto-apply/linkedin', label: 'LinkedIn', ico: 'link' },
-      { to: '/auto-apply/indeed', label: 'Indeed', ico: 'target' },
+      { to: '/auto-apply/linkedin', label: 'LinkedIn', ico: 'linkedin' },
+      { to: '/auto-apply/indeed', label: 'Indeed', ico: 'indeed' },
       { to: '/auto-apply/engine', label: 'Engine', ico: 'bolt' },
     ],
   },

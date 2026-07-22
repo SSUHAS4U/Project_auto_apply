@@ -46,6 +46,9 @@ const PATHS: Record<string, JSX.Element> = {
   chevron: <path d="m9 6 6 6-6 6" />,
   chat: <path d="M21 12a8 8 0 0 1-8 8H4l2.5-2.5A8 8 0 1 1 21 12z" />,
   terminal: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></>,
+  // Brand marks — filled glyphs (override the outer stroke).
+  linkedin: <g fill="currentColor" stroke="none"><path d="M4.98 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM3.2 9h3.6v11.5H3.2zM9 9h3.45v1.57h.05c.48-.9 1.66-1.85 3.42-1.85 3.66 0 4.33 2.4 4.33 5.53v6.25h-3.6V15.5c0-1.3-.02-2.97-1.8-2.97-1.8 0-2.08 1.4-2.08 2.87v5.1H9z" /></g>,
+  indeed: <g fill="currentColor" stroke="none"><circle cx="12" cy="4.6" r="2.4" /><path d="M9.7 8.8c1.5.55 3.1.55 4.6 0v11.3a2.3 2.3 0 0 1-4.6 0z" /></g>,
 };
 
 export function Icon({ name, size = 18, className, style }:

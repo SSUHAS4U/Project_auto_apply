@@ -101,8 +101,13 @@ export function EnginePage() {
 
   const busy = status?.scrapeRunning || status?.rankRunning;
   const location = useLocation();
-  const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed' | 'engine';
+  const section = (location.pathname.split('/')[2] || '') as '' | 'setup' | 'linkedin' | 'indeed' | 'engine';
   const head = HEAD[section] ?? HEAD[''];
+  // Automation is purely Activity + Schedule; Setup (search + profile config) is its own page.
+  const sectionTabs: [Tab, string, string][] = section === 'setup'
+    ? [['setup', 'gear', 'Setup'], ['interview', 'target', 'Interview'], ['upskill', 'chart', 'Upskill']]
+    : [['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule']];
+  const activeTab: Tab = sectionTabs.some(([t]) => t === tab) ? tab : sectionTabs[0][0];
 
   return (
     <>
@@ -137,25 +142,19 @@ export function EnginePage() {
           </>
         ) : (
           <>
-            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
+            {section === '' && status && <AutopilotBanner status={status} onChange={loadStatus} />}
             <div className="tabs">
-              {([
-                ['setup', 'gear', 'Setup'],
-                ['interview', 'target', 'Interview'],
-                ['upskill', 'chart', 'Upskill'],
-                ['activity', 'live', 'Activity'],
-                ['schedule', 'clock', 'Schedule'],
-              ] as [Tab, string, string][]).map(([t, ico, label]) => (
-                <div key={t} className={`tab meta-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+              {sectionTabs.map(([t, ico, label]) => (
+                <div key={t} className={`tab meta-item ${activeTab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
                   <Icon name={ico} size={14} /> {label}
                 </div>
               ))}
             </div>
-            {tab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
-            {tab === 'interview' && <InterviewTab />}
-            {tab === 'upskill' && <UpskillTab />}
-            {tab === 'activity' && <ActivityFeed />}
-            {tab === 'schedule' && <ScheduleEditor />}
+            {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
+            {activeTab === 'interview' && <InterviewTab />}
+            {activeTab === 'upskill' && <UpskillTab />}
+            {activeTab === 'activity' && <ActivityFeed />}
+            {activeTab === 'schedule' && <ScheduleEditor />}
           </>
         )}
     </>
@@ -163,7 +162,8 @@ export function EnginePage() {
 }
 
 const HEAD: Record<string, { title: string; sub: string }> = {
-  '': { title: 'Automation', sub: 'One automation on a schedule — it finds jobs on LinkedIn & Indeed, scores your fit, Easy-Applies, emails recruiters and networks its way in. Watch it live any time.' },
+  '': { title: 'Automation', sub: 'The live view + schedule for your automation. Configure what it searches for under Setup; watch each portal in LinkedIn / Indeed / Engine.' },
+  setup: { title: 'Setup', sub: 'Your details, what you’re looking for, and the profile the automation fills applications with.' },
   linkedin: { title: 'LinkedIn', sub: 'What the automation does on LinkedIn — searched, relevant, applied, connections, emails and manual-needed. Tap a tile to see the jobs.' },
   indeed: { title: 'Indeed', sub: 'What the automation does on Indeed — searched, relevant, applied and manual-needed. Tap a tile to see the jobs.' },
   engine: { title: 'Engine', sub: 'Cross-source jobs (ATS boards + APIs) — scraped, AI-ranked, then applied by email or built into ready-to-send packages.' },

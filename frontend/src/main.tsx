@@ -44,6 +44,7 @@ const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'jobs', element: <JobsPage /> },
       { path: 'auto-apply', element: <EnginePage /> },
+      { path: 'auto-apply/setup', element: <EnginePage /> },
       { path: 'auto-apply/linkedin', element: <EnginePage /> },
       { path: 'auto-apply/indeed', element: <EnginePage /> },
       { path: 'auto-apply/engine', element: <EnginePage /> },

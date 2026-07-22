@@ -228,7 +228,7 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
     return (
       <div className="card card-pad" key={portal}>
         <div className="card-title">
-          <Icon name={portal === 'linkedin' ? 'link' : 'target'} size={15} />
+          <Icon name={portal} size={15} />
           {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
           <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a tile to see the jobs</span>
         </div>
@@ -290,12 +290,20 @@ function MetricList({ portal, cell, rows, done, onDone }: {
       </div>}
       {visible.slice(0, 25).map((e) => {
         const key = e.url || e.id;
+        const fit = (e.detail || '').match(/fit\s+(\d+)/i)?.[1];
         return (
-          <div key={e.id} className="metric-row">
-            <a href={e.url} target="_blank" rel="noreferrer" className="metric-row-title"
-              onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
-              {e.title || 'Job'}{e.company ? <span className="faint"> · {e.company}</span> : ''}
-            </a>
+          <div key={e.id} className="jobrow">
+            <span className="jobrow-logo">{(e.company || e.title || '?').trim().charAt(0).toUpperCase()}</span>
+            <div className="jobrow-main">
+              <a href={e.url} target="_blank" rel="noreferrer" className="jobrow-title"
+                onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
+                {e.title || 'Role'}{e.url && <Icon name="external" size={12} style={{ opacity: .6 }} />}
+              </a>
+              <div className="jobrow-sub">
+                <span>{e.company || 'Company'}</span>
+                {fit && <span className="jobrow-fit">fit {fit}</span>}
+              </div>
+            </div>
             {isManual && asked[key] ? (
               <span className="row" style={{ gap: 6, flex: 'none' }}>
                 <span className="faint" style={{ fontSize: 12 }}>Applied?</span>
@@ -303,9 +311,7 @@ function MetricList({ portal, cell, rows, done, onDone }: {
                 <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
               </span>
             ) : (
-              <span className="faint" style={{ fontSize: 11.5, flex: 'none' }}>
-                {e.url && <Icon name="external" size={12} style={{ marginRight: 6 }} />}{fmtDate(e.createdAt)}
-              </span>
+              <span className="jobrow-time">{fmtDate(e.createdAt)}</span>
             )}
           </div>
         );
