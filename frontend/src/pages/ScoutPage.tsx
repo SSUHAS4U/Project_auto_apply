@@ -72,7 +72,7 @@ export function ScoutPage() {
       </div>
 
       <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <select className="input" style={{ width: 160 }} value={site} onChange={(e) => setSite(e.target.value)}>
+        <select className="select" style={{ width: 160 }} value={site} onChange={(e) => setSite(e.target.value)}>
           <option value="">All sources</option>
           {Object.entries(SITE_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
         </select>

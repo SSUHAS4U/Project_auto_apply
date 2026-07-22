@@ -552,7 +552,7 @@ function JobsTab({ status, onChange, onApplied }:
           {sc.new ?? 0} new · {sc.shortlisted ?? 0} shortlisted · {sc.ranked ?? 0} ranked ·
           {' '}{sc.applied ?? 0} applied · {sc.expired ?? 0} expired
         </span>
-        <select className="input" style={{ marginLeft: 'auto', maxWidth: 180 }} value={filter}
+        <select className="select" style={{ marginLeft: 'auto', maxWidth: 180 }} value={filter}
           onChange={(e) => setFilter(e.target.value)}>
           <option value="ranked">Ranked (best first)</option>
           <option value="shortlisted">Shortlisted</option>
@@ -791,7 +791,7 @@ function InterviewTab() {
           STAR examples. Gaps get honest bridge answers, never invented experience.
         </p>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select className="input" style={{ maxWidth: 300 }} value={appId} onChange={(e) => setAppId(e.target.value)}>
+          <select className="select" style={{ maxWidth: 300 }} value={appId} onChange={(e) => setAppId(e.target.value)}>
             <option value="">Select an application…</option>
             {apps.map((a) => <option key={a.id} value={a.id}>{a.postingTitle} @ {a.postingCompany}</option>)}
           </select>
