@@ -516,7 +516,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
    logos fill it; the initials variant keeps the accent gradient. */
 .clogo { flex: none; display: grid; place-items: center; overflow: hidden;
   background: var(--bg-card-hover); border: 1px solid var(--border); }
-.clogo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
+.clogo img { width: 100%; height: 100%; object-fit: cover; padding: 0; }
 .clogo-mono { color: #fff; font-weight: 700; letter-spacing: .01em; border-color: transparent; padding: 0;
   background: linear-gradient(135deg, var(--accent-hi), var(--accent)); box-shadow: 0 2px 8px rgba(79,70,229,.22); }
 
