@@ -277,7 +277,7 @@ export function ResumesPage() {
               title="Drag to resize · double-click to reset" />
             <section className={`ov-view ${mobileTab === 'code' ? 'hide' : ''}`} style={{ width: `${pdfPct}%` }}>
               {pdfUrl
-                ? <iframe title="PDF preview" src={pdfUrl} />
+                ? <iframe title="PDF preview" src={`${pdfUrl}#zoom=page-width&view=FitH`} />
                 : <div className="ov-empty">No PDF yet — hit <b style={{ color: '#7ee787' }}>▶ Recompile</b> to build one from the LaTeX source.</div>}
             </section>
           </>

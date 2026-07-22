@@ -520,12 +520,23 @@ function JobsTab({ status, onChange, onApplied, filter, setFilter }:
   const [jobs, setJobs] = useState<EngineJob[]>([]);
   const [applyingId, setApplyingId] = useState('');
 
-  const load = useCallback(() => {
-    api.engineJobs(filter === 'all' ? undefined : filter).then(setJobs).catch(() => {});
+  // fresh=true re-sorts (initial load / filter change). fresh=false MERGES: existing cards keep
+  // their position and just refresh in place, new ones append — so live polling during a
+  // scrape/rank doesn't reshuffle the list under you.
+  const load = useCallback((fresh = false) => {
+    api.engineJobs(filter === 'all' ? undefined : filter).then((incoming) => {
+      setJobs((prev) => {
+        if (fresh || prev.length === 0) return incoming;
+        const byId = new Map(incoming.map((j) => [j.id, j]));
+        const kept = prev.filter((j) => byId.has(j.id)).map((j) => byId.get(j.id)!);
+        const keptIds = new Set(kept.map((j) => j.id));
+        return [...kept, ...incoming.filter((j) => !keptIds.has(j.id))];
+      });
+    }).catch(() => {});
   }, [filter]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
   useEffect(() => {
-    if (status?.scrapeRunning || status?.rankRunning) { const t = setInterval(load, 4000); return () => clearInterval(t); }
+    if (status?.scrapeRunning || status?.rankRunning) { const t = setInterval(() => load(false), 4000); return () => clearInterval(t); }
   }, [status?.scrapeRunning, status?.rankRunning, load]);
 
   const scrape = async () => {
