@@ -10,7 +10,7 @@ import { AssistantWidget } from './AssistantWidget';
  * menu stays short. Notifications live as a bell in the user row (with unread badge);
  * the Assistant is a floating chat widget, not a nav destination.
  */
-type NavChild = { to: string; label: string; ico: string; admin?: boolean };
+type NavChild = { to: string; label: string; ico: string; admin?: boolean; end?: boolean };
 type NavEntry = { label: string; ico: string; to?: string; end?: boolean; children?: NavChild[] };
 
 const NAV: NavEntry[] = [
@@ -18,8 +18,11 @@ const NAV: NavEntry[] = [
   {
     label: 'Auto Apply', ico: 'bolt',
     children: [
-      { to: '/auto-apply', label: 'Automation', ico: 'live' },
+      { to: '/auto-apply', label: 'Automation', ico: 'live', end: true },
       { to: '/connections', label: 'Connections', ico: 'link' },
+      { to: '/auto-apply/linkedin', label: 'LinkedIn', ico: 'link' },
+      { to: '/auto-apply/indeed', label: 'Indeed', ico: 'target' },
+      { to: '/auto-apply/engine', label: 'Engine', ico: 'bolt' },
     ],
   },
   {
@@ -109,7 +112,7 @@ export function Layout() {
           {open === g.label && (
             <div className="nav-children">
               {g.children.filter((c) => !c.admin || admin).map((c) => (
-                <NavLink key={c.to} to={c.to}
+                <NavLink key={c.to} to={c.to} end={c.end}
                   className={({ isActive }) => `nav-item nav-child ${isActive ? 'active' : ''}`}>
                   <span className="ico"><Icon name={c.ico} size={15} /></span>
                   <span>{c.label}</span>

@@ -73,8 +73,11 @@ export function Logo({ size = 34 }: { size?: number }) {
         </linearGradient>
       </defs>
       <rect width="40" height="40" rx="11" fill={`url(#${id})`} />
-      <path d="M29 12 12 19.5l6.2 2.3L21 29l3.1-5.8L29 12z" fill="#fff" opacity="0.96" />
-      <path d="m18.2 21.8 6.9-9.8-6.9 9.8 2.8 1.2-2.8-1.2z" fill="#c7d2fe" />
+      {/* Clean "J" mark — no white border, just the symbol on the gradient tile. */}
+      <g stroke="#fff" strokeWidth="4.4" strokeLinecap="round" fill="none">
+        <path d="M25.5 11.5 V22 a6 6 0 0 1 -12 0" />
+        <path d="M18.5 11.5 H27.5" />
+      </g>
     </svg>
   );
 }

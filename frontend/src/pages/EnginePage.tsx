@@ -7,7 +7,9 @@ import type {
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
-import { RunControls, PortalMetrics, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
+import type { CSSProperties } from 'react';
+import { useLocation } from 'react-router-dom';
+import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -17,7 +19,7 @@ import { RunControls, PortalMetrics, PortalPanel, ActivityFeed, ScheduleEditor }
  *       → Outcome → Interview → Upskill.
  */
 
-type Tab = 'setup' | 'linkedin' | 'indeed' | 'jobs' | 'applications' | 'interview' | 'upskill' | 'activity' | 'schedule';
+type Tab = 'setup' | 'interview' | 'upskill' | 'activity' | 'schedule';
 
 // Semantic, theme-aware tones (see .tone-* in styles.css) — readable in light + dark.
 const VERDICT_TONE: Record<string, string> = {
@@ -98,21 +100,20 @@ export function EnginePage() {
   }, [loadStatus]);
 
   const busy = status?.scrapeRunning || status?.rankRunning;
+  const location = useLocation();
+  const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed' | 'engine';
+  const head = HEAD[section] ?? HEAD[''];
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1 className="page-title">
-            Auto Apply{' '}
+            {head.title}{' '}
             {status && !status.aiEnabled && <Chip text="AI off" tone="red" />}
-            {status?.setupReady && <> <Chip text="setup ready" tone="green" /></>}
+            {section === '' && status?.setupReady && <> <Chip text="setup ready" tone="green" /></>}
           </h1>
-          <div className="page-sub">
-            One automation, on a schedule: it finds jobs on <b>LinkedIn</b> &amp; <b>Indeed</b>, scores
-            your fit, Easy-Applies, scans hiring posts for HR emails, sends tailored emails +
-            connection requests — and mails you anything it can’t apply to itself. Watch it live any time.
-          </div>
+          <div className="page-sub">{head.sub}</div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {busy && <span className="row" style={{ gap: 6, fontSize: 13 }}><span className="spinner" />{status?.scrapeProgress || status?.rankProgress || 'Working…'}</span>}
@@ -126,44 +127,48 @@ export function EnginePage() {
         </div>
       )}
 
-      {status && <AutopilotBanner status={status} onChange={loadStatus} />}
-
-      <div className="tabs">
-        {([
-          ['setup', 'gear', 'Setup', ''],
-          ['linkedin', 'link', 'LinkedIn', ''],
-          ['indeed', 'target', 'Indeed', ''],
-          ['jobs', 'compass', 'Engine picks', count(status?.jobStatusCounts)],
-          ['applications', 'clipboard', 'Packages', count(status?.appStageCounts)],
-          ['interview', 'target', 'Interview', ''],
-          ['upskill', 'chart', 'Upskill', ''],
-          ['activity', 'live', 'Activity', ''],
-          ['schedule', 'clock', 'Schedule', ''],
-        ] as [Tab, string, string, string][]).map(([t, ico, label, n]) => (
-          <div key={t} className={`tab meta-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            <Icon name={ico} size={14} /> {label}{n && <span className="tab-count">{n.replace(/[()\s]/g, '')}</span>}
-          </div>
-        ))}
-      </div>
-
-      {tab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
-      {tab === 'linkedin' && <PortalPanel portal="linkedin" />}
-      {tab === 'indeed' && <PortalPanel portal="indeed" />}
-      {tab === 'jobs' && <JobsTab status={status} onChange={loadStatus} onApplied={() => setTab('applications')} />}
-      {tab === 'applications' && <ApplicationsTab />}
-      {tab === 'interview' && <InterviewTab />}
-      {tab === 'upskill' && <UpskillTab />}
-      {tab === 'activity' && <ActivityFeed />}
-      {tab === 'schedule' && <ScheduleEditor />}
+      {/* LinkedIn / Indeed / Engine are their own sidebar pages (driven by the URL). */}
+      {section === 'linkedin' ? <PortalPanel portal="linkedin" />
+        : section === 'indeed' ? <PortalPanel portal="indeed" />
+        : section === 'engine' ? (
+          <>
+            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
+            <EngineTab status={status} onChange={loadStatus} />
+          </>
+        ) : (
+          <>
+            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
+            <div className="tabs">
+              {([
+                ['setup', 'gear', 'Setup'],
+                ['interview', 'target', 'Interview'],
+                ['upskill', 'chart', 'Upskill'],
+                ['activity', 'live', 'Activity'],
+                ['schedule', 'clock', 'Schedule'],
+              ] as [Tab, string, string][]).map(([t, ico, label]) => (
+                <div key={t} className={`tab meta-item ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                  <Icon name={ico} size={14} /> {label}
+                </div>
+              ))}
+            </div>
+            {tab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
+            {tab === 'interview' && <InterviewTab />}
+            {tab === 'upskill' && <UpskillTab />}
+            {tab === 'activity' && <ActivityFeed />}
+            {tab === 'schedule' && <ScheduleEditor />}
+          </>
+        )}
     </>
   );
 }
 
-function count(m?: Record<string, number>): string {
-  if (!m) return '';
-  const total = Object.values(m).reduce((a, b) => a + b, 0);
-  return total ? ` (${total})` : '';
-}
+const HEAD: Record<string, { title: string; sub: string }> = {
+  '': { title: 'Automation', sub: 'One automation on a schedule — it finds jobs on LinkedIn & Indeed, scores your fit, Easy-Applies, emails recruiters and networks its way in. Watch it live any time.' },
+  linkedin: { title: 'LinkedIn', sub: 'What the automation does on LinkedIn — searched, relevant, applied, connections, emails and manual-needed. Tap a tile to see the jobs.' },
+  indeed: { title: 'Indeed', sub: 'What the automation does on Indeed — searched, relevant, applied and manual-needed. Tap a tile to see the jobs.' },
+  engine: { title: 'Engine', sub: 'Cross-source jobs (ATS boards + APIs) — scraped, AI-ranked, then applied by email or built into ready-to-send packages.' },
+};
+
 
 // ---- Autopilot banner (the daily self-running cycle) ------------------------
 
@@ -452,6 +457,48 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
 
 // ---- Jobs (scrape + rank + apply) -------------------------------------------
 
+// ---- Engine (cross-source: ATS boards + APIs) -------------------------------
+
+/** The Engine tab: clean metric cards on top, then ranked matches + application packages. */
+function EngineTab({ status, onChange }: { status: EngineStatus | null; onChange: () => void }) {
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <EngineMetrics status={status} />
+      <JobsTab status={status} onChange={onChange} onApplied={onChange} />
+      <ApplicationsTab />
+    </div>
+  );
+}
+
+function EngineMetrics({ status }: { status: EngineStatus | null }) {
+  const jc = status?.jobStatusCounts ?? {};
+  const ac = status?.appStageCounts ?? {};
+  const searched = ['new', 'shortlisted', 'ranked', 'applied', 'expired', 'vetoed'].reduce((a, k) => a + (jc[k] ?? 0), 0);
+  const cells: [string, number, string][] = [
+    ['Searched', searched, 'var(--accent-hi)'],
+    ['Relevant', (jc.ranked ?? 0) + (jc.shortlisted ?? 0), 'var(--amber)'],
+    ['Applied', jc.applied ?? 0, 'var(--green)'],
+    ['Packages ready', ac.ready ?? 0, 'var(--blue)'],
+    ['Emailed / sent', (ac.submitted ?? 0) + (ac.sent ?? 0), 'var(--purple)'],
+    ['Failed', ac.failed ?? 0, 'var(--red)'],
+  ];
+  return (
+    <div className="card card-pad">
+      <div className="card-title"><Icon name="bolt" size={15} /> Engine
+        <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· cross-source jobs (ATS boards + APIs), separate from LinkedIn/Indeed</span>
+      </div>
+      <div className="mtile-grid">
+        {cells.map(([label, v, color]) => (
+          <div key={label} className="mtile" style={{ ['--mtile-c']: v ? color : 'var(--text-faint)' } as CSSProperties}>
+            <span className="mtile-num">{v}</span>
+            <span className="mtile-label">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function JobsTab({ status, onChange, onApplied }:
   { status: EngineStatus | null; onChange: () => void; onApplied: () => void }) {
   const toast = useToast();
@@ -492,9 +539,7 @@ function JobsTab({ status, onChange, onApplied }:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Per-portal — today</div>
-      <PortalMetrics />
-      <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="compass" size={15} /> Ranked matches (Engine)</div>
+      <div className="section-title" style={{ margin: '2px 0 0' }}><Icon name="compass" size={15} /> Ranked matches</div>
       <div className="card card-pad row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={scrape} disabled={status?.scrapeRunning || !status?.setupReady}
           title={status?.setupReady ? 'Search LinkedIn from your saved queries' : 'Run Setup first'}>
@@ -582,9 +627,7 @@ function ApplicationsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div className="section-title" style={{ marginBottom: 0 }}><Icon name="chart" size={15} /> Applied — per portal</div>
-      <PortalMetrics />
-      <div className="section-title" style={{ margin: '6px 0 0' }}><Icon name="clipboard" size={15} /> Application packages (Engine)</div>
+      <div className="section-title" style={{ margin: '2px 0 0' }}><Icon name="clipboard" size={15} /> Application packages</div>
       <div className="card card-pad" style={{ fontSize: 12.5, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
         <Icon name="alert" size={15} className="t-amber" style={{ flex: 'none', transform: 'translateY(1px)' }} />
         <span className="faint">
