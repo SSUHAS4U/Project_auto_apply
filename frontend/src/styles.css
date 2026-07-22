@@ -511,10 +511,12 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .pstat-cell.zero .pstat-n { color: var(--text-faint); }
 .pstat-l { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
 
-/* ---- Company logo tile (real logo via Logo.dev, initials fallback) ---------- */
-.clogo { flex: none; display: grid; place-items: center; overflow: hidden; background: #fff;
-  border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.clogo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+/* ---- Company logo tile (real logo via Logo.dev, initials fallback) ----------
+   No white frame — the tile is a themed elevated surface so it blends into the card. Colored
+   logos fill it; the initials variant keeps the accent gradient. */
+.clogo { flex: none; display: grid; place-items: center; overflow: hidden;
+  background: var(--bg-card-hover); border: 1px solid var(--border); }
+.clogo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
 .clogo-mono { color: #fff; font-weight: 700; letter-spacing: .01em; border-color: transparent; padding: 0;
   background: linear-gradient(135deg, var(--accent-hi), var(--accent)); box-shadow: 0 2px 8px rgba(79,70,229,.22); }
 
@@ -542,15 +544,22 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .jrich-open { justify-content: center; }
 .jrich-ask { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-/* Gradient fit panel — the green (or toned) badge on the right, echoing the ranked-card look. */
-.fitpanel { border-radius: 12px; padding: 12px 14px; color: #fff; display: flex; flex-direction: column; gap: 2px;
-  background: linear-gradient(150deg, var(--green), color-mix(in srgb, var(--green) 62%, #0b3b28)); }
-.fitpanel.tone-blue   { background: linear-gradient(150deg, var(--blue),   color-mix(in srgb, var(--blue)   62%, #0b2545)); }
-.fitpanel.tone-amber  { background: linear-gradient(150deg, var(--amber),  color-mix(in srgb, var(--amber)  62%, #4a2c05)); color: #1b1300; }
-.fitpanel.tone-red    { background: linear-gradient(150deg, var(--red),    color-mix(in srgb, var(--red)    62%, #4a0f0f)); }
-.fitpanel-n { font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.fitpanel-n span { font-size: 15px; font-weight: 700; opacity: .85; }
-.fitpanel-t { font-size: 11px; font-weight: 700; letter-spacing: .01em; opacity: .92; }
+/* Gradient fit panel — a deep, glassy badge with a corner glow in the fit's tone (echoing the
+   ranked-card look). Dark in both themes so it reads as a premium chip, not a pastel block. */
+.fitpanel { --g: var(--green); position: relative; overflow: hidden; border-radius: 14px; padding: 13px 15px;
+  display: flex; flex-direction: column; gap: 5px; align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--g) 42%, transparent);
+  background:
+    radial-gradient(135% 120% at 90% 6%, color-mix(in srgb, var(--g) 60%, transparent), transparent 58%),
+    linear-gradient(150deg, color-mix(in srgb, var(--g) 26%, #0c0e14), #0b0d12 92%); }
+.fitpanel.tone-green { --g: var(--green); }
+.fitpanel.tone-blue  { --g: var(--blue); }
+.fitpanel.tone-amber { --g: var(--amber); }
+.fitpanel.tone-red   { --g: var(--red); }
+.fitpanel-n { font-size: 27px; font-weight: 800; line-height: 1; letter-spacing: -.03em; color: #fff; font-variant-numeric: tabular-nums; }
+.fitpanel-n span { font-size: 14px; font-weight: 700; opacity: .65; margin-left: 1px; }
+.fitpanel-t { font-size: 10.5px; font-weight: 700; letter-spacing: .02em; border-radius: 999px; padding: 2px 9px;
+  color: color-mix(in srgb, var(--g) 78%, #fff); background: color-mix(in srgb, var(--g) 20%, transparent); }
 
 @media (max-width: 560px) {
   .jrich { flex-wrap: wrap; }

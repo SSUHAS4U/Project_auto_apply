@@ -17,13 +17,24 @@ function initialOf(s?: string): string {
   return t ? t.charAt(0).toUpperCase() : '?';
 }
 
+/** Match the logo variant to the app theme so dark wordmarks (e.g. Turing) don't vanish on a
+ *  dark tile: theme=dark asks Logo.dev for the light logo, and vice-versa. */
+function appTheme(): 'dark' | 'light' {
+  if (typeof document !== 'undefined') {
+    const t = document.documentElement.dataset.theme;
+    if (t === 'light' || t === 'dark') return t;
+  }
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light';
+  return 'dark';
+}
+
 export function CompanyLogo({ company, size = 44, radius }: { company?: string; size?: number; radius?: number }) {
   const [failed, setFailed] = useState(false);
   const name = (company ?? '').trim();
   const useImg = !!name && !!TOKEN && !failed;
   const px = Math.round(size);
   const src = useImg
-    ? `https://img.logo.dev/name/${encodeURIComponent(name)}?token=${TOKEN}&size=${px * 2}&format=png&fallback=404`
+    ? `https://img.logo.dev/name/${encodeURIComponent(name)}?token=${TOKEN}&size=${px * 2}&format=png&theme=${appTheme()}&fallback=404`
     : '';
 
   return (
