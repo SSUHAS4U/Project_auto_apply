@@ -10,6 +10,8 @@ import java.util.UUID;
 
 public interface AgentRunRepository extends JpaRepository<AgentRun, UUID> {
 
+    void deleteByUserId(UUID userId);
+
     List<AgentRun> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable page);
 
     Optional<AgentRun> findFirstByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, String status);

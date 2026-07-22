@@ -9,6 +9,8 @@ import java.util.UUID;
 
 public interface PortalContactRepository extends JpaRepository<PortalContact, UUID> {
 
+    void deleteByUserId(UUID userId);
+
     List<PortalContact> findByUserIdOrderByUpdatedAtDesc(UUID userId, Pageable page);
 
     List<PortalContact> findByUserIdAndConnectionStatusOrderByUpdatedAtDesc(

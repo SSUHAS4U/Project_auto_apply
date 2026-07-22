@@ -323,36 +323,42 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
           <div><div className="step-title">Your details</div><div className="step-sub">Pulled from your Profile — the engine uses these for matching &amp; CV tailoring.</div></div>
         </div>
         {me ? (
-          <>
-            <div className="prof-card">
-              <div className="prof-avatar">{initialsOf(me.fullName)}</div>
-              <div className="prof-main">
-                <div className="prof-name">{me.fullName || <em className="faint">Add your name in Profile</em>}</div>
-                <div className="prof-role">
-                  {me.currentTitle || 'Role not set'}{me.currentCompany ? ` · ${me.currentCompany}` : ''}
-                  {me.yearsExperience ? ` · ${me.yearsExperience} yr${me.yearsExperience === '1' ? '' : 's'} exp` : ''}
+          <div className="pcard">
+            <div className="pcard-banner" />
+            <div className="pcard-body">
+              <div className="pcard-top">
+                <div className="pcard-avatar">{initialsOf(me.fullName)}</div>
+                <div className="pcard-id">
+                  <div className="pcard-name">{me.fullName || <em className="faint">Add your name in Profile</em>}</div>
+                  <div className="pcard-role">
+                    {me.currentTitle || 'Role not set'}{me.currentCompany ? ` · ${me.currentCompany}` : ''}
+                  </div>
                 </div>
-                <div className="prof-contact">
-                  {me.email && <span><Icon name="mail" size={14} /> {me.email}</span>}
-                  {me.phone && <span><Icon name="phone" size={14} /> {me.phone}</span>}
+                <span className={`pcard-status ${me.hasResume ? 'ok' : 'warn'}`}>
+                  <Icon name={me.hasResume ? 'check' : 'alert'} size={13} /> {me.hasResume ? 'Résumé uploaded' : 'No résumé'}
+                </span>
+              </div>
+
+              <div className="pcard-pills">
+                {me.yearsExperience && <span className="pcard-pill"><Icon name="bolt" size={13} /> {me.yearsExperience} yr{me.yearsExperience === '1' ? '' : 's'} experience</span>}
+                {me.email && <span className="pcard-pill"><Icon name="mail" size={13} /> {me.email}</span>}
+                {me.phone && <span className="pcard-pill"><Icon name="phone" size={13} /> {me.phone}</span>}
+                {me.location && <span className="pcard-pill"><Icon name="target" size={13} /> {me.location}</span>}
+              </div>
+
+              {me.skills?.length > 0 && (
+                <div className="pcard-skills">
+                  <div className="pcard-label">Top skills <span className="faint">· {me.skills.length}</span></div>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                    {me.skills.slice(0, 18).map((s) => <span key={s} className="chip">{s}</span>)}
+                    {me.skills.length > 18 && <span className="chip" style={{ opacity: .65 }}>+{me.skills.length - 18} more</span>}
+                  </div>
                 </div>
-              </div>
-              <div className="prof-side">
-                {me.hasResume
-                  ? <span className="prof-badge ok"><Icon name="check" size={13} /> Résumé uploaded</span>
-                  : <span className="prof-badge warn"><Icon name="alert" size={13} /> No résumé</span>}
-              </div>
+              )}
+
+              <a className="pcard-edit" href="/profile"><Icon name="user" size={13} /> Edit in Profile</a>
             </div>
-            {me.skills?.length > 0 && (
-              <div className="prof-skills">
-                {me.skills.slice(0, 18).map((s) => <span key={s} className="chip">{s}</span>)}
-                {me.skills.length > 18 && <span className="chip" style={{ opacity: .7 }}>+{me.skills.length - 18} more</span>}
-              </div>
-            )}
-            <div className="faint" style={{ fontSize: 12, marginTop: 12 }}>
-              These come from your <a href="/profile">Profile</a> — edit there. {!me.hasResume && 'Upload a résumé to enable AI CV tailoring.'}
-            </div>
-          </>
+          </div>
         ) : <span className="spinner" />}
       </div>
 

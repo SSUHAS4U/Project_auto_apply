@@ -58,7 +58,8 @@ public class AgentService {
                         com.jobpilot.engine.EngineProfileRepository engineProfiles,
                         com.jobpilot.service.NotificationService notifications,
                         com.jobpilot.service.MailService mail,
-                        com.jobpilot.repository.ProfileRepository profileRepo) {
+                        com.jobpilot.repository.ProfileRepository profileRepo,
+                        com.jobpilot.repository.ApplicationRepository applications) {
         this.runs = runs;
         this.events = events;
         this.schedules = schedules;
@@ -74,6 +75,23 @@ public class AgentService {
         this.notifications = notifications;
         this.mail = mail;
         this.profileRepo = profileRepo;
+        this.applications = applications;
+    }
+
+    private final com.jobpilot.repository.ApplicationRepository applications;
+
+    /**
+     * Wipe this user's automation activity for a clean test run: the event feed (so the
+     * dashboard tiles go to 0), run history, outreach messages + network contacts, and the
+     * engine's application packages. Does NOT touch the shared job pool or your profile.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void resetAutomationData(UUID userId) {
+        events.deleteByUserId(userId);
+        runs.deleteByUserId(userId);
+        messages.deleteByUserId(userId);
+        contacts.deleteByUserId(userId);
+        applications.deleteByUserId(userId);
     }
 
     // ---- manual-apply daily digest ------------------------------------------

@@ -50,6 +50,33 @@ public class AgentController {
         return m;
     }
 
+    /** Wipe this user's automation activity (feed, runs, outreach, application packages) for a
+     *  clean test run. Leaves the shared job pool and the profile untouched. */
+    @PostMapping("/reset")
+    public Map<String, Object> reset() {
+        UUID u = UserContext.require();
+        agent.resetAutomationData(u);
+        return Map.of("ok", true);
+    }
+
+    /** Metric tiles for a period: total (default), today, week or month — the dashboard picks. */
+    @GetMapping("/metrics")
+    public Map<String, Object> metrics(@RequestParam(defaultValue = "total") String period) {
+        UUID u = UserContext.require();
+        ZoneId zone = ZoneId.of("Asia/Kolkata");
+        LocalDate today = LocalDate.now(zone);
+        Instant since = switch (period) {
+            case "today" -> today.atStartOfDay(zone).toInstant();
+            case "week" -> today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                    .atStartOfDay(zone).toInstant();
+            case "month" -> today.withDayOfMonth(1).atStartOfDay(zone).toInstant();
+            default -> Instant.EPOCH; // total — everything so far
+        };
+        Map<String, Object> m = new LinkedHashMap<>(metricMap(agent, u, since));
+        m.put("period", period);
+        return m;
+    }
+
     private static Map<String, Object> metricMap(AgentService agent, UUID u, Instant since) {
         Map<String, Long> raw = new LinkedHashMap<>();
         for (Object[] row : agent.eventCountsSince(u, since)) raw.put((String) row[0], ((Number) row[1]).longValue());

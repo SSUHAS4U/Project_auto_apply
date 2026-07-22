@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { AchievementItem, Profile, ProjectItem } from '../types';
+import type { Profile } from '../types';
 import { useToast } from '../lib/ui';
 import { Icon } from './Icon';
 
@@ -43,10 +43,6 @@ export function JobProfileEditor() {
       toast('Job profile saved', 'success');
     } catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
   };
-
-  const updList = <T,>(list: T[] | undefined, i: number, patch: Partial<T>): T[] =>
-    (list ?? []).map((it, idx) => (idx === i ? { ...it, ...patch } : it));
-  const dropAt = <T,>(list: T[] | undefined, i: number): T[] => (list ?? []).filter((_, idx) => idx !== i);
 
   return (
     <div className="card card-pad">
@@ -143,37 +139,13 @@ export function JobProfileEditor() {
         <button className="btn btn-sm" onClick={() => setQaRows((rs) => mergeCommonScreening(rs))}>Add common questions</button>
       </div>
 
-      {/* Projects */}
-      <div className="jp-subhead"><Icon name="bolt" size={14} /> Projects <span className="faint">— showcase used in tailored CVs &amp; answers</span></div>
-      {(p.projects ?? []).map((item: ProjectItem, i) => (
-        <div className="repeat-row" key={i}>
-          <div className="rh"><span className="muted" style={{ fontSize: 12, fontWeight: 700 }}>#{i + 1}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => set({ projects: dropAt(p.projects, i) })}><Icon name="trash" size={13} /> Remove</button></div>
-          <div className="grid2">
-            <Field label="Project name"><input className="input" value={item.name ?? ''} onChange={(e) => set({ projects: updList(p.projects, i, { name: e.target.value }) })} /></Field>
-            <Field label="Demo / repo link"><input className="input" type="url" placeholder="https://…" value={item.demoLink ?? ''} onChange={(e) => set({ projects: updList(p.projects, i, { demoLink: e.target.value }) })} /></Field>
-          </div>
-          <Field label="Skill set used — comma-separated" full>
-            <input className="input" placeholder="Spring Boot, React, PostgreSQL…" value={item.skills ?? ''} onChange={(e) => set({ projects: updList(p.projects, i, { skills: e.target.value }) })} />
-          </Field>
-          <Field label="Description — what it does & what you achieved" full>
-            <textarea className="input" rows={3} value={item.description ?? ''} onChange={(e) => set({ projects: updList(p.projects, i, { description: e.target.value }) })} />
-          </Field>
-        </div>
-      ))}
-      <button className="btn btn-sm" onClick={() => set({ projects: [...(p.projects ?? []), {}] })}><Icon name="plus" size={13} /> Add project</button>
-
-      {/* Achievements */}
-      <div className="jp-subhead"><Icon name="trophy" size={14} /> Achievements</div>
-      {(p.achievements ?? []).map((item: AchievementItem, i) => (
-        <div className="repeat-row" key={i}>
-          <div className="rh"><span className="muted" style={{ fontSize: 12, fontWeight: 700 }}>#{i + 1}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => set({ achievements: dropAt(p.achievements, i) })}><Icon name="trash" size={13} /> Remove</button></div>
-          <Field label="Title" full><input className="input" placeholder="Winner — Smart India Hackathon 2025" value={item.title ?? ''} onChange={(e) => set({ achievements: updList(p.achievements, i, { title: e.target.value }) })} /></Field>
-          <Field label="Details (optional)" full><textarea className="input" rows={2} value={item.description ?? ''} onChange={(e) => set({ achievements: updList(p.achievements, i, { description: e.target.value }) })} /></Field>
-        </div>
-      ))}
-      <button className="btn btn-sm" onClick={() => set({ achievements: [...(p.achievements ?? []), {}] })}><Icon name="plus" size={13} /> Add achievement</button>
+      {/* Projects & achievements are the SAME profile record as the main Profile page — edited
+          there to avoid duplication. Both the job profile and the main profile feed applications. */}
+      <div className="jp-subhead"><Icon name="trophy" size={14} /> Projects &amp; achievements</div>
+      <div className="faint" style={{ fontSize: 12.5, marginBottom: 4 }}>
+        Managed in your <a href="/profile">Profile</a> — they're shared, so anything there is used
+        when applying (the job profile and your profile are one record).
+      </div>
 
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>

@@ -11,6 +11,8 @@ import java.util.UUID;
 
 public interface AgentEventRepository extends JpaRepository<AgentEvent, UUID> {
 
+    void deleteByUserId(UUID userId);
+
     List<AgentEvent> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable page);
 
     List<AgentEvent> findByUserIdAndTypeOrderByCreatedAtDesc(UUID userId, String type, Pageable page);

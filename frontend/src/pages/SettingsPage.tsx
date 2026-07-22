@@ -164,6 +164,45 @@ JOBPILOT_OLLAMA_AUTH_VALUE=<your-service-token>`}</pre>
           </div>
         </details>
       </div>
+
+      <ResetDataCard />
+    </div>
+  );
+}
+
+/** Danger zone — wipe automation activity for a clean test run. */
+function ResetDataCard() {
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const reset = async () => {
+    setBusy(true);
+    try {
+      await api.agentReset();
+      toast('Automation data cleared — dashboard is now at zero.', 'success');
+      setConfirming(false);
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card card-pad section" style={{ maxWidth: 720, borderColor: 'color-mix(in srgb, var(--red) 35%, var(--border))' }}>
+      <div className="section-title"><span className="si" style={{ background: 'color-mix(in srgb, var(--red) 14%, transparent)', color: 'var(--red)' }}><Icon name="trash" size={15} /></span>Reset automation data
+        <span className="section-sub">start a clean test run</span>
+      </div>
+      <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+        Clears the activity feed, run history, sent messages, network contacts and application
+        packages — so every dashboard tile goes back to <b>0</b> for a fresh test of LinkedIn &amp;
+        Indeed. Your <b>profile, résumé and the found-jobs pool are not touched.</b> This can't be undone.
+      </div>
+      {confirming ? (
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn-danger-solid btn-sm" onClick={reset} disabled={busy}>
+            {busy ? <span className="spinner" /> : <Icon name="trash" size={13} />} Yes, wipe it
+          </button>
+          <button className="btn btn-sm" onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>
+        </div>
+      ) : (
+        <button className="btn btn-danger btn-sm" onClick={() => setConfirming(true)}><Icon name="trash" size={13} /> Reset automation data</button>
+      )}
     </div>
   );
 }

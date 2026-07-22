@@ -8,6 +8,8 @@ import java.util.UUID;
 
 public interface AgentMessageRepository extends JpaRepository<AgentMessage, UUID> {
 
+    void deleteByUserId(UUID userId);
+
     List<AgentMessage> findByUserIdOrderByUpdatedAtDesc(UUID userId, Pageable page);
 
     List<AgentMessage> findByUserIdAndStatusOrderByUpdatedAtDesc(UUID userId, String status, Pageable page);

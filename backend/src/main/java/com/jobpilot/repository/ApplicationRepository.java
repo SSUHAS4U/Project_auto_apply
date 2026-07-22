@@ -12,6 +12,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ApplicationRepository extends JpaRepository<Application, UUID> {
+
+    void deleteByUserId(UUID userId);
     List<Application> findAllByOrderByUpdatedAtDesc();
     List<Application> findByUserIdOrderByUpdatedAtDesc(UUID userId);
     List<Application> findByUserIdAndStatusOrderByUpdatedAtDesc(UUID userId, String status);

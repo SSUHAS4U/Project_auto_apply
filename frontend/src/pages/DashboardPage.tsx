@@ -26,11 +26,18 @@ const EVENT_STATUS: Record<string, { label: string; tone: string }> = {
   post_analysed: { label: 'scanned', tone: 'slate' }, error: { label: 'issue', tone: 'red' },
 };
 
+const PERIODS: { key: string; label: string }[] = [
+  { key: 'total', label: 'All time' }, { key: 'today', label: 'Today' },
+  { key: 'week', label: 'This week' }, { key: 'month', label: 'This month' },
+];
+
 export function DashboardPage() {
   const nav = useNavigate();
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [engine, setEngine] = useState<EngineStatus | null>(null);
+  const [period, setPeriod] = useState('total');       // default: everything so far
+  const [metrics, setMetrics] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const pull = () => {
@@ -43,7 +50,14 @@ export function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  const m = agent?.metricsToday;
+  useEffect(() => {
+    const pull = () => api.agentMetrics(period).then(setMetrics).catch(() => {});
+    pull();
+    const t = setInterval(pull, 6000);
+    return () => clearInterval(t);
+  }, [period]);
+
+  const m = metrics;
   const running = !!agent?.activeRun && ['running', 'queued', 'needs_attention'].includes(agent.activeRun.status);
 
   const tiles = [
@@ -69,12 +83,15 @@ export function DashboardPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <div className="page-sub">Everything your automation did today, at a glance.</div>
+          <div className="page-sub">Everything your automation has done, at a glance.</div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
             <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
           </span>
+          <select className="select" value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Metrics period">
+            {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
           {/* Watch live lives in the floating hub (bottom-right) now — no button here. */}
         </div>
       </div>

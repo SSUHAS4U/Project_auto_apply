@@ -234,6 +234,8 @@ export const api = {
 
   // Agent — the local Playwright worker (HireDue portal automation) + Watch Live.
   agentStatus: () => req<AgentStatus>('/api/agent/status'),
+  agentMetrics: (period = 'total') => req<Record<string, number>>(`/api/agent/metrics?period=${period}`),
+  agentReset: () => req<{ ok: boolean }>('/api/agent/reset', { method: 'POST' }),
   agentStartRun: (portal: string) =>
     req<AgentRun>('/api/agent/run', { method: 'POST', body: JSON.stringify({ portal }) }),
   agentStopRun: (id: string) => req<AgentRun>(`/api/agent/run/${id}/stop`, { method: 'POST' }),
