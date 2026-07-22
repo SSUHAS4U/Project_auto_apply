@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { AgentEvent, AgentStatus, EngineStatus } from '../types';
+import type { AgentEvent, AgentStatus } from '../types';
 import { fmtDate, StatIcon } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -36,7 +36,6 @@ export function DashboardPage() {
   const nav = useNavigate();
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [period, setPeriod] = useState('total');       // default: everything so far
   const [metrics, setMetrics] = useState<Record<string, number>>({});
 
@@ -44,7 +43,6 @@ export function DashboardPage() {
     const pull = () => {
       api.agentStatus().then(setAgent).catch(() => {});
       api.agentEvents(100).then(setEvents).catch(() => {});
-      api.engineStatus().then(setEngine).catch(() => {});
     };
     pull();
     const t = setInterval(pull, 6000);
@@ -149,7 +147,7 @@ export function DashboardPage() {
         <div className="card" style={{ overflow: 'hidden' }}>
           <div className="card-pad" style={{ borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Recent actions</div>
           {events.length === 0 ? (
-            <div className="card-pad faint" style={{ fontSize: 13 }}>No activity yet. Turn on the Agent or Auto Apply autopilot.</div>
+            <div className="card-pad faint" style={{ fontSize: 13 }}>No activity yet — connect LinkedIn/Indeed and run the automation.</div>
           ) : events.slice(0, 12).map((e) => (
             <div key={e.id} className="row card-pad" style={{ gap: 10, alignItems: 'center', borderBottom: '1px solid var(--border)', padding: '10px 16px' }}>
               <span className="chip" style={{ fontSize: 11 }}>{EVENT_LABEL[e.type] ?? e.type}</span>
@@ -164,15 +162,12 @@ export function DashboardPage() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="card card-pad">
-            <div className="card-title"><Icon name="bolt" size={15} /> Auto Apply engine</div>
-            <Row label="Autopilot" value={engine?.autopilot.enabled ? (engine.autopilot.running ? 'running' : 'on · daily') : 'off'} />
-            <Row label="Backlog jobs" value={String(engine?.jobStatusCounts?.['new'] ?? 0)} />
-            <Row label="Shortlisted" value={String(engine?.jobStatusCounts?.['shortlisted'] ?? 0)} />
-            <Row label="Applications" value={String(Object.values(engine?.appStageCounts ?? {}).reduce((a, b) => a + b, 0))} last />
-            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/auto-apply')}>Open Auto Apply <Icon name="external" size={13} /></button>
-            {engine?.autopilot.lastRunSummary && (
-              <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Last run: {engine.autopilot.lastRunSummary}</div>
-            )}
+            <div className="card-title"><Icon name="compass" size={15} /> Job board</div>
+            <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 4 }}>
+              Fresh jobs aggregated from company boards &amp; APIs — browse, filter, and apply yourself
+              (email-apply or open the posting).
+            </div>
+            <button className="btn btn-sm" style={{ marginTop: 10, width: '100%' }} onClick={() => nav('/jobs')}>Open Job board <Icon name="external" size={13} /></button>
           </div>
 
           <div className="card card-pad">

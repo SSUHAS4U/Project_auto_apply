@@ -46,8 +46,6 @@ const router = createBrowserRouter([
       { path: 'auto-apply', element: <EnginePage /> },
       { path: 'auto-apply/linkedin', element: <EnginePage /> },
       { path: 'auto-apply/indeed', element: <EnginePage /> },
-      { path: 'auto-apply/sourcing', element: <EnginePage /> },
-      { path: 'auto-apply/engine', element: <Navigate to="/auto-apply/sourcing" replace /> },
       { path: 'agent', element: <Navigate to="/auto-apply" replace /> },
       { path: 'connections', element: <ConnectionsPage /> },
       { path: 'daily', element: <DailyPicksPage /> },
