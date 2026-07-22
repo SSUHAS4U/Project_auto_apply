@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
+import { CompanyLogo } from './CompanyLogo';
 import { Modal } from './Modal';
 import { TerminalConsole } from './DesktopTerminal';
 import { isDesktopApp } from '../lib/desktop';
@@ -34,7 +35,6 @@ const TONE_COLOR: Record<string, string> = {
   green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)',
   blue: 'var(--blue)', purple: 'var(--purple)', indigo: 'var(--accent-hi)', slate: 'var(--text-dim)',
 };
-const mtileStyle = (color: string): CSSProperties => ({ ['--mtile-c']: color } as CSSProperties);
 
 // ---- Run controls + Watch live (the header actions) -------------------------
 
@@ -230,18 +230,18 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
         <div className="card-title">
           <Icon name={portal} size={15} />
           {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
-          <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a tile to see the jobs</span>
+          <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a stat to see the jobs</span>
         </div>
-        <div className="mtile-grid">
+        <div className="pstat">
           {cells.map((c) => {
             const v = count(c);
             const active = selectedCell?.label === c.label;
             return (
-              <button key={c.label} className={`mtile mtile-btn ${active ? 'sel' : ''}`}
-                style={mtileStyle(v ? TONE_COLOR[c.tone] : 'var(--text-faint)')}
+              <button key={c.label} className={`pstat-cell ${active ? 'sel' : ''} ${v ? '' : 'zero'}`}
+                style={{ ['--sc']: v ? TONE_COLOR[c.tone] : 'var(--text-faint)' } as CSSProperties}
                 onClick={() => setSel(active ? null : { portal, label: c.label })}>
-                <span className="mtile-num">{v}</span>
-                <span className="mtile-label">{c.label}</span>
+                <span className="pstat-n">{v}</span>
+                <span className="pstat-l">{c.label}</span>
               </button>
             );
           })}
@@ -269,7 +269,15 @@ function loadDone(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(doneKey()) || '[]')); } catch { return new Set(); }
 }
 
-/** The expandable list under a selected metric tile. */
+/** Fit % → a label + tone for the gradient panel. */
+function fitMeta(n: number): { label: string; tone: string } {
+  if (n >= 75) return { label: 'Great fit', tone: 'green' };
+  if (n >= 55) return { label: 'Good fit', tone: 'blue' };
+  if (n >= 40) return { label: 'Fair fit', tone: 'amber' };
+  return { label: 'Weak fit', tone: 'red' };
+}
+
+/** The expandable list under a selected metric — one rich card per job (real logo, meta, fit %). */
 function MetricList({ portal, cell, rows, done, onDone }: {
   portal: string; cell: { label: string; types: string[] };
   rows: AgentEvent[]; done: Set<string>; onDone: (key: string) => void;
@@ -277,6 +285,7 @@ function MetricList({ portal, cell, rows, done, onDone }: {
   const [asked, setAsked] = useState<Record<string, boolean>>({});
   const isManual = cell.types.includes('manual_apply');
   const visible = isManual ? rows.filter((e) => !done.has(e.url || e.id)) : rows;
+  const portalName = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
 
   if (visible.length === 0) {
     return <div className="metric-list faint" style={{ fontSize: 12.5 }}>
@@ -286,36 +295,52 @@ function MetricList({ portal, cell, rows, done, onDone }: {
   return (
     <div className="metric-list">
       {isManual && <div className="kv-k" style={{ marginBottom: 6 }}>
-        Open each and apply on {portal === 'linkedin' ? 'LinkedIn' : 'the site'} — we’ll ask if you did.
+        Open each and apply on {portalName} — we’ll ask if you did.
       </div>}
       {visible.slice(0, 25).map((e) => {
         const key = e.url || e.id;
-        const fit = (e.detail || '').match(/fit\s+(\d+)/i)?.[1];
+        const fitN = Number((e.detail || '').match(/fit\s+(\d+)/i)?.[1]);
+        const fit = Number.isFinite(fitN) && fitN > 0 ? fitN : null;
+        const fm = fit ? fitMeta(fit) : null;
         return (
-          <div key={e.id} className="jobrow">
-            <span className="jobrow-logo">{(e.company || e.title || '?').trim().charAt(0).toUpperCase()}</span>
-            <div className="jobrow-main">
-              <a href={e.url} target="_blank" rel="noreferrer" className="jobrow-title"
+          <div key={e.id} className="jrich">
+            <CompanyLogo company={e.company || e.title} size={46} />
+            <div className="jrich-main">
+              <a href={e.url} target="_blank" rel="noreferrer" className="jrich-title"
                 onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
                 {e.title || 'Role'}{e.url && <Icon name="external" size={12} style={{ opacity: .6 }} />}
               </a>
-              <div className="jobrow-sub">
-                {e.company && <span>{e.company}</span>}
-                {e.salary && <span className="jobrow-salary">{e.salary}</span>}
-                {fit && <span className="jobrow-fit">fit {fit}</span>}
-                {!e.company && !e.salary && !fit && <span className="faint">LinkedIn job</span>}
+              <div className="jrich-sub">
+                {e.company && <span className="jrich-co">{e.company}</span>}
+                {e.company && <span className="jrich-dot">·</span>}
+                <span>{fmtDate(e.createdAt)}</span>
               </div>
-              {e.description && <div className="jobrow-desc">{e.description}</div>}
+              <div className="jrich-meta">
+                {e.salary && <span className="jrich-pill"><Icon name="target" size={12} /> {e.salary}</span>}
+                <span className="jrich-src">sourced from <Icon name={portal} size={12} /> {portalName}</span>
+              </div>
+              {e.description && <div className="jrich-desc">{e.description}</div>}
             </div>
-            {isManual && asked[key] ? (
-              <span className="row" style={{ gap: 6, flex: 'none' }}>
-                <span className="faint" style={{ fontSize: 12 }}>Applied?</span>
-                <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Yes</button>
-                <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
-              </span>
-            ) : (
-              <span className="jobrow-time">{fmtDate(e.createdAt)}</span>
-            )}
+            <div className="jrich-side">
+              {fm && (
+                <div className={`fitpanel tone-${fm.tone}`}>
+                  <div className="fitpanel-n">{fit}<span>%</span></div>
+                  <div className="fitpanel-t">{fm.label}</div>
+                </div>
+              )}
+              {isManual && asked[key] ? (
+                <div className="jrich-ask">
+                  <span className="faint" style={{ fontSize: 11.5 }}>Applied?</span>
+                  <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Yes</button>
+                  <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
+                </div>
+              ) : (
+                <a className="btn btn-sm jrich-open" href={e.url} target="_blank" rel="noreferrer"
+                  onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
+                  Open <Icon name="external" size={12} />
+                </a>
+              )}
+            </div>
           </div>
         );
       })}
@@ -328,24 +353,13 @@ function MetricList({ portal, cell, rows, done, onDone }: {
 
 // ---- Per-portal panel (LinkedIn / Indeed tabs) ------------------------------
 
-/** Everything the automation does on ONE portal: its metrics + job lists, outreach (LinkedIn),
- *  and that portal's live activity feed. */
+/** Everything the automation does on ONE portal: its metrics + job lists and that portal's
+ *  live activity feed. (Outreach/email lives in Connections, next to its toggles.) */
 export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <PortalMetrics only={portal} />
-      {portal === 'linkedin' && (
-        <div className="card card-pad" style={{ fontSize: 12.5 }}>
-          <div className="card-title"><Icon name="mail" size={15} /> Outreach &amp; email</div>
-          <div className="faint" style={{ lineHeight: 1.6 }}>
-            While applying, it also scans hiring posts for recruiter emails (auto-emails a tailored
-            application when <b>Auto-email</b> is on) and sends connection requests + a follow-up
-            message with your résumé once accepted. Toggles and the message template are in{' '}
-            <a href="/connections">Connections</a>.
-          </div>
-        </div>
-      )}
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
       <ActivityFeed portal={portal} />
     </div>

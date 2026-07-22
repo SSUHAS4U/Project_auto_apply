@@ -493,6 +493,71 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .jobrow-desc { margin-top: 6px; font-size: 12px; color: var(--text-faint); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ---- Portal stat strip (per-portal metrics header) -------------------------
+   One clean row: each stat is a number over a small caps label, split by hairlines. The value
+   lights up in its tone; zero recedes to muted. Tap a cell → its job list opens below. Scrolls
+   sideways on a narrow screen rather than wrapping into a ragged grid. */
+.pstat { display: flex; align-items: stretch; background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow-x: auto; }
+.pstat-cell { flex: 1 0 auto; min-width: 94px; padding: 13px 16px; border: 0; border-left: 1px solid var(--border);
+  background: transparent; text-align: left; font: inherit; cursor: pointer; position: relative;
+  display: flex; flex-direction: column; gap: 3px; transition: background .14s; }
+.pstat-cell:first-child { border-left: 0; }
+.pstat-cell:hover { background: var(--bg-card-hover); }
+.pstat-cell.sel { background: var(--accent-soft); }
+.pstat-cell.sel::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--sc, var(--accent)); }
+.pstat-n { font-size: 21px; font-weight: 750; line-height: 1; letter-spacing: -.02em; color: var(--sc, var(--text));
+  font-variant-numeric: tabular-nums; }
+.pstat-cell.zero .pstat-n { color: var(--text-faint); }
+.pstat-l { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
+
+/* ---- Company logo tile (real logo via Logo.dev, initials fallback) ---------- */
+.clogo { flex: none; display: grid; place-items: center; overflow: hidden; background: #fff;
+  border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.clogo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.clogo-mono { color: #fff; font-weight: 700; letter-spacing: .01em; border-color: transparent; padding: 0;
+  background: linear-gradient(135deg, var(--accent-hi), var(--accent)); box-shadow: 0 2px 8px rgba(79,70,229,.22); }
+
+/* ---- Rich job card (metric-tap list): logo · role · meta · gradient fit % --- */
+.jrich { display: flex; gap: 14px; align-items: stretch; padding: 14px 16px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: var(--radius); transition: border-color .15s, box-shadow .15s; }
+.jrich:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.jrich-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.jrich-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14.5px; color: var(--text);
+  text-decoration: none; letter-spacing: -.01em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jrich-title:hover { color: var(--accent-hi); }
+.jrich-sub { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 12.5px; color: var(--text-dim); min-width: 0; }
+.jrich-co { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jrich-dot { color: var(--text-faint); }
+.jrich-meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+.jrich-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--text-dim);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px; }
+.jrich-pill svg { color: var(--text-faint); }
+.jrich-src { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--text-faint); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px; }
+.jrich-src svg { color: var(--accent-hi); }
+.jrich-desc { margin-top: 9px; font-size: 12px; color: var(--text-faint); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.jrich-side { flex: none; width: 132px; display: flex; flex-direction: column; gap: 8px; }
+.jrich-open { justify-content: center; }
+.jrich-ask { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Gradient fit panel — the green (or toned) badge on the right, echoing the ranked-card look. */
+.fitpanel { border-radius: 12px; padding: 12px 14px; color: #fff; display: flex; flex-direction: column; gap: 2px;
+  background: linear-gradient(150deg, var(--green), color-mix(in srgb, var(--green) 62%, #0b3b28)); }
+.fitpanel.tone-blue   { background: linear-gradient(150deg, var(--blue),   color-mix(in srgb, var(--blue)   62%, #0b2545)); }
+.fitpanel.tone-amber  { background: linear-gradient(150deg, var(--amber),  color-mix(in srgb, var(--amber)  62%, #4a2c05)); color: #1b1300; }
+.fitpanel.tone-red    { background: linear-gradient(150deg, var(--red),    color-mix(in srgb, var(--red)    62%, #4a0f0f)); }
+.fitpanel-n { font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.fitpanel-n span { font-size: 15px; font-weight: 700; opacity: .85; }
+.fitpanel-t { font-size: 11px; font-weight: 700; letter-spacing: .01em; opacity: .92; }
+
+@media (max-width: 560px) {
+  .jrich { flex-wrap: wrap; }
+  .jrich-side { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; }
+  .fitpanel { flex: 1; flex-direction: row; align-items: baseline; gap: 8px; }
+}
+
 /* Unified JobCard — one card style across Jobs board, Engine ranked matches and Daily picks. */
 .jcard { display: flex; gap: 15px; padding: 16px 18px; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); transition: border-color .15s, box-shadow .15s; }
