@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from './Icon';
+import { CompanyLogo } from './CompanyLogo';
 
 /**
  * One job card, shared across every scored/ranked job list (Jobs board, Engine ranked
@@ -38,11 +39,10 @@ function scoreTone(score?: number, verdict?: string): string {
 }
 
 export function JobCard(p: JobCardProps) {
-  const initial = (p.company || p.title || '?').trim().charAt(0).toUpperCase();
   const tone = scoreTone(p.score, p.verdict);
   return (
     <div className="jcard">
-      <div className="jcard-logo">{initial}</div>
+      <CompanyLogo company={p.company || p.title} size={46} radius={13} />
       <div className="jcard-main">
         <div className="jcard-head">
           <div style={{ minWidth: 0 }}>
@@ -64,13 +64,13 @@ export function JobCard(p: JobCardProps) {
             </div>
           </div>
           <div className="jcard-right">
+            {p.metaRight && <span className="jcard-meta">{p.metaRight}</span>}
             {typeof p.score === 'number' && (
-              <div className={`jcard-score tone-${tone}`}>
-                <span className="jcard-score-n">{p.score}</span>
-                <span className="jcard-score-c">{p.verdict || 'match'}</span>
+              <div className={`fitpanel tone-${tone}`}>
+                <div className="fitpanel-n">{p.score}<span>%</span></div>
+                <div className="fitpanel-t">{p.verdict || 'match'}</div>
               </div>
             )}
-            {p.metaRight && <span className="jcard-meta">{p.metaRight}</span>}
           </div>
         </div>
 
