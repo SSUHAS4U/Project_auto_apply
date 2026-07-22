@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { AgentEvent, AgentStatus, EngineStatus } from '../types';
 import { fmtDate, StatIcon } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { Select } from '../components/Select';
 
 /**
  * Dashboard — the landing page. One glance at what the automation did today: status, the
@@ -89,9 +90,8 @@ export function DashboardPage() {
           <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
             <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
           </span>
-          <select className="select" value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Metrics period">
-            {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-          </select>
+          <Select value={period} onChange={setPeriod} ariaLabel="Metrics period"
+            options={PERIODS.map((p) => ({ value: p.key, label: p.label }))} />
           {/* Watch live lives in the floating hub (bottom-right) now — no button here. */}
         </div>
       </div>

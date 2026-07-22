@@ -8,6 +8,7 @@ import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
 import { JobCard } from '../components/JobCard';
+import { Select } from '../components/Select';
 import type { CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
@@ -20,7 +21,7 @@ import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../compo
  *       → Outcome → Interview → Upskill.
  */
 
-type Tab = 'setup' | 'interview' | 'upskill' | 'activity' | 'schedule';
+type Tab = 'setup' | 'activity' | 'schedule';
 
 // Semantic, theme-aware tones (see .tone-* in styles.css) — readable in light + dark.
 const VERDICT_TONE: Record<string, string> = {
@@ -90,13 +91,13 @@ export function EnginePage() {
 
   const busy = status?.scrapeRunning || status?.rankRunning;
   const location = useLocation();
-  const section = (location.pathname.split('/')[2] || '') as '' | 'setup' | 'linkedin' | 'indeed' | 'engine';
+  const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed' | 'sourcing' | 'interview' | 'upskill';
   const head = HEAD[section] ?? HEAD[''];
-  // Automation is purely Activity + Schedule; Setup (search + profile config) is its own page.
-  const sectionTabs: [Tab, string, string][] = section === 'setup'
-    ? [['setup', 'gear', 'Setup'], ['interview', 'target', 'Interview'], ['upskill', 'chart', 'Upskill']]
-    : [['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule']];
-  const activeTab: Tab = sectionTabs.some(([t]) => t === tab) ? tab : sectionTabs[0][0];
+  // Automation holds Setup + Activity + Schedule. Interview/Upskill are their own sidebar pages.
+  const autoTabs: [Tab, string, string][] = [
+    ['setup', 'gear', 'Setup'], ['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule'],
+  ];
+  const activeTab: Tab = autoTabs.some(([t]) => t === tab) ? tab : 'setup';
 
   return (
     <>
@@ -121,27 +122,27 @@ export function EnginePage() {
         </div>
       )}
 
-      {/* LinkedIn / Indeed / Engine are their own sidebar pages (driven by the URL). */}
+      {/* LinkedIn / Indeed / Sourcing / Interview / Upskill are their own sidebar pages (URL-driven). */}
       {section === 'linkedin' ? <PortalPanel portal="linkedin" />
         : section === 'indeed' ? <PortalPanel portal="indeed" />
-        : section === 'engine' ? (
+        : section === 'sourcing' ? (
           <>
             {status && <AutopilotBanner status={status} onChange={loadStatus} />}
             <EngineTab status={status} onChange={loadStatus} />
           </>
-        ) : (
+        ) : section === 'interview' ? <InterviewTab />
+        : section === 'upskill' ? <UpskillTab />
+        : (
           <>
-            {section === '' && status && <AutopilotBanner status={status} onChange={loadStatus} />}
+            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
             <div className="tabs">
-              {sectionTabs.map(([t, ico, label]) => (
+              {autoTabs.map(([t, ico, label]) => (
                 <div key={t} className={`tab meta-item ${activeTab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
                   <Icon name={ico} size={14} /> {label}
                 </div>
               ))}
             </div>
             {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
-            {activeTab === 'interview' && <InterviewTab />}
-            {activeTab === 'upskill' && <UpskillTab />}
             {activeTab === 'activity' && <ActivityFeed />}
             {activeTab === 'schedule' && <ScheduleEditor />}
           </>
@@ -151,11 +152,12 @@ export function EnginePage() {
 }
 
 const HEAD: Record<string, { title: string; sub: string }> = {
-  '': { title: 'Automation', sub: 'The live view + schedule for your automation. Configure what it searches for under Setup; watch each portal in LinkedIn / Indeed / Engine.' },
-  setup: { title: 'Setup', sub: 'Your details, what you’re looking for, and the profile the automation fills applications with.' },
+  '': { title: 'Automation', sub: 'Set up what you’re looking for, watch the live activity, and set the daily schedule. Each portal has its own page in the sidebar.' },
   linkedin: { title: 'LinkedIn', sub: 'What the automation does on LinkedIn — searched, relevant, applied, connections, emails and manual-needed. Tap a tile to see the jobs.' },
   indeed: { title: 'Indeed', sub: 'What the automation does on Indeed — searched, relevant, applied and manual-needed. Tap a tile to see the jobs.' },
-  engine: { title: 'Engine', sub: 'Cross-source jobs (ATS boards + APIs) — scraped, AI-ranked, then applied by email or built into ready-to-send packages.' },
+  sourcing: { title: 'Sourcing', sub: 'Cross-source jobs from company boards (Greenhouse, Lever, Ashby…) + APIs — scraped, AI-ranked, then applied by email or built into ready-to-send packages.' },
+  interview: { title: 'Interview prep', sub: 'AI interview packs generated from your applications — likely questions, talking points and STAR stories.' },
+  upskill: { title: 'Upskill', sub: 'Skill gaps the engine spotted across the roles you want, with focused things to learn next.' },
 };
 
 
@@ -473,8 +475,8 @@ function EngineMetrics({ status }: { status: EngineStatus | null }) {
   ];
   return (
     <div className="card card-pad">
-      <div className="card-title"><Icon name="bolt" size={15} /> Engine
-        <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· cross-source jobs (ATS boards + APIs), separate from LinkedIn/Indeed</span>
+      <div className="card-title"><Icon name="search" size={15} /> Sourcing
+        <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· cross-source jobs from company boards + APIs, separate from LinkedIn/Indeed</span>
       </div>
       <div className="mtile-grid">
         {cells.map(([label, v, color]) => (
@@ -541,15 +543,12 @@ function JobsTab({ status, onChange, onApplied }:
           {sc.new ?? 0} new · {sc.shortlisted ?? 0} shortlisted · {sc.ranked ?? 0} ranked ·
           {' '}{sc.applied ?? 0} applied · {sc.expired ?? 0} expired
         </span>
-        <select className="select" style={{ marginLeft: 'auto', maxWidth: 180 }} value={filter}
-          onChange={(e) => setFilter(e.target.value)}>
-          <option value="ranked">Ranked (best first)</option>
-          <option value="shortlisted">Shortlisted</option>
-          <option value="new">New (unranked)</option>
-          <option value="applied">Applied</option>
-          <option value="expired">Expired</option>
-          <option value="all">All</option>
-        </select>
+        <Select value={filter} onChange={setFilter} style={{ marginLeft: 'auto' }}
+          options={[
+            { value: 'ranked', label: 'Ranked (best first)' }, { value: 'shortlisted', label: 'Shortlisted' },
+            { value: 'new', label: 'New (unranked)' }, { value: 'applied', label: 'Applied' },
+            { value: 'expired', label: 'Expired' }, { value: 'all', label: 'All' },
+          ]} />
       </div>
 
       {jobs.length === 0 ? (

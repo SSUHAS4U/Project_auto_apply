@@ -5,6 +5,7 @@ import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { JobCard } from '../components/JobCard';
+import { Select } from '../components/Select';
 
 // Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
 function fmtNext(iso: string): string {
@@ -210,24 +211,12 @@ export function JobsPage() {
           onKeyDown={(e) => e.key === 'Enter' && apply({ role: (e.target as HTMLInputElement).value || undefined })} />
         <input className="input" placeholder="Location…  (Enter)" defaultValue={filters.location}
           onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
-        <select className="select" value={filters.applyType ?? ''} onChange={(e) => apply({ applyType: e.target.value || undefined })}>
-          <option value="">All apply types</option>
-          <option value="email">Email</option>
-          <option value="ats">ATS</option>
-          <option value="url">URL</option>
-        </select>
-        <select className="select" value={filters.minScore ?? ''} onChange={(e) => apply({ minScore: e.target.value ? Number(e.target.value) : undefined })}>
-          <option value="">Any score</option>
-          <option value="50">50+</option>
-          <option value="65">65+</option>
-          <option value="80">80+</option>
-        </select>
-        <select className="select" value={filters.postedWithin ?? ''} onChange={(e) => apply({ postedWithin: e.target.value ? Number(e.target.value) : undefined })}>
-          <option value="">Any date</option>
-          <option value="1">Last 24h</option>
-          <option value="3">Last 3 days</option>
-          <option value="7">Last week</option>
-        </select>
+        <Select value={filters.applyType ?? ''} onChange={(v) => apply({ applyType: v || undefined })}
+          options={[{ value: '', label: 'All apply types' }, { value: 'email', label: 'Email' }, { value: 'ats', label: 'ATS' }, { value: 'url', label: 'URL' }]} />
+        <Select value={String(filters.minScore ?? '')} onChange={(v) => apply({ minScore: v ? Number(v) : undefined })}
+          options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' }, { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
+        <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
+          options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24h' }, { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
         <div className="segmented" style={{ marginLeft: 'auto' }}>
           <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
           <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>

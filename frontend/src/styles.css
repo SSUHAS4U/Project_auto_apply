@@ -353,6 +353,28 @@ button:focus:not(:focus-visible) { outline: none; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%239aa1b1' stroke-width='2.5'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
 .input::placeholder { color: var(--text-faint); }
+
+/* Themed dropdown (custom menu — native <option> popups can't be styled). */
+.tsel { position: relative; display: inline-block; min-width: 0; }
+.tsel-btn { display: inline-flex; align-items: center; gap: 8px; width: 100%; cursor: pointer;
+  background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  color: var(--text); padding: 8px 11px; font-size: 13px; font-weight: 500; transition: border-color .15s, box-shadow .15s; }
+.tsel-btn:hover { border-color: var(--accent); }
+.tsel-btn.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tsel-val { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsel-caret { color: var(--text-faint); flex: none; transform: rotate(90deg); transition: transform .15s; }
+.tsel-caret.open { transform: rotate(-90deg); }
+.tsel-menu { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 100%;
+  background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow); padding: 5px; display: flex; flex-direction: column; gap: 2px;
+  max-height: 280px; overflow-y: auto; animation: tselIn .13s ease; }
+@keyframes tselIn { from { opacity: 0; transform: translateY(-4px); } }
+.tsel-opt { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+  background: transparent; border: none; color: var(--text-dim); padding: 8px 9px; border-radius: 7px;
+  font-size: 13px; font-weight: 500; white-space: nowrap; }
+.tsel-opt:hover { background: var(--bg-elev); color: var(--text); }
+.tsel-opt.active { color: var(--accent-hi); background: var(--accent-soft); }
+.tsel-check { width: 14px; flex: none; display: inline-flex; color: var(--accent-hi); }
 label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim); }
 label.field .input, label.field .select, label.field textarea { color: var(--text); }
 textarea.input { width: 100%; resize: vertical; font-family: inherit; line-height: 1.5; }

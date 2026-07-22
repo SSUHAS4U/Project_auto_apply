@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { Profile } from '../types';
 import { useToast } from '../lib/ui';
 import { Icon } from './Icon';
+import { Select } from './Select';
 
 /**
  * The Job Profile — what you hunt for + showcase material (projects, achievements).
@@ -56,16 +57,12 @@ export function JobProfileEditor() {
 
       <div className="grid2">
         <Field label="Experience level">
-          <select className="select" value={p.experienceLevel ?? ''} onChange={(e) => set({ experienceLevel: e.target.value })}>
-            <option value="">Select…</option>
-            {['0-2 Years', '2-5 Years', '5-8 Years', '8+ Years'].map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          <Select value={p.experienceLevel ?? ''} onChange={(v) => set({ experienceLevel: v })}
+            options={[{ value: '', label: 'Select…' }, ...['0-2 Years', '2-5 Years', '5-8 Years', '8+ Years'].map((o) => ({ value: o, label: o }))]} />
         </Field>
         <Field label="Job type">
-          <select className="select" value={p.jobType ?? ''} onChange={(e) => set({ jobType: e.target.value })}>
-            <option value="">Select…</option>
-            {['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance'].map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          <Select value={p.jobType ?? ''} onChange={(v) => set({ jobType: v })}
+            options={[{ value: '', label: 'Select…' }, ...['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance'].map((o) => ({ value: o, label: o }))]} />
         </Field>
         <Field label="Compensation expected (annual)">
           <input className="input" placeholder="800000" value={p.expectedCtc ?? ''} onChange={(e) => set({ expectedCtc: e.target.value })} />
@@ -164,12 +161,9 @@ function Field({ label, children, full }: { label: string; children: React.React
 function YesNo({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void }) {
   return (
     <label className="field">{label}
-      <select className="select" value={value == null ? '' : value ? 'yes' : 'no'}
-        onChange={(e) => onChange(e.target.value === '' ? null : e.target.value === 'yes')}>
-        <option value="">Select…</option>
-        <option value="yes">Yes</option>
-        <option value="no">No</option>
-      </select>
+      <Select value={value == null ? '' : value ? 'yes' : 'no'}
+        onChange={(v) => onChange(v === '' ? null : v === 'yes')}
+        options={[{ value: '', label: 'Select…' }, { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
     </label>
   );
 }
