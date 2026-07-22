@@ -179,7 +179,7 @@ export function LiveView() {
 
 // ---- Per-portal metrics (LinkedIn vs Indeed) --------------------------------
 
-export function PortalMetrics() {
+export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => {
     const pull = () => api.agentEvents(400).then(setEvents).catch(() => {});
@@ -254,7 +254,12 @@ export function PortalMetrics() {
     );
   };
 
-  return <div style={{ display: 'grid', gap: 14 }}>{block('linkedin')}{block('indeed')}</div>;
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {(!only || only === 'linkedin') && block('linkedin')}
+      {(!only || only === 'indeed') && block('indeed')}
+    </div>
+  );
 }
 
 // Manual-apply completions are tracked per-day in localStorage, so the list resets every
@@ -312,17 +317,44 @@ function MetricList({ portal, cell, rows, done, onDone }: {
   );
 }
 
+// ---- Per-portal panel (LinkedIn / Indeed tabs) ------------------------------
+
+/** Everything the automation does on ONE portal: its metrics + job lists, outreach (LinkedIn),
+ *  and that portal's live activity feed. */
+export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <PortalMetrics only={portal} />
+      {portal === 'linkedin' && (
+        <div className="card card-pad" style={{ fontSize: 12.5 }}>
+          <div className="card-title"><Icon name="mail" size={15} /> Outreach &amp; email</div>
+          <div className="faint" style={{ lineHeight: 1.6 }}>
+            While applying, it also scans hiring posts for recruiter emails (auto-emails a tailored
+            application when <b>Auto-email</b> is on) and sends connection requests + a follow-up
+            message with your résumé once accepted. Toggles and the message template are in{' '}
+            <a href="/connections">Connections</a>.
+          </div>
+        </div>
+      )}
+      <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
+      <ActivityFeed portal={portal} />
+    </div>
+  );
+}
+
 // ---- Activity feed ----------------------------------------------------------
 
-export function ActivityFeed() {
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+export function ActivityFeed({ portal }: { portal?: string } = {}) {
+  const [all, setAll] = useState<AgentEvent[]>([]);
   useEffect(() => {
-    const pull = () => api.agentEvents(80).then(setEvents).catch(() => {});
+    const pull = () => api.agentEvents(120).then(setAll).catch(() => {});
     pull();
     const t = setInterval(pull, 4000);
     return () => clearInterval(t);
   }, []);
 
+  const events = portal ? all.filter((e) => e.portal === portal) : all;
   if (events.length === 0) {
     return <div className="card card-pad empty"><div className="big"><Icon name="clipboard" size={34} /></div>No activity yet — it fills as the automation runs.</div>;
   }

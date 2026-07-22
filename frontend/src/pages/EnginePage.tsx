@@ -7,7 +7,7 @@ import type {
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
-import { RunControls, PortalMetrics, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
+import { RunControls, PortalMetrics, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
  * Auto Apply — a clean-room replica of the ai-job-search framework, built as its own
@@ -17,7 +17,7 @@ import { RunControls, PortalMetrics, ActivityFeed, ScheduleEditor } from '../com
  *       → Outcome → Interview → Upskill.
  */
 
-type Tab = 'setup' | 'jobs' | 'applications' | 'interview' | 'upskill' | 'activity' | 'schedule';
+type Tab = 'setup' | 'linkedin' | 'indeed' | 'jobs' | 'applications' | 'interview' | 'upskill' | 'activity' | 'schedule';
 
 // Semantic, theme-aware tones (see .tone-* in styles.css) — readable in light + dark.
 const VERDICT_TONE: Record<string, string> = {
@@ -131,8 +131,10 @@ export function EnginePage() {
       <div className="tabs">
         {([
           ['setup', 'gear', 'Setup', ''],
-          ['jobs', 'compass', 'Jobs', count(status?.jobStatusCounts)],
-          ['applications', 'clipboard', 'Applications', count(status?.appStageCounts)],
+          ['linkedin', 'link', 'LinkedIn', ''],
+          ['indeed', 'target', 'Indeed', ''],
+          ['jobs', 'compass', 'Engine picks', count(status?.jobStatusCounts)],
+          ['applications', 'clipboard', 'Packages', count(status?.appStageCounts)],
           ['interview', 'target', 'Interview', ''],
           ['upskill', 'chart', 'Upskill', ''],
           ['activity', 'live', 'Activity', ''],
@@ -145,6 +147,8 @@ export function EnginePage() {
       </div>
 
       {tab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
+      {tab === 'linkedin' && <PortalPanel portal="linkedin" />}
+      {tab === 'indeed' && <PortalPanel portal="indeed" />}
       {tab === 'jobs' && <JobsTab status={status} onChange={loadStatus} onApplied={() => setTab('applications')} />}
       {tab === 'applications' && <ApplicationsTab />}
       {tab === 'interview' && <InterviewTab />}
