@@ -23,8 +23,6 @@ const NAV: NavEntry[] = [
       { to: '/auto-apply/linkedin', label: 'LinkedIn', ico: 'linkedin' },
       { to: '/auto-apply/indeed', label: 'Indeed', ico: 'indeed' },
       { to: '/auto-apply/sourcing', label: 'Sourcing', ico: 'search' },
-      { to: '/auto-apply/interview', label: 'Interview', ico: 'target' },
-      { to: '/auto-apply/upskill', label: 'Upskill', ico: 'chart' },
     ],
   },
   {

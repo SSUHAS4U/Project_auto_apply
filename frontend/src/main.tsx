@@ -48,8 +48,6 @@ const router = createBrowserRouter([
       { path: 'auto-apply/indeed', element: <EnginePage /> },
       { path: 'auto-apply/sourcing', element: <EnginePage /> },
       { path: 'auto-apply/engine', element: <Navigate to="/auto-apply/sourcing" replace /> },
-      { path: 'auto-apply/interview', element: <EnginePage /> },
-      { path: 'auto-apply/upskill', element: <EnginePage /> },
       { path: 'agent', element: <Navigate to="/auto-apply" replace /> },
       { path: 'connections', element: <ConnectionsPage /> },
       { path: 'daily', element: <DailyPicksPage /> },

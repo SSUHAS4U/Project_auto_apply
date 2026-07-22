@@ -78,6 +78,7 @@ export function EnginePage() {
   const toast = useToast();
   const [status, setStatus] = useState<EngineStatus | null>(null);
   const [tab, setTab] = useState<Tab>('setup');
+  const [ptab, setPtab] = useState<'overview' | 'interview' | 'upskill'>('overview');
 
   const loadStatus = useCallback(() => {
     api.engineStatus().then(setStatus).catch((e) => toast(e.message, 'error'));
@@ -91,8 +92,9 @@ export function EnginePage() {
 
   const busy = status?.scrapeRunning || status?.rankRunning;
   const location = useLocation();
-  const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed' | 'sourcing' | 'interview' | 'upskill';
+  const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed' | 'sourcing';
   const head = HEAD[section] ?? HEAD[''];
+  const isPortal = section === 'linkedin' || section === 'indeed' || section === 'sourcing';
   // Automation holds Setup + Activity + Schedule. Interview/Upskill are their own sidebar pages.
   const autoTabs: [Tab, string, string][] = [
     ['setup', 'gear', 'Setup'], ['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule'],
@@ -122,31 +124,43 @@ export function EnginePage() {
         </div>
       )}
 
-      {/* LinkedIn / Indeed / Sourcing / Interview / Upskill are their own sidebar pages (URL-driven). */}
-      {section === 'linkedin' ? <PortalPanel portal="linkedin" />
-        : section === 'indeed' ? <PortalPanel portal="indeed" />
-        : section === 'sourcing' ? (
-          <>
-            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
-            <EngineTab status={status} onChange={loadStatus} />
-          </>
-        ) : section === 'interview' ? <InterviewTab />
-        : section === 'upskill' ? <UpskillTab />
-        : (
-          <>
-            {status && <AutopilotBanner status={status} onChange={loadStatus} />}
-            <div className="tabs">
-              {autoTabs.map(([t, ico, label]) => (
-                <div key={t} className={`tab meta-item ${activeTab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-                  <Icon name={ico} size={14} /> {label}
-                </div>
-              ))}
-            </div>
-            {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
-            {activeTab === 'activity' && <ActivityFeed />}
-            {activeTab === 'schedule' && <ScheduleEditor />}
-          </>
-        )}
+      {/* Each portal (LinkedIn / Indeed / Sourcing) is its own page with Overview + its own
+          Interview & Upskill — so you can see interviews/upskilling per source. */}
+      {isPortal ? (
+        <>
+          {section === 'sourcing' && status && <AutopilotBanner status={status} onChange={loadStatus} />}
+          <div className="tabs">
+            {([
+              ['overview', section, section === 'sourcing' ? 'Ranked jobs' : 'Jobs'],
+              ['interview', 'target', 'Interview'],
+              ['upskill', 'chart', 'Upskill'],
+            ] as [typeof ptab, string, string][]).map(([t, ico, label]) => (
+              <div key={t} className={`tab meta-item ${ptab === t ? 'active' : ''}`} onClick={() => setPtab(t)}>
+                <Icon name={ico} size={14} /> {label}
+              </div>
+            ))}
+          </div>
+          {ptab === 'overview' && (section === 'sourcing'
+            ? <EngineTab status={status} onChange={loadStatus} />
+            : <PortalPanel portal={section as 'linkedin' | 'indeed'} />)}
+          {ptab === 'interview' && <InterviewTab source={section} />}
+          {ptab === 'upskill' && <UpskillTab source={section} />}
+        </>
+      ) : (
+        <>
+          {status && <AutopilotBanner status={status} onChange={loadStatus} />}
+          <div className="tabs">
+            {autoTabs.map(([t, ico, label]) => (
+              <div key={t} className={`tab meta-item ${activeTab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                <Icon name={ico} size={14} /> {label}
+              </div>
+            ))}
+          </div>
+          {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
+          {activeTab === 'activity' && <ActivityFeed />}
+          {activeTab === 'schedule' && <ScheduleEditor />}
+        </>
+      )}
     </>
   );
 }
@@ -450,51 +464,60 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
 
 // ---- Engine (cross-source: ATS boards + APIs) -------------------------------
 
-/** The Engine tab: clean metric cards on top, then ranked matches + application packages. */
+/** The Sourcing view: clean metric cards on top (tap to filter), then ranked matches + packages. */
 function EngineTab({ status, onChange }: { status: EngineStatus | null; onChange: () => void }) {
+  const [filter, setFilter] = useState('ranked');
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <EngineMetrics status={status} />
-      <JobsTab status={status} onChange={onChange} onApplied={onChange} />
+      <EngineMetrics status={status} filter={filter} onFilter={setFilter} />
+      <JobsTab status={status} onChange={onChange} onApplied={onChange} filter={filter} setFilter={setFilter} />
       <ApplicationsTab />
     </div>
   );
 }
 
-function EngineMetrics({ status }: { status: EngineStatus | null }) {
+function EngineMetrics({ status, filter, onFilter }:
+  { status: EngineStatus | null; filter: string; onFilter: (f: string) => void }) {
   const jc = status?.jobStatusCounts ?? {};
   const ac = status?.appStageCounts ?? {};
   const searched = ['new', 'shortlisted', 'ranked', 'applied', 'expired', 'vetoed'].reduce((a, k) => a + (jc[k] ?? 0), 0);
-  const cells: [string, number, string][] = [
-    ['Searched', searched, 'var(--accent-hi)'],
-    ['Relevant', (jc.ranked ?? 0) + (jc.shortlisted ?? 0), 'var(--amber)'],
-    ['Applied', jc.applied ?? 0, 'var(--green)'],
-    ['Packages ready', ac.ready ?? 0, 'var(--blue)'],
-    ['Emailed / sent', (ac.submitted ?? 0) + (ac.sent ?? 0), 'var(--purple)'],
-    ['Failed', ac.failed ?? 0, 'var(--red)'],
+  // `f` = which ranked-list filter this tile jumps to (null = informational app-stage tile).
+  const cells: { label: string; v: number; color: string; f: string | null }[] = [
+    { label: 'Searched', v: searched, color: 'var(--accent-hi)', f: 'all' },
+    { label: 'Relevant', v: (jc.ranked ?? 0) + (jc.shortlisted ?? 0), color: 'var(--amber)', f: 'ranked' },
+    { label: 'Applied', v: jc.applied ?? 0, color: 'var(--green)', f: 'applied' },
+    { label: 'Packages ready', v: ac.ready ?? 0, color: 'var(--blue)', f: null },
+    { label: 'Emailed / sent', v: (ac.submitted ?? 0) + (ac.sent ?? 0), color: 'var(--purple)', f: null },
+    { label: 'Failed', v: ac.failed ?? 0, color: 'var(--red)', f: null },
   ];
   return (
     <div className="card card-pad">
       <div className="card-title"><Icon name="search" size={15} /> Sourcing
-        <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· cross-source jobs from company boards + APIs, separate from LinkedIn/Indeed</span>
+        <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· jobs from company boards + APIs · tap a tile to filter the list below</span>
       </div>
       <div className="mtile-grid">
-        {cells.map(([label, v, color]) => (
-          <div key={label} className="mtile" style={{ ['--mtile-c']: v ? color : 'var(--text-faint)' } as CSSProperties}>
-            <span className="mtile-num">{v}</span>
-            <span className="mtile-label">{label}</span>
-          </div>
-        ))}
+        {cells.map((c) => {
+          const active = c.f !== null && c.f === filter;
+          const clickable = c.f !== null;
+          return (
+            <button key={c.label} className={`mtile ${clickable ? 'mtile-btn' : ''} ${active ? 'sel' : ''}`}
+              disabled={!clickable}
+              style={{ ['--mtile-c']: c.v ? c.color : 'var(--text-faint)', cursor: clickable ? 'pointer' : 'default' } as CSSProperties}
+              onClick={() => clickable && onFilter(c.f!)}>
+              <span className="mtile-num">{c.v}</span>
+              <span className="mtile-label">{c.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function JobsTab({ status, onChange, onApplied }:
-  { status: EngineStatus | null; onChange: () => void; onApplied: () => void }) {
+function JobsTab({ status, onChange, onApplied, filter, setFilter }:
+  { status: EngineStatus | null; onChange: () => void; onApplied: () => void; filter: string; setFilter: (f: string) => void }) {
   const toast = useToast();
   const [jobs, setJobs] = useState<EngineJob[]>([]);
-  const [filter, setFilter] = useState('ranked');
   const [applyingId, setApplyingId] = useState('');
 
   const load = useCallback(() => {
@@ -743,8 +766,9 @@ function AppDetail({ d, onChange }: { d: EngineApplication; onChange: () => void
 
 // ---- Interview --------------------------------------------------------------
 
-function InterviewTab() {
+function InterviewTab({ source }: { source?: string } = {}) {
   const toast = useToast();
+  void source; // per-source scoping is a backend follow-up; content is shared for now
   const [apps, setApps] = useState<EngineApplicationSummary[]>([]);
   const [packs, setPacks] = useState<EngineInterview[]>([]);
   const [appId, setAppId] = useState('');
@@ -797,8 +821,9 @@ function InterviewTab() {
 
 // ---- Upskill ----------------------------------------------------------------
 
-function UpskillTab() {
+function UpskillTab({ source }: { source?: string } = {}) {
   const toast = useToast();
+  void source; // per-source scoping is a backend follow-up; content is shared for now
   const [reports, setReports] = useState<EngineUpskill[]>([]);
   const [running, setRunning] = useState(false);
 

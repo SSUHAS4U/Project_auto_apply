@@ -300,9 +300,10 @@ function MetricList({ portal, cell, rows, done, onDone }: {
                 {e.title || 'Role'}{e.url && <Icon name="external" size={12} style={{ opacity: .6 }} />}
               </a>
               <div className="jobrow-sub">
-                <span>{e.company || 'Company'}</span>
+                {e.company && <span>{e.company}</span>}
                 {e.salary && <span className="jobrow-salary">{e.salary}</span>}
                 {fit && <span className="jobrow-fit">fit {fit}</span>}
+                {!e.company && !e.salary && !fit && <span className="faint">LinkedIn job</span>}
               </div>
               {e.description && <div className="jobrow-desc">{e.description}</div>}
             </div>

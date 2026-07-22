@@ -32,14 +32,23 @@ async function waitForResults(page) {
 }
 
 async function collectJobCards(page) {
-  // The results rail; ids live on the <li> or a data attribute. LinkedIn changes these
-  // often, so cast a wide net.
-  const ids = await page.$$eval(CARD_SELECTOR,
-    (nodes) => nodes.map((n) => n.getAttribute('data-occludable-job-id')
-      || n.getAttribute('data-job-id')
-      || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'))).filter(Boolean),
-  ).catch(() => []);
-  return [...new Set(ids)];
+  // The results rail; ids live on the <li> or a data attribute. Also grab the title + company
+  // from the CARD itself — the detail pane sometimes hasn't rendered when we read it, and we
+  // never want to log a job with no role. LinkedIn changes these classes often, so cast wide.
+  const cards = await page.$$eval(CARD_SELECTOR, (nodes) => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    return nodes.map((n) => {
+      const id = n.getAttribute('data-occludable-job-id') || n.getAttribute('data-job-id')
+        || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'));
+      const t = n.querySelector('.job-card-list__title, .job-card-list__title--link, .artdeco-entity-lockup__title, a.job-card-container__link');
+      const c = n.querySelector('.job-card-container__primary-description, .artdeco-entity-lockup__subtitle, .job-card-container__company-name');
+      return { id, title: clean(t && (t.getAttribute('aria-label') || t.textContent)), company: clean(c && c.textContent) };
+    }).filter((x) => x.id);
+  }).catch(() => []);
+  const seen = new Set();
+  const out = [];
+  for (const c of cards) { if (!seen.has(c.id)) { seen.add(c.id); out.push(c); } }
+  return out;
 }
 
 async function readPosting(page) {
@@ -102,18 +111,19 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await waitForResults(page);
 
-      const ids = await collectJobCards(page);
+      const cards = await collectJobCards(page);
       const landed = page.url();
       const needsLogin = /\/login|\/authwall|signup/i.test(landed);
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-        detail: ids.length > 0
-          ? `Found ${ids.length} Easy-Apply jobs for "${keyword}" @ ${location}`
+        detail: cards.length > 0
+          ? `Found ${cards.length} Easy-Apply jobs for "${keyword}" @ ${location}`
           : needsLogin
             ? `LinkedIn asked to log in — sign into linkedin.com in the browser, then run again`
             : `No Easy-Apply results on this search — LinkedIn may have changed the page or need login` });
-      if (ids.length === 0) continue;
+      if (cards.length === 0) continue;
 
-      for (const id of ids) {
+      for (const cardInfo of cards) {
+        const id = cardInfo.id;
         if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
         try {
           // clicking the card in-place loads the detail pane (SPA)
@@ -123,41 +133,45 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           await humanDelay(1800, 3200);
 
           const post = await readPosting(page);
-          state.action = `Reviewing: ${post.title}`;
+          // Fall back to the card's title/company if the detail pane didn't render — never log a
+          // "Role"/"Company" blank.
+          const title = post.title || cardInfo.title || '';
+          const company = post.company || cardInfo.company || '';
+          state.action = `Reviewing: ${title}`;
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'job_identified',
-            title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+            title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
             salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
           const canJudge = (post.description || '').length > 60; // did we actually read the posting?
-          if (SENIOR_RE.test(post.title || '')) {
+          if (SENIOR_RE.test(title)) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
+              title, company, detail: 'skip — senior/leadership role' });
             continue;
           }
           if (canJudge && score < FIT_THRESHOLD) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title: post.title, company: post.company, detail: `skip — low fit ${score}` });
+              title, company, detail: `skip — low fit ${score}` });
             continue;
           }
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'relevant',
-            title: post.title, company: post.company,
+            title, company,
             detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
 
           const result = await easyApply(page, api, profile, resume, state);
           if (result === 'applied') {
             applied++;
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'easy_apply',
-              title: post.title, company: post.company, url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score}` });
+              title, company, url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score}` });
           } else if (result === 'external') {
             // No Easy Apply → the owner applies by hand; recorded as manual_apply so the
             // dashboard lists it and the daily digest emails it.
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
-              title: post.title, company: post.company,
+              title, company,
               url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score} — apply manually (external form)` });
           } else if (result === 'attention') {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title: post.title, company: post.company, detail: 'needs attention — an unanswerable question' });
+              title, company, detail: 'needs attention — an unanswerable question' });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: String(e).slice(0, 160) });
