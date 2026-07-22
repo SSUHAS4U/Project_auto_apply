@@ -75,7 +75,7 @@ export function DashboardPage() {
           <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
             <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
           </span>
-          <button className="btn btn-primary btn-sm" onClick={() => nav('/agent')}><Icon name="live" size={14} /> Watch live</button>
+          {/* Watch live lives in the floating hub (bottom-right) now — no button here. */}
         </div>
       </div>
 
@@ -163,7 +163,7 @@ export function DashboardPage() {
             <Row label="Desktop worker" value={agent?.workerConfigured ? 'connected' : 'not connected'} tone={agent?.workerConfigured ? 'green' : 'slate'} />
             <Row label="Active run" value={running ? (agent?.activeRun?.portal ?? 'running') : 'idle'} tone={running ? 'blue' : undefined} />
             <Row label="Pending approvals" value={String(agent?.pendingApprovals ?? 0)} last />
-            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/agent')}><Icon name="live" size={13} /> Watch live</button>
+            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/auto-apply')}>Open Auto Apply <Icon name="external" size={13} /></button>
           </div>
 
           <div className="card card-pad">

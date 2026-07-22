@@ -47,7 +47,7 @@ export function AssistantWidget() {
           </div>
           <div className="hub-body">
             {/* keep-mounted so switching tabs doesn't drop the chat thread or the live poll */}
-            <div style={{ display: tab === 'chat' ? 'block' : 'none', height: '100%' }}>
+            <div style={{ display: tab === 'chat' ? 'flex' : 'none', flexDirection: 'column', minHeight: 0, height: '100%' }}>
               <AssistantPage embedded />
             </div>
             {tab === 'live' && <div className="hub-pane"><LiveView /></div>}

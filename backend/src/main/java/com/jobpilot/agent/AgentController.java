@@ -5,7 +5,8 @@ import com.jobpilot.security.WorkerTokenService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 /**
@@ -30,7 +31,11 @@ public class AgentController {
     @GetMapping("/status")
     public Map<String, Object> status() {
         UUID u = UserContext.require();
-        Instant since = Instant.now().truncatedTo(ChronoUnit.DAYS);
+        // "Today" in the app's timezone (IST), not UTC — otherwise an early-morning IST run
+        // (e.g. 01:00 IST = 19:30 UTC the day before) falls into "yesterday" and the tiles
+        // read 0 while the activity feed clearly shows today's work.
+        ZoneId zone = ZoneId.of("Asia/Kolkata");
+        Instant since = LocalDate.now(zone).atStartOfDay(zone).toInstant();
         AgentRun run = agent.activeRun(u);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paused", agent.isPaused());

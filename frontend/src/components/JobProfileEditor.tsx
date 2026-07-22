@@ -9,19 +9,39 @@ import { Icon } from './Icon';
  * Lives on the Auto Apply → Setup page (owner's choice): it's automation configuration,
  * not identity. Self-contained load/save against /api/profile.
  */
+type Row = { k: string; v: string };
+
 export function JobProfileEditor() {
   const toast = useToast();
   const [p, setP] = useState<Profile | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { api.profile().then(setP).catch(() => {}); }, []);
+  // Per-skill years + custom screening answers are edited as ordered rows (a Map can't be
+  // reliably key-edited in place), then serialised back to the profile on save.
+  const [skillRows, setSkillRows] = useState<Row[]>([]);
+  const [qaRows, setQaRows] = useState<Row[]>([]);
+  useEffect(() => {
+    api.profile().then((pr) => {
+      setP(pr);
+      setSkillRows(Object.entries(pr.skillsExperience ?? {}).map(([k, v]) => ({ k, v })));
+      setQaRows(Object.entries(pr.fieldMap ?? {}).map(([k, v]) => ({ k, v })));
+    }).catch(() => {});
+  }, []);
 
   if (!p) return <div className="card card-pad"><span className="spinner" /></div>;
   const set = (patch: Partial<Profile>) => setP((x) => ({ ...(x as Profile), ...patch }));
+  const rowsToMap = (rows: Row[]) =>
+    Object.fromEntries(rows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v.trim()]));
 
   const save = async () => {
     setSaving(true);
-    try { setP(await api.saveProfile(p)); toast('Job profile saved', 'success'); }
-    catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
+    const merged = { ...p, skillsExperience: rowsToMap(skillRows), fieldMap: rowsToMap(qaRows) };
+    try {
+      const saved = await api.saveProfile(merged);
+      setP(saved);
+      setSkillRows(Object.entries(saved.skillsExperience ?? {}).map(([k, v]) => ({ k, v })));
+      setQaRows(Object.entries(saved.fieldMap ?? {}).map(([k, v]) => ({ k, v })));
+      toast('Job profile saved', 'success');
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
   };
 
   const updList = <T,>(list: T[] | undefined, i: number, patch: Partial<T>): T[] =>
@@ -59,44 +79,27 @@ export function JobProfileEditor() {
         </Field>
       </div>
 
-      {/* Contact & location — used to fill the identity part of Easy Apply forms */}
-      <div className="jp-subhead"><Icon name="target" size={14} /> Contact &amp; location</div>
+      {/* Contact — only the parts Easy Apply asks separately from the resume */}
+      <div className="jp-subhead"><Icon name="target" size={14} /> Contact</div>
       <div className="grid2">
         <Field label="Phone country code"><input className="input" placeholder="+91" value={p.phoneCountryCode ?? ''} onChange={(e) => set({ phoneCountryCode: e.target.value })} /></Field>
         <Field label="Phone number"><input className="input" placeholder="9494571573" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
-        <Field label="Address" full><input className="input" placeholder="Bengaluru, Karnataka" value={p.address ?? ''} onChange={(e) => set({ address: e.target.value })} /></Field>
-        <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} /></Field>
-        <Field label="State"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} /></Field>
-        <Field label="ZIP / postal code"><input className="input" placeholder="560001" value={p.postalCode ?? ''} onChange={(e) => set({ postalCode: e.target.value })} /></Field>
-        <Field label="Country"><input className="input" placeholder="India" value={p.country ?? ''} onChange={(e) => set({ country: e.target.value })} /></Field>
       </div>
 
-      {/* Work preferences — the screening questions Easy Apply asks most */}
+      {/* Work preferences */}
       <div className="jp-subhead"><Icon name="bolt" size={14} /> Work preferences</div>
       <div className="grid2">
-        <Field label="Years of experience"><input className="input" placeholder="1" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
-        <Field label="Notice period (days)"><input className="input" placeholder="15" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} /></Field>
+        <Field label="Default years of experience"><input className="input" placeholder="1" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
         <Field label="Available start date"><input className="input" placeholder="Immediately" value={p.availableFrom ?? ''} onChange={(e) => set({ availableFrom: e.target.value })} /></Field>
-        <YesNo label="Authorized to work (in target country)" value={boolOf(p.workAuthorization)} onChange={(v) => set({ workAuthorization: v === null ? '' : v ? 'Yes' : 'No' })} />
-        <YesNo label="Requires visa sponsorship" value={p.requiresSponsorship ?? null} onChange={(v) => set({ requiresSponsorship: v })} />
+        <YesNo label="Work authorized" value={boolOf(p.workAuthorization)} onChange={(v) => set({ workAuthorization: v === null ? '' : v ? 'Yes' : 'No' })} />
+        <YesNo label="Requires sponsorship" value={p.requiresSponsorship ?? null} onChange={(v) => set({ requiresSponsorship: v })} />
         <YesNo label="Security clearance" value={p.securityClearance ?? null} onChange={(v) => set({ securityClearance: v })} />
         <YesNo label="Willing to relocate" value={p.willingToRelocate ?? null} onChange={(v) => set({ willingToRelocate: v })} />
-        <YesNo label="Willing to work remote" value={p.willingRemote ?? null} onChange={(v) => set({ willingRemote: v })} />
-        <YesNo label="Willing to work onsite" value={p.willingOnsite ?? null} onChange={(v) => set({ willingOnsite: v })} />
+        <YesNo label="Willing remote" value={p.willingRemote ?? null} onChange={(v) => set({ willingRemote: v })} />
+        <YesNo label="Willing onsite" value={p.willingOnsite ?? null} onChange={(v) => set({ willingOnsite: v })} />
       </div>
 
-      {/* Education */}
-      <div className="jp-subhead"><Icon name="trophy" size={14} /> Education</div>
-      <div className="grid2">
-        <Field label="Highest education"><input className="input" placeholder="B.Tech" value={p.highestEducation ?? ''} onChange={(e) => set({ highestEducation: e.target.value })} /></Field>
-        <Field label="School / university"><input className="input" placeholder="KL University" value={p.college ?? ''} onChange={(e) => set({ college: e.target.value })} /></Field>
-        <Field label="GPA"><input className="input" placeholder="9.2" value={p.gpa ?? ''} onChange={(e) => set({ gpa: e.target.value })} /></Field>
-        <YesNo label="Completed bachelor's" value={p.completedBachelors ?? null} onChange={(v) => set({ completedBachelors: v })} />
-        <YesNo label="Tier-one institution" value={p.tierOneInstitution ?? null} onChange={(v) => set({ tierOneInstitution: v })} />
-        <Field label="How did you hear about roles"><input className="input" placeholder="LinkedIn" value={p.howDidYouHear ?? ''} onChange={(e) => set({ howDidYouHear: e.target.value })} /></Field>
-      </div>
-
-      {/* Diversity — optional EEO questions; leave blank to skip / decline */}
+      {/* Diversity — optional EEO questions */}
       <div className="jp-subhead"><Icon name="target" size={14} /> Diversity <span className="faint">— optional, leave blank to decline</span></div>
       <div className="grid2">
         <Field label="Gender"><input className="input" placeholder="Male / Female / Decline" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })} /></Field>
@@ -104,6 +107,40 @@ export function JobProfileEditor() {
         <Field label="Veteran status"><input className="input" placeholder="I am not a protected veteran" value={p.veteranStatus ?? ''} onChange={(e) => set({ veteranStatus: e.target.value })} /></Field>
         <Field label="Disability status"><input className="input" placeholder="I do not wish to answer" value={p.disabilityStatus ?? ''} onChange={(e) => set({ disabilityStatus: e.target.value })} /></Field>
         <YesNo label="Hispanic / Latino" value={p.hispanicLatino ?? null} onChange={(v) => set({ hispanicLatino: v })} />
+      </div>
+
+      {/* Skills experience (years) — with type-ahead skill suggestions */}
+      <div className="jp-subhead"><Icon name="bolt" size={14} /> Skills experience (years) <span className="faint">— "how many years of X"</span></div>
+      <datalist id="skill-suggest">{skillOptions(p.skills).map((s) => <option key={s} value={s} />)}</datalist>
+      {skillRows.map((r, i) => (
+        <div className="row" style={{ gap: 8, marginBottom: 8 }} key={i}>
+          <input className="input" list="skill-suggest" style={{ flex: 1 }} placeholder="Start typing a skill…"
+            value={r.k} onChange={(e) => setSkillRows((rs) => rs.map((x, j) => j === i ? { ...x, k: e.target.value } : x))} />
+          <input className="input" style={{ width: 96 }} inputMode="numeric" placeholder="years"
+            value={r.v} onChange={(e) => setSkillRows((rs) => rs.map((x, j) => j === i ? { ...x, v: e.target.value.replace(/[^0-9.]/g, '') } : x))} />
+          <button className="btn btn-ghost btn-sm" title="Remove" onClick={() => setSkillRows((rs) => rs.filter((_, j) => j !== i))}><Icon name="trash" size={13} /></button>
+        </div>
+      ))}
+      <button className="btn btn-sm" onClick={() => setSkillRows((rs) => [...rs, { k: '', v: '' }])}><Icon name="plus" size={13} /> Add skill</button>
+
+      {/* Custom screening answers — the yes/no questions forms ask, answered once + reused */}
+      <div className="jp-subhead"><Icon name="clipboard" size={14} /> Custom screening answers</div>
+      <div className="grid2" style={{ marginBottom: 10 }}>
+        <Field label="Years of professional experience"><input className="input" placeholder="1" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
+        <Field label="Notice period (days)"><input className="input" placeholder="15" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} /></Field>
+      </div>
+      {qaRows.map((r, i) => (
+        <div className="row" style={{ gap: 8, marginBottom: 8, alignItems: 'flex-start' }} key={i}>
+          <input className="input" style={{ flex: 1 }} placeholder="Question (e.g. Do you have a non-compete agreement?)"
+            value={r.k} onChange={(e) => setQaRows((rs) => rs.map((x, j) => j === i ? { ...x, k: e.target.value } : x))} />
+          <input className="input" style={{ width: 130 }} placeholder="Answer"
+            value={r.v} onChange={(e) => setQaRows((rs) => rs.map((x, j) => j === i ? { ...x, v: e.target.value } : x))} />
+          <button className="btn btn-ghost btn-sm" title="Remove" onClick={() => setQaRows((rs) => rs.filter((_, j) => j !== i))}><Icon name="trash" size={13} /></button>
+        </div>
+      ))}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn btn-sm" onClick={() => setQaRows((rs) => [...rs, { k: '', v: '' }])}><Icon name="plus" size={13} /> Add question</button>
+        <button className="btn btn-sm" onClick={() => setQaRows((rs) => mergeCommonScreening(rs))}>Add common questions</button>
       </div>
 
       {/* Projects */}
@@ -169,4 +206,40 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean | nul
 function boolOf(s?: string): boolean | null {
   if (!s) return null;
   return /^y/i.test(s) ? true : /^n/i.test(s) ? false : null;
+}
+
+// Type-ahead suggestions for the per-skill years inputs (the browser filters as you type,
+// including partial matches). The owner's own skills are merged in first.
+const SKILL_SUGGESTIONS = [
+  'JavaScript', 'TypeScript', 'Python', 'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'Kotlin', 'Swift', 'PHP', 'Ruby', 'SQL',
+  'React', 'React.js', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Redux', 'HTML5', 'CSS3', 'TailwindCSS', 'Bootstrap', 'Vite',
+  'Node.js', 'Express.js', 'Spring Boot', 'Spring Security', 'Spring Data JPA', 'Hibernate', 'Django', 'Flask', 'FastAPI', '.NET',
+  'REST APIs', 'GraphQL', 'gRPC', 'Microservices', 'Distributed Systems', 'System Design', 'API Design',
+  'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Kafka', 'RabbitMQ',
+  'AWS', 'GCP', 'Azure', 'Docker', 'Kubernetes', 'Terraform', 'Jenkins', 'GitHub Actions', 'CI/CD', 'Linux', 'Git', 'Maven',
+  'JUnit', 'Jest', 'Cypress', 'Postman', 'Agile', 'Scrum',
+  'Keycloak', 'OAuth2', 'OIDC', 'JWT', 'IAM', 'OWASP', 'Secure Coding',
+  'Prompt Engineering', 'LLM Integration', 'AI Application Development', 'Machine Learning', 'TensorFlow', 'PyTorch',
+];
+function skillOptions(userSkills?: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of [...(userSkills ?? []), ...SKILL_SUGGESTIONS]) {
+    const k = s.trim();
+    if (k && !seen.has(k.toLowerCase())) { seen.add(k.toLowerCase()); out.push(k); }
+  }
+  return out;
+}
+
+// The screening questions almost every Easy-Apply form asks — added on demand, pre-answered "No".
+const COMMON_SCREENING: Row[] = [
+  { k: 'Have you previously worked for this company or its affiliates?', v: 'No' },
+  { k: 'Are you a current employee of this company?', v: 'No' },
+  { k: 'Do you have a non-compete agreement?', v: 'No' },
+  { k: 'Do you have a criminal record or conflict of interest?', v: 'No' },
+  { k: 'Are you related to any current employee?', v: 'No' },
+];
+function mergeCommonScreening(rows: Row[]): Row[] {
+  const have = new Set(rows.map((r) => r.k.trim().toLowerCase()));
+  return [...rows, ...COMMON_SCREENING.filter((c) => !have.has(c.k.toLowerCase()))];
 }

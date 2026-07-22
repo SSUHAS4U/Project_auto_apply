@@ -492,6 +492,25 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .opt-card.active { border-color: var(--accent); box-shadow: var(--glow); background: var(--accent-soft); }
 
 /* Key-value tiles (read-only detail grids) ------------------------------- */
+/* Profile card ("Your details") — avatar + identity + contact, a clean recruiter-style card. */
+.prof-card { display: flex; gap: 16px; align-items: flex-start; }
+.prof-avatar { flex: none; width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent-hi), var(--accent)); color: #fff; font-weight: 700; font-size: 22px;
+  letter-spacing: .02em; box-shadow: 0 4px 14px rgba(79,70,229,.28); }
+.prof-main { flex: 1; min-width: 0; }
+.prof-name { font-size: 19px; font-weight: 750; letter-spacing: -.02em; line-height: 1.2; }
+.prof-role { color: var(--text-dim); font-size: 13.5px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; }
+.prof-contact { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 11px; font-size: 13px; color: var(--text-dim); }
+.prof-contact span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.prof-contact svg { color: var(--text-faint); flex: none; }
+.prof-side { flex: none; }
+.prof-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.prof-badge.ok { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+.prof-badge.warn { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.prof-skills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+@media (max-width: 560px) { .prof-card { flex-wrap: wrap; } .prof-side { order: -1; } }
+
 .kv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 11px; }
 .kv-tile { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; transition: border-color .15s; }
 .kv-tile:hover { border-color: var(--border-strong); }
@@ -772,7 +791,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 
 /* Assistant chat --------------------------------------------------------- */
 .chat-wrap { display: flex; flex-direction: column; height: calc(100vh - 168px); max-width: 880px; margin: 0 auto; }
-.chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 8px 4px 20px; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 8px 4px 20px; }
+.chat-input { flex: none; }
 .chat-row { display: flex; gap: 12px; align-items: flex-start; max-width: 88%; }
 .chat-row.user { align-self: flex-end; flex-direction: row-reverse; }
 .chat-avatar {

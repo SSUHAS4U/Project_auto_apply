@@ -63,6 +63,13 @@ function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
   return <span className={`tone tone-${tone}`}>{text}</span>;
 }
 
+/** Up to two initials for the profile-card avatar. */
+function initialsOf(name?: string): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
 /** A prominent, at-a-glance fit score with a coloured ring (verdict-toned). */
 function FitScore({ score, verdict }: { score?: number; verdict?: string }) {
   if (typeof score !== 'number') return null;
@@ -317,21 +324,33 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
         </div>
         {me ? (
           <>
-            <div className="kv-tiles">
-              <div className="kv-tile"><span className="kv-k">Name</span><span className="kv-v">{me.fullName || <em className="faint">add in Profile</em>}</span></div>
-              <div className="kv-tile"><span className="kv-k">Email</span><span className="kv-v">{me.email || '—'}</span></div>
-              <div className="kv-tile"><span className="kv-k">Phone</span><span className="kv-v">{me.phone || '—'}</span></div>
-              <div className="kv-tile"><span className="kv-k">Current role</span><span className="kv-v">{me.currentTitle || '—'}{me.currentCompany ? ` @ ${me.currentCompany}` : ''}</span></div>
-              <div className="kv-tile"><span className="kv-k">Experience</span><span className="kv-v">{me.yearsExperience || '—'}</span></div>
-              <div className="kv-tile"><span className="kv-k">Resume</span><span className="kv-v">{me.hasResume ? <Chip text="uploaded" tone="green" /> : <Chip text="none" tone="amber" />}</span></div>
+            <div className="prof-card">
+              <div className="prof-avatar">{initialsOf(me.fullName)}</div>
+              <div className="prof-main">
+                <div className="prof-name">{me.fullName || <em className="faint">Add your name in Profile</em>}</div>
+                <div className="prof-role">
+                  {me.currentTitle || 'Role not set'}{me.currentCompany ? ` · ${me.currentCompany}` : ''}
+                  {me.yearsExperience ? ` · ${me.yearsExperience} yr${me.yearsExperience === '1' ? '' : 's'} exp` : ''}
+                </div>
+                <div className="prof-contact">
+                  {me.email && <span><Icon name="mail" size={14} /> {me.email}</span>}
+                  {me.phone && <span><Icon name="phone" size={14} /> {me.phone}</span>}
+                </div>
+              </div>
+              <div className="prof-side">
+                {me.hasResume
+                  ? <span className="prof-badge ok"><Icon name="check" size={13} /> Résumé uploaded</span>
+                  : <span className="prof-badge warn"><Icon name="alert" size={13} /> No résumé</span>}
+              </div>
             </div>
             {me.skills?.length > 0 && (
-              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-                {me.skills.slice(0, 16).map((s) => <span key={s} className="chip">{s}</span>)}
+              <div className="prof-skills">
+                {me.skills.slice(0, 18).map((s) => <span key={s} className="chip">{s}</span>)}
+                {me.skills.length > 18 && <span className="chip" style={{ opacity: .7 }}>+{me.skills.length - 18} more</span>}
               </div>
             )}
             <div className="faint" style={{ fontSize: 12, marginTop: 12 }}>
-              These come from your <a href="/profile">Profile</a> — edit there. {!me.hasResume && 'Upload a resume in Profile to enable AI CV tailoring.'}
+              These come from your <a href="/profile">Profile</a> — edit there. {!me.hasResume && 'Upload a résumé to enable AI CV tailoring.'}
             </div>
           </>
         ) : <span className="spinner" />}
