@@ -7,6 +7,7 @@ import type {
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
+import { JobCard } from '../components/JobCard';
 import type { CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
@@ -70,18 +71,6 @@ function initialsOf(name?: string): string {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
-}
-
-/** A prominent, at-a-glance fit score with a coloured ring (verdict-toned). */
-function FitScore({ score, verdict }: { score?: number; verdict?: string }) {
-  if (typeof score !== 'number') return null;
-  const tone = VERDICT_TONE[verdict ?? ''] ?? 'slate';
-  return (
-    <div className={`fit-score tone-${tone}`} title={verdict ? `${verdict} match` : 'fit score'}>
-      <span className="fit-num">{score}</span>
-      <span className="fit-cap">{verdict || 'fit'}</span>
-    </div>
-  );
 }
 
 export function EnginePage() {
@@ -569,36 +558,30 @@ function JobsTab({ status, onChange, onApplied }:
           {status?.setupReady ? 'No jobs yet. Scrape LinkedIn, then Rank.' : 'Run Setup first, then Scrape LinkedIn.'}
         </div>
       ) : jobs.map((j) => (
-        <div key={j.id} className="card card-pad eng-job">
-          <FitScore score={j.fitScore} verdict={j.verdict} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="row" style={{ justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-              <a href={j.url} target="_blank" rel="noreferrer" className="pick-title" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                {j.title} <Icon name="external" size={13} />
-              </a>
-              <div className="row" style={{ gap: 6, flexShrink: 0 }}>
-                {j.status !== 'applied' && j.status !== 'applying' && (
-                  <button className="btn btn-primary btn-sm" onClick={() => apply(j)} disabled={applyingId === j.id || !status?.setupReady}>
-                    {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
-                  </button>
-                )}
-                {j.status === 'applied' && <Chip text="applied" tone="green" />}
-                {j.status === 'applying' && <Chip text="applying…" tone="indigo" />}
-                <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
-              </div>
-            </div>
-            <div className="job-meta">
-              {j.company && <span className="meta-item"><Icon name="clipboard" size={12} /> {j.company}</span>}
-              {j.location && <span className="meta-item"><Icon name="compass" size={12} /> {j.location}</span>}
-              {j.postedAt && <span className="meta-item"><Icon name="clock" size={12} /> {j.postedAt}</span>}
-              {j.urgent && <Chip text="urgent" tone="amber" />}
-              {j.dealBreaker && <Chip text="deal-breaker" tone="red" />}
-            </div>
-            {j.strengths && <div className="t-green" style={{ fontSize: 12.5, marginTop: 8, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="check" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.strengths}</span></div>}
-            {j.gaps && <div className="faint" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="gap" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.gaps}</span></div>}
-            {j.dealBreaker && <div className="t-red" style={{ fontSize: 12.5, marginTop: 3, display: 'flex', gap: 6, alignItems: 'baseline' }}><Icon name="ban" size={13} style={{ flex: 'none', transform: 'translateY(2px)' }} /><span>{j.dealBreaker}</span></div>}
-          </div>
-        </div>
+        <JobCard key={j.id}
+          title={j.title || 'Role'}
+          company={j.company}
+          location={j.location}
+          source={j.source}
+          url={j.url}
+          score={j.fitScore}
+          verdict={j.verdict}
+          metaRight={j.postedAt || undefined}
+          strengths={j.strengths}
+          gaps={j.gaps}
+          dealBreaker={j.dealBreaker}
+          badges={j.urgent ? <Chip text="urgent" tone="amber" /> : undefined}
+          actions={<>
+            {j.status !== 'applied' && j.status !== 'applying' && (
+              <button className="btn btn-primary btn-sm" onClick={() => apply(j)} disabled={applyingId === j.id || !status?.setupReady}>
+                {applyingId === j.id ? <span className="spinner" /> : <Icon name="pen" size={13} />} Apply
+              </button>
+            )}
+            {j.status === 'applied' && <Chip text="applied" tone="green" />}
+            {j.status === 'applying' && <span className="row" style={{ gap: 6, alignItems: 'center' }}><span className="spinner" /> <Chip text="applying…" tone="indigo" /></span>}
+            <button className="btn btn-ghost btn-sm" onClick={() => dismiss(j)} title="Dismiss"><Icon name="x" size={14} /></button>
+          </>}
+        />
       ))}
     </div>
   );

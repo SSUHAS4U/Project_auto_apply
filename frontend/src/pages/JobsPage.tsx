@@ -4,6 +4,7 @@ import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
+import { JobCard } from '../components/JobCard';
 
 // Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
 function fmtNext(iso: string): string {
@@ -250,25 +251,25 @@ export function JobsPage() {
         : jobs.length === 0 ? (
           <div className="card card-pad empty"><div className="big"><Icon name="compass" size={34} /></div>No jobs in this view. Adjust filters or click <b>Run ingest</b>.</div>
         ) : view === 'cards' ? (
-          <div className="job-grid">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {jobs.map((j) => (
-              <div key={j.id} className="job-card">
-                <div className="job-card-top">
-                  <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setDetailJob(j)}>{j.title}</div>
-                  <ApplyBadge type={j.applyType} />
-                </div>
-                <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
-                <div className="muted meta-item" style={{ fontSize: 12.5, margin: '6px 0' }}><Icon name="compass" size={13} /> {j.location ?? (j.remote ? 'Remote' : '—')} · {fmtDate(j.postedAt ?? j.fetchedAt)}</div>
-                <div className="row" style={{ alignItems: 'center', gap: 10 }}>
-                  <ScoreBar score={j.matchScore} />
-                </div>
-                <div className="row" style={{ marginTop: 'auto', paddingTop: 12, gap: 7 }}>
+              <JobCard key={j.id}
+                title={j.title}
+                company={j.company}
+                location={j.location ?? (j.remote ? 'Remote' : undefined)}
+                source={j.source}
+                url={j.url}
+                score={j.matchScore}
+                salary={j.salaryText}
+                metaRight={fmtDate(j.postedAt ?? j.fetchedAt)}
+                badges={<ApplyBadge type={j.applyType} />}
+                onOpen={() => setDetailJob(j)}
+                actions={<>
                   {j.applyType === 'email' && <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>}
                   <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => setDetailJob(j)}>Details</button>
-                  <a className="btn btn-ghost btn-sm" href={j.url} target="_blank" rel="noreferrer" style={{ marginLeft: 'auto' }}>↗</a>
-                </div>
-              </div>
+                </>}
+              />
             ))}
           </div>
         ) : (
