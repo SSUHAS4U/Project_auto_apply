@@ -90,7 +90,6 @@ export function DashboardPage() {
           </span>
           <Select value={period} onChange={setPeriod} ariaLabel="Metrics period"
             options={PERIODS.map((p) => ({ value: p.key, label: p.label }))} />
-          {/* Watch live lives in the floating hub (bottom-right) now — no button here. */}
         </div>
       </div>
 

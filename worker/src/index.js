@@ -131,7 +131,14 @@ async function main() {
     try {
       const res = await adapter(page, api, order.plan, state, ctx);
       await api.runStatus(order.runId, 'done', `Block complete — ${res.applied || 0} applied`);
-      console.log(`✓ ${order.portal} block done — ${res.applied || 0} applied`);
+      // Full breakdown, not just "applied": a 0 with no explanation is what made this feel
+      // like nothing was happening. Every job now lands in exactly one of these buckets.
+      const t = res || {};
+      console.log(`\n✓ ${order.portal} block done — ${t.applied || 0} submitted`
+        + `, ${t.manual || 0} manual`
+        + `, ${t.attention || 0} stopped on a question`
+        + `, ${t.skipped || 0} skipped`
+        + `, ${t.failed || 0} failed\n`);
     } catch (e) {
       console.error(`✗ ${order.portal} block failed:`, e.message);
       await api.event({ runId: order.runId, portal: order.portal, type: 'error', detail: String(e).slice(0, 200) });

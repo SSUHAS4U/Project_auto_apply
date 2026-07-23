@@ -131,6 +131,7 @@ export async function fillChoices(page, api) {
       if (!ans.needsAttention && ans.answer) pick = String(ans.answer).trim();
     } catch { /* fall through to attention */ }
     if (!pick) {
+      console.log(`     ? ${question}  ->  NO ANSWER (saved to Profile > Autofill answers)`);
       attention.push(question);
       await api.recordQuestion(question).catch(() => {});
       continue;
@@ -140,7 +141,11 @@ export async function fillChoices(page, api) {
     let idx = g.options.findIndex((o) => o.toLowerCase() === low);
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().includes(low) || low.includes(o.toLowerCase()));
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().startsWith(low.split(/\s+/)[0]));
-    if (idx < 0) { attention.push(question); continue; }
+    if (idx < 0) {
+      console.log(`     ? ${question}  ->  "${pick}" did not match any option [${g.options.join(' | ')}]`);
+      attention.push(question); continue;
+    }
+    console.log(`     - ${question}  ->  ${g.options[idx]}`);
     const radios = await page.$$(`input[type=radio][name="${g.name.replace(/"/g, '\\"')}"]`);
     if (radios[idx]) {
       await radios[idx].check({ timeout: 2500 }).catch(async () => {
@@ -197,6 +202,7 @@ export async function fillForm(page, profile, api) {
           // submitted perfectly well with that box left empty.
           const required = await el.evaluate((n) =>
             n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
+          console.log(`     ? ${label}  ->  NO ANSWER${required ? '  (REQUIRED - application stopped)' : '  (optional - left blank)'}`);
           if (required) attention.push(label);
           // store it as PENDING so the owner answers it once in Profile → Autofill answers
           await api.recordQuestion(label).catch(() => {});
@@ -214,6 +220,7 @@ export async function fillForm(page, profile, api) {
         await el.click({ timeout: 2000 }).catch(() => {});
         await el.fill(String(value)).catch(() => {});
       }
+      console.log(`     - ${label}  ->  ${String(value).replace(/\s+/g, ' ').slice(0, 70)}`);
       filled.push(label);
       await humanDelay(250, 700);
     } catch { /* skip a stubborn field, keep going */ }

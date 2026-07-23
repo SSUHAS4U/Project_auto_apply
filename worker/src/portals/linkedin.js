@@ -107,6 +107,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let applied = 0;
+  const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
 
   // Every run scans hiring posts first (harvests recruiter emails → the backend auto-emails
   // a tailored application). It's short in 'apply' mode and gets the whole slot in 'outreach'
@@ -150,6 +151,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           : needsLogin
             ? `LinkedIn asked to log in — sign into linkedin.com in the browser, then run again`
             : `No Easy-Apply results on this search — LinkedIn may have changed the page or need login` });
+      console.log(`
+  SEARCH "${keyword}" @ ${location} -> ${cards.length} Easy-Apply jobs`);
       if (cards.length === 0) continue;
 
       for (const cardInfo of cards) {
@@ -194,29 +197,37 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           if (SENIOR_RE.test(title)) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: 'skip — senior/leadership role' });
+            tally.skipped++; console.log(`  -- ${title} | skipped (senior role)`);
             continue;
           }
           if (canJudge && score < FIT_THRESHOLD) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: `skip — low fit ${score}` });
+            tally.skipped++; console.log(`  -- ${title} | skipped (low fit ${score})`);
             continue;
           }
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'relevant',
             title, company,
             detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
 
+          console.log(`  -- ${title || 'Role'} | ${company || 'company'} ${canJudge ? `(fit ${score})` : '(no description read)'}`);
           const result = await easyApply(page, api, profile, resume, state);
           if (result === 'applied') {
             applied++;
+            console.log('     => SUBMITTED');
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'easy_apply',
               title, company, url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score}` });
           } else if (result === 'external') {
             // No Easy Apply → the owner applies by hand; recorded as manual_apply so the
             // dashboard lists it and the daily digest emails it.
+            tally.manual++;
+            console.log('     => EXTERNAL form -> listed under Manual needed');
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
               title, company,
               url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score} — apply manually (external form)` });
           } else if (result === 'attention') {
+            tally.attention++;
+            console.log('     => STOPPED: a required question had no answer (see above)');
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: 'needs attention — an unanswerable question' });
           } else {
@@ -224,18 +235,22 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             // has an Easy Apply button — reaching here means the button didn't render for us,
             // not that the job lacks one. Surface it honestly (it used to emit nothing at all,
             // which is why the board showed hundreds relevant with 0 of everything).
+            tally.manual++;
+            console.log('     => Easy Apply button did not render -> Manual needed');
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
               title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
               detail: 'Easy Apply button did not render for this job — open it and apply manually' });
           }
         } catch (e) {
+          tally.failed++;
+          console.log(`     => FAILED: ${String(e).slice(0, 140)}`);
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: String(e).slice(0, 160) });
         }
         await humanDelay(2000, 4000);
       }
     }
   }
-  return { applied };
+  return { applied, ...tally };
 }
 
 // ---- Phase 1: hiring-post scan → HR email extraction ------------------------

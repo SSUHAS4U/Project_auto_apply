@@ -3,12 +3,13 @@ import { api } from '../api/client';
 import { isDesktopApp } from '../lib/desktop';
 import { useToast } from '../lib/ui';
 import { DownloadDesktop } from './DownloadDesktop';
+import { TerminalConsole } from './DesktopTerminal';
 import { Icon } from './Icon';
 
 /**
  * How the local worker gets connected. Two paths:
- *  - Inside the JobPilot desktop app: open the Terminal (next to “Watch live”) and click
- *    Connect — no code to copy. This card just points there.
+ *  - Inside the JobPilot desktop app: the Terminal is embedded in this card — click Connect,
+ *    no code to copy.
  *  - In a browser: download the desktop app. A connect code is available under Advanced for
  *    anyone running the standalone worker instead.
  */
@@ -26,20 +27,22 @@ export function DesktopSetup({ configured, onChange }: { configured: boolean; on
   };
   const copy = () => { navigator.clipboard?.writeText(code).then(() => toast('Copied', 'success')).catch(() => {}); };
 
-  // Inside the app there's nothing to install — connecting is one click in the Terminal.
+  // Inside the app there's nothing to install. The terminal is embedded RIGHT HERE rather
+  // than pointing elsewhere — the old copy sent you to a button "next to Watch live", and
+  // Watch live no longer exists, so the instruction led nowhere.
   if (isDesktopApp()) {
     return (
-      <div className="card card-pad" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <Icon name="terminal" size={18} style={{ color: 'var(--accent-hi)', flex: 'none', transform: 'translateY(2px)' }} />
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14.5 }}>
-            Connect the automation {configured && <span className="tone tone-green" style={{ marginLeft: 6 }}>connected</span>}
-          </div>
-          <div className="faint" style={{ fontSize: 13, marginTop: 3, lineHeight: 1.6 }}>
-            Open the <b>Terminal</b> (next to “Watch live”) and click <b>Connect</b>. A Chrome window opens so
-            you can sign into each portal once — then use the Connect buttons above.
-          </div>
+      <div className="card card-pad">
+        <div className="card-title">
+          <Icon name="terminal" size={16} /> Connect the automation
+          {configured && <span className="tone tone-green" style={{ marginLeft: 6 }}>connected</span>}
         </div>
+        <div className="faint" style={{ fontSize: 13, marginTop: -2, marginBottom: 12, lineHeight: 1.6 }}>
+          Click <b>Connect</b> below. A Chrome window opens so you can sign into LinkedIn and Indeed once —
+          the session is remembered. Then use the Connect buttons above. Everything the automation does
+          is printed here live.
+        </div>
+        <div style={{ height: 340 }}><TerminalConsole /></div>
       </div>
     );
   }
