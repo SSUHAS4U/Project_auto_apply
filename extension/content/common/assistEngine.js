@@ -279,7 +279,7 @@
     close.title = 'Close (Esc)';
     close.style.cssText = 'border:none;background:transparent;color:#9aa1b1;cursor:pointer;padding:4px 8px;font-size:12px;border-radius:999px';
     close.addEventListener('mousedown', (e) => e.preventDefault());
-    close.addEventListener('click', () => hidePill(true));
+    close.addEventListener('click', () => { pillSuppressed = true; hidePill(true); });
 
     pill.append(grip, ai, save, note, close);
     pill._note = note;
@@ -289,6 +289,7 @@
 
   let pillDragged = false;
   let pillPinned = false;
+  let pillSuppressed = false; // ✕ dismisses the pill for the rest of this page (until reload)
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
   // options; custom dropdowns/typeaheads get a short value picked into the widget;
@@ -340,16 +341,12 @@
   // and value-typed inputs (date / tel / url / email / number) that have a label.
   function isPillTarget(el) {
     if (!el || el.disabled || el.offsetParent === null) return false;
+    if (pillSuppressed) return false;               // user dismissed it for this page
     if (el.tagName === 'SELECT') return true;
-    if (el.tagName === 'INPUT' && !el.readOnly) {
-      const t = (el.getAttribute('type') || 'text').toLowerCase();
-      // On application pages (the focusin gate already checked that), ANY labelled
-      // input is fair game — the backend routes by type, so short factual fields
-      // (name, city, links) work as well as long questions.
-      if (['text', 'date', 'tel', 'url', 'email', 'number', 'search', ''].includes(t)) {
-        return (deriveQuestion(el) || '').length > 2;
-      }
-    }
+    // Only REAL questions get the focus pill now — a textarea, a contenteditable box, or a
+    // text input whose label reads like a question. Short factual fields (name, email, phone,
+    // city) no longer trigger it, which is what made it feel like it popped up everywhere.
+    // Bulk filling of those still happens via "Scan & review, then fill".
     return isQuestionField(el);
   }
 
@@ -806,17 +803,29 @@
       seen.add(norm(label));
       push({ els: group, label, kind: 'radio', options });
     }
-    // ARIA radio groups (Google Forms, Workday, MS)
-    for (const rg of q('[role="radiogroup"]').filter((el) => el.offsetParent !== null)) {
-      const opts = [...rg.querySelectorAll('[role="radio"]')].filter((o) => o.offsetParent !== null);
+    // ARIA radio groups — grouped by their CONTAINER, not by a [role=radiogroup] wrapper.
+    // Google Forms (and some Workday/MS layouts) don't always put role=radiogroup on the
+    // group, so requiring it made every radio question invisible — the core "it never fills
+    // radios" bug. Instead we collect every visible [role=radio] and bucket it by the nearest
+    // question container (radiogroup → Forms listitem → group/fieldset → parent).
+    const ariaGroupsByHolder = new Map();
+    for (const o of q('[role="radio"]').filter(shown)) {
+      const holder = o.closest('[role="radiogroup"]')
+        || o.closest('[role="listitem"], [data-params], [jsmodel], fieldset, [role="group"]')
+        || o.parentElement;
+      if (!holder) continue;
+      if (!ariaGroupsByHolder.has(holder)) ariaGroupsByHolder.set(holder, []);
+      ariaGroupsByHolder.get(holder).push(o);
+    }
+    for (const [holder, opts] of ariaGroupsByHolder) {
       if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
-      const label = ariaGroupQuestion(rg);
+      const label = ariaGroupQuestion(holder);
       const options = opts.map((o) => labelOf(o)).filter(Boolean);
       if (!label || options.length < 2 || seen.has(norm(label))) continue;
       seen.add(norm(label));
       push({ els: opts, label, kind: 'aria-radio', options });
     }
-    // checkbox groups (multi)
+    // native checkbox groups (multi)
     const cGroups = {};
     q('input[type="checkbox"]').filter((c) => vis(c) && c.name).forEach((c) => { (cGroups[c.name] ||= []).push(c); });
     for (const k of Object.keys(cGroups)) {
@@ -827,6 +836,22 @@
       if (!label || !options.length || seen.has(norm(label))) continue;
       seen.add(norm(label));
       push({ els: group, label, kind: 'checkbox', options });
+    }
+    // ARIA checkbox groups (Google Forms multi-select) — same container grouping as radios.
+    const ariaCbByHolder = new Map();
+    for (const o of q('[role="checkbox"]').filter(shown)) {
+      const holder = o.closest('[role="group"], [role="listitem"], [data-params], [jsmodel], fieldset') || o.parentElement;
+      if (!holder) continue;
+      if (!ariaCbByHolder.has(holder)) ariaCbByHolder.set(holder, []);
+      ariaCbByHolder.get(holder).push(o);
+    }
+    for (const [holder, opts] of ariaCbByHolder) {
+      if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+      const label = ariaGroupQuestion(holder);
+      const options = opts.map((o) => labelOf(o)).filter(Boolean);
+      if (!label || options.length < 2 || seen.has(norm(label))) continue;
+      seen.add(norm(label));
+      push({ els: opts, label, kind: 'aria-checkbox', options });
     }
 
     if (!units.length) return { plan: [] };
@@ -875,13 +900,14 @@
           if (opts.length >= 2) u.options = opts;
         } catch (_) { /* fill by typed value instead */ }
       }
-      const choice = ['select', 'radio', 'aria-radio', 'checkbox'].includes(u.kind)
+      const multiKind = u.kind === 'checkbox' || u.kind === 'aria-checkbox';
+      const choice = ['select', 'radio', 'aria-radio', 'checkbox', 'aria-checkbox'].includes(u.kind)
         || (u.kind === 'custom' && u.options);
       if (choice) {
         const match = u.value && u.options.some((o) => norm(o) === norm(u.value) || norm(o).includes(norm(u.value)));
         if (!match && chooseBudget-- > 0) {
           try {
-            const c = await msg('ASSIST_CHOOSE', { question: u.label, options: u.options, multi: u.kind === 'checkbox' });
+            const c = await msg('ASSIST_CHOOSE', { question: u.label, options: u.options, multi: multiKind });
             const sel = (c && c.selected) || [];
             if (sel.length) { u.value = sel.join(', '); u.source = 'ai'; }
             else if (!match) { u.value = ''; u.source = ''; }
@@ -961,6 +987,14 @@
             const l = norm(nativeLabel(g));
             if (wants.some((w) => l === w || l.includes(w) || w.includes(l)) && !g.checked) {
               clickInput(g); window.JobPilot.highlight(g); ok = true;
+            }
+          });
+        } else if (reg.kind === 'aria-checkbox') {
+          const wants = value.split(/[;,]/).map((s) => norm(s)).filter(Boolean);
+          reg.els.forEach((o) => {
+            const l = norm(labelOf(o));
+            if (wants.some((w) => l === w || l.includes(w) || w.includes(l)) && o.getAttribute('aria-checked') !== 'true') {
+              clickOption(o); window.JobPilot.highlight(o); ok = true;
             }
           });
         } else if (reg.kind === 'custom' || reg.kind === 'combo') {
