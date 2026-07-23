@@ -100,6 +100,7 @@ export function ProfilePage() {
   const [tab, setTab] = useState<Tab>('personal');
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [sugging, setSugging] = useState('');
 
   useEffect(() => {
     api.profile().then(setP).catch((e) => toast(e.message, 'error'));
@@ -138,67 +139,106 @@ export function ProfilePage() {
   };
 
   const suggest = async (field: string, current: string, apply: (v: string) => void) => {
+    setSugging(field);
     try {
-      const ctx = `Name: ${p.fullName}; Headline: ${p.headline ?? ''}; Skills: ${(p.skills ?? []).join(', ')}`;
+      // Give the model the whole picture, not just the name — a headline written from the
+      // role/company/experience is far better than one guessed from a name and skills.
+      const ctx = [
+        `Name: ${p.fullName ?? ''}`,
+        `Current role: ${[p.currentTitle, p.currentCompany].filter(Boolean).join(' at ')}`,
+        `Years of experience: ${p.yearsExperience ?? ''}`,
+        `Location: ${p.location ?? ''}`,
+        `Headline: ${p.headline ?? ''}`,
+        `Skills: ${(p.skills ?? []).join(', ')}`,
+      ].filter((l) => !l.endsWith(': ')).join('; ');
       const r = await api.aiSuggest(field, current, ctx);
       apply(r.suggestion);
       toast('Suggestion applied — edit as needed', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setSugging(''); }
   };
 
+  /** The inline "Suggest" chip for a field's label row. */
+  const sugBtn = (field: string, current: string, apply: (v: string) => void) => (
+    <button type="button" className="pf-sug" disabled={sugging === field}
+      title={`Let AI draft your ${field} from the rest of your profile`}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); suggest(field, current, apply); }}>
+      {sugging === field ? <span className="spinner" /> : <Icon name="sparkles" size={11} />} Suggest
+    </button>
+  );
+
+  // Completeness: the fields that actually drive matching, cover letters and autofill.
+  // Shown as a ring so an incomplete profile is obvious at a glance.
+  const CHECKS: [string, boolean][] = [
+    ['Full name', !!p.fullName], ['Email', !!p.email], ['Phone', !!p.phone],
+    ['Headline', !!p.headline], ['Location', !!p.location], ['Summary', !!p.summary],
+    ['Skills', (p.skills ?? []).length > 0], ['Experience', (p.experience ?? []).length > 0],
+    ['Education', (p.education ?? []).length > 0], ['Resume', !!p.resumeFilename],
+    ['Expected CTC', !!p.expectedCtc], ['GitHub link', !!p.links?.github],
+  ];
+  const missing = CHECKS.filter(([, ok]) => !ok).map(([k]) => k);
+  const pct = Math.round(((CHECKS.length - missing.length) / CHECKS.length) * 100);
+
   return (
-    <>
+    <div className="pf">
       <div className="page-head">
         <div>
           <h1 className="page-title">Profile</h1>
-          <div className="page-sub">Everything below feeds job matching, cover letters & extension autofill</div>
+          <div className="page-sub">Everything here feeds job matching, cover letters and the extension's autofill.</div>
         </div>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save all</button>
       </div>
 
-      {(() => {
-        const checks = [p.fullName, p.email, p.phone, p.headline, p.location, p.summary,
-          (p.skills ?? []).length > 0, (p.experience ?? []).length > 0, (p.education ?? []).length > 0,
-          p.resumeFilename, p.expectedCtc, p.links?.github];
-        const done = checks.filter(Boolean).length;
-        const pct = Math.round((done / checks.length) * 100);
-        return (
-          <div className="card card-pad profile-hero">
-            <div className="hero-avatar">{(p.fullName?.[0] ?? 'U').toUpperCase()}</div>
-            <div className="grow">
-              <div className="hero-name">{p.fullName || 'Your Name'}</div>
-              <div className="muted" style={{ fontSize: 13 }}>{p.headline || 'Add a headline'} · {p.location || 'location'}</div>
-              <div className="skill-row" style={{ marginTop: 8 }}>
-                <span className="chip meta-item"><Icon name="bolt" size={12} /> {(p.skills ?? []).length} skills</span>
-                <span className="chip meta-item"><Icon name="trophy" size={12} /> {p.yearsExperience || '0'} yrs</span>
-                <span className="chip meta-item"><Icon name="file" size={12} /> {p.resumeFilename ? 'resume' : 'no resume'}</span>
-              </div>
-            </div>
-            <div className="hero-pct">
-              <div className="hero-pct-num">{pct}%</div>
-              <div className="hero-pct-label">complete</div>
-              <div className="score-bar" style={{ width: 90, marginTop: 6 }}><span style={{ width: `${pct}%` }} /></div>
-            </div>
+      <div className="pf-head">
+        <div className="pf-avatar">{(p.fullName?.[0] ?? 'U').toUpperCase()}</div>
+        <div className="pf-id">
+          <div className="pf-name">{p.fullName || 'Your name'}</div>
+          <div className="pf-role">
+            {p.headline || 'Add a headline'}{p.location ? ` · ${p.location}` : ''}
           </div>
-        );
-      })()}
+          <div className="pf-pills">
+            <span className="pf-pill"><Icon name="bolt" size={12} /> {(p.skills ?? []).length} skills</span>
+            <span className="pf-pill"><Icon name="trophy" size={12} /> {p.yearsExperience || '0'} yrs</span>
+            <span className={`pf-pill ${p.resumeFilename ? '' : 'warn'}`}>
+              <Icon name={p.resumeFilename ? 'check' : 'alert'} size={12} /> {p.resumeFilename ? 'Résumé on file' : 'No résumé'}
+            </span>
+            {missing.length > 0 && (
+              <span className="pf-pill warn" title={`Missing: ${missing.join(', ')}`}>
+                <Icon name="alert" size={12} /> {missing.length} field{missing.length === 1 ? '' : 's'} left
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="pf-ring" style={{ ['--pct']: pct } as React.CSSProperties}
+          title={missing.length ? `Missing: ${missing.join(', ')}` : 'Profile complete'}>
+          <div className="pf-ring-in">
+            <div className="pf-ring-n">{pct}%</div>
+            <div className="pf-ring-l">done</div>
+          </div>
+        </div>
+      </div>
 
-      <div className="tabs">
+      <div className="pf-nav" role="tablist" aria-label="Profile sections">
         {TABS.map((t) => (
-          <div key={t.id} className={`tab meta-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}><Icon name={t.ico} size={14} /> {t.label}</div>
+          <button key={t.id} role="tab" aria-selected={tab === t.id}
+            className={`pf-nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
+            <Icon name={t.ico} size={14} /> {t.label}
+          </button>
         ))}
       </div>
 
       {tab === 'personal' && (
-        <div style={{ maxWidth: 900 }}>
+        <div>
           <Section ico="user" title="Identity">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="Full name"><input className="input" value={p.fullName ?? ''} onChange={(e) => set({ fullName: e.target.value })} /></Field>
               <Field label="First name"><input className="input" value={p.firstName ?? ''} onChange={(e) => set({ firstName: e.target.value })} /></Field>
               <Field label="Last name"><input className="input" value={p.lastName ?? ''} onChange={(e) => set({ lastName: e.target.value })} /></Field>
               <Field label="Email"><input className="input" value={p.email ?? ''} onChange={(e) => set({ email: e.target.value })} /></Field>
               <Field label="Phone"><input className="input" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
-              <Field label="Headline"><input className="input" placeholder="Backend Engineer" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} /></Field>
+              <Field label="Headline" hint="one line, shown on every application"
+                action={sugBtn('headline', p.headline ?? '', (v) => set({ headline: v }))}>
+                <input className="input" placeholder="Backend Engineer · Java, Spring Boot" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} />
+              </Field>
               <Field label="Date of birth"><input className="input" type="date" value={p.dateOfBirth ?? ''} onChange={(e) => set({ dateOfBirth: e.target.value })} /></Field>
               <Field label="Gender">
                 <select className="select" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })}>
@@ -228,7 +268,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="compass" title="Current address">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="Current location (short)"><input className="input" value={p.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Bengaluru" /></Field>
               <Field label="City"><input className="input" value={p.city ?? ''} onChange={(e) => set({ city: e.target.value })} placeholder="Bengaluru" /></Field>
               <Field label="State / Province"><input className="input" value={p.state ?? ''} onChange={(e) => set({ state: e.target.value })} placeholder="Karnataka" /></Field>
@@ -239,7 +279,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="compass" title="Permanent / alternate address" sub="used when a form asks for a second address">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="Location (short)"><input className="input" value={p.location2 ?? ''} onChange={(e) => set({ location2: e.target.value })} placeholder="home town" /></Field>
               <Field label="City"><input className="input" value={p.city2 ?? ''} onChange={(e) => set({ city2: e.target.value })} /></Field>
               <Field label="State / Province"><input className="input" value={p.state2 ?? ''} onChange={(e) => set({ state2: e.target.value })} /></Field>
@@ -250,7 +290,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="link" title="Links">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="GitHub"><input className="input" value={p.links?.github ?? ''} onChange={(e) => setLink('github', e.target.value)} /></Field>
               <Field label="LinkedIn"><input className="input" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
               <Field label="Portfolio"><input className="input" value={p.links?.portfolio ?? ''} onChange={(e) => setLink('portfolio', e.target.value)} /></Field>
@@ -261,9 +301,9 @@ export function ProfilePage() {
       )}
 
       {tab === 'professional' && (
-        <div style={{ maxWidth: 900 }}>
+        <div>
           <Section ico="clipboard" title="Current role & compensation">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="Current title"><input className="input" value={p.currentTitle ?? ''} onChange={(e) => set({ currentTitle: e.target.value })} /></Field>
               <Field label="Current company"><input className="input" value={p.currentCompany ?? ''} onChange={(e) => set({ currentCompany: e.target.value })} /></Field>
               <Field label="Seniority">
@@ -284,7 +324,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="check" title="Work eligibility & preferences">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="Work authorization">
                 <input className="input" list="workauth-list" placeholder="Indian citizen" value={p.workAuthorization ?? ''} onChange={(e) => set({ workAuthorization: e.target.value })} />
                 <datalist id="workauth-list">{WORK_AUTH_OPTIONS.map((w) => <option key={w} value={w} />)}</datalist>
@@ -301,7 +341,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="chart" title="Coding profiles & scores" sub="asked on most Indian tech application forms — used by autofill">
-            <div className="grid3">
+            <div className="pf-grid">
               <Field label="LeetCode profile URL"><input className="input" type="url" placeholder="https://leetcode.com/u/…" value={p.leetcodeUrl ?? ''} onChange={(e) => set({ leetcodeUrl: e.target.value })} /></Field>
               <Field label="LeetCode score / rating"><input className="input" placeholder="1417" value={p.leetcodeScore ?? ''} onChange={(e) => set({ leetcodeScore: e.target.value })} /></Field>
               <Field label="GitHub profile URL"><input className="input" type="url" placeholder="https://github.com/…" value={p.links?.github ?? ''} onChange={(e) => set({ links: { ...(p.links ?? {}), github: e.target.value } })} /></Field>
@@ -314,7 +354,7 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="gear" title="Work setup" sub="shift willingness + machine details — common screening questions">
-            <div className="grid2">
+            <div className="pf-grid">
               <Field label="Open to working in shifts?">
                 <select className="select" value={p.openToShifts ?? ''} onChange={(e) => set({ openToShifts: e.target.value })}>
                   <option value="">Select…</option>
@@ -337,7 +377,7 @@ export function ProfilePage() {
             empty={{ company: '', title: '', employmentType: '', location: '', start: '', end: '', current: false, description: '' }}
             render={(item, upd) => (
               <>
-                <div className="grid2">
+                <div className="pf-grid">
                   <Field label="Company"><input className="input" value={item.company ?? ''} onChange={(e) => upd({ company: e.target.value })} /></Field>
                   <Field label="Title / role"><input className="input" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
                   <Field label="Employment type">
@@ -364,7 +404,7 @@ export function ProfilePage() {
             empty={{ name: '', issuer: '', link: '', credentialId: '', issued: '', expiry: '' }}
             render={(item, upd) => (
               <>
-                <div className="grid2">
+                <div className="pf-grid">
                   <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
                   <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
                   <Field label="Credential ID / no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
@@ -376,10 +416,12 @@ export function ProfilePage() {
           />
 
           <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
-            <label className="field full">
-              <div className="row" style={{ justifyContent: 'space-between' }}><span>Professional summary</span>
-                <button className="btn btn-ghost ai-suggest-btn" onClick={() => suggest('professional summary', p.summary ?? '', (v) => set({ summary: v }))}><Icon name="sparkles" size={12} /> AI suggest</button>
-              </div>
+            <label className="pf-f full">
+              <span className="pf-f-l">
+                Professional summary
+                <span className="pf-f-hint">2–4 sentences — feeds cover letters</span>
+                {sugBtn('professional summary', p.summary ?? '', (v) => set({ summary: v }))}
+              </span>
               <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
             </label>
             <Field label="Cover-letter style/notes (optional)" full><textarea className="input" rows={3} value={p.coverLetterTemplate ?? ''} onChange={(e) => set({ coverLetterTemplate: e.target.value })} placeholder="Tone, things to emphasize, custom intro…" /></Field>
@@ -397,7 +439,7 @@ export function ProfilePage() {
             empty={{ school: '', degree: '', field: '', location: '', startYear: '', endYear: '', gradeType: 'CGPA', grade: '', institutionType: '', specialization: '', current: false }}
             render={(item, upd) => (
               <>
-                <div className="grid2">
+                <div className="pf-grid">
                   <Field label="School / University"><input className="input" value={item.school ?? ''} onChange={(e) => upd({ school: e.target.value })} /></Field>
                   <Field label="Institution type">
                     <select className="select" value={item.institutionType ?? ''} onChange={(e) => upd({ institutionType: e.target.value })}>
@@ -410,7 +452,7 @@ export function ProfilePage() {
                   <Field label="Specialization (optional)"><input className="input" placeholder="DevOps, AI/ML…" value={item.specialization ?? ''} onChange={(e) => upd({ specialization: e.target.value })} /></Field>
                   <Field label="Location"><input className="input" placeholder="City, Country" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
                 </div>
-                <div className="grid3">
+                <div className="pf-grid">
                   <Field label="Start year"><input className="input" type="number" placeholder="2021" value={item.startYear ?? ''} onChange={(e) => upd({ startYear: e.target.value })} /></Field>
                   <Field label="End year (or expected)"><input className="input" type="number" placeholder="2025" value={item.endYear ?? item.year ?? ''} onChange={(e) => upd({ endYear: e.target.value })} /></Field>
                   <Field label="Score">
@@ -444,7 +486,7 @@ export function ProfilePage() {
       )}
 
       {tab === 'resume' && (
-        <div style={{ maxWidth: 620 }}>
+        <div>
           <Section ico="file" title="Resume" sub="attached to email-apply jobs">
             <div className="row">
               <span className="muted meta-item">{p.resumeFilename ? <><Icon name="file" size={13} /> {p.resumeFilename}</> : 'No resume uploaded'}</span>
@@ -467,7 +509,19 @@ export function ProfilePage() {
           <DocumentsVault />
         </div>
       )}
-    </>
+
+      {/* Long form → the primary action follows you instead of hiding at the top. */}
+      <div className="pf-save">
+        <span className="pf-save-t">
+          {missing.length === 0
+            ? 'Profile complete — everything the automation needs.'
+            : `${missing.length} field${missing.length === 1 ? '' : 's'} still empty: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}`}
+        </span>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saving}>
+          {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save profile
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -646,8 +700,23 @@ function Section({ ico, title, sub, children }: { ico: string; title: string; su
     </div>
   );
 }
-function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
-  return <label className={`field ${full ? 'full' : ''}`}>{label}{children}</label>;
+/**
+ * One labelled control. Label sits ABOVE the input (never placeholder-only), with room for a
+ * hint and an optional action (the AI "Suggest" chip) on the right of the label row.
+ */
+function Field({ label, hint, children, full, action }: {
+  label: string; hint?: string; children: React.ReactNode; full?: boolean; action?: React.ReactNode;
+}) {
+  return (
+    <label className={`pf-f ${full ? 'full' : ''}`}>
+      <span className="pf-f-l">
+        {label}
+        {hint && <span className="pf-f-hint">{hint}</span>}
+        {action}
+      </span>
+      {children}
+    </label>
+  );
 }
 function TriSelect({ value, onChange }: { value?: boolean | null; onChange: (v: boolean | null) => void }) {
   const v = value === true ? 'yes' : value === false ? 'no' : '';

@@ -493,6 +493,78 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .jobrow-desc { margin-top: 6px; font-size: 12px; color: var(--text-faint); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ============================================================================
+   PROFILE — Swiss/minimal settings surface: one centred column, generous
+   whitespace, a clear type hierarchy and a fluid field grid. Everything lives
+   inside .pf so it can be centred as a unit (the old page pinned each tab to a
+   left-aligned 900px box inside the 1240px page, which read as "stuck in the
+   corner" on a wide screen).
+   ========================================================================== */
+.pf { max-width: 1040px; margin: 0 auto; }
+
+/* --- header card: identity + completeness ring --- */
+.pf-head { display: flex; align-items: center; gap: 20px; padding: 22px 24px; margin-bottom: 18px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+.pf-avatar { flex: none; width: 68px; height: 68px; border-radius: 20px; display: grid; place-items: center;
+  font-size: 27px; font-weight: 750; color: #fff; letter-spacing: .01em;
+  background: linear-gradient(135deg, var(--accent-hi), var(--accent)); box-shadow: 0 4px 16px rgba(79,70,229,.28); }
+.pf-id { flex: 1; min-width: 0; }
+.pf-name { font-size: 22px; font-weight: 750; letter-spacing: -.022em; line-height: 1.2; }
+.pf-role { color: var(--text-dim); font-size: 13.5px; margin-top: 3px; }
+.pf-pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.pf-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text-dim);
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; }
+.pf-pill svg { color: var(--text-faint); }
+.pf-pill.warn { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 34%, transparent);
+  background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.pf-pill.warn svg { color: var(--amber); }
+/* completeness ring — conic fill, hollow centre */
+.pf-ring { flex: none; width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--border) 0); }
+.pf-ring-in { width: 58px; height: 58px; border-radius: 50%; background: var(--bg-card);
+  display: grid; place-items: center; line-height: 1; }
+.pf-ring-n { font-size: 17px; font-weight: 800; letter-spacing: -.02em; color: var(--accent-hi); font-variant-numeric: tabular-nums; }
+.pf-ring-l { font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-top: 2px; }
+
+/* --- section nav: segmented pills, scrolls instead of wrapping raggedly --- */
+.pf-nav { display: flex; gap: 4px; padding: 5px; margin-bottom: 20px; overflow-x: auto;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; }
+.pf-nav-item { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 14px; min-height: 40px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--text-dim); white-space: nowrap;
+  transition: background .18s ease, color .18s ease; }
+.pf-nav-item:hover { background: var(--bg-card-hover); color: var(--text); }
+.pf-nav-item.active { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.pf-nav-item.active svg { color: #fff; }
+
+/* --- fields: label above control, fluid columns (no rigid 3-up cramping) --- */
+.pf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 16px 18px; }
+.pf-grid .full { grid-column: 1 / -1; }
+.pf-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pf-f-l { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-dim); letter-spacing: .01em; }
+.pf-f-hint { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
+.pf-f .input, .pf-f .select, .pf-f textarea { min-height: 42px; }  /* comfortable hit target */
+
+/* --- inline AI suggestion affordance --- */
+.pf-sug { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+  font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 999px;
+  color: var(--accent-hi); background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); transition: background .18s ease; }
+.pf-sug:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.pf-sug:disabled { opacity: .55; cursor: default; }
+
+/* --- sticky save bar: a long form must never hide its primary action --- */
+.pf-save { position: sticky; bottom: 14px; z-index: 20; display: flex; align-items: center; gap: 12px;
+  margin-top: 20px; padding: 12px 16px; border-radius: var(--radius);
+  background: var(--bg-card); border: 1px solid var(--border-strong); box-shadow: var(--shadow); }
+.pf-save-t { font-size: 12.5px; color: var(--text-dim); }
+
+@media (max-width: 620px) {
+  .pf-head { flex-wrap: wrap; gap: 14px; }
+  .pf-ring { order: -1; }
+  .pf-grid { grid-template-columns: 1fr; }
+}
+
 /* ---- Portal stat strip (per-portal metrics header) -------------------------
    One clean row: each stat is a number over a small caps label, split by hairlines. The value
    lights up in its tone; zero recedes to muted. Tap a cell → its job list opens below. Scrolls
