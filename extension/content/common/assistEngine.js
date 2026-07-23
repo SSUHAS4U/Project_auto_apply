@@ -904,6 +904,35 @@
     };
   }
 
+  /**
+   * Resolve a value onto one of the control's REAL options.
+   *  1. exact label,
+   *  2. substring either way,
+   *  3. shared significant word (so "8 and above" matches "8 and above CGPA"),
+   *  4. last resort — hand the AI the exact on-page options and let it pick.
+   * Step 4 is the key change: a choice whose value didn't literally match an option used to
+   * be abandoned ("couldn't set field N"). Now the model chooses among what the form offers,
+   * the same reasoning a human uses to see "9.1" belongs in "8 and above".
+   */
+  async function resolveOption(label, value, opts) {
+    const texts = opts.map((o) => norm(o.text));
+    const want = norm(value);
+    let i = texts.findIndex((t) => t === want);
+    if (i < 0) i = texts.findIndex((t) => t && (t.includes(want) || want.includes(t)));
+    if (i < 0) {
+      const vw = want.split(/\s+/).filter((w) => w.length > 2);
+      i = texts.findIndex((t) => { const tw = t.split(/\s+/); return vw.some((w) => tw.includes(w)); });
+    }
+    if (i < 0 && value) {
+      try {
+        const c = await msg('ASSIST_CHOOSE', { question: label || 'Choose the best matching option', options: opts.map((o) => o.text), multi: false });
+        const sel = ((c && c.selected) || [])[0];
+        if (sel) i = texts.findIndex((t) => t === norm(sel));
+      } catch (_) { /* give up below */ }
+    }
+    return i >= 0 ? opts[i] : null;
+  }
+
   async function applyPlan(items) {
     const smart = window.JobPilotSmart;
     let applied = 0;
@@ -915,20 +944,17 @@
       let ok = false;
       try {
         if (reg.kind === 'select') {
-          const want = norm(value);
-          const opt = [...reg.el.options].find((o) => norm(o.text) === want)
-            || [...reg.el.options].find((o) => norm(o.text).includes(want) || want.includes(norm(o.text)));
-          if (opt) { reg.el.value = opt.value; reg.el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(reg.el); ok = true; }
+          const opts = [...reg.el.options].map((o) => ({ text: o.text, val: o.value }));
+          const opt = await resolveOption(it.label, value, opts);
+          if (opt) { reg.el.value = opt.val; reg.el.dispatchEvent(new Event('change', { bubbles: true })); window.JobPilot.highlight(reg.el); ok = true; }
         } else if (reg.kind === 'radio') {
-          const want = norm(value);
-          const el = reg.els.find((g) => norm(nativeLabel(g)) === want)
-            || reg.els.find((g) => { const l = norm(nativeLabel(g)); return l && (l.includes(want) || want.includes(l)); });
-          if (el) { clickInput(el); window.JobPilot.highlight(el); ok = true; }
+          const opts = reg.els.map((g) => ({ text: nativeLabel(g), el: g }));
+          const opt = await resolveOption(it.label, value, opts);
+          if (opt) { clickInput(opt.el); window.JobPilot.highlight(opt.el); ok = true; }
         } else if (reg.kind === 'aria-radio') {
-          const want = norm(value);
-          const el = reg.els.find((o) => norm(labelOf(o)) === want)
-            || reg.els.find((o) => { const l = norm(labelOf(o)); return l && (l.includes(want) || want.includes(l)); });
-          if (el) { clickOption(el); window.JobPilot.highlight(el); ok = true; }
+          const opts = reg.els.map((o) => ({ text: labelOf(o), el: o }));
+          const opt = await resolveOption(it.label, value, opts);
+          if (opt) { clickOption(opt.el); window.JobPilot.highlight(opt.el); ok = true; }
         } else if (reg.kind === 'checkbox') {
           const wants = value.split(/[;,]/).map((s) => norm(s)).filter(Boolean);
           reg.els.forEach((g) => {
