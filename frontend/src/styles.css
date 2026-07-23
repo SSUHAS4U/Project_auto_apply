@@ -573,6 +573,8 @@ tbody tr:hover { background: var(--bg-card-hover); }
 /* --- coding profiles: one aligned row per platform (name | URL | rating) --- */
 .pf-codes { display: flex; flex-direction: column; gap: 10px; }
 .pf-code { display: grid; grid-template-columns: 104px minmax(0, 1fr) 150px; gap: 12px; align-items: center; }
+/* A link row has no rating column, so the URL takes the remaining width. */
+.pf-code.solo { grid-template-columns: 104px minmax(0, 1fr); }
 .pf-code-n { font-size: 12.5px; font-weight: 650; color: var(--text-dim); }
 .pf-code-na { font-size: 11.5px; color: var(--text-faint); font-style: italic; }
 @media (max-width: 700px) {
@@ -580,6 +582,31 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .pf-code-n { font-weight: 600; }
   .pf-code-na { display: none; }
 }
+
+/* --- date & month fields ---------------------------------------------------
+   The calendar popup itself is drawn by the OS/browser, not the page, so it cannot be
+   restyled with CSS. What CAN be controlled is which palette it draws with and the colour
+   it highlights: color-scheme flips the whole picker to the app's dark/light palette, and
+   accent-color paints the selected day in our indigo. Without these you get a stark white
+   calendar with a blue system highlight in dark mode. The trigger icon is inverted in dark
+   mode so it isn't a black glyph on a dark field. */
+input[type="date"], input[type="month"], input[type="time"], input[type="datetime-local"] {
+  accent-color: var(--accent);
+}
+:root[data-theme="dark"] input[type="date"],
+:root[data-theme="dark"] input[type="month"],
+:root[data-theme="dark"] input[type="time"],
+:root[data-theme="dark"] input[type="datetime-local"] { color-scheme: dark; }
+:root[data-theme="light"] input[type="date"],
+:root[data-theme="light"] input[type="month"],
+:root[data-theme="light"] input[type="time"],
+:root[data-theme="light"] input[type="datetime-local"] { color-scheme: light; }
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  cursor: pointer; opacity: .6; transition: opacity .15s ease; border-radius: 4px;
+}
+input[type="date"]:hover::-webkit-calendar-picker-indicator,
+input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 
 /* --- inline AI suggestion affordance --- */
 .pf-sug { margin-left: auto; flex: none; white-space: nowrap; display: inline-flex; align-items: center;

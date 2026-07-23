@@ -5,6 +5,7 @@ import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { TagInput } from '../components/TagInput';
+import { Select } from '../components/Select';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
@@ -265,10 +266,8 @@ export function ProfilePage() {
               </Field>
               <Field label="Date of birth"><input className="input" type="date" value={p.dateOfBirth ?? ''} onChange={(e) => set({ dateOfBirth: e.target.value })} /></Field>
               <Field label="Gender">
-                <select className="select" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })}>
-                  <option value="">Select…</option>
-                  {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
+                <Select ariaLabel="Gender" value={p.gender ?? ''} onChange={(v) => set({ gender: v })}
+                  options={[{ value: '', label: 'Select…' }, ...GENDER_OPTIONS.map((g) => ({ value: g, label: g }))]} />
               </Field>
               <Field label="Nationality">
                 <input className="input" list="nationality-list" value={p.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value })} placeholder="Indian" />
@@ -276,17 +275,13 @@ export function ProfilePage() {
               </Field>
               <Field label="Alternate phone"><input className="input" value={p.alternatePhone ?? ''} onChange={(e) => set({ alternatePhone: e.target.value })} placeholder="optional second number" /></Field>
               <Field label="Marital status">
-                <select className="select" value={p.maritalStatus ?? ''} onChange={(e) => set({ maritalStatus: e.target.value })}>
-                  <option value="">Select…</option>
-                  <option>Single</option><option>Married</option><option>Prefer not to say</option>
-                </select>
+                <Select ariaLabel="Marital status" value={p.maritalStatus ?? ''} onChange={(v) => set({ maritalStatus: v })}
+                  options={[{ value: '', label: 'Select…' }, { value: 'Single', label: 'Single' }, { value: 'Married', label: 'Married' }, { value: 'Prefer not to say', label: 'Prefer not to say' }]} />
               </Field>
               <Field label="Father's name"><input className="input" value={p.fatherName ?? ''} onChange={(e) => set({ fatherName: e.target.value })} placeholder="asked on many Indian forms" /></Field>
               <Field label="Disability status">
-                <select className="select" value={p.disabilityStatus ?? ''} onChange={(e) => set({ disabilityStatus: e.target.value })}>
-                  <option value="">Select…</option>
-                  <option>No</option><option>Yes</option><option>Prefer not to say</option>
-                </select>
+                <Select ariaLabel="Disability status" value={p.disabilityStatus ?? ''} onChange={(v) => set({ disabilityStatus: v })}
+                  options={[{ value: '', label: 'Select…' }, { value: 'No', label: 'No' }, { value: 'Yes', label: 'Yes' }, { value: 'Prefer not to say', label: 'Prefer not to say' }]} />
               </Field>
             </div>
           </Section>
@@ -313,12 +308,23 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          {/* GitHub and LeetCode deliberately NOT here — they live in Professional →
-              "Coding profiles & scores" so each link has exactly one home. */}
-          <Section ico="link" title="Links" sub="coding profiles live under Professional">
-            <div className="pf-grid">
-              <Field label="LinkedIn"><input className="input" type="url" placeholder="https://linkedin.com/in/…" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
-              <Field label="Portfolio"><input className="input" type="url" placeholder="https://…" value={p.links?.portfolio ?? ''} onChange={(e) => setLink('portfolio', e.target.value)} /></Field>
+          {/* Profile links live here and ONLY here; competitive-programming ratings live in
+              Professional → Coding profiles. Each URL has exactly one home. */}
+          <Section ico="link" title="Links" sub="profile URLs — used to autofill applications">
+            <div className="pf-codes">
+              {([
+                { name: 'LinkedIn', key: 'linkedin', ph: 'https://linkedin.com/in/…' },
+                { name: 'Portfolio', key: 'portfolio', ph: 'https://your-site.com' },
+                { name: 'GitHub', key: 'github', ph: 'https://github.com/…' },
+                { name: 'Naukri', key: 'naukri', ph: 'https://www.naukri.com/mnjuser/profile' },
+                { name: 'Indeed', key: 'indeed', ph: 'https://profile.indeed.com/…' },
+              ]).map((l) => (
+                <div className="pf-code solo" key={l.key}>
+                  <span className="pf-code-n">{l.name}</span>
+                  <input className="input" type="url" placeholder={l.ph} aria-label={`${l.name} profile URL`}
+                    value={p.links?.[l.key] ?? ''} onChange={(e) => setLink(l.key, e.target.value)} />
+                </div>
+              ))}
             </div>
           </Section>
         </div>
@@ -331,9 +337,8 @@ export function ProfilePage() {
               <Field label="Current title"><input className="input" value={p.currentTitle ?? ''} onChange={(e) => set({ currentTitle: e.target.value })} /></Field>
               <Field label="Current company"><input className="input" value={p.currentCompany ?? ''} onChange={(e) => set({ currentCompany: e.target.value })} /></Field>
               <Field label="Seniority">
-                <select className="select" value={p.seniority ?? ''} onChange={(e) => set({ seniority: e.target.value })}>
-                  <option value="">—</option><option value="entry">entry</option><option value="mid">mid</option><option value="senior">senior</option>
-                </select>
+                <Select ariaLabel="Seniority" value={p.seniority ?? ''} onChange={(v) => set({ seniority: v })}
+                  options={[{ value: '', label: '—' }, { value: 'entry', label: 'Entry' }, { value: 'mid', label: 'Mid' }, { value: 'senior', label: 'Senior' }]} />
               </Field>
               <Field label="Total experience (yrs)"><input className="input" type="number" min="0" step="0.5" placeholder="3.5" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
               <Field label="College / University"><input className="input" placeholder="KL University" value={p.college ?? ''} onChange={(e) => set({ college: e.target.value })} /></Field>
@@ -379,8 +384,7 @@ export function ProfilePage() {
                 { name: 'Codeforces', url: p.codeforcesUrl ?? '', su: (v: string) => set({ codeforcesUrl: v }),
                   score: p.codeforcesScore ?? '', ss: (v: string) => set({ codeforcesScore: v }),
                   ph: 'https://codeforces.com/profile/…', sph: 'e.g. 643' },
-                { name: 'GitHub', url: p.links?.github ?? '', su: (v: string) => setLink('github', v),
-                  score: null, ss: null, ph: 'https://github.com/…', sph: '' },
+                // GitHub is NOT here — it has no rating and lives under Personal → Links.
               ]).map((c) => (
                 <div className="pf-code" key={c.name}>
                   <span className="pf-code-n">{c.name}</span>
@@ -398,12 +402,9 @@ export function ProfilePage() {
           <Section ico="gear" title="Work setup" sub="shift willingness + machine details — common screening questions">
             <div className="pf-grid">
               <Field label="Open to working in shifts?">
-                <select className="select" value={p.openToShifts ?? ''} onChange={(e) => set({ openToShifts: e.target.value })}>
-                  <option value="">Select…</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                  <option value="depends">Depends on the shift/allowance</option>
-                </select>
+                <Select ariaLabel="Open to shifts" value={p.openToShifts ?? ''} onChange={(v) => set({ openToShifts: v })}
+                  options={[{ value: '', label: 'Select…' }, { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' },
+                    { value: 'depends', label: 'Depends on the shift/allowance' }]} />
               </Field>
               <Field label="Laptop / PC configuration">
                 <input className="input" placeholder="e.g. RTX 3050, 16 GB RAM, 512 GB SSD, Intel i5 12th gen"
@@ -423,10 +424,9 @@ export function ProfilePage() {
                   <Field label="Company"><input className="input" value={item.company ?? ''} onChange={(e) => upd({ company: e.target.value })} /></Field>
                   <Field label="Title / role"><input className="input" value={item.title ?? ''} onChange={(e) => upd({ title: e.target.value })} /></Field>
                   <Field label="Employment type">
-                    <select className="select" value={item.employmentType ?? ''} onChange={(e) => upd({ employmentType: e.target.value })}>
-                      <option value="">Select…</option>
-                      {['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance', 'Apprenticeship'].map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <Select ariaLabel="Employment type" value={item.employmentType ?? ''} onChange={(v) => upd({ employmentType: v })}
+                      options={[{ value: '', label: 'Select…' },
+                        ...['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance', 'Apprenticeship'].map((o) => ({ value: o, label: o }))]} />
                   </Field>
                   <Field label="Location"><input className="input" placeholder="City · Remote / Hybrid / On-site" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
                   <Field label="Start"><input className="input" type="month" value={item.start ?? ''} onChange={(e) => upd({ start: e.target.value })} /></Field>
@@ -450,7 +450,8 @@ export function ProfilePage() {
                   <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
                   <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
                   <Field label="Credential ID / no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
-                  <Field label="Issued"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
+                  <Field label="Issued" hint="month & year"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
+                  <Field label="Expires" hint="blank = no expiry"><input className="input" type="month" value={item.expiry ?? ''} onChange={(e) => upd({ expiry: e.target.value })} /></Field>
                 </div>
                 <Field label="Credential link" full><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
               </>
@@ -484,10 +485,9 @@ export function ProfilePage() {
                 <div className="pf-grid">
                   <Field label="School / University"><input className="input" value={item.school ?? ''} onChange={(e) => upd({ school: e.target.value })} /></Field>
                   <Field label="Institution type">
-                    <select className="select" value={item.institutionType ?? ''} onChange={(e) => upd({ institutionType: e.target.value })}>
-                      <option value="">Select…</option>
-                      {['University', 'College', 'Junior College', 'School'].map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <Select ariaLabel="Institution type" value={item.institutionType ?? ''} onChange={(v) => upd({ institutionType: v })}
+                      options={[{ value: '', label: 'Select…' },
+                        ...['University', 'College', 'Junior College', 'School'].map((o) => ({ value: o, label: o }))]} />
                   </Field>
                   <Field label="Degree"><input className="input" placeholder="B.Tech, 12th (Intermediate), 10th…" value={item.degree ?? ''} onChange={(e) => upd({ degree: e.target.value })} /></Field>
                   <Field label="Field of study / stream"><input className="input" placeholder="Computer Science, MPC…" value={item.field ?? ''} onChange={(e) => upd({ field: e.target.value })} /></Field>
@@ -499,9 +499,9 @@ export function ProfilePage() {
                   <Field label="End year (or expected)"><input className="input" type="number" placeholder="2025" value={item.endYear ?? item.year ?? ''} onChange={(e) => upd({ endYear: e.target.value })} /></Field>
                   <Field label="Score">
                     <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-                      <select className="select" style={{ maxWidth: 110 }} value={item.gradeType ?? 'CGPA'} onChange={(e) => upd({ gradeType: e.target.value })}>
-                        {['CGPA', 'Percentage', 'GPA', 'Grade'].map((o) => <option key={o} value={o}>{o}</option>)}
-                      </select>
+                      <Select ariaLabel="Score type" style={{ width: 118, flex: 'none' }} value={item.gradeType ?? 'CGPA'}
+                        onChange={(v) => upd({ gradeType: v })}
+                        options={[{ value: 'CGPA', label: 'CGPA' }, { value: 'Percentage', label: 'Percentage' }]} />
                       <input className="input" style={{ flex: 1 }} placeholder={item.gradeType === 'Percentage' ? '87.5%' : '9.1'} value={item.grade ?? ''} onChange={(e) => upd({ grade: e.target.value })} />
                     </div>
                   </Field>
@@ -674,9 +674,8 @@ function DocumentsVault() {
   return (
     <Section ico="shield" title="Document vault" sub="encrypted at rest · download asks for your password">
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <select className="select" value={type} onChange={(e) => setType(e.target.value)} style={{ maxWidth: 200 }}>
-          {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <Select ariaLabel="Document type" value={type} onChange={setType} style={{ width: 200, flex: 'none' }}
+          options={DOC_TYPES.map((t) => ({ value: t, label: t }))} />
         <label className="btn btn-primary btn-sm">
           {busy ? <span className="spinner" /> : <Icon name="download" size={13} style={{ transform: 'rotate(180deg)' }} />} Upload document(s)
           <input type="file" multiple style={{ display: 'none' }} disabled={busy} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
@@ -763,9 +762,9 @@ function Field({ label, hint, children, full, action }: {
 function TriSelect({ value, onChange }: { value?: boolean | null; onChange: (v: boolean | null) => void }) {
   const v = value === true ? 'yes' : value === false ? 'no' : '';
   return (
-    <select className="select" value={v} onChange={(e) => onChange(e.target.value === 'yes' ? true : e.target.value === 'no' ? false : null)}>
-      <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
-    </select>
+    <Select ariaLabel="Yes or no" value={v}
+      onChange={(x) => onChange(x === 'yes' ? true : x === 'no' ? false : null)}
+      options={[{ value: '', label: '—' }, { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
   );
 }
 
