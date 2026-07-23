@@ -26,6 +26,13 @@ public class AssistService {
             You are a career coach helping a candidate answer job-application questions in the
             BEST HONEST LIGHT. Write a confident first-person answer grounded in the candidate's
             background below.
+            - GROUND EVERY FACT IN THE BACKGROUND GIVEN. If the answer exists there (notice period,
+              CTC, college, degree, graduation year, DOB, city, links, phone), use that exact value —
+              never guess, round or invent a different one, and never answer "N/A" for something present.
+            - If "Previously approved answers" contains the same question in different words, REUSE
+              those facts and that wording — consistency across applications matters more than novelty.
+            - "Custom answers (user-defined, authoritative)" in the background OVERRIDE your own
+              judgement whenever they apply.
             - For questions about a skill/tool the candidate may not have explicitly listed
               (e.g. "describe your exposure to PyTorch", "experience with Kubernetes"), do NOT
               say they have none. Give a constructive, basic-but-confident answer: connect their
@@ -111,7 +118,8 @@ public class AssistService {
         // 4. Generate with AI, grounded in the profile and shaped to the control type.
         //    Do NOT auto-save — only the user's explicit "Save" adds to the bank.
         Profile p = profiles.get();
-        String prompt = "Candidate background:\n" + profileContext(p)
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(userId)
                 + "\n\nApplication question: " + question.trim()
                 + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
                 + "\n\nAnswer:";
@@ -164,12 +172,15 @@ public class AssistService {
                 - Eligibility facts (location, relocation, start date, work authorization, WFO/on-site):
                   stay honest and eligibility-friendly (willing to relocate / comfortable with on-site / can start soon).
                 Reply with ONLY the option number(s); separate multiple with commas. Just numbers.""";
-        String prompt = "Candidate background:\n" + profileContext(p)
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(UserContext.require())
                 + "\n\nQuestion: " + question.trim()
                 + "\n\nOptions:\n" + opts
                 + "\n" + (multi ? "Select all that apply." : "Select exactly one.")
                 + " Reply with the number(s) only:";
-        String raw = ai.complete(system, prompt, true, false);
+        // Strong model: picking the wrong option silently submits a wrong answer, and small
+        // models routinely misread negated/compliance wording here.
+        String raw = ai.complete(system, prompt, false, false);
 
         List<String> selected = new ArrayList<>();
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(raw == null ? "" : raw);
@@ -235,7 +246,9 @@ public class AssistService {
         String prompt = "PROFILE:\n" + fullProfileContext(p) + "\n\nFIELDS:\n" + list + "\nJSON:";
 
         try {
-            String raw = ai.complete(system, prompt, true, false);
+            // Strong model: this is the main fill path — a small model both misreads label
+            // intent and breaks the strict-JSON contract, which silently fills fields wrong.
+            String raw = ai.complete(system, prompt, false, false);
             com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
             Map<String, String> out = new LinkedHashMap<>();
             for (String f : clean) {
@@ -620,18 +633,28 @@ public class AssistService {
         return Arrays.stream(key.split(" ")).filter(t -> t.length() > 2).collect(Collectors.toSet());
     }
 
-    private String profileContext(Profile p) {
-        StringBuilder sb = new StringBuilder();
-        line(sb, "Name", p.getFullName());
-        line(sb, "Headline", p.getHeadline());
-        line(sb, "Current role", join(p.getCurrentTitle(), p.getCurrentCompany()));
-        line(sb, "Years of experience", str(p.getYearsExperience()));
-        line(sb, "Location", p.getLocation());
-        if (p.getSkills() != null && !p.getSkills().isEmpty()) {
-            line(sb, "Skills", String.join(", ", p.getSkills()));
+    /**
+     * The candidate's own previously-approved answers, handed to the model as authoritative
+     * examples. This is how the assistant GROWS: every answer the user saves teaches it the
+     * facts and the voice to reuse when the next form asks the same thing in different words.
+     * Capped (and each answer truncated) so a large bank can't crowd out the profile.
+     */
+    private String qaBankContext(UUID userId) {
+        List<QaPair> bank = qaRepo.findByUserIdOrderByUpdatedAtDesc(userId);
+        if (bank == null || bank.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\n\nPreviously approved answers by this candidate "
+                + "(AUTHORITATIVE — when the question matches one of these in meaning, reuse the same "
+                + "facts and voice rather than inventing a new answer):\n");
+        int n = 0;
+        for (QaPair q : bank) {
+            String a = q.getAnswer();
+            if (a == null || a.isBlank() || q.getQuestion() == null || q.getQuestion().isBlank()) continue;
+            if (a.length() > 300) a = a.substring(0, 300) + "…";
+            sb.append("  - Q: ").append(q.getQuestion().trim())
+                    .append("\n    A: ").append(a.trim()).append("\n");
+            if (++n >= 20) break;
         }
-        line(sb, "Summary", p.getSummary());
-        return sb.length() == 0 ? "(no profile details on file)" : sb.toString();
+        return n == 0 ? "" : sb.toString();
     }
 
     private static void line(StringBuilder sb, String label, String val) {
