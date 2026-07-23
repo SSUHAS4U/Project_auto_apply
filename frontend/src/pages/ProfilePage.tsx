@@ -103,7 +103,14 @@ export function ProfilePage() {
   const [sugging, setSugging] = useState('');
 
   useEffect(() => {
-    api.profile().then(setP).catch((e) => toast(e.message, 'error'));
+    api.profile().then((prof) => {
+      // The old Links section stored LeetCode in links.leetcode while the Coding-profiles
+      // section used leetcodeUrl — two slots for one thing. Links now owns neither, so fold
+      // any legacy value into leetcodeUrl (only when that's empty) instead of orphaning it.
+      const legacy = prof.links?.leetcode;
+      if (legacy && !prof.leetcodeUrl) prof = { ...prof, leetcodeUrl: legacy };
+      setP(prof);
+    }).catch((e) => toast(e.message, 'error'));
   }, []); // eslint-disable-line
 
   if (!p) return <div className="empty"><span className="spinner" /></div>;
@@ -252,7 +259,7 @@ export function ProfilePage() {
               <Field label="Last name"><input className="input" value={p.lastName ?? ''} onChange={(e) => set({ lastName: e.target.value })} /></Field>
               <Field label="Email"><input className="input" value={p.email ?? ''} onChange={(e) => set({ email: e.target.value })} /></Field>
               <Field label="Phone"><input className="input" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
-              <Field label="Headline" hint="one line, shown on every application"
+              <Field label="Headline" full hint="one line, shown on every application"
                 action={sugBtn('headline', p.headline ?? '', (v) => set({ headline: v }))}>
                 <input className="input" placeholder="Backend Engineer · Java, Spring Boot" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} />
               </Field>
@@ -306,12 +313,12 @@ export function ProfilePage() {
             </div>
           </Section>
 
-          <Section ico="link" title="Links">
+          {/* GitHub and LeetCode deliberately NOT here — they live in Professional →
+              "Coding profiles & scores" so each link has exactly one home. */}
+          <Section ico="link" title="Links" sub="coding profiles live under Professional">
             <div className="pf-grid">
-              <Field label="GitHub"><input className="input" value={p.links?.github ?? ''} onChange={(e) => setLink('github', e.target.value)} /></Field>
-              <Field label="LinkedIn"><input className="input" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
-              <Field label="Portfolio"><input className="input" value={p.links?.portfolio ?? ''} onChange={(e) => setLink('portfolio', e.target.value)} /></Field>
-              <Field label="LeetCode / DSA profile"><input className="input" placeholder="https://leetcode.com/username/" value={p.links?.leetcode ?? ''} onChange={(e) => setLink('leetcode', e.target.value)} /></Field>
+              <Field label="LinkedIn"><input className="input" type="url" placeholder="https://linkedin.com/in/…" value={p.links?.linkedin ?? ''} onChange={(e) => setLink('linkedin', e.target.value)} /></Field>
+              <Field label="Portfolio"><input className="input" type="url" placeholder="https://…" value={p.links?.portfolio ?? ''} onChange={(e) => setLink('portfolio', e.target.value)} /></Field>
             </div>
           </Section>
         </div>
@@ -364,7 +371,6 @@ export function ProfilePage() {
               <Field label="GitHub profile URL"><input className="input" type="url" placeholder="https://github.com/…" value={p.links?.github ?? ''} onChange={(e) => set({ links: { ...(p.links ?? {}), github: e.target.value } })} /></Field>
               <Field label="CodeChef profile URL"><input className="input" type="url" placeholder="https://www.codechef.com/users/…" value={p.codechefUrl ?? ''} onChange={(e) => set({ codechefUrl: e.target.value })} /></Field>
               <Field label="CodeChef score / rating"><input className="input" placeholder="1533" value={p.codechefScore ?? ''} onChange={(e) => set({ codechefScore: e.target.value })} /></Field>
-              <span />
               <Field label="Codeforces profile URL"><input className="input" type="url" placeholder="https://codeforces.com/profile/…" value={p.codeforcesUrl ?? ''} onChange={(e) => set({ codeforcesUrl: e.target.value })} /></Field>
               <Field label="Codeforces score / rating"><input className="input" placeholder="643" value={p.codeforcesScore ?? ''} onChange={(e) => set({ codeforcesScore: e.target.value })} /></Field>
             </div>

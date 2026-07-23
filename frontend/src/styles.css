@@ -539,9 +539,10 @@ tbody tr:hover { background: var(--bg-card-hover); }
   transition: background .55s cubic-bezier(.4, 0, .2, 1); }
 .pf-ring-in { width: 62px; height: 62px; border-radius: 50%; background: var(--bg-card);
   display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-.pf-ring-n { font-size: 19px; font-weight: 800; letter-spacing: -.03em; color: var(--rc, var(--accent));
-  font-variant-numeric: tabular-nums; }
-.pf-ring-n span { font-size: 11px; font-weight: 700; opacity: .65; margin-left: 1px; }
+/* Sized so a three-digit score ("100%") still breathes inside the hollow centre. */
+.pf-ring-n { font-size: 17px; font-weight: 800; letter-spacing: -.035em; color: var(--rc, var(--accent));
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pf-ring-n span { font-size: 10px; font-weight: 700; opacity: .65; margin-left: 1px; }
 .pf-ring-l { font-size: 8.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
   color: var(--text-faint); margin-top: 3px; }
 @media (prefers-reduced-motion: reduce) { .pf-ring { transition: none; } }
@@ -561,13 +562,17 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .pf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 16px 18px; }
 .pf-grid .full { grid-column: 1 / -1; }
 .pf-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.pf-f-l { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-dim); letter-spacing: .01em; }
-.pf-f-hint { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
+.pf-f-l { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: .01em; }
+/* The hint must never wrap into a ragged multi-line block between the label and the Suggest
+   chip — it truncates instead, and the full text stays available via the title attribute. */
+.pf-f-hint { min-width: 0; font-size: 11.5px; color: var(--text-faint); font-weight: 400;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pf-f .input, .pf-f .select, .pf-f textarea { min-height: 42px; }  /* comfortable hit target */
 
 /* --- inline AI suggestion affordance --- */
-.pf-sug { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
-  font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 999px;
+.pf-sug { margin-left: auto; flex: none; white-space: nowrap; display: inline-flex; align-items: center;
+  gap: 5px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 999px;
   color: var(--accent-hi); background: var(--accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); transition: background .18s ease; }
 .pf-sug:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
@@ -579,10 +584,28 @@ tbody tr:hover { background: var(--bg-card-hover); }
   background: var(--bg-card); border: 1px solid var(--border-strong); box-shadow: var(--shadow); }
 .pf-save-t { font-size: 12.5px; color: var(--text-dim); }
 
+/* Mobile: keep the header as ONE row (avatar · identity · ring) and simply scale it down.
+   The old rule wrapped it and pushed the ring to the front with order:-1, which put the
+   progress ring to the LEFT of the avatar and squeezed the name into a corner. */
 @media (max-width: 620px) {
-  .pf-head { flex-wrap: wrap; gap: 14px; }
-  .pf-ring { order: -1; }
-  .pf-grid { grid-template-columns: 1fr; }
+  .pf-head { gap: 12px; padding: 16px 14px; }
+  .pf-avatar { width: 52px; height: 52px; border-radius: 15px; font-size: 21px; }
+  .pf-name { font-size: 18px; }
+  .pf-role { font-size: 12.5px; }
+  .pf-pills { gap: 6px; margin-top: 9px; }
+  .pf-pill { font-size: 11px; padding: 3px 9px; }
+  .pf-ring { width: 58px; height: 58px; }
+  .pf-ring-in { width: 45px; height: 45px; }
+  .pf-ring-n { font-size: 14px; }
+  .pf-ring-n span { font-size: 8.5px; }
+  .pf-ring-l { font-size: 7px; letter-spacing: .06em; margin-top: 1px; }
+  .pf-grid { grid-template-columns: 1fr; gap: 14px; }
+  .pf-nav { padding: 4px; gap: 2px; }
+  .pf-nav-item { padding: 9px 12px; font-size: 12.5px; }
+  /* Save bar stacks so the button never overlaps its own status text. */
+  .pf-save { flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
+  .pf-save-t { flex: 1 1 100%; }
+  .pf-save .btn { width: 100%; justify-content: center; }
 }
 
 /* ---- Portal stat strip (per-portal metrics header) -------------------------
