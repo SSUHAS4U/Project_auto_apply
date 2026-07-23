@@ -124,6 +124,15 @@ export async function runIndeed(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
               url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
+          } else if (result === 'attention') {
+            await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+              title: post.title, company: post.company, detail: 'needs attention — an unanswerable question' });
+          } else {
+            // Same silent-drop bug as LinkedIn had: anything that wasn't applied/external
+            // emitted NOTHING, so the job disappeared with no counter and no error.
+            await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
+              title: post.title, company: post.company,
+              url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: 'no Indeed Apply button found — apply manually' });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error', detail: String(e).slice(0, 160) });

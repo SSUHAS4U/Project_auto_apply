@@ -72,6 +72,10 @@ async function readPosting(page) {
   };
 }
 
+// The job detail pane — used both to confirm a job actually loaded and to scroll the top
+// card (where the Easy Apply button lives) into view.
+const PANE_SEL = '.job-details-jobs-unified-top-card, .jobs-unified-top-card, .jobs-details, .jobs-search__job-details';
+
 export async function runLinkedIn(page, api, plan, state, ctx) {
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
@@ -126,11 +130,28 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         const id = cardInfo.id;
         if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
         try {
-          // clicking the card in-place loads the detail pane (SPA)
+          // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
+          // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
+          // one), which is what made every job log "matched your search" instead of a real fit
+          // and left Easy Apply undiscoverable. So wait for the pane, and fall back to the
+          // job's own URL when it doesn't appear.
           const card = await page.$(`li[data-occludable-job-id="${id}"], div[data-job-id="${id}"]`);
-          if (card) { await card.click({ timeout: 3000 }).catch(() => {}); }
-          else { await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {}); }
-          await humanDelay(1800, 3200);
+          let pane = false;
+          if (card) {
+            await card.click({ timeout: 3000 }).catch(() => {});
+            pane = await page.waitForSelector(PANE_SEL, { timeout: 6000 }).then(() => true).catch(() => false);
+          }
+          if (!pane) {
+            await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+            pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
+          }
+          if (!pane) {
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+              url: `https://www.linkedin.com/jobs/view/${id}/`,
+              detail: 'job page would not load (LinkedIn layout change or logged out) — skipped' });
+            continue;
+          }
+          await humanDelay(1200, 2400);
 
           const post = await readPosting(page);
           // Fall back to the card's title/company if the detail pane didn't render — never log a
@@ -172,6 +193,13 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           } else if (result === 'attention') {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: 'needs attention — an unanswerable question' });
+          } else {
+            // 'none' — no Easy Apply control on the page. This used to emit NOTHING, so the job
+            // silently vanished: the dashboard showed hundreds "relevant" with 0 applied, 0
+            // manual and 0 failed, and there was no way to tell what happened. Always surface it.
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+              title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+              detail: 'no Easy Apply button found — apply manually' });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: String(e).slice(0, 160) });
@@ -200,6 +228,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
   const cap = dedicated ? 15 : 5;
   const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
+  let analysed = 0;
   const seen = new Set();
 
   for (const keyword of plan.keywords.slice(0, dedicated ? 5 : 2)) {
@@ -211,7 +240,13 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
       + encodeURIComponent(`${keyword} hiring`) + '&sortBy=%22date_posted%22';
     await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await humanDelay(2500, 4000);
-    if (/\/login|\/authwall|signup/i.test(page.url())) return; // not logged in — skip quietly
+    if (/\/login|\/authwall|signup/i.test(page.url())) {
+      // Never return silently here: this is the single most common reason outreach produces
+      // no emails, and with no event the dashboard just showed nothing at all.
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+        detail: 'post search hit LinkedIn’s login wall — sign into linkedin.com in the automation browser, then run again' });
+      return;
+    }
 
     for (let scroll = 0; scroll < 4 && found < cap && Date.now() < phaseDeadline; scroll++) {
       // read every post currently rendered
@@ -221,6 +256,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
           const link = el.querySelector('a.app-aware-link[href*="/feed/update/"]')?.href || '';
           return { name, link, text: (el.innerText || '').slice(0, 4500) };
         })).catch(() => []);
+      analysed += posts.length;
 
       for (const post of posts) {
         const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
@@ -245,6 +281,10 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
       await page.mouse.wheel(0, 2400).catch(() => {});
       await humanDelay(2200, 3800);
     }
+    // Surface the outreach phase per keyword — otherwise a scan that finds no recruiter
+    // email is indistinguishable from a scan that never ran.
+    await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
+      detail: `scanned ${analysed} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
   }
   if (found > 0) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
@@ -258,9 +298,20 @@ async function easyApply(page, api, profile, resume, state) {
   // button once it finishes loading. The pane loads async after the card click, so poll for
   // the button for a few seconds before giving up — otherwise a slow render was being
   // misread as "no Easy Apply" and the job wrongly pushed to the manual list.
+  // Selector list kept broad: LinkedIn renames these classes often, and the aria-label is
+  // "Easy Apply to <role> at <company>" on current markup. Missing the button here is not a
+  // cosmetic bug — it silently costs you the application.
+  const APPLY_SEL = [
+    'button.jobs-apply-button',
+    '.jobs-apply-button--top-card button',
+    'button[aria-label^="Easy Apply"]',
+    'button[aria-label*="Easy Apply"]',
+    '[data-live-test-job-apply-button]',
+    'button:has-text("Easy Apply")',
+  ].join(', ');
   let btn = null;
   for (let i = 0; i < 5 && !btn; i++) {
-    btn = await page.$('button.jobs-apply-button:has-text("Easy Apply"), button[aria-label^="Easy Apply"], button[aria-label*="Easy Apply"], button.jobs-apply-button');
+    btn = await page.$(APPLY_SEL);
     if (!btn) { await scrollTopCardIntoView(page); await humanDelay(700, 1300); }
   }
   if (!btn) {
