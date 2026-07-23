@@ -365,14 +365,33 @@ export function ProfilePage() {
           </Section>
 
           <Section ico="chart" title="Coding profiles & scores" sub="asked on most Indian tech application forms — used by autofill">
-            <div className="pf-grid">
-              <Field label="LeetCode profile URL"><input className="input" type="url" placeholder="https://leetcode.com/u/…" value={p.leetcodeUrl ?? ''} onChange={(e) => set({ leetcodeUrl: e.target.value })} /></Field>
-              <Field label="LeetCode score / rating"><input className="input" placeholder="1417" value={p.leetcodeScore ?? ''} onChange={(e) => set({ leetcodeScore: e.target.value })} /></Field>
-              <Field label="GitHub profile URL"><input className="input" type="url" placeholder="https://github.com/…" value={p.links?.github ?? ''} onChange={(e) => set({ links: { ...(p.links ?? {}), github: e.target.value } })} /></Field>
-              <Field label="CodeChef profile URL"><input className="input" type="url" placeholder="https://www.codechef.com/users/…" value={p.codechefUrl ?? ''} onChange={(e) => set({ codechefUrl: e.target.value })} /></Field>
-              <Field label="CodeChef score / rating"><input className="input" placeholder="1533" value={p.codechefScore ?? ''} onChange={(e) => set({ codechefScore: e.target.value })} /></Field>
-              <Field label="Codeforces profile URL"><input className="input" type="url" placeholder="https://codeforces.com/profile/…" value={p.codeforcesUrl ?? ''} onChange={(e) => set({ codeforcesUrl: e.target.value })} /></Field>
-              <Field label="Codeforces score / rating"><input className="input" placeholder="643" value={p.codeforcesScore ?? ''} onChange={(e) => set({ codeforcesScore: e.target.value })} /></Field>
+            {/* One row per platform — profile URL beside its own rating — instead of a ragged
+                auto-fit grid where "CodeChef score" sat next to "Codeforces URL" and an empty
+                cell punched a hole in the middle. */}
+            <div className="pf-codes">
+              {([
+                { name: 'LeetCode', url: p.leetcodeUrl ?? '', su: (v: string) => set({ leetcodeUrl: v }),
+                  score: p.leetcodeScore ?? '', ss: (v: string) => set({ leetcodeScore: v }),
+                  ph: 'https://leetcode.com/u/…', sph: 'e.g. 1417' },
+                { name: 'CodeChef', url: p.codechefUrl ?? '', su: (v: string) => set({ codechefUrl: v }),
+                  score: p.codechefScore ?? '', ss: (v: string) => set({ codechefScore: v }),
+                  ph: 'https://www.codechef.com/users/…', sph: 'e.g. 1533' },
+                { name: 'Codeforces', url: p.codeforcesUrl ?? '', su: (v: string) => set({ codeforcesUrl: v }),
+                  score: p.codeforcesScore ?? '', ss: (v: string) => set({ codeforcesScore: v }),
+                  ph: 'https://codeforces.com/profile/…', sph: 'e.g. 643' },
+                { name: 'GitHub', url: p.links?.github ?? '', su: (v: string) => setLink('github', v),
+                  score: null, ss: null, ph: 'https://github.com/…', sph: '' },
+              ]).map((c) => (
+                <div className="pf-code" key={c.name}>
+                  <span className="pf-code-n">{c.name}</span>
+                  <input className="input" type="url" placeholder={c.ph} aria-label={`${c.name} profile URL`}
+                    value={c.url} onChange={(e) => c.su(e.target.value)} />
+                  {c.ss
+                    ? <input className="input" placeholder={c.sph} aria-label={`${c.name} score or rating`}
+                        value={c.score ?? ''} onChange={(e) => c.ss!(e.target.value)} />
+                    : <span className="pf-code-na">no rating</span>}
+                </div>
+              ))}
             </div>
           </Section>
 
@@ -453,7 +472,7 @@ export function ProfilePage() {
       )}
 
       {tab === 'education' && (
-        <div style={{ maxWidth: 820 }}>
+        <div>
           <RepeatableList<EducationItem>
             ico="file" title="Education"
             sub="school, degree, field, dates and score — used for eligibility filters & autofill"
@@ -496,7 +515,7 @@ export function ProfilePage() {
       )}
 
       {tab === 'autofill' && (
-        <div style={{ maxWidth: 760 }}>
+        <div>
           <Section ico="bolt" title="Custom autofill answers" sub="label keyword → answer; the extension matches these on any form">
             <KeyValueEditor map={p.fieldMap ?? {}} onChange={(m) => set({ fieldMap: m })} />
             <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>

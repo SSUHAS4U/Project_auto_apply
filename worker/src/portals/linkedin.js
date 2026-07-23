@@ -76,7 +76,33 @@ async function readPosting(page) {
 // card (where the Easy Apply button lives) into view.
 const PANE_SEL = '.job-details-jobs-unified-top-card, .jobs-unified-top-card, .jobs-details, .jobs-search__job-details';
 
+/**
+ * Are we actually signed in? This matters more than it looks: LinkedIn's GUEST job search
+ * still returns a full page of job cards, so a signed-out run looks like a working run —
+ * hundreds "found", hundreds "relevant". But guest job pages use a different DOM (so the
+ * description reads empty and no fit can be scored) and carry NO Easy Apply button at all,
+ * only "Sign in to apply". That is exactly the "190 found / 0 applied" signature, and
+ * grinding through 190 jobs to discover it one-by-one is pointless — check once, up front.
+ */
+async function ensureLoggedIn(page, api, state) {
+  await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await humanDelay(1500, 2600);
+  const authwalled = /\/login|\/authwall|\/signup|\/uas\/login/i.test(page.url());
+  const me = await page.$('img.global-nav__me-photo, .global-nav__me, button.global-nav__primary-link-me-menu-trigger');
+  if (!authwalled && me) return true;
+  await api.event({
+    runId: state.runId, portal: 'linkedin', type: 'error',
+    detail: 'Not signed in to LinkedIn. The signed-out job search still lists jobs, but those pages '
+      + 'have no Easy Apply button — nothing can be applied to. Open the automation browser, log into '
+      + 'linkedin.com once (the session is remembered), then run again.',
+  });
+  return false;
+}
+
 export async function runLinkedIn(page, api, plan, state, ctx) {
+  // Bail out loudly rather than "successfully" processing 190 unapplyable guest pages.
+  if (!(await ensureLoggedIn(page, api, state))) return { applied: 0 };
+
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
@@ -194,12 +220,13 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: 'needs attention — an unanswerable question' });
           } else {
-            // 'none' — no Easy Apply control on the page. This used to emit NOTHING, so the job
-            // silently vanished: the dashboard showed hundreds "relevant" with 0 applied, 0
-            // manual and 0 failed, and there was no way to tell what happened. Always surface it.
+            // 'none'. The search is Easy-Apply-filtered (f_AL=true), so EVERY result genuinely
+            // has an Easy Apply button — reaching here means the button didn't render for us,
+            // not that the job lacks one. Surface it honestly (it used to emit nothing at all,
+            // which is why the board showed hundreds relevant with 0 of everything).
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
               title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
-              detail: 'no Easy Apply button found — apply manually' });
+              detail: 'Easy Apply button did not render for this job — open it and apply manually' });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: String(e).slice(0, 160) });
