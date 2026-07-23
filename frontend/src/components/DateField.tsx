@@ -59,7 +59,7 @@ export function DateField({ value, onChange, mode = 'date', placeholder, ariaLab
 }) {
   const [open, setOpen] = useState(false);
   // month mode has no day grid, so it always opens on the month+year view
-  const [picking, setPicking] = useState<'day' | 'month'>(mode === 'month' ? 'month' : 'day');
+  const [picking, setPicking] = useState<'day' | 'month' | 'year'>(mode === 'month' ? 'month' : 'day');
   const today = new Date();
   const sel = parseValue(value, mode);
   const [view, setView] = useState({ y: sel?.y ?? today.getFullYear(), mo: sel?.mo ?? today.getMonth() });
@@ -95,17 +95,31 @@ export function DateField({ value, onChange, mode = 'date', placeholder, ariaLab
     setPicking('day');
   };
   const step = (dir: number) => {
+    if (picking === 'year') { setView({ ...view, y: view.y + dir * 12 }); return; }
     if (picking === 'month') { setView({ ...view, y: view.y + dir }); return; }
     const mo = view.mo + dir;
     setView({ y: view.y + Math.floor(mo / 12), mo: ((mo % 12) + 12) % 12 });
   };
 
+  /** Title click walks up a level: day → month → year, and year → month to come back. */
+  const drillUp = () => {
+    if (picking === 'day') setPicking('month');
+    else if (picking === 'month') setPicking('year');
+    else setPicking('month');
+  };
+
   const shown = display(value, mode);
   const cells = monthGrid(view.y, view.mo);
+  // 12-year page containing the current view year.
+  const yearStart = Math.floor(view.y / 12) * 12;
+  const years = Array.from({ length: 12 }, (_, i) => yearStart + i);
+  const title = picking === 'year' ? `${yearStart} – ${yearStart + 11}`
+    : picking === 'month' ? String(view.y)
+      : `${MONTHS[view.mo]} ${view.y}`;
 
   return (
     <div className="dpk" ref={ref} style={style}>
-      <button type="button" className={`dpk-btn ${shown ? '' : 'empty'}`} onClick={toggle}
+      <button type="button" className={`dpk-btn ${shown ? '' : 'dpk-ph'}`} onClick={toggle}
         disabled={disabled} aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open}>
         <span className="dpk-val">{shown || placeholder || (mode === 'month' ? 'Month & year' : 'Select a date')}</span>
         <Icon name="clock" size={14} />
@@ -114,16 +128,14 @@ export function DateField({ value, onChange, mode = 'date', placeholder, ariaLab
       {open && (
         <div className="dpk-pop" role="dialog" aria-label={ariaLabel || 'Choose a date'}>
           <div className="dpk-head">
-            <button type="button" className="dpk-nav" onClick={() => step(-1)}
-              aria-label={picking === 'month' ? 'Previous year' : 'Previous month'}>
+            <button type="button" className="dpk-nav" onClick={() => step(-1)} aria-label="Previous">
               <Icon name="chevron" size={15} style={{ transform: 'rotate(90deg)' }} />
             </button>
-            <button type="button" className="dpk-title"
-              onClick={() => mode === 'date' && setPicking(picking === 'day' ? 'month' : 'day')}>
-              {picking === 'month' ? view.y : `${MONTHS[view.mo]} ${view.y}`}
+            <button type="button" className="dpk-title" onClick={drillUp}
+              title={picking === 'year' ? 'Back to months' : 'Pick a different year'}>
+              {title}
             </button>
-            <button type="button" className="dpk-nav" onClick={() => step(1)}
-              aria-label={picking === 'month' ? 'Next year' : 'Next month'}>
+            <button type="button" className="dpk-nav" onClick={() => step(1)} aria-label="Next">
               <Icon name="chevron" size={15} style={{ transform: 'rotate(-90deg)' }} />
             </button>
           </div>
@@ -144,7 +156,7 @@ export function DateField({ value, onChange, mode = 'date', placeholder, ariaLab
                 })}
               </div>
             </>
-          ) : (
+          ) : picking === 'month' ? (
             <div className="dpk-months">
               {MON_SHORT.map((m, i) => {
                 const isSel = !!sel && sel.y === view.y && sel.mo === i;
@@ -153,6 +165,15 @@ export function DateField({ value, onChange, mode = 'date', placeholder, ariaLab
                     className={`dpk-mon ${isSel ? 'sel' : ''}`}>{m}</button>
                 );
               })}
+            </div>
+          ) : (
+            /* Year grid — 12 at a time, paged with the arrows. Without this the only way to
+               reach a birth year was stepping one year per click. */
+            <div className="dpk-months dpk-years">
+              {years.map((y) => (
+                <button type="button" key={y} className={`dpk-mon ${sel?.y === y ? 'sel' : ''} ${y === today.getFullYear() ? 'now' : ''}`}
+                  onClick={() => { setView({ ...view, y }); setPicking('month'); }}>{y}</button>
+              ))}
             </div>
           )}
 
