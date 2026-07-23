@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { api } from '../api/client';
-import type { AgentEvent, AgentFrame, AgentSchedule, AgentStatus } from '../types';
+import type { AgentEvent, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { CompanyLogo } from './CompanyLogo';
@@ -10,7 +10,7 @@ import { TerminalConsole } from './DesktopTerminal';
 import { isDesktopApp } from '../lib/desktop';
 
 /**
- * Shared automation panels for the unified Engine page: a Watch-Live popup, per-portal
+ * Shared automation panels for the unified Engine page: per-portal
  * metrics (LinkedIn / Indeed shown separately), the activity feed and the schedule editor.
  * There is ONE automation (the daily scheduled worker); these are just its views.
  */
@@ -36,10 +36,10 @@ const TONE_COLOR: Record<string, string> = {
   blue: 'var(--blue)', purple: 'var(--purple)', indigo: 'var(--accent-hi)', slate: 'var(--text-dim)',
 };
 
-// ---- Run controls + Watch live (the header actions) -------------------------
+// ---- Run controls (the header actions) --------------------------------------
 
 /**
- * Start the automation NOW (or pause/stop a live run) + Watch live. The scheduled blocks
+ * Start the automation NOW (or pause/stop a live run). The scheduled blocks
  * run automatically, but this lets you kick off a run immediately once JobPilot Desktop is
  * connected — which is what you need when it says "waiting for a run".
  */
@@ -96,28 +96,9 @@ export function RunControls() {
           </button>
         </>
       )}
-      {/* Watch live + Terminal stay right here in the Auto Apply header (they're ALSO in the
-          floating hub for every other page). */}
-      <WatchLiveButton />
+      {/* Terminal stays right here in the Auto Apply header (it's ALSO in the floating hub). */}
       <TerminalButton />
     </div>
-  );
-}
-
-/** "Watch live" button for the Auto Apply header — opens the live feed in a modal. */
-export function WatchLiveButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-        <Icon name="live" size={14} /> Watch live
-      </button>
-      {open && (
-        <Modal title="Watch live — what the automation is doing" onClose={() => setOpen(false)} wide>
-          <div style={{ height: '62vh' }}><LiveView /></div>
-        </Modal>
-      )}
-    </>
   );
 }
 
@@ -136,44 +117,6 @@ function TerminalButton() {
         </Modal>
       )}
     </>
-  );
-}
-
-/**
- * Live screen feed — the polling status pill + the streamed frame. Extracted so it can live
- * inside the floating hub (Watch-live tab) instead of a separate modal/button.
- */
-export function LiveView() {
-  const [frame, setFrame] = useState<AgentFrame | null>(null);
-  useEffect(() => {
-    let stop = false;
-    const pull = async () => { try { const f = await api.agentFrame(); if (!stop) setFrame(f); } catch { /* keep last */ } };
-    pull();
-    const t = setInterval(pull, 1500);
-    return () => { stop = true; clearInterval(t); };
-  }, []);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div className="row" style={{ gap: 10, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className={`tone ${frame?.hasFrame ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
-          <span className="live-dot" /> {frame?.action || 'Idle — waiting for a run'}
-        </span>
-        <span className="faint" style={{ fontSize: 12 }}>
-          {frame?.portal ? `${frame.portal} · ` : ''}{frame?.updatedAt ? fmtDate(frame.updatedAt) : 'no feed yet'}
-        </span>
-      </div>
-      <div style={{ flex: 1, minHeight: 240, background: '#000', borderRadius: 12, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-        {frame?.hasFrame ? (
-          <img src={`data:image/jpeg;base64,${frame.imageB64}`} alt="live"
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        ) : (
-          <div className="faint" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ opacity: .5, marginBottom: 10 }}><Icon name="live" size={40} /></div>
-            Waiting for JobPilot Desktop's screen feed.<br />Start the app and queue a run — the automation streams here.
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 

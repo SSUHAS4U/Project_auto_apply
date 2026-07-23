@@ -1,4 +1,4 @@
-// Persistent browser + the live-frame streamer that powers the dashboard's "Watch Live".
+// Persistent, human-looking browser + the pause/heartbeat poller for the dashboard.
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,22 +20,55 @@ export async function launchBrowser() {
   fs.mkdirSync(userDataDir, { recursive: true });
   const opts = {
     headless: false,
-    viewport: { width: 1280, height: 800 },
-    args: ['--disable-blink-features=AutomationControlled', '--start-maximized'],
+    // A real window, not a scripted 1280x800 box — a fixed odd viewport is itself a signal.
+    viewport: null,
+    // Playwright disables the Chrome sandbox by default, which makes Chrome show the yellow
+    // "unsupported command-line flag: --no-sandbox" banner. That banner is a loud automation
+    // tell that bot-detection (Indeed/Cloudflare) reads — keep the sandbox ON.
+    chromiumSandbox: true,
+    // Drops the "Chrome is being controlled by automated test software" infobar.
+    ignoreDefaultArgs: ['--enable-automation'],
+    // Locale/timezone deliberately NOT set: inheriting the real machine's values is more
+    // authentic than pinning them.
+    args: [
+      '--disable-blink-features=AutomationControlled', // hides navigator.webdriver
+      '--start-maximized',
+    ],
   };
   try {
     const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'chrome' });
-    return { ctx, page: ctx.pages()[0] || (await ctx.newPage()) };
+    return { ctx, page: await harden(ctx) };
   } catch (e) {
     try {
       const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'msedge' });
-      return { ctx, page: ctx.pages()[0] || (await ctx.newPage()) };
+      return { ctx, page: await harden(ctx) };
     } catch {
       console.error('\n  Could not find Google Chrome (or Microsoft Edge) on this computer.');
       console.error('  Install Chrome from https://www.google.com/chrome and run JobPilot Desktop again.\n');
       throw e;
     }
   }
+}
+
+/**
+ * Belt-and-braces fingerprint cleanup on top of the launch flags, applied to every page
+ * (including ones the apply flows open later). We drive the user's REAL Chrome with their
+ * real profile, so almost everything is already authentic — these patch the few properties
+ * the DevTools protocol still leaks.
+ */
+async function harden(ctx) {
+  await ctx.addInitScript(() => {
+    // CDP sets this to true; real browsing has it undefined.
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    // Automation contexts sometimes report zero plugins / empty languages.
+    if (!navigator.plugins || navigator.plugins.length === 0) {
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    }
+    if (!navigator.languages || navigator.languages.length === 0) {
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+    }
+  }).catch(() => { /* older Playwright — flags alone still help */ });
+  return ctx.pages()[0] || (await ctx.newPage());
 }
 
 export function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -46,52 +79,22 @@ export function humanDelay(min = 700, max = 1800) {
 }
 
 /**
- * Stream ~1 downscaled JPEG/sec to the backend for the live panel. Returns a stop()
- * and a way to update the current-action caption + run id. Also surfaces the server's
- * pause flag so the main loop can halt promptly when the owner hits Pause.
+ * Poll the backend so the main loop halts promptly when the owner hits Pause, and so the
+ * dashboard keeps seeing the worker's heartbeat. Replaces the old 1-JPEG/sec "Watch Live"
+ * streamer — that uploaded a screenshot every second, which burned the VM's free egress
+ * budget for a feature nobody used. Returns a stop().
  */
-export function startFrameStreamer(page, api, state) {
+export function startPausePoller(api, state) {
   let stopped = false;
-  let fails = 0;         // consecutive failed ticks
-  let reported = false;  // surfaced the cause to the dashboard already?
   const tick = async () => {
     while (!stopped) {
       try {
-        // Screenshot the tab work is actually happening on — apply flows (Indeed) and
-        // outreach open NEW tabs, so always grab the newest open page, not the first one.
-        const ctx = page.context();
-        const open = ctx.pages().filter((p) => !p.isClosed());
-        const shot = open.length ? open[open.length - 1] : page;
-        if (!shot.isClosed()) {
-          const buf = await shot.screenshot({ type: 'jpeg', quality: 38 });
-          // Label the frame by what's ACTUALLY on screen (the shot tab's URL), so the caption
-          // can't say "linkedin" while showing an Indeed tab. Fall back to the run's portal.
-          const u = (() => { try { return shot.url(); } catch { return ''; } })();
-          const shownPortal = /linkedin\./i.test(u) ? 'linkedin'
-            : /indeed\./i.test(u) ? 'indeed' : state.portal;
-          const r = await api.frame({
-            runId: state.runId,
-            portal: shownPortal,
-            action: state.action,
-            imageB64: buf.toString('base64'),
-          });
-          if (r && r.paused) state.paused = true;
-          fails = 0; reported = false;
-        }
-      } catch (e) {
-        // One-off navigation errors are normal. But if it keeps failing, Watch Live stays
-        // blank with no clue why — so after several in a row, surface the reason ONCE to the
-        // console AND the dashboard activity feed (covers a rejected payload, an auth issue,
-        // a screenshot problem — whatever it actually is).
-        const msg = String((e && e.message) || e);
-        console.error('  Live view tick failed:', msg);
-        if (++fails >= 5 && !reported) {
-          reported = true;
-          api.event({ runId: state.runId, portal: state.portal, type: 'info',
-            detail: `Live view unavailable: ${msg.slice(0, 160)}` }).catch(() => {});
-        }
-      }
-      await sleep(1200);
+        // /next heartbeats the worker (dashboard "desktop ready") and reports the pause flag.
+        // It's a GET that only promotes queued→running, so polling it mid-run is a no-op.
+        const r = await api.next();
+        state.paused = !!(r && r.paused);
+      } catch (_) { /* transient network — try again next tick */ }
+      await sleep(4000);
     }
   };
   tick();

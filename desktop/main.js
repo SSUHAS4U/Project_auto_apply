@@ -4,7 +4,7 @@
 // port (so login persists), injects the backend URL, and runs the local automation worker
 // as a child process whose live output streams into the in-app terminal panel. No separate
 // browser tab and no console — everything the website does, plus the worker, in one place.
-const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { startStaticServer } = require('./static-server');
@@ -35,6 +35,9 @@ function frontendDir() {
 
 let win = null;
 let worker = null;
+let tray = null;
+let quitting = false;   // true only when the user picks Quit — otherwise close just hides
+let hintShown = false;  // "still running in the tray" balloon, shown once per session
 
 function savedToken() {
   try { return fs.readFileSync(TOKEN_FILE, 'utf8').trim(); } catch { return ''; }
@@ -93,6 +96,64 @@ async function createWindow() {
 
   win.loadURL(`http://127.0.0.1:${PORT}/`);
   win.on('closed', () => { win = null; });
+
+  // Closing the window HIDES it instead of quitting, so the automation keeps running in the
+  // background (scheduled blocks still fire). Quit deliberately from the tray menu.
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    win.hide();
+    if (!hintShown) {
+      hintShown = true;
+      try {
+        tray && tray.displayBalloon && tray.displayBalloon({
+          title: 'JobPilot is still running',
+          content: 'The automation keeps working in the background. Quit from the tray icon to stop it.',
+        });
+      } catch { /* balloons are Windows-only */ }
+    }
+  });
+}
+
+/**
+ * Start just the automation worker, with no window and no static server — used when Windows
+ * launches us at login with --hidden. Needs a token from a previous run; if there isn't one,
+ * we stay idle in the tray until the user opens the app once and connects.
+ */
+async function startWorkerHeadless() {
+  const t = (savedToken() || '').trim();
+  if (!t) return;
+  if (!worker) worker = new WorkerManager({ onLog: sendLog, onStatus: sendStatus });
+  try { worker.start({ backendUrl: BACKEND_URL, token: t }); } catch { /* surfaced in the log */ }
+}
+
+/** Tray icon — the app's only visible presence once the window is closed. */
+function createTray() {
+  if (tray) return;
+  try {
+    const img = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png'))
+      .resize({ width: 16, height: 16 });
+    tray = new Tray(img);
+  } catch {
+    return; // no icon available — skip the tray rather than crash
+  }
+  const show = () => {
+    if (win) { win.show(); win.focus(); } else { createWindow(); }
+  };
+  tray.setToolTip('JobPilot — automation running');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open JobPilot', click: show },
+    { type: 'separator' },
+    {
+      label: 'Start automation at login',
+      type: 'checkbox',
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
+    },
+    { type: 'separator' },
+    { label: 'Quit (stops the automation)', click: () => { quitting = true; app.quit(); } },
+  ]));
+  tray.on('double-click', show);
 }
 
 // ---- IPC --------------------------------------------------------------------
@@ -108,10 +169,24 @@ ipcMain.handle('worker:start', (_e, token) => {
 ipcMain.handle('worker:stop', () => (worker ? worker.stop() : { running: false }));
 
 // ---- lifecycle --------------------------------------------------------------
-app.whenReady().then(createWindow);
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('window-all-closed', () => {
-  try { worker && worker.stop(); } catch { /* ignore */ }
-  if (process.platform !== 'darwin') app.quit();
-});
-app.on('before-quit', () => { try { worker && worker.stop(); } catch { /* ignore */ } });
+// Single instance: launching again just re-opens the window of the copy that's already
+// running the automation, instead of starting a second worker that fights it for the browser.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (win) { win.show(); win.focus(); } else createWindow(); });
+
+  app.whenReady().then(async () => {
+    createTray();
+    // Launched by the login item (--hidden): start in the tray and run headlessly, no window.
+    if (!process.argv.includes('--hidden')) await createWindow();
+    else await startWorkerHeadless();
+  });
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // Window closed != quit — the automation stays alive in the tray.
+  app.on('window-all-closed', () => { /* keep running; quit from the tray */ });
+  app.on('before-quit', () => {
+    quitting = true;
+    try { worker && worker.stop(); } catch { /* ignore */ }
+  });
+}

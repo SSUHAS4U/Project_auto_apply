@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { Api } from './api.js';
-import { launchBrowser, startFrameStreamer, sleep, APP_DIR } from './browser.js';
+import { launchBrowser, startPausePoller, sleep, APP_DIR } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import { reportSessions, handleConnectionActions } from './connections.js';
@@ -91,7 +91,7 @@ async function main() {
   await page.goto('https://www.linkedin.com/').catch(() => {});
 
   const state = { runId: null, portal: null, action: 'Idle — waiting for a run', paused: false };
-  const stopStream = startFrameStreamer(page, api, state);
+  const stopStream = startPausePoller(api, state);
 
   // graceful shutdown
   let running = true;

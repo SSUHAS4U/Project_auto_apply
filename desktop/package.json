@@ -28,7 +28,8 @@
       "static-server.js",
       "worker-manager.js",
       "desktop.config.json",
-      "desktop.config.example.json"
+      "desktop.config.example.json",
+      "build/icon.png"
     ],
     "extraResources": [
       { "from": "../frontend/dist", "to": "frontend" },
