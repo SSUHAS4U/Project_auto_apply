@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { TagInput } from '../components/TagInput';
 import { Select } from '../components/Select';
+import { DateField } from '../components/DateField';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
@@ -264,7 +265,7 @@ export function ProfilePage() {
                 action={sugBtn('headline', p.headline ?? '', (v) => set({ headline: v }))}>
                 <input className="input" placeholder="Backend Engineer · Java, Spring Boot" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} />
               </Field>
-              <Field label="Date of birth"><input className="input" type="date" value={p.dateOfBirth ?? ''} onChange={(e) => set({ dateOfBirth: e.target.value })} /></Field>
+              <Field label="Date of birth"><DateField ariaLabel="Date of birth" value={p.dateOfBirth ?? ''} onChange={(v) => set({ dateOfBirth: v })} /></Field>
               <Field label="Gender">
                 <Select ariaLabel="Gender" value={p.gender ?? ''} onChange={(v) => set({ gender: v })}
                   options={[{ value: '', label: 'Select…' }, ...GENDER_OPTIONS.map((g) => ({ value: g, label: g }))]} />
@@ -348,15 +349,17 @@ export function ProfilePage() {
                 <input className="input" list="notice-list" placeholder="30 days" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} />
                 <datalist id="notice-list">{NOTICE_OPTIONS.map((n) => <option key={n} value={n} />)}</datalist>
               </Field>
-              <Field label="Available from"><input className="input" type="date" value={p.availableFrom ?? ''} onChange={(e) => set({ availableFrom: e.target.value })} /></Field>
+              <Field label="Available from"><DateField ariaLabel="Available from" value={p.availableFrom ?? ''} onChange={(v) => set({ availableFrom: v })} /></Field>
             </div>
           </Section>
 
           <Section ico="check" title="Work eligibility & preferences">
             <div className="pf-grid">
               <Field label="Work authorization">
-                <input className="input" list="workauth-list" placeholder="Indian citizen" value={p.workAuthorization ?? ''} onChange={(e) => set({ workAuthorization: e.target.value })} />
-                <datalist id="workauth-list">{WORK_AUTH_OPTIONS.map((w) => <option key={w} value={w} />)}</datalist>
+                <Select ariaLabel="Work authorization" value={p.workAuthorization ?? ''}
+                  onChange={(v) => set({ workAuthorization: v })}
+                  options={[{ value: '', label: 'Select…' },
+                    ...WORK_AUTH_OPTIONS.map((w) => ({ value: w, label: w }))]} />
               </Field>
               <Field label="Requires sponsorship"><TriSelect value={p.requiresSponsorship} onChange={(v) => set({ requiresSponsorship: v })} /></Field>
               <Field label="Willing to relocate"><TriSelect value={p.willingToRelocate} onChange={(v) => set({ willingToRelocate: v })} /></Field>
@@ -429,8 +432,8 @@ export function ProfilePage() {
                         ...['Full-time', 'Part-time', 'Internship', 'Contract', 'Freelance', 'Apprenticeship'].map((o) => ({ value: o, label: o }))]} />
                   </Field>
                   <Field label="Location"><input className="input" placeholder="City · Remote / Hybrid / On-site" value={item.location ?? ''} onChange={(e) => upd({ location: e.target.value })} /></Field>
-                  <Field label="Start"><input className="input" type="month" value={item.start ?? ''} onChange={(e) => upd({ start: e.target.value })} /></Field>
-                  <Field label="End"><input className="input" type="month" value={item.end ?? ''} disabled={item.current} onChange={(e) => upd({ end: e.target.value })} /></Field>
+                  <Field label="Start"><DateField mode="month" ariaLabel="Start month" value={item.start ?? ''} onChange={(v) => upd({ start: v })} /></Field>
+                  <Field label="End"><DateField mode="month" ariaLabel="End month" value={item.end ?? ''} disabled={item.current} onChange={(v) => upd({ end: v })} /></Field>
                 </div>
                 <label className="check-row"><input type="checkbox" checked={!!item.current} onChange={(e) => upd({ current: e.target.checked, end: e.target.checked ? '' : item.end })} /> I currently work here</label>
                 <Field label="Description — what you did & impact" full><textarea className="input" rows={3} value={item.description ?? ''} onChange={(e) => upd({ description: e.target.value })} /></Field>
@@ -450,8 +453,8 @@ export function ProfilePage() {
                   <Field label="Name"><input className="input" value={item.name ?? ''} onChange={(e) => upd({ name: e.target.value })} /></Field>
                   <Field label="Issuer"><input className="input" value={item.issuer ?? ''} onChange={(e) => upd({ issuer: e.target.value })} /></Field>
                   <Field label="Credential ID / no."><input className="input" placeholder="ABC-1234" value={item.credentialId ?? ''} onChange={(e) => upd({ credentialId: e.target.value })} /></Field>
-                  <Field label="Issued" hint="month & year"><input className="input" type="month" value={item.issued ?? ''} onChange={(e) => upd({ issued: e.target.value })} /></Field>
-                  <Field label="Expires" hint="blank = no expiry"><input className="input" type="month" value={item.expiry ?? ''} onChange={(e) => upd({ expiry: e.target.value })} /></Field>
+                  <Field label="Issued" hint="month & year"><DateField mode="month" ariaLabel="Issued" value={item.issued ?? ''} onChange={(v) => upd({ issued: v })} /></Field>
+                  <Field label="Expires" hint="blank = no expiry"><DateField mode="month" ariaLabel="Expires" value={item.expiry ?? ''} onChange={(v) => upd({ expiry: v })} /></Field>
                 </div>
                 <Field label="Credential link" full><input className="input" placeholder="https://credential.url/…" value={item.link ?? ''} onChange={(e) => upd({ link: e.target.value })} /></Field>
               </>
