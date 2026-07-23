@@ -167,17 +167,33 @@ export function ProfilePage() {
     </button>
   );
 
-  // Completeness: the fields that actually drive matching, cover letters and autofill.
-  // Shown as a ring so an incomplete profile is obvious at a glance.
-  const CHECKS: [string, boolean][] = [
-    ['Full name', !!p.fullName], ['Email', !!p.email], ['Phone', !!p.phone],
-    ['Headline', !!p.headline], ['Location', !!p.location], ['Summary', !!p.summary],
-    ['Skills', (p.skills ?? []).length > 0], ['Experience', (p.experience ?? []).length > 0],
-    ['Education', (p.education ?? []).length > 0], ['Resume', !!p.resumeFilename],
-    ['Expected CTC', !!p.expectedCtc], ['GitHub link', !!p.links?.github],
+  // Completeness — WEIGHTED by how much each field actually affects the automation, so the
+  // number means something. Missing your résumé or phone cripples every application (weight 3);
+  // a missing coding-profile link barely matters (weight 1). Equal-weighting all fields, as
+  // before, made "75%" tell you nothing about whether you could actually apply to anything.
+  const CHECKS: { label: string; ok: boolean; w: number }[] = [
+    { label: 'Full name', ok: !!p.fullName, w: 3 },
+    { label: 'Email', ok: !!p.email, w: 3 },
+    { label: 'Phone', ok: !!p.phone, w: 3 },
+    { label: 'Résumé', ok: !!p.resumeFilename, w: 3 },
+    { label: 'Headline', ok: !!p.headline, w: 2 },
+    { label: 'Location', ok: !!p.location, w: 2 },
+    { label: 'Skills', ok: (p.skills ?? []).length >= 3, w: 2 },
+    { label: 'Experience', ok: (p.experience ?? []).length > 0, w: 2 },
+    { label: 'Education', ok: (p.education ?? []).length > 0, w: 2 },
+    { label: 'Summary', ok: !!p.summary, w: 2 },
+    { label: 'Expected CTC', ok: !!p.expectedCtc, w: 1 },
+    { label: 'Notice period', ok: !!p.noticePeriod, w: 1 },
+    { label: 'Work authorization', ok: !!p.workAuthorization, w: 1 },
+    { label: 'LinkedIn / GitHub', ok: !!(p.links?.linkedin || p.links?.github), w: 1 },
   ];
-  const missing = CHECKS.filter(([, ok]) => !ok).map(([k]) => k);
-  const pct = Math.round(((CHECKS.length - missing.length) / CHECKS.length) * 100);
+  const totalW = CHECKS.reduce((n, c) => n + c.w, 0);
+  const gotW = CHECKS.reduce((n, c) => n + (c.ok ? c.w : 0), 0);
+  const pct = Math.round((gotW / totalW) * 100);
+  // Most-important gaps first, so the hint names what's actually worth fixing.
+  const missing = CHECKS.filter((c) => !c.ok).sort((a, b) => b.w - a.w).map((c) => c.label);
+  const ringTone = pct >= 90 ? 'var(--green)' : pct >= 60 ? 'var(--accent)'
+    : pct >= 35 ? 'var(--amber)' : 'var(--red)';
 
   return (
     <div className="pf">
@@ -208,11 +224,12 @@ export function ProfilePage() {
             )}
           </div>
         </div>
-        <div className="pf-ring" style={{ ['--pct']: pct } as React.CSSProperties}
-          title={missing.length ? `Missing: ${missing.join(', ')}` : 'Profile complete'}>
+        <div className="pf-ring" style={{ ['--pct']: pct, ['--rc']: ringTone } as React.CSSProperties}
+          role="img" aria-label={`Profile ${pct}% complete`}
+          title={missing.length ? `Still missing: ${missing.join(', ')}` : 'Profile complete'}>
           <div className="pf-ring-in">
-            <div className="pf-ring-n">{pct}%</div>
-            <div className="pf-ring-l">done</div>
+            <div className="pf-ring-n">{pct}<span>%</span></div>
+            <div className="pf-ring-l">{pct >= 90 ? 'ready' : 'done'}</div>
           </div>
         </div>
       </div>

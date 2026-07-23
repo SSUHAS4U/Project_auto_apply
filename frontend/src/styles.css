@@ -500,7 +500,19 @@ tbody tr:hover { background: var(--bg-card-hover); }
    left-aligned 900px box inside the 1240px page, which read as "stuck in the
    corner" on a wide screen).
    ========================================================================== */
-.pf { max-width: 1040px; margin: 0 auto; }
+.pf { max-width: 1100px; margin: 0 auto; }
+
+/* True centring against the SCREEN, not just the content column.
+   The 240px sidebar offsets the content column, so a container centred inside it always sits
+   exactly 120px (half the sidebar) right of the viewport's centre line — which reads as
+   "stuck to the right". Shifting left by that 120px fixes it, but then the container must be
+   narrow enough that its left edge still clears the sidebar: it needs a 256px gap each side,
+   hence the 512px budget. Width therefore adapts to the window and the form lands dead centre
+   at every size. Only while the sidebar is actually on screen. */
+@media (min-width: 1080px) {
+  .pf { width: min(1100px, calc(100vw - 512px)); max-width: none;
+    position: relative; right: 120px; }
+}
 
 /* --- header card: identity + completeness ring --- */
 .pf-head { display: flex; align-items: center; gap: 20px; padding: 22px 24px; margin-bottom: 18px;
@@ -518,13 +530,21 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .pf-pill.warn { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 34%, transparent);
   background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .pf-pill.warn svg { color: var(--amber); }
-/* completeness ring — conic fill, hollow centre */
-.pf-ring { flex: none; width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center;
-  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--border) 0); }
-.pf-ring-in { width: 58px; height: 58px; border-radius: 50%; background: var(--bg-card);
-  display: grid; place-items: center; line-height: 1; }
-.pf-ring-n { font-size: 17px; font-weight: 800; letter-spacing: -.02em; color: var(--accent-hi); font-variant-numeric: tabular-nums; }
-.pf-ring-l { font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-top: 2px; }
+/* Completeness ring — conic fill in the score's own tone (red → amber → accent → green), on a
+   soft tinted track rather than a hard border colour, with the fill animating as you complete
+   fields. --rc is set inline from the score. */
+.pf-ring { flex: none; width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--rc, var(--accent)) calc(var(--pct, 0) * 1%),
+    color-mix(in srgb, var(--rc, var(--accent)) 14%, transparent) 0);
+  transition: background .55s cubic-bezier(.4, 0, .2, 1); }
+.pf-ring-in { width: 62px; height: 62px; border-radius: 50%; background: var(--bg-card);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.pf-ring-n { font-size: 19px; font-weight: 800; letter-spacing: -.03em; color: var(--rc, var(--accent));
+  font-variant-numeric: tabular-nums; }
+.pf-ring-n span { font-size: 11px; font-weight: 700; opacity: .65; margin-left: 1px; }
+.pf-ring-l { font-size: 8.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-faint); margin-top: 3px; }
+@media (prefers-reduced-motion: reduce) { .pf-ring { transition: none; } }
 
 /* --- section nav: segmented pills, scrolls instead of wrapping raggedly --- */
 .pf-nav { display: flex; gap: 4px; padding: 5px; margin-bottom: 20px; overflow-x: auto;
