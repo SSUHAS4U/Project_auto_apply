@@ -20,6 +20,7 @@ export function JobProfileEditor() {
   // reliably key-edited in place), then serialised back to the profile on save.
   const [skillRows, setSkillRows] = useState<Row[]>([]);
   const [qaRows, setQaRows] = useState<Row[]>([]);
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
   useEffect(() => {
     api.profile().then((pr) => {
       setP(pr);
@@ -29,15 +30,30 @@ export function JobProfileEditor() {
   }, []);
 
   if (!p) return <div className="card card-pad"><span className="spinner" /></div>;
-  const set = (patch: Partial<Profile>) => setP((x) => ({ ...(x as Profile), ...patch }));
+  // Track which fields were actually edited here. Saving `{...p}` wholesale wrote back the
+  // snapshot taken when this component mounted, so editing your headline on the Profile page
+  // and then saving the job profile silently reverted it. We now re-read the server copy at
+  // save time and overlay ONLY the keys touched in this editor.
+  const set = (patch: Partial<Profile>) => {
+    setP((x) => ({ ...(x as Profile), ...patch }));
+    setDirty((d) => { const n = new Set(d); Object.keys(patch).forEach((k) => n.add(k)); return n; });
+  };
   const rowsToMap = (rows: Row[]) =>
     Object.fromEntries(rows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v.trim()]));
 
   const save = async () => {
     setSaving(true);
-    const merged = { ...p, skillsExperience: rowsToMap(skillRows), fieldMap: rowsToMap(qaRows) };
     try {
+      const latest = await api.profile().catch(() => p);          // freshest server state
+      const overlay: Record<string, unknown> = {};
+      dirty.forEach((k) => { overlay[k] = (p as unknown as Record<string, unknown>)[k]; });
+      const merged = {
+        ...latest, ...overlay,
+        // These two are edited as rows here, so they're always ours to write.
+        skillsExperience: rowsToMap(skillRows), fieldMap: rowsToMap(qaRows),
+      } as Profile;
       const saved = await api.saveProfile(merged);
+      setDirty(new Set());
       setP(saved);
       setSkillRows(Object.entries(saved.skillsExperience ?? {}).map(([k, v]) => ({ k, v })));
       setQaRows(Object.entries(saved.fieldMap ?? {}).map(([k, v]) => ({ k, v })));

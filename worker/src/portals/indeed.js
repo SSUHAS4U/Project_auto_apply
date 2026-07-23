@@ -4,7 +4,7 @@
 // are skipped. Indeed is aggressive about bot detection, so this is deliberately slow and
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
 import { humanDelay, sleep } from '../browser.js';
-import { fillForm, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, uploadResume } from '../fill.js';
 
 // See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
 // keyword-overlap number. Skip only clearly senior roles or postings we read well that
@@ -165,6 +165,9 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
 
     await uploadResume(applyPage, resume).catch(() => {});
     const { attention } = await fillForm(applyPage, profile, api);
+    // Indeed's screening step is radio-group based too — fillForm skips those.
+    const { attention: choiceAttention } = await fillChoices(applyPage, api);
+    attention.push(...choiceAttention);
     if (attention.length) return 'attention';
 
     const submit = await applyPage.$('button:has-text("Submit application"), button[type="submit"]:has-text("Submit")');

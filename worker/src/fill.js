@@ -82,6 +82,89 @@ function matchKey(label) {
  * Fill the visible text/select fields of the current form. Returns {filled, attention}
  * where attention lists questions the profile couldn't answer honestly.
  */
+/**
+ * Answer radio groups and tick consent checkboxes.
+ *
+ * Easy Apply's screening questions ("Are you authorised to work in X?", "How many years of
+ * Java?") are overwhelmingly RADIO groups, and fillForm skips radios/checkboxes outright. So
+ * they stayed blank, LinkedIn refused to advance the step, no Submit button ever appeared and
+ * the application was abandoned — which is exactly the "hundreds relevant, zero applied"
+ * pattern. Returns the questions we genuinely couldn't answer.
+ */
+export async function fillChoices(page, api) {
+  const attention = [];
+
+  // Read every visible, unanswered radio group with its question + option labels in one pass.
+  const groups = await page.evaluate(() => {
+    const out = [];
+    const seen = new Set();
+    const txt = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    document.querySelectorAll('input[type=radio]').forEach((el) => {
+      if (!el.name || seen.has(el.name) || el.offsetParent === null) return;
+      seen.add(el.name);
+      const radios = [...document.querySelectorAll(`input[type=radio][name="${CSS.escape(el.name)}"]`)];
+      const labelOf = (r) => {
+        const l = r.labels && r.labels[0];
+        if (l) return txt(l.textContent);
+        const wrap = r.closest('label');
+        return txt(wrap ? wrap.textContent : r.value);
+      };
+      // The question: a fieldset legend if present, else the first line of the surrounding
+      // form-element block (LinkedIn wraps each question in its own container).
+      const fs = el.closest('fieldset');
+      let q = fs && fs.querySelector('legend') ? txt(fs.querySelector('legend').textContent) : '';
+      if (!q) {
+        const box = el.closest('[data-test-form-element], .fb-dash-form-element, .jobs-easy-apply-form-element') || el.parentElement;
+        q = box ? txt((box.innerText || '').split('\n').find((s) => s.trim().length > 3)) : '';
+      }
+      out.push({ name: el.name, question: q, options: radios.map(labelOf), answered: radios.some((r) => r.checked) });
+    });
+    return out;
+  }).catch(() => []);
+
+  for (const g of groups) {
+    if (g.answered || !g.options.length) continue;
+    const question = g.question || g.options.join(' / ');
+    let pick = null;
+    try {
+      const ans = await api.answer(question, g.options);
+      if (!ans.needsAttention && ans.answer) pick = String(ans.answer).trim();
+    } catch { /* fall through to attention */ }
+    if (!pick) {
+      attention.push(question);
+      await api.recordQuestion(question).catch(() => {});
+      continue;
+    }
+    // Map the model's answer back onto a real option (exact → contains → first word).
+    const low = pick.toLowerCase();
+    let idx = g.options.findIndex((o) => o.toLowerCase() === low);
+    if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().includes(low) || low.includes(o.toLowerCase()));
+    if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().startsWith(low.split(/\s+/)[0]));
+    if (idx < 0) { attention.push(question); continue; }
+    const radios = await page.$$(`input[type=radio][name="${g.name.replace(/"/g, '\\"')}"]`);
+    if (radios[idx]) {
+      await radios[idx].check({ timeout: 2500 }).catch(async () => {
+        await radios[idx].click({ force: true, timeout: 2500 }).catch(() => {});
+      });
+      await humanDelay(200, 550);
+    }
+  }
+
+  // Consent / acknowledgement checkboxes block submission until ticked.
+  const boxes = await page.$$('input[type=checkbox]:visible');
+  for (const b of boxes) {
+    try {
+      if (await b.isChecked()) continue;
+      const label = (await labelFor(b)) || '';
+      if (/agree|consent|terms|acknowledg|certify|confirm|privacy|declare/i.test(label)) {
+        await b.check({ timeout: 2000 }).catch(() => {});
+        await humanDelay(150, 400);
+      }
+    } catch { /* skip */ }
+  }
+  return { attention };
+}
+
 export async function fillForm(page, profile, api) {
   const filled = [];
   const attention = [];
@@ -109,7 +192,12 @@ export async function fillForm(page, profile, api) {
         }
         const ans = await api.answer(label, options);
         if (ans.needsAttention || !ans.answer) {
-          attention.push(label);
+          // Only a REQUIRED blank should abandon the application. Treating every optional
+          // field we couldn't answer as a blocker threw away applications that would have
+          // submitted perfectly well with that box left empty.
+          const required = await el.evaluate((n) =>
+            n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
+          if (required) attention.push(label);
           // store it as PENDING so the owner answers it once in Profile → Autofill answers
           await api.recordQuestion(label).catch(() => {});
           continue;

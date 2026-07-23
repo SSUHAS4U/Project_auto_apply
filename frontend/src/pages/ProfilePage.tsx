@@ -103,6 +103,9 @@ export function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [sugging, setSugging] = useState('');
+  // Keys edited on THIS page — so saving can't write back a stale snapshot over fields the
+  // Job-profile editor (Auto Apply → Setup) changed against the same /api/profile record.
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.profile().then((prof) => {
@@ -117,13 +120,20 @@ export function ProfilePage() {
 
   if (!p) return <div className="empty"><span className="spinner" /></div>;
 
-  const set = (patch: Partial<Profile>) => setP({ ...p, ...patch });
-  const setLink = (k: string, v: string) => setP({ ...p, links: { ...(p.links ?? {}), [k]: v } });
+  const mark = (keys: string[]) => setDirty((d) => { const n = new Set(d); keys.forEach((k) => n.add(k)); return n; });
+  const set = (patch: Partial<Profile>) => { setP({ ...p, ...patch }); mark(Object.keys(patch)); };
+  const setLink = (k: string, v: string) => { setP({ ...p, links: { ...(p.links ?? {}), [k]: v } }); mark(['links']); };
 
   const save = async () => {
     setSaving(true);
     try {
-      const saved = await api.saveProfile(p);
+      // Overlay only what changed here onto the freshest server copy, so the two editors of
+      // the same profile record can't silently revert each other.
+      const latest = await api.profile().catch(() => p);
+      const overlay: Record<string, unknown> = {};
+      dirty.forEach((k) => { overlay[k] = (p as unknown as Record<string, unknown>)[k]; });
+      const saved = await api.saveProfile({ ...latest, ...overlay } as Profile);
+      setDirty(new Set());
       setP(saved);
       toast('Profile saved', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }

@@ -5,7 +5,7 @@
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
 import { humanDelay, sleep } from '../browser.js';
-import { fillForm, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, uploadResume } from '../fill.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages } from './outreach.js';
 
 // You already searched YOUR keywords with the Easy-Apply filter on, so a listing here is
@@ -360,6 +360,10 @@ async function easyApply(page, api, profile, resume, state) {
     state.action = `Easy Apply — step ${step + 1} (filling the form)`;
     await uploadResume(page, resume).catch(() => {});
     const { attention } = await fillForm(page, profile, api);
+    // Screening questions are mostly radio groups, which fillForm skips — answer them too,
+    // otherwise the step can never validate and Submit never appears.
+    const { attention: choiceAttention } = await fillChoices(page, api);
+    attention.push(...choiceAttention);
     if (attention.length) {
       // an unanswerable question — don't submit a half-filled application
       await closeModal(page);
