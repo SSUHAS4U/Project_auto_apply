@@ -40,8 +40,7 @@ export function JobsPage() {
   const [applyJob, setApplyJob] = useState<Job | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [view, setView] = useState<'table' | 'cards'>(
-    () => (localStorage.getItem('jobpilot_jobs_view') as 'table' | 'cards')
-      || (typeof window !== 'undefined' && window.innerWidth < 860 ? 'cards' : 'table'));
+    () => (localStorage.getItem('jobpilot_jobs_view') as 'table' | 'cards') || 'cards');
   const chooseView = (v: 'table' | 'cards') => { localStorage.setItem('jobpilot_jobs_view', v); setView(v); };
 
   const [summary, setSummary] = useState<IngestSummary | null>(null);

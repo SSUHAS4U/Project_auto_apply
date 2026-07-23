@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type ScoutedJob } from '../api/client';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { JobCard } from '../components/JobCard';
 
 const SITE_META: Record<string, { label: string; color: string }> = {
   linkedin: { label: 'LinkedIn', color: '#0a66c2' },
@@ -95,48 +96,32 @@ export function ScoutPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filtered.map((j) => {
               const meta = SITE_META[j.sourceSite ?? 'other'] ?? SITE_META.other;
+              const emails = j.emails?.split(',').map((e) => e.trim()).filter(Boolean) ?? [];
+              const phones = j.phones?.split(',').map((p) => p.trim()).filter(Boolean) ?? [];
               return (
-                <div key={j.id} className="card card-pad">
-                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <a href={j.url} target="_blank" rel="noreferrer" className="pick-title" style={{ textDecoration: 'none' }}>
-                        {j.title} ↗
-                      </a>
-                      <div className="job-company" style={{ marginTop: 4, fontSize: 13 }}>
-                        <span className="chip" style={{ background: meta.color + '22', color: meta.color, borderColor: meta.color + '55' }}>
-                          {meta.label}
-                        </span>
-                        {j.company && <> · {j.company}</>}
-                        {j.location && <> · {j.location}</>}
-                        {j.postedHint && <> · <span className="faint">{j.postedHint}</span></>}
-                        {j.fetchedAt && <> · <span className="faint">seen {fmtDate(j.fetchedAt)}</span></>}
-                      </div>
-                    </div>
-                    {typeof j.matchScore === 'number' && (
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div className="score" style={{ fontSize: 18 }}>{j.matchScore}</div>
-                        <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.04em' }}>MATCH</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {j.snippet && <div className="job-desc" style={{ marginTop: 10, fontSize: 13 }}>{j.snippet}</div>}
-
-                  <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
-                    {j.emails?.split(',').map((e) => e.trim()).filter(Boolean).map((e) => (
+                <JobCard key={j.id}
+                  title={j.title}
+                  company={j.company}
+                  location={j.location}
+                  url={j.url}
+                  score={typeof j.matchScore === 'number' ? j.matchScore : undefined}
+                  metaRight={j.fetchedAt ? `seen ${fmtDate(j.fetchedAt)}` : j.postedHint}
+                  badges={<span className="chip" style={{ background: meta.color + '22', color: meta.color, borderColor: meta.color + '55' }}>{meta.label}</span>}
+                  strengths={j.matchedKeywords ? `matched: ${j.matchedKeywords}` : undefined}
+                  actions={<>
+                    {emails.map((e) => (
                       <a key={e} className="btn btn-sm" href={`mailto:${e}`} title="Email this contact"><Icon name="mail" size={13} /> {e}</a>
                     ))}
-                    {j.phones?.split(',').map((p) => p.trim()).filter(Boolean).map((p) => (
+                    {phones.map((p) => (
                       <button key={p} className="btn btn-sm" onClick={() => copy(p)} title="Copy number"><Icon name="phone" size={13} /> {p}</button>
                     ))}
-                    {j.matchedKeywords && (
-                      <span className="faint" style={{ fontSize: 12 }}>matched: {j.matchedKeywords}</span>
-                    )}
                     <span style={{ marginLeft: 'auto' }} />
                     <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
                     <button className="btn btn-ghost btn-sm" onClick={() => remove(j.id)} title="Remove from scout list"><Icon name="x" size={14} /></button>
-                  </div>
-                </div>
+                  </>}
+                >
+                  {j.snippet && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>{j.snippet}</div>}
+                </JobCard>
               );
             })}
           </div>
