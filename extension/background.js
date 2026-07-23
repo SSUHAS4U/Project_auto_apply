@@ -8,10 +8,25 @@ try {
 // Defaults to the deployed backend so the extension works out-of-the-box.
 // Override in Options only if you run the backend locally (http://localhost:8080).
 const DEFAULTS = {
-  backendUrl: 'https://jobpilot-backend-owb0.onrender.com',
+  backendUrl: 'https://35.212.189.37.sslip.io',
   dashboardUrl: 'https://project-auto-apply.vercel.app',
   jwt: '',
 };
+
+// Backends we've since retired — if a previously-installed copy still has one saved
+// in storage (from a login before the move), silently repoint it to the live VM so the
+// AI assist starts working again without the user touching Options. The JWT is kept
+// (same Supabase DB + signing secret); if it's stale, the first call 401s and they re-login.
+const RETIRED_BACKENDS = ['https://jobpilot-backend-owb0.onrender.com'];
+async function migrateBackend() {
+  try {
+    const { backendUrl } = await chrome.storage.local.get('backendUrl');
+    if (backendUrl && RETIRED_BACKENDS.includes(backendUrl.replace(/\/$/, ''))) {
+      await chrome.storage.local.set({ backendUrl: DEFAULTS.backendUrl, profile: null, profileAt: 0 });
+    }
+  } catch (_) { /* storage unavailable */ }
+}
+migrateBackend();
 
 async function getConfig() {
   const c = await chrome.storage.local.get(['backendUrl', 'dashboardUrl', 'jwt']);
@@ -251,8 +266,9 @@ async function checkForUpdate() {
   } catch (_) { /* offline — try again next alarm */ }
 }
 chrome.runtime.onInstalled.addListener(() => {
+  migrateBackend();
   chrome.alarms.create('update-check', { periodInMinutes: 360 });
   checkForUpdate();
 });
-chrome.runtime.onStartup.addListener(checkForUpdate);
+chrome.runtime.onStartup.addListener(() => { migrateBackend(); checkForUpdate(); });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'update-check') checkForUpdate(); });

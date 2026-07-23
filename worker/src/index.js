@@ -21,7 +21,7 @@ import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import { reportSessions, handleConnectionActions } from './connections.js';
 
-const DEFAULT_BACKEND = 'https://jobpilot-backend-owb0.onrender.com';
+const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
 
 function ask(question) {
