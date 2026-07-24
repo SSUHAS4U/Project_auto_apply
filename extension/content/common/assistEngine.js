@@ -536,10 +536,46 @@
     return units.filter((u) => u.q);
   }
 
+  /**
+   * The question text for one [role=listitem] question block.
+   *
+   * Everything here is deliberately sourced from INSIDE the container. The old version fell
+   * back to deriveQuestion(item), and deriveQuestion's later steps read the text *before* the
+   * element — which for a question block is the PREVIOUS question. That shifted every label by
+   * one: the name went into College, College into Email, and the last field was left empty.
+   */
   function unitQuestion(item) {
-    const head = item.querySelector('[role="heading"], .M7eMe');
-    let q = (head && head.textContent) ? head.textContent : deriveQuestion(item);
-    return q.replace(/\s+/g, ' ').replace(/\*\s*$/, '').trim();
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '')
+      .replace(/\s*Required question\s*$/i, '').trim();
+
+    // 1. Google/MS Forms mark the question with a real heading — exact when it's there.
+    const head = item.querySelector('[role="heading"], .M7eMe, .freebirdFormviewerComponentsQuestionBaseTitle');
+    if (head && clean(head.textContent).length > 1) return clean(head.textContent).slice(0, 500);
+
+    // 2. A text widget's own accessible name (aria-label / aria-labelledby / <label for>).
+    //    Only text-like controls: a radio's accessible name is its OPTION ("Yes"), not the
+    //    question, so naming the unit from one would label the group "Yes".
+    const widget = item.querySelector('input:not([type=radio]):not([type=checkbox]), textarea, select, [contenteditable="true"]');
+    if (widget) {
+      const al = widget.getAttribute('aria-label');
+      if (al && !GENERIC_LABEL.test(clean(al)) && clean(al).length > 1) return clean(al).slice(0, 500);
+      const lb = widget.getAttribute('aria-labelledby');
+      const ref = lb && document.getElementById(lb);
+      if (ref && clean(ref.textContent).length > 1) return clean(ref.textContent).slice(0, 500);
+      if (widget.id) {
+        const lf = document.querySelector(`label[for="${CSS.escape(widget.id)}"]`);
+        if (lf && clean(lf.textContent).length > 1) return clean(lf.textContent).slice(0, 500);
+      }
+    }
+
+    // 3. The first text block inside the container that isn't itself an option label.
+    for (const el of item.querySelectorAll('*')) {
+      if (el.querySelector('input, textarea, select, [role="radio"], [role="checkbox"], [role="listbox"]')) continue;
+      if (el.closest('label, [role="radio"], [role="checkbox"], [role="option"]')) continue;
+      const t = clean(el.textContent);
+      if (t.length > 2 && t.length < 200) return t;
+    }
+    return clean(item.textContent).slice(0, 140);
   }
 
   function ariaOptions(item, role) {
@@ -1104,6 +1140,28 @@
     return i >= 0 ? opts[i] : null;
   }
 
+  /**
+   * One-click whole-form fill: plan, write, report.
+   *
+   * Same engine as the review flow — the difference is only that the user reviews the filled
+   * FORM instead of a list of proposals. Nothing is ever submitted; the summary names what was
+   * skipped so a blank field is visible rather than silently missing.
+   */
+  async function fillNow() {
+    const { plan } = await planFill();
+    if (!plan || !plan.length) return { filled: 0, total: 0, skipped: [], note: 'No empty fields found on this page.' };
+    const answered = plan.filter((p) => p.value);
+    const skipped = plan.filter((p) => !p.value).map((p) => p.label);
+    const res = await applyPlan(answered.map((p) => ({ id: p.id, value: p.value })));
+    const failed = (res && res.failed) || [];
+    return {
+      filled: (res && res.applied) || 0,
+      total: plan.length,
+      skipped: skipped.concat(failed.map((f) => (typeof f === 'string' ? f : f.label || ''))).filter(Boolean),
+      details: answered.map((p) => ({ label: p.label, value: p.value, source: p.source })),
+    };
+  }
+
   async function applyPlan(items) {
     const smart = window.JobPilotSmart;
     let applied = 0;
@@ -1517,7 +1575,7 @@
 
   // Popup-triggered actions (works on any page since this script loads everywhere).
   chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
-    const ACTION_TYPES = ['AUTO_ANSWER', 'AI_FILL', 'PLAN_FILL', 'APPLY_FILL', 'UPLOAD_RESUME', 'ATTACH_COVER_LETTER', 'SAVE_CURRENT', 'FILL_FIELD'];
+    const ACTION_TYPES = ['AUTO_ANSWER', 'AI_FILL', 'FILL_NOW', 'PLAN_FILL', 'APPLY_FILL', 'UPLOAD_RESUME', 'ATTACH_COVER_LETTER', 'SAVE_CURRENT', 'FILL_FIELD'];
     if (ACTION_TYPES.includes(m.type) && window.JobPilot && !window.JobPilot.isEnabled()) {
       sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' });
       return false;
@@ -1529,6 +1587,14 @@
     }
     if (m.type === 'AI_FILL') {
       aiFillFields().then((r) => sendResponse({ ok: true, ...r }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    // One click, whole form: plan and write in a single pass, then report what it did.
+    // The review step is the FORM ITSELF — every field is highlighted, nothing is submitted,
+    // and the user reads the page before pressing the site's own submit button.
+    if (m.type === 'FILL_NOW') {
+      fillNow().then((r) => sendResponse({ ok: true, ...r }))
         .catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
     }

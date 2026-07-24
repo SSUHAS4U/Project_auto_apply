@@ -117,6 +117,57 @@ function reasonLine(item) {
   return REASON_TEXT[item.reason] || 'Could not be filled automatically.';
 }
 
+// FILL_NOW report: what went in, and what still needs the user.
+function renderFillNow(r) {
+  const box = $('report');
+  box.innerHTML = '';
+  const skipped = r.skipped || [];
+  if (skipped.length) {
+    const h = document.createElement('div');
+    h.className = 'rephead';
+    h.textContent = `⚠ ${skipped.length} field${skipped.length === 1 ? '' : 's'} left for you`;
+    box.appendChild(h);
+    skipped.slice(0, 8).forEach((label) => {
+      const row = document.createElement('div');
+      row.className = 'repitem';
+      const l = document.createElement('div');
+      l.className = 'replabel';
+      l.textContent = label || '(unlabeled field)';
+      const w = document.createElement('div');
+      w.className = 'repwhy';
+      w.textContent = 'No confident answer — fill this one in yourself.';
+      row.append(l, w);
+      box.appendChild(row);
+    });
+    if (skipped.length > 8) {
+      const more = document.createElement('div');
+      more.className = 'repwhy';
+      more.textContent = `…and ${skipped.length - 8} more.`;
+      box.appendChild(more);
+    }
+  }
+  // Show what it DID write, so a wrong answer is caught in the popup and not after submitting.
+  const details = (r.details || []).filter((d) => d.value);
+  if (details.length) {
+    const h2 = document.createElement('div');
+    h2.className = 'rephead';
+    h2.textContent = `Filled ${details.length}`;
+    box.appendChild(h2);
+    details.slice(0, 20).forEach((d) => {
+      const row = document.createElement('div');
+      row.className = 'repitem';
+      const l = document.createElement('div');
+      l.className = 'replabel';
+      l.textContent = d.label;
+      const w = document.createElement('div');
+      w.className = 'repwhy';
+      w.textContent = String(d.value).slice(0, 120) + (d.source ? `  · ${d.source}` : '');
+      row.append(l, w);
+      box.appendChild(row);
+    });
+  }
+}
+
 function renderReport(fillReport, aiReport) {
   const box = $('report');
   box.innerHTML = '';
@@ -157,20 +208,19 @@ function renderReport(fillReport, aiReport) {
 
 // ---- actions -----------------------------------------------------------------
 
+// One click fills the whole form. This used to run three passes (FILL, then AI_FILL, then
+// AUTO_ANSWER) over the same page, each with its own idea of what a field was — they
+// re-answered each other's work and reported three different totals. FILL_NOW is one scan,
+// one plan, one write, one report. It never submits.
 $('fill').addEventListener('click', async () => {
   $('report').innerHTML = '';
-  status('Filling…');
-  const r = await tabSend('FILL');
+  status('Reading the form…');
+  const r = await tabSend('FILL_NOW');
   if (!r.ok) { status(r.error, 'err'); return; }
-  let filled = r.filled || 0;
-  status(`Filled ${filled} — adapting to the remaining fields with AI…`);
-  const ai = await tabSend('AI_FILL');
-  if (ai.ok) filled += ai.filled || 0;
-  status(`Filled ${filled} — answering questions (radios, dropdowns, open text)…`);
-  const ans = await tabSend('AUTO_ANSWER');
-  const answered = ans.ok ? (ans.done || 0) : 0;
-  renderReport(r.report, ai.ok ? ai.report : null);
-  status(`Filled ${filled} field${filled === 1 ? '' : 's'}${answered ? ` + ${answered} question${answered === 1 ? '' : 's'}` : ''} — review & submit`, 'ok');
+  renderFillNow(r);
+  const n = r.filled || 0;
+  if (!r.total) { status(r.note || 'No empty fields found here', 'ok'); return; }
+  status(`Filled ${n} of ${r.total} — review the form, then submit it yourself`, 'ok');
 });
 
 $('answer').addEventListener('click', async () => {
