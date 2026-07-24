@@ -5,6 +5,9 @@ import type { EnginePrefill, EngineStatus } from '../types';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { JobProfileEditor } from '../components/JobProfileEditor';
+import { TagInput } from '../components/TagInput';
+import { ROLE_SUGGESTIONS } from '../lib/roles';
+import { LOCATION_SUGGESTIONS } from '../lib/locations';
 import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
@@ -188,17 +191,19 @@ function SetupTab({ status, onChange }: { status: EngineStatus | null; onChange:
       <div className="card card-pad">
         <div className="step-head">
           <span className="step-num">2</span>
-          <div><div className="step-title">What you're looking for</div><div className="step-sub">The roles and locations the automation searches on LinkedIn &amp; Indeed. Separate entries with commas.</div></div>
+          <div><div className="step-title">What you're looking for</div><div className="step-sub">The roles and locations the automation searches on LinkedIn &amp; Indeed. Start typing and pick from the suggestions, or enter your own.</div></div>
         </div>
         <div style={{ display: 'grid', gap: 12 }}>
-          <label style={{ fontSize: 13 }}>Target roles <span className="faint">— job titles to search</span>
-            <input className="input" style={{ width: '100%' }} value={roles} onChange={(e) => setRoles(e.target.value)}
-              placeholder="e.g. Full-Stack Developer, Java Backend Engineer, React Developer" />
-          </label>
-          <label style={{ fontSize: 13 }}>Locations <span className="faint">— cities + Remote</span>
-            <input className="input" style={{ width: '100%' }} value={locations} onChange={(e) => setLocations(e.target.value)}
-              placeholder="e.g. Bengaluru, Hyderabad, Remote" />
-          </label>
+          <div style={{ fontSize: 13 }}>Target roles <span className="faint">— job titles to search</span>
+            <TagInput value={csv(roles)} suggestions={ROLE_SUGGESTIONS}
+              placeholder="e.g. Full Stack Developer"
+              onChange={(v) => setRoles(v.join(', '))} />
+          </div>
+          <div style={{ fontSize: 13 }}>Locations <span className="faint">— cities, states or Remote</span>
+            <TagInput value={csv(locations)} suggestions={LOCATION_SUGGESTIONS}
+              placeholder="e.g. Bengaluru"
+              onChange={(v) => setLocations(v.join(', '))} />
+          </div>
         </div>
         <div className="row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={saveGuided} disabled={saving}>

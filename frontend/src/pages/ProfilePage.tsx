@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import { TagInput } from '../components/TagInput';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
+import { LOCATION_SUGGESTIONS } from '../lib/locations';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
@@ -373,7 +374,7 @@ export function ProfilePage() {
               </Field>
               <Field label="Requires sponsorship"><TriSelect value={p.requiresSponsorship} onChange={(v) => set({ requiresSponsorship: v })} /></Field>
               <Field label="Willing to relocate"><TriSelect value={p.willingToRelocate} onChange={(v) => set({ willingToRelocate: v })} /></Field>
-              <Field label="Preferred locations" full><TagInput value={p.preferredLocations ?? []} onChange={(v) => set({ preferredLocations: v })} placeholder="Bengaluru, Remote, Hyderabad…" /></Field>
+              <Field label="Preferred locations" full><TagInput value={p.preferredLocations ?? []} onChange={(v) => set({ preferredLocations: v })} suggestions={LOCATION_SUGGESTIONS} placeholder="Start typing a city…" /></Field>
               <Field label="Languages" full><TagInput value={p.languages ?? []} onChange={(v) => set({ languages: v })} suggestions={LANGUAGE_SUGGESTIONS} placeholder="English, Hindi…" /></Field>
             </div>
           </Section>

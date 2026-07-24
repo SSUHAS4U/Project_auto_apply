@@ -4,6 +4,8 @@ import type { Profile } from '../types';
 import { useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { Select } from './Select';
+import { SuggestInput } from './SuggestInput';
+import { ETHNICITY_OPTIONS, VETERAN_OPTIONS, NOTICE_OPTIONS_FULL } from '../lib/locations';
 
 /**
  * The Job Profile — what you hunt for + showcase material (projects, achievements).
@@ -112,19 +114,27 @@ export function JobProfileEditor() {
       <div className="jp-subhead"><Icon name="target" size={14} /> Diversity <span className="faint">— optional, leave blank to decline</span></div>
       <div className="grid2">
         <Field label="Gender"><input className="input" placeholder="Male / Female / Decline" value={p.gender ?? ''} onChange={(e) => set({ gender: e.target.value })} /></Field>
-        <Field label="Ethnicity"><input className="input" placeholder="Decline to self-identify" value={p.ethnicity ?? ''} onChange={(e) => set({ ethnicity: e.target.value })} /></Field>
-        <Field label="Veteran status"><input className="input" placeholder="I am not a protected veteran" value={p.veteranStatus ?? ''} onChange={(e) => set({ veteranStatus: e.target.value })} /></Field>
+        <Field label="Ethnicity">
+          <Select ariaLabel="Ethnicity" value={p.ethnicity ?? ''} onChange={(v) => set({ ethnicity: v })}
+            options={[{ value: '', label: 'Prefer not to say' },
+              ...ETHNICITY_OPTIONS.map((o) => ({ value: o, label: o }))]} />
+        </Field>
+        <Field label="Veteran status">
+          <Select ariaLabel="Veteran status" value={p.veteranStatus ?? ''} onChange={(v) => set({ veteranStatus: v })}
+            options={[{ value: '', label: 'Prefer not to say' },
+              ...VETERAN_OPTIONS.map((o) => ({ value: o, label: o }))]} />
+        </Field>
         <Field label="Disability status"><input className="input" placeholder="I do not wish to answer" value={p.disabilityStatus ?? ''} onChange={(e) => set({ disabilityStatus: e.target.value })} /></Field>
         <YesNo label="Hispanic / Latino" value={p.hispanicLatino ?? null} onChange={(v) => set({ hispanicLatino: v })} />
       </div>
 
       {/* Skills experience (years) — with type-ahead skill suggestions */}
       <div className="jp-subhead"><Icon name="bolt" size={14} /> Skills experience (years) <span className="faint">— "how many years of X"</span></div>
-      <datalist id="skill-suggest">{skillOptions(p.skills).map((s) => <option key={s} value={s} />)}</datalist>
       {skillRows.map((r, i) => (
         <div className="row" style={{ gap: 8, marginBottom: 8 }} key={i}>
-          <input className="input" list="skill-suggest" style={{ flex: 1 }} placeholder="Start typing a skill…"
-            value={r.k} onChange={(e) => setSkillRows((rs) => rs.map((x, j) => j === i ? { ...x, k: e.target.value } : x))} />
+          <SuggestInput ariaLabel="Skill" style={{ flex: 1 }} placeholder="Start typing a skill…"
+            suggestions={skillOptions(p.skills)} value={r.k}
+            onChange={(v) => setSkillRows((rs) => rs.map((x, j) => j === i ? { ...x, k: v } : x))} />
           <input className="input" style={{ width: 96 }} inputMode="numeric" placeholder="years"
             value={r.v} onChange={(e) => setSkillRows((rs) => rs.map((x, j) => j === i ? { ...x, v: e.target.value.replace(/[^0-9.]/g, '') } : x))} />
           <button className="btn btn-ghost btn-sm" title="Remove" onClick={() => setSkillRows((rs) => rs.filter((_, j) => j !== i))}><Icon name="trash" size={13} /></button>
@@ -136,7 +146,11 @@ export function JobProfileEditor() {
       <div className="jp-subhead"><Icon name="clipboard" size={14} /> Custom screening answers</div>
       <div className="grid2" style={{ marginBottom: 10 }}>
         <Field label="Years of professional experience"><input className="input" placeholder="1" value={p.yearsExperience ?? ''} onChange={(e) => set({ yearsExperience: e.target.value })} /></Field>
-        <Field label="Notice period (days)"><input className="input" placeholder="15" value={p.noticePeriod ?? ''} onChange={(e) => set({ noticePeriod: e.target.value })} /></Field>
+        <Field label="Notice period">
+          <Select ariaLabel="Notice period" value={p.noticePeriod ?? ''} onChange={(v) => set({ noticePeriod: v })}
+            options={[{ value: '', label: 'Select…' },
+              ...NOTICE_OPTIONS_FULL.map((o) => ({ value: o, label: o }))]} />
+        </Field>
       </div>
       {qaRows.map((r, i) => (
         <div className="row" style={{ gap: 8, marginBottom: 8, alignItems: 'flex-start' }} key={i}>
@@ -190,8 +204,8 @@ function boolOf(s?: string): boolean | null {
   return /^y/i.test(s) ? true : /^n/i.test(s) ? false : null;
 }
 
-// Type-ahead suggestions for the per-skill years inputs (the browser filters as you type,
-// including partial matches). The owner's own skills are merged in first.
+// Type-ahead suggestions for the per-skill years rows, fed to SuggestInput (our own themed
+// list — the browser's datalist couldn't be styled). The owner's own skills merge in first.
 const SKILL_SUGGESTIONS = [
   'JavaScript', 'TypeScript', 'Python', 'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'Kotlin', 'Swift', 'PHP', 'Ruby', 'SQL',
   'React', 'React.js', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Redux', 'HTML5', 'CSS3', 'TailwindCSS', 'Bootstrap', 'Vite',
