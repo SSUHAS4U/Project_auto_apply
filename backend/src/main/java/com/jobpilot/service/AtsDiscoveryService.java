@@ -138,6 +138,20 @@ public class AtsDiscoveryService {
             {"workable", "typeform", "Typeform"},
             {"recruitee", "trengo", "Trengo"},
             {"recruitee", "framer", "Framer"},
+
+            // Workday — the token is the career-site URL (host + tenant + site all come from
+            // it). Every entry below was probed against the live endpoint before being added
+            // rather than guessed, because a wrong tenant/site answers 422 rather than 404 and
+            // would just sit here failing. Job counts at time of adding are in the comments.
+            {"workday", "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite", "NVIDIA"},          // 2000
+            {"workday", "https://salesforce.wd12.myworkdayjobs.com/en-US/External_Career_Site", "Salesforce"},     // 1478
+            {"workday", "https://mastercard.wd1.myworkdayjobs.com/en-US/CorporateCareers", "Mastercard"},          // 1180
+            {"workday", "https://hpe.wd5.myworkdayjobs.com/en-US/Jobsathpe", "HPE"},                               // 1068
+            {"workday", "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced", "Adobe"},                // 837
+            {"workday", "https://intel.wd1.myworkdayjobs.com/en-US/External", "Intel"},                            // 617
+            {"workday", "https://autodesk.wd1.myworkdayjobs.com/en-US/Ext", "Autodesk"},                           // 522
+            {"workday", "https://workday.wd5.myworkdayjobs.com/en-US/Workday", "Workday"},                         // 336
+            {"workday", "https://paypal.wd1.myworkdayjobs.com/en-US/jobs", "PayPal"},                              // 164
             {"recruitee", "channable", "Channable"},
             {"recruitee", "carv", "Carv"},
             {"recruitee", "sendcloud", "Sendcloud"},
@@ -254,6 +268,20 @@ public class AtsDiscoveryService {
                             .uri("https://" + token + ".recruitee.com/api/offers/")
                             .retrieve().body(JsonNode.class);
                     return r == null ? null : r.path("offers").size();
+                }
+                case "workday": {
+                    // Workday is the odd one out: no shared host and the endpoint must be
+                    // POSTed to, so it can't share the simple GET probe above. The token is the
+                    // career-site URL; a wrong tenant/site answers 422 and the board is dropped
+                    // by the same fail-count path as any other dead source.
+                    var site = com.jobpilot.connector.WorkdayConnector.Site.parse(token);
+                    if (site == null) return null;
+                    JsonNode r = http.post()
+                            .uri("https://" + site.host() + "/wday/cxs/" + site.tenant() + "/" + site.site() + "/jobs")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .body("{\"appliedFacets\":{},\"limit\":1,\"offset\":0,\"searchText\":\"\"}")
+                            .retrieve().body(JsonNode.class);
+                    return r == null ? null : r.path("jobPostings").size();
                 }
                 default:
                     return null;
