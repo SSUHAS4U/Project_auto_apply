@@ -52,16 +52,10 @@ public class SecretService {
                         () -> props.getGateway().getModel(), v -> props.getGateway().setModel(v)),
                 new Def("brevo.api_key", "Brevo email API key", "Email",
                         () -> props.getMail().getBrevoApiKey(), v -> props.getMail().setBrevoApiKey(v)),
-                new Def("adzuna.app_id", "Adzuna App ID", "Job sources",
-                        () -> props.getAdzuna().getAppId(), v -> props.getAdzuna().setAppId(v)),
-                new Def("adzuna.app_key", "Adzuna App Key", "Job sources",
-                        () -> props.getAdzuna().getAppKey(), v -> props.getAdzuna().setAppKey(v)),
                 new Def("careerjet.affid", "Careerjet Affiliate ID", "Job sources",
                         () -> props.getCareerjet().getAffid(), v -> props.getCareerjet().setAffid(v)),
                 new Def("indianapi.api_key", "IndianAPI.in key", "Job sources",
-                        () -> props.getIndianApi().getApiKey(), v -> props.getIndianApi().setApiKey(v)),
-                new Def("jooble.key", "Jooble API key", "Job sources",
-                        () -> props.getJooble().getKey(), v -> props.getJooble().setKey(v)));
+                        () -> props.getIndianApi().getApiKey(), v -> props.getIndianApi().setApiKey(v)));
         defs.forEach(d -> byName.put(d.name(), d));
     }
 

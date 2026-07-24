@@ -57,8 +57,6 @@ public class JobPilotProperties {
     private Gateway gateway = new Gateway();
     private Ollama ollama = new Ollama();
     private Gemini gemini = new Gemini();
-    private Adzuna adzuna = new Adzuna();
-    private Jooble jooble = new Jooble();
     private Careerjet careerjet = new Careerjet();
     private IndianApi indianApi = new IndianApi();
 
@@ -129,22 +127,6 @@ public class JobPilotProperties {
     public static class Gemini {
         private String apiKey = "";
         private String model = "gemini-2.5-flash"; // 1.5-flash was retired (404 on v1beta)
-    }
-
-    @Data
-    public static class Adzuna {
-        private String appId = "";
-        private String appKey = "";
-        private String country = "in";
-        private String where = "India";
-        /** comma-separated search queries */
-        private List<String> queries = List.of();
-    }
-
-    @Data
-    public static class Jooble {
-        private String key = "";
-        private String keywords = "java developer";
     }
 
     /** Careerjet public search API (free, India locale). Needs an affiliate id (affid). */

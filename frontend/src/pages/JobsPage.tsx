@@ -158,7 +158,7 @@ export function JobsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Jobs</h1>
-          <div className="page-sub">Aggregated from Greenhouse, Lever, Ashby, Adzuna & Jooble</div>
+          <div className="page-sub">Straight from company ATS boards — Greenhouse, Lever, Ashby, SmartRecruiters, Workable</div>
         </div>
         {admin && (
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>

@@ -162,24 +162,6 @@ public class IngestService {
     }
 
     private List<FetchParams> queriesFor(JobConnector c) {
-        if ("adzuna".equals(c.source())) {
-            List<String> qs = props.getAdzuna().getQueries();
-            if (qs == null || qs.isEmpty()) return List.of();
-            return qs.stream()
-                    .map(q -> FetchParams.builder().query(q.trim())
-                            .where(props.getAdzuna().getWhere()).maxDaysOld(14).build())
-                    .collect(Collectors.toList());
-        }
-        if ("jooble".equals(c.source())) {
-            // Jooble aggregates Naukri/Indeed/Shine/etc. Run every fresher/India query
-            // so those postings land in the board (URLs deep-link to the originals).
-            String kw = props.getJooble().getKeywords();
-            if (kw == null || kw.isBlank()) return List.of();
-            return java.util.Arrays.stream(kw.split(","))
-                    .map(String::trim).filter(s -> !s.isEmpty())
-                    .map(q -> FetchParams.builder().query(q).where("India").build())
-                    .collect(Collectors.toList());
-        }
         if ("careerjet".equals(c.source())) {
             List<String> qs = props.getCareerjet().getQueries();
             if (qs == null || qs.isEmpty()) return List.of();
