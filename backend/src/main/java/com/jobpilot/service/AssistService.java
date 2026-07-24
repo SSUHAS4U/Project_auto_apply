@@ -207,6 +207,221 @@ public class AssistService {
         return false;
     }
 
+    private static final String FILL_SYSTEM = """
+            You are filling in a job application for the candidate whose full background is
+            given. You get EVERY question on the page at once, with the control type and, for
+            choice controls, the exact options the page offers. Return STRICT JSON.
+
+            THINK ABOUT WHAT EACH QUESTION IS ASKING, THEN FIND IT IN THE BACKGROUND.
+            Match on MEANING, never on wording — no two application forms word anything the
+            same way. "Which institution did you graduate from", "Name of your alma mater",
+            "School attended", "University/College" and "Where did you study" are all asking
+            for the same stored fact. So are "Present employer" / "Current organisation" /
+            "Who do you work for"; "Contact no." / "Mobile" / "Best number to reach you";
+            "ECTC" / "Expected remuneration" / "Salary expectation"; "Passout year" / "Year of
+            completion"; "Total exp" / "How long have you been working". Apply that same
+            reasoning to ANY phrasing you have not seen before — that is the job.
+
+            Then decide, per question, which of these you are doing, and say so in "source":
+            - "profile"  — the answer is a fact in the background. Use the EXACT stored value.
+                           Never round, reformat or improve it.
+            - "reasoned" — not stored, but a sensible applicant can answer it: conventional
+                           questions ("How did you hear about us" -> a real channel like
+                           LinkedIn; "Willing to relocate" -> Yes unless the background says
+                           otherwise; "Earliest start date" -> from the notice period), open
+                           questions ("Why this role", "Describe a challenge"), and questions
+                           about a tool the candidate hasn't listed — for those, connect their
+                           real foundation to the topic and claim FOUNDATIONAL/working
+                           familiarity with genuine eagerness, never "I have no experience"
+                           and never deep expertise.
+            - "unknown"  — you genuinely cannot answer without inventing a fact about this
+                           person (an employer, a degree, a number, a date they never gave).
+                           Use "" and say why. An honest "unknown" is ALWAYS better than a
+                           plausible invention; a wrong answer gets submitted and cannot be
+                           taken back.
+
+            HARD RULES
+            - For a choice control (select/radio/checkbox/dropdown), "value" MUST be copied
+              character-for-character from that field's "options". Never invent an option,
+              never reword one. Multi-select: join the chosen options with ", ".
+            - Reason about which option FITS: a CGPA of 9.2 belongs in "8 and above"; 1 year
+              of experience belongs in "0-2 years". Pick the bucket the candidate falls into.
+            - Respect the control: type=date -> YYYY-MM-DD; type=number -> digits only;
+              type=url -> a bare URL; short text -> a value, never a sentence; textarea/essay
+              -> 2-5 sentences of first-person prose.
+            - NEVER answer a short field with a self-introduction. "College name" gets
+              "KL University", not "I am a Computer Science graduate from KL University".
+            - Legal/compliance questions (criminal record, sanctions, prior termination)
+              -> answer the standard truthful way for a normal candidate.
+            - "reason" is one short clause saying which stored fact you used, or why you
+              reasoned/couldn't. It is shown to the candidate before they submit.
+
+            Output ONLY:
+            {"answers":[{"id":"<id>","value":"<answer>","source":"profile|reasoned|unknown","reason":"<short>"}]}""";
+
+    /**
+     * Answer EVERY question on a form in one semantic pass.
+     *
+     * <p>The model does the meaning-matching — that is the part no lookup table can do, because
+     * every ATS words the same question differently. Code does the verification, which is the
+     * part a model is bad at: a choice answer must be one of the options the page really
+     * offers, the answer must fit the control, and a "profile" claim must actually correspond
+     * to something in the profile.
+     *
+     * @param fields id / label / kind / options / required, one per question on the page
+     * @return per-id {@code {value, source, reason}} — ids the model skipped are simply absent
+     */
+    public Map<String, Object> fillForm(List<Map<String, Object>> fields) {
+        if (fields == null || fields.isEmpty()) return Map.of("answers", Map.of());
+        UUID userId = UserContext.require();
+        Profile p = profiles.get();
+
+        // The bank wins outright: an answer the user wrote themselves beats anything generated.
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> pending = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            String id = txt(f.get("id"));
+            String label = txt(f.get("label"));
+            if (id.isBlank() || label.isBlank()) continue;
+            Optional<QaPair> saved = qaRepo.findByUserIdAndQuestionKey(userId, normalize(label))
+                    .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
+            if (saved.isPresent()) {
+                out.put(id, Map.of("value", saved.get().getAnswer(), "source", "saved",
+                        "reason", "you saved this answer before"));
+            } else {
+                pending.add(f);
+            }
+        }
+        if (pending.isEmpty() || !ai.isEnabled()) {
+            fallbackFill(pending, p, out);
+            return Map.of("answers", out);
+        }
+
+        StringBuilder list = new StringBuilder();
+        for (Map<String, Object> f : pending) {
+            list.append("- id=").append(txt(f.get("id")))
+                    .append(" | control=").append(txt(f.get("kind")))
+                    .append(txt(f.get("required")).equals("true") ? " | REQUIRED" : "")
+                    .append(" | question: ").append(txt(f.get("label")));
+            List<String> opts = optionsOf(f);
+            if (!opts.isEmpty()) {
+                list.append("\n    options: ");
+                for (String o : opts) list.append("[").append(o).append("] ");
+            }
+            list.append("\n");
+        }
+
+        try {
+            String prompt = "CANDIDATE BACKGROUND:\n" + fullProfileContext(p)
+                    + qaBankContext(userId)
+                    + "\n\nFORM FIELDS:\n" + list + "\nJSON:";
+            // Strong model: this single call decides every answer that gets submitted.
+            String raw = ai.complete(FILL_SYSTEM, prompt, false, false);
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            com.fasterxml.jackson.databind.JsonNode arr =
+                    root.has("answers") ? root.get("answers") : root;
+
+            Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+            if (arr.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+                    String id = n.path("id").asText("");
+                    if (!id.isBlank()) byId.put(id, Map.of(
+                            "value", n.path("value").asText(""),
+                            "source", n.path("source").asText("reasoned"),
+                            "reason", n.path("reason").asText("")));
+                }
+            }
+            String profileText = fullProfileContext(p).toLowerCase(Locale.ENGLISH);
+            for (Map<String, Object> f : pending) {
+                String id = txt(f.get("id"));
+                Map<String, Object> a = byId.get(id);
+                if (a == null) continue;
+                Map<String, Object> checked = verifyAnswer(f, a, profileText);
+                if (checked != null) out.put(id, checked);
+            }
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                    .warn("assist/fill-form failed, falling back: {}", e.getMessage());
+        }
+        // Anything the model skipped or that failed verification still gets the literal
+        // profile value where one plainly exists.
+        fallbackFill(pending.stream().filter(f -> !out.containsKey(txt(f.get("id")))).toList(), p, out);
+        return Map.of("answers", out);
+    }
+
+    /**
+     * Check one model answer against reality before it can reach a form.
+     * Returns null when the answer can't be trusted — an empty field the user notices beats a
+     * confident wrong one they don't.
+     */
+    private Map<String, Object> verifyAnswer(Map<String, Object> field, Map<String, Object> a,
+                                             String profileText) {
+        String value = txt(a.get("value")).trim();
+        String source = txt(a.get("source"));
+        String reason = txt(a.get("reason"));
+        if (value.isBlank() || "unknown".equalsIgnoreCase(source)) return null;
+
+        List<String> opts = optionsOf(field);
+        if (!opts.isEmpty()) {
+            // A choice answer must name options the page really has — models paraphrase them.
+            boolean multi = txt(field.get("kind")).contains("checkbox");
+            List<String> picked = new ArrayList<>();
+            for (String part : (multi ? value.split("\\s*,\\s*") : new String[]{value})) {
+                String match = opts.stream().filter(o -> o.equalsIgnoreCase(part.trim())).findFirst()
+                        .orElseGet(() -> opts.stream()
+                                .filter(o -> o.toLowerCase(Locale.ENGLISH).contains(part.trim().toLowerCase(Locale.ENGLISH))
+                                        || part.trim().toLowerCase(Locale.ENGLISH).contains(o.toLowerCase(Locale.ENGLISH)))
+                                .findFirst().orElse(null));
+                if (match != null && !picked.contains(match)) picked.add(match);
+            }
+            if (picked.isEmpty()) return null;   // paraphrased into nothing real — drop it
+            return Map.of("value", String.join(", ", picked), "source", source, "reason", reason);
+        }
+
+        String shaped = enforceShape(value, shapeOf(txt(field.get("label")), txt(field.get("kind"))));
+        if (shaped.isBlank()) return null;
+        // A "profile" claim means the fact is stored. If it isn't anywhere in the profile, the
+        // model derived or invented it — keep the answer but stop calling it a stored fact.
+        if ("profile".equalsIgnoreCase(source)
+                && !profileText.contains(shaped.toLowerCase(Locale.ENGLISH))) {
+            source = "reasoned";
+        }
+        return Map.of("value", shaped, "source", source, "reason", reason);
+    }
+
+    /** Literal profile values for fields the model skipped or got rejected on. */
+    private void fallbackFill(List<Map<String, Object>> fields, Profile p, Map<String, Object> out) {
+        for (Map<String, Object> f : fields) {
+            String id = txt(f.get("id"));
+            if (id.isBlank() || out.containsKey(id)) continue;
+            String v = directValue(txt(f.get("label")), p);
+            if (v == null || v.isBlank()) continue;
+            List<String> opts = optionsOf(f);
+            if (!opts.isEmpty()) {
+                String fv = v;
+                v = opts.stream().filter(o -> o.equalsIgnoreCase(fv)).findFirst()
+                        .orElseGet(() -> opts.stream()
+                                .filter(o -> o.toLowerCase(Locale.ENGLISH).contains(fv.toLowerCase(Locale.ENGLISH)))
+                                .findFirst().orElse(null));
+                if (v == null) continue;
+            }
+            out.put(id, Map.of("value", v, "source", "profile", "reason", "from your profile"));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> optionsOf(Map<String, Object> field) {
+        Object o = field.get("options");
+        if (!(o instanceof List<?> l)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object x : l) if (x != null && !x.toString().isBlank()) out.add(x.toString().trim());
+        return out;
+    }
+
+    /** Null-safe to EMPTY (the other str() maps null->null, which callers here must not see). */
+    private static String txt(Object o) { return o == null ? "" : o.toString(); }
+
     private static String firstNonBlank(String... vals) {
         for (String v : vals) if (v != null && !v.isBlank()) return v;
         return null;

@@ -591,12 +591,26 @@
    * exactly. Returns false when the page isn't listitem-based, so generic pages are unaffected.
    */
   function collectFormUnits(push) {
+    // ONLY for genuinely listitem-based forms. questionUnits() falls back to a generic sweep
+    // when there are no listitems, and that fallback labels each radio from its own <label> —
+    // i.e. with the OPTION text. Accepting it here made every fieldset/legend radio group on
+    // an ordinary ATS page come out labelled "Yes, I am open to it" instead of the question,
+    // and skipped the generic branch below that knows how to read a <legend>.
+    const items = [...document.querySelectorAll('[role="listitem"]')].filter((el) => el.offsetParent !== null);
+    if (!items.length) return false;
     const qUnits = questionUnits();
     if (!qUnits.length) return false;
     for (const u of qUnits) {
       const item = u.container;
-      const label = u.q;
+      let label = u.q;
       if (!item || !label) continue;
+      // Belt and braces: if the block's label is just one of its own options, it isn't the
+      // question. Re-derive it from the group.
+      const groupEls = [...item.querySelectorAll('input[type=radio], input[type=checkbox]')];
+      if (groupEls.length >= 2 && groupEls.some((g) => norm(nativeLabel(g)) === norm(label))) {
+        const better = groupQuestion(groupEls);
+        if (better && norm(better) !== norm(label)) label = better;
+      }
 
       const radios = ariaOptions(item, 'radio');
       if (radios.length >= 2) {
@@ -925,6 +939,9 @@
     const seen = new Set();
     // Fields without a readable label are KEPT (keyed by their machine name) — the
     // AI labeler names them from their surroundings in a later pass.
+    // Sole owner of de-duplication. The choice-group branches below used to seen.add() their
+    // label just before calling this, which made push() reject the unit it had just registered
+    // — every radio and checkbox group on a non-Forms page silently vanished from the plan.
     const push = (u) => {
       const key = norm(u.label || (u.el && (u.el.name || u.el.id)) || ('anon' + units.length));
       if (seen.has(key) || units.length >= 40) return;
@@ -941,7 +958,9 @@
       // text-like inputs / textareas / custom dropdown triggers (empty only)
       q('input, textarea').forEach((el) => {
         const type = (el.getAttribute('type') || 'text').toLowerCase();
-        if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
+        // date/month/week belong here too — they are ordinary value inputs, and leaving them
+        // out meant no date of birth or start date was ever filled on a non-Forms page.
+        if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', 'date', 'month', 'week', ''].includes(type)) return;
         if (!vis(el) || el.readOnly || (el.value || '').trim()) return;
         const label = deriveQuestion(el);
         const isPara = el.tagName === 'TEXTAREA';
@@ -979,7 +998,6 @@
         const label = groupQuestion(group);
         const options = group.map(nativeLabel).filter(Boolean);
         if (!label || options.length < 2 || seen.has(norm(label))) continue;
-        seen.add(norm(label));
         push({ els: group, label, kind: 'radio', options });
       }
       // ARIA radio groups — grouped by their CONTAINER, not by a [role=radiogroup] wrapper.
@@ -1001,7 +1019,6 @@
         const label = ariaGroupQuestion(holder);
         const options = opts.map((o) => labelOf(o)).filter(Boolean);
         if (!label || options.length < 2 || seen.has(norm(label))) continue;
-        seen.add(norm(label));
         push({ els: opts, label, kind: 'aria-radio', options });
       }
       // native checkbox groups (multi)
@@ -1013,7 +1030,6 @@
         const label = groupQuestion(group);
         const options = group.map(nativeLabel).filter(Boolean);
         if (!label || !options.length || seen.has(norm(label))) continue;
-        seen.add(norm(label));
         push({ els: group, label, kind: 'checkbox', options });
       }
       // ARIA checkbox groups (Google Forms multi-select) — same container grouping as radios.
@@ -1029,7 +1045,6 @@
         const label = ariaGroupQuestion(holder);
         const options = opts.map((o) => labelOf(o)).filter(Boolean);
         if (!label || options.length < 2 || seen.has(norm(label))) continue;
-        seen.add(norm(label));
         push({ els: opts, label, kind: 'aria-checkbox', options });
       }
 
@@ -1066,47 +1081,49 @@
     units.forEach((u, i) => { u.id = i; }); // re-key: registry index must equal plan id
     if (!units.length) return { plan: [] };
 
-    // Answers: one batched profile-mapping call, then AI per field where needed.
-    const r = await msg('ASSIST_AUTOFILL', { fields: units.map((u) => u.label) });
-    const answers = (r && r.answers) || {};
-    let chooseBudget = 24, answerBudget = 12, openBudget = 10;
+    // Custom widgets hide their options until opened. Read the REAL ones first so the model
+    // chooses among what this form actually offers, instead of guessing a label.
+    let openBudget = 10;
     for (const u of units) {
-      u.value = String(answers[u.label] || '').trim();
-      u.source = u.value ? 'profile' : '';
-      // Custom widgets: briefly open them to read their REAL options so the AI can
-      // choose among what the form actually offers (Workday/react-select/MUI).
       if (u.kind === 'custom' && smart && smart.readDropdownOptions && openBudget-- > 0) {
         try {
           const opts = await smart.readDropdownOptions(u.el);
           if (opts.length >= 2) u.options = opts;
-        } catch (_) { /* fill by typed value instead */ }
+        } catch (_) { /* fall back to typing the value */ }
       }
-      const multiKind = u.kind === 'checkbox' || u.kind === 'aria-checkbox';
-      const choice = ['select', 'radio', 'aria-radio', 'checkbox', 'aria-checkbox'].includes(u.kind)
-        || (u.kind === 'custom' && u.options);
-      if (choice) {
-        const match = u.value && u.options.some((o) => norm(o) === norm(u.value) || norm(o).includes(norm(u.value)));
-        if (!match && chooseBudget-- > 0) {
-          try {
-            const c = await msg('ASSIST_CHOOSE', { question: u.label, options: u.options, multi: multiKind });
-            const sel = (c && c.selected) || [];
-            if (sel.length) { u.value = sel.join(', '); u.source = 'ai'; }
-            else if (!match) { u.value = ''; u.source = ''; }
-          } catch (_) { /* leave empty */ }
-        }
-      } else if (!u.value && u.kind === 'question' && answerBudget-- > 0) {
-        try {
-          const a = await msg('ASSIST_ANSWER', { question: u.label });
-          if (a && a.answer) { u.value = a.answer; u.source = 'ai'; }
-        } catch (_) { /* leave empty */ }
-      }
+    }
+
+    // ONE semantic pass over the whole form. Every question goes up together with its control
+    // type and its real options, so the model reads the form the way a person does — and can
+    // match "Which institution did you graduate from" to the stored college without anyone
+    // having hard-coded that phrasing. Per-field calls could never do this: asked about one
+    // field in isolation there is no way to tell a re-worded known question from a new one.
+    let answers = {};
+    try {
+      const r = await msg('ASSIST_FILL_FORM', {
+        fields: units.map((u) => ({
+          id: String(u.id),
+          label: u.label,
+          kind: u.kind,
+          options: u.options || undefined,
+          required: !!u.required,
+        })),
+      });
+      answers = (r && r.answers) || {};
+    } catch (_) { answers = {}; }
+
+    for (const u of units) {
+      const a = answers[String(u.id)] || {};
+      u.value = String(a.value || '').trim();
+      u.source = u.value ? (a.source || 'ai') : '';
+      u.reason = a.reason || '';
     }
 
     planRegistry = units.map((u) => ({ kind: u.kind, el: u.el, els: u.els }));
     return {
       plan: units.map((u) => ({
         id: u.id, label: u.label, kind: u.kind, options: u.options ? u.options.slice(0, 25) : undefined,
-        value: u.value || '', source: u.source || '',
+        value: u.value || '', source: u.source || '', reason: u.reason || '',
       })),
     };
   }
@@ -1158,7 +1175,7 @@
       filled: (res && res.applied) || 0,
       total: plan.length,
       skipped: skipped.concat(failed.map((f) => (typeof f === 'string' ? f : f.label || ''))).filter(Boolean),
-      details: answered.map((p) => ({ label: p.label, value: p.value, source: p.source })),
+      details: answered.map((p) => ({ label: p.label, value: p.value, source: p.source, reason: p.reason })),
     };
   }
 

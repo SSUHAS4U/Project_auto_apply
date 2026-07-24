@@ -150,6 +150,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        // Whole form, one semantic pass: every question with its control type and real options.
+        case 'ASSIST_FILL_FORM': {
+          const data = await apiFetch('/api/assist/fill-form', {
+            method: 'POST', body: JSON.stringify({ fields: msg.fields }),
+          });
+          sendResponse({ ok: true, data });
+          break;
+        }
         case 'ASSIST_COMMAND': {
           const data = await apiFetch('/api/assist/command', {
             method: 'POST', body: JSON.stringify({ instruction: msg.instruction, fields: msg.fields }),

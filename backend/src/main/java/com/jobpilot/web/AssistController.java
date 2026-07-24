@@ -53,6 +53,18 @@ public class AssistController {
         return Map.of("answers", assist.autofill(fields));
     }
 
+    /**
+     * Answer a whole form in one semantic pass — every question, its control type and its real
+     * options go up together, so the model reads the form the way a person does instead of
+     * being asked about each field in isolation.
+     */
+    @PostMapping("/fill-form")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fillForm(@RequestBody Map<String, Object> body) {
+        List<Map<String, Object>> fields = (List<Map<String, Object>>) body.get("fields");
+        return assist.fillForm(fields);
+    }
+
     @PostMapping("/scan-job")
     public Map<String, String> scanJob(@RequestBody Map<String, String> body) {
         return assist.scanJob(body.get("text"), body.get("title"), body.get("url"));

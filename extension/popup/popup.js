@@ -161,7 +161,10 @@ function renderFillNow(r) {
       l.textContent = d.label;
       const w = document.createElement('div');
       w.className = 'repwhy';
-      w.textContent = String(d.value).slice(0, 120) + (d.source ? `  · ${d.source}` : '');
+      // The reason is the point: it shows WHICH stored fact was used, so a wrong
+      // mapping is visible here rather than after the form is submitted.
+      w.textContent = String(d.value).slice(0, 120)
+        + (d.reason ? `  — ${d.reason}` : '') + (d.source ? `  · ${d.source}` : '');
       row.append(l, w);
       box.appendChild(row);
     });
