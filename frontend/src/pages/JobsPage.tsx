@@ -33,7 +33,7 @@ function loadStoredFilters(): JobFilters {
   } catch { /* ignore */ }
   // First-run defaults: the roles actually worth seeing, posted in the last 24 hours. Both are
   // just starting values — they're stored per user, so changing either sticks.
-  return { page: 0, size: 25, postedWithin: 1, role: DEFAULT_ROLES };
+  return { page: 0, size: 25, postedWithin: 1, role: DEFAULT_ROLES, level: 'entry' };
 }
 
 export function JobsPage() {
@@ -116,6 +116,7 @@ export function JobsPage() {
     ['minScore', filters.minScore && `Score ≥ ${filters.minScore}`],
     ['region', filters.region && `Region: ${filters.region}`],
     ['postedWithin', filters.postedWithin && `≤ ${filters.postedWithin}d old`],
+    ['level', filters.level && `Level: ${filters.level}`],
   ] as [keyof JobFilters, string | undefined][]).filter(([, v]) => v);
 
   const wipeAndReingest = async () => {
@@ -224,6 +225,11 @@ export function JobsPage() {
           options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' }, { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
         <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
           options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24h' }, { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
+        <Select value={filters.level ?? ''} onChange={(v) => apply({ level: v || undefined })}
+          options={[{ value: '', label: 'Any experience' }, { value: 'entry', label: 'Entry / fresher' },
+            { value: 'mid', label: 'Mid level' }, { value: 'senior', label: 'Senior+' }]} />
+        <Select value={filters.sort ?? ''} onChange={(v) => apply({ sort: v || undefined })}
+          options={[{ value: '', label: 'Best match' }, { value: 'recent', label: 'Newest first' }]} />
         <div className="segmented" style={{ marginLeft: 'auto' }}>
           <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
           <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>

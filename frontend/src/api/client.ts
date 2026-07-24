@@ -70,6 +70,10 @@ export interface JobFilters {
   region?: string;
   postedWithin?: number;
   since?: string;
+  /** entry | mid | senior — filters by seniority in the title (and stated year demands). */
+  level?: string;
+  /** recent = newest first; default leads with best match. */
+  sort?: string;
   page?: number;
   size?: number;
 }
