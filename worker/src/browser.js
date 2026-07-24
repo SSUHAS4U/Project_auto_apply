@@ -30,10 +30,11 @@ export async function launchBrowser() {
     ignoreDefaultArgs: ['--enable-automation'],
     // Locale/timezone deliberately NOT set: inheriting the real machine's values is more
     // authentic than pinning them.
-    args: [
-      '--disable-blink-features=AutomationControlled', // hides navigator.webdriver
-      '--start-maximized',
-    ],
+    // NOTE: '--disable-blink-features=AutomationControlled' is deliberately NOT passed.
+    // Current Chrome treats it as unsupported and prints the yellow "You are using an
+    // unsupported command-line flag" banner — the very automation tell it was meant to hide.
+    // navigator.webdriver is patched in harden() instead, which leaves no banner.
+    args: ['--start-maximized'],
   };
   try {
     const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'chrome' });

@@ -85,10 +85,18 @@ const PANE_SEL = '.job-details-jobs-unified-top-card, .jobs-unified-top-card, .j
  * grinding through 190 jobs to discover it one-by-one is pointless — check once, up front.
  */
 async function ensureLoggedIn(page, api, state) {
+  // The AUTH COOKIE is the source of truth. The previous check looked for specific nav CSS
+  // classes ('global-nav__me-photo' …); LinkedIn renames those, so a perfectly signed-in
+  // session was reported as signed OUT and every run aborted. li_at is what actually decides.
+  const cookies = await page.context().cookies('https://www.linkedin.com').catch(() => []);
+  if (cookies.some((c) => c.name === 'li_at' && c.value)) return true;
+
+  // No cookie — confirm with the page itself before accusing the user of being logged out.
   await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded' }).catch(() => {});
   await humanDelay(1500, 2600);
   const authwalled = /\/login|\/authwall|\/signup|\/uas\/login/i.test(page.url());
-  const me = await page.$('img.global-nav__me-photo, .global-nav__me, button.global-nav__primary-link-me-menu-trigger');
+  // Any of these means a logged-in chrome is rendering; don't depend on one class name.
+  const me = await page.$('[data-control-name="identity_welcome_message"], .global-nav__me, .global-nav, #global-nav, a[href*="/in/"]');
   if (!authwalled && me) return true;
   await api.event({
     runId: state.runId, portal: 'linkedin', type: 'error',
