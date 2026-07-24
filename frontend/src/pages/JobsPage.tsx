@@ -7,6 +7,8 @@ import { Icon } from '../components/Icon';
 import { JobCardV2 } from '../components/JobCardV2';
 import { useProfileSkills } from '../lib/useProfileSkills';
 import { Select } from '../components/Select';
+import { TagInput } from '../components/TagInput';
+import { ROLE_SUGGESTIONS } from '../lib/roles';
 
 // Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
 function fmtNext(iso: string): string {
@@ -20,21 +22,35 @@ function fmtNext(iso: string): string {
   return sameDay ? `in ${hrs}h (${time})` : `tomorrow ${time}`;
 }
 
-// Titles worth surfacing by default — matched as "any of these" against the job title.
-// Comma-separated so the backend ORs them; edit the Role box to use your own set.
-const DEFAULT_ROLES = 'full stack,fullstack,front end,frontend,back end,backend,'
-  + 'software developer,software engineer,sde,devops';
+// Where a brand-new board starts. Broad titles on purpose: the filter matches a title
+// CONTAINING the text, so "Software Engineer" also catches "Software Engineer II".
+const FACTORY_DEFAULTS: JobFilters = {
+  page: 0, size: 25, postedWithin: 1, level: 'entry',
+  role: 'Full Stack Developer,Frontend Developer,Backend Developer,Software Engineer,'
+    + 'Software Developer,DevOps Engineer',
+};
 
-const FILTER_KEY = 'jobpilot_job_filters';
+const FILTER_KEY = 'jobpilot_job_filters';          // what's on screen right now
+const DEFAULT_KEY = 'jobpilot_job_filters_default'; // what "Reset" goes back to
+
+/** The user's own saved default, falling back to the factory one. */
+function myDefaults(): JobFilters {
+  try {
+    const raw = localStorage.getItem(DEFAULT_KEY);
+    if (raw) return { page: 0, size: 25, ...JSON.parse(raw) };
+  } catch { /* fall through */ }
+  return { ...FACTORY_DEFAULTS };
+}
+
 function loadStoredFilters(): JobFilters {
   try {
     const raw = localStorage.getItem(FILTER_KEY);
     if (raw) return { page: 0, size: 25, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  // First-run defaults: the roles actually worth seeing, posted in the last 24 hours. Both are
-  // just starting values — they're stored per user, so changing either sticks.
-  return { page: 0, size: 25, postedWithin: 1, role: DEFAULT_ROLES, level: 'entry' };
+  return myDefaults();
 }
+
+const rolesOf = (f: JobFilters) => (f.role ?? '').split(',').map((r) => r.trim()).filter(Boolean);
 
 export function JobsPage() {
   const toast = useToast();
@@ -107,7 +123,12 @@ export function JobsPage() {
   };
 
   const clearOne = (key: keyof JobFilters) => { apply({ [key]: undefined } as Partial<JobFilters>); setFormKey((k) => k + 1); };
-  const clearAll = () => { const next = { page: 0, size: 25 }; setFilters(next); load(next); setFormKey((k) => k + 1); };
+  const clearAll = () => { const next = myDefaults(); setFilters(next); load(next); setFormKey((k) => k + 1); };
+  const saveAsDefault = () => {
+    const { page, size, ...keep } = filters; void page; void size;
+    localStorage.setItem(DEFAULT_KEY, JSON.stringify(keep));
+    toast('Saved — the board opens with these filters from now on.', 'success');
+  };
 
   const activeChips = ([
     ['role', filters.role && `Role: ${filters.role}`],
@@ -214,25 +235,56 @@ export function JobsPage() {
         <div className="card stat"><div className="stat-label">Avg match (page)</div><div className="stat-value">{stats.avg}</div></div>
       </div>
 
-      <div className="toolbar" key={formKey}>
-        <input className="input" placeholder="Roles — comma separated (Enter)" defaultValue={filters.role}
-          onKeyDown={(e) => e.key === 'Enter' && apply({ role: (e.target as HTMLInputElement).value || undefined })} />
-        <input className="input" placeholder="Location…  (Enter)" defaultValue={filters.location}
-          onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
-        <Select value={filters.applyType ?? ''} onChange={(v) => apply({ applyType: v || undefined })}
-          options={[{ value: '', label: 'All apply types' }, { value: 'email', label: 'Email' }, { value: 'ats', label: 'ATS' }, { value: 'url', label: 'URL' }]} />
-        <Select value={String(filters.minScore ?? '')} onChange={(v) => apply({ minScore: v ? Number(v) : undefined })}
-          options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' }, { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
-        <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
-          options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24h' }, { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
-        <Select value={filters.level ?? ''} onChange={(v) => apply({ level: v || undefined })}
-          options={[{ value: '', label: 'Any experience' }, { value: 'entry', label: 'Entry / fresher' },
-            { value: 'mid', label: 'Mid level' }, { value: 'senior', label: 'Senior+' }]} />
-        <Select value={filters.sort ?? ''} onChange={(v) => apply({ sort: v || undefined })}
-          options={[{ value: '', label: 'Best match' }, { value: 'recent', label: 'Newest first' }]} />
-        <div className="segmented" style={{ marginLeft: 'auto' }}>
-          <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
-          <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
+      <div className="filters" key={formKey}>
+        <div className="filt filt-wide">
+          <label className="filt-l">Roles <span className="faint">— type to search, pick as many as you like</span></label>
+          <TagInput value={rolesOf(filters)} suggestions={ROLE_SUGGESTIONS}
+            placeholder="e.g. Full Stack Developer"
+            onChange={(v) => apply({ role: v.length ? v.join(',') : undefined })} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Posted</label>
+          <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
+            options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24 hours' },
+              { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Experience</label>
+          <Select value={filters.level ?? ''} onChange={(v) => apply({ level: v || undefined })}
+            options={[{ value: '', label: 'Any experience' }, { value: 'entry', label: 'Entry / fresher' },
+              { value: 'mid', label: 'Mid level' }, { value: 'senior', label: 'Senior+' }]} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Location</label>
+          <input className="input" placeholder="Anywhere  (Enter)" defaultValue={filters.location}
+            onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Sort by</label>
+          <Select value={filters.sort ?? ''} onChange={(v) => apply({ sort: v || undefined })}
+            options={[{ value: '', label: 'Best match' }, { value: 'recent', label: 'Newest first' }]} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Apply type</label>
+          <Select value={filters.applyType ?? ''} onChange={(v) => apply({ applyType: v || undefined })}
+            options={[{ value: '', label: 'All' }, { value: 'email', label: 'Email' },
+              { value: 'ats', label: 'ATS' }, { value: 'url', label: 'URL' }]} />
+        </div>
+        <div className="filt">
+          <label className="filt-l">Min match</label>
+          <Select value={String(filters.minScore ?? '')} onChange={(v) => apply({ minScore: v ? Number(v) : undefined })}
+            options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' },
+              { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
+        </div>
+        <div className="filt-actions">
+          <button className="btn btn-sm" onClick={saveAsDefault} title="Open the board with these filters every time">
+            <Icon name="check" size={13} /> Save as default
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={clearAll} title="Back to your saved default">Reset</button>
+          <div className="segmented">
+            <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
+            <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
+          </div>
         </div>
       </div>
 

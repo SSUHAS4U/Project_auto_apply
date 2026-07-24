@@ -702,6 +702,24 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   .pf-save .btn { width: 100%; justify-content: center; }
 }
 
+/* ---- Job board filter bar --------------------------------------------------
+   Every filter is labelled and on screen. They used to be unlabelled boxes in a
+   row, so which control did what (and what was currently applied) was guesswork. */
+.filters { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: flex-end;
+  padding: 14px 16px; margin-bottom: 14px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+.filt { display: flex; flex-direction: column; gap: 6px; min-width: 148px; }
+.filt-wide { flex: 1 1 320px; min-width: 260px; }
+.filt-l { font-size: 11.5px; font-weight: 650; color: var(--text-dim); letter-spacing: .01em; }
+.filt-l .faint { font-weight: 400; }
+.filt .input, .filt .tsel { min-height: 40px; }
+.filt-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; padding-bottom: 1px; }
+@media (max-width: 640px) {
+  .filters { gap: 10px; padding: 12px 13px; }
+  .filt, .filt-wide { flex: 1 1 100%; min-width: 0; }
+  .filt-actions { margin-left: 0; flex-wrap: wrap; }
+}
+
 /* ============================================================================
    JOB CARD v2 — one card used everywhere (Jobs board, Daily picks, Scout,
    LinkedIn/Indeed). Left column is the posting, right column is the verdict.
