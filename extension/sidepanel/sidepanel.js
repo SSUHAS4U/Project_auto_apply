@@ -123,28 +123,32 @@ $('power').addEventListener('change', () => {
 // --- action buttons -------------------------------------------------------
 // One click = a COMPLETE pass: profile text fields, selects, custom dropdowns, then every
 // radio / checkbox / open-ended question — all in sequence so they never race each other.
-$('fill').onclick = async () => {
+// --- Fill now (same engine as Scan & review, just no review step) ------------
+// Previously "Quick fill" chained three different fillers: the old keyword matcher (FILL),
+// then AI_FILL, then AUTO_ANSWER. Because every AI filler skips fields that already hold a
+// value, a wrong keyword guess from step 1 permanently BLOCKED the AI from correcting it —
+// the three were fighting each other. There is now exactly one brain: build the plan, apply it.
+$('fillnow').onclick = async () => {
   add('me', 'Fill this form');
-  const prog = add('ai', '⏳ Starting…');
-  const setProg = (t) => { prog.textContent = t; $('chat').scrollTop = $('chat').scrollHeight; };
-  await bg('GET_PROFILE', { force: true }); // refresh cache so recent profile edits are used
-  let filled = 0, answered = 0, anyOk = false, firstErr = '';
-  const step = async (type, label) => {
-    setProg(label);
-    const r = await tabSend(type);
-    if (r.ok) anyOk = true; else firstErr = firstErr || r.error;
-    return r;
-  };
-  const f1 = await step('FILL', '⏳ Filling your details…'); if (f1.ok) filled += f1.filled || 0;
-  const f2 = await step('AI_FILL', `⏳ Filling dropdowns & smart fields… (${filled} so far)`); if (f2.ok) filled += f2.filled || 0;
-  const a = await step('AUTO_ANSWER', `⏳ Answering questions… (${filled} fields filled)`); if (a.ok) answered += a.done || 0;
+  const prog = add('ai', '⏳ Reading every question and preparing answers…');
+  await bg('GET_PROFILE', { force: true });
+  const r = await tabSend('PLAN_FILL');
+  if (!r.ok) { prog.remove(); return void add('ai', '⚠ ' + r.error); }
+  const items = (r.plan || []).filter((f) => String(f.value || '').trim());
+  if (!items.length) { prog.remove(); return void add('ai', 'Nothing to fill here — every field already has a value.'); }
+  prog.textContent = `⏳ Filling ${items.length} field${items.length === 1 ? '' : 's'}…`;
+  const res = await tabSend('APPLY_FILL', { items: items.map((f) => ({ id: f.id, label: f.label, value: f.value })) });
   prog.remove();
-  if (!anyOk) return void add('ai', '⚠ ' + (firstErr || 'No JobPilot on this page — reload the page and retry'));
-  const parts = [];
-  if (filled) parts.push(`${filled} field${filled === 1 ? '' : 's'}`);
-  if (answered) parts.push(`${answered} question${answered === 1 ? '' : 's'}`);
-  add('ai', parts.length ? `✓ Filled ${parts.join(' + ')} — review & submit.` : '✓ Everything was already filled — review & submit.');
+  if (!res.ok) return void add('ai', '⚠ ' + res.error);
+  let m = `✓ Filled ${res.applied} of ${items.length} — review the page & submit yourself.`;
+  const skipped = (r.plan || []).length - items.length;
+  if (skipped > 0) m += `
+${skipped} question${skipped === 1 ? '' : 's'} had no answer — use Scan & review to fill them in.`;
+  if (res.failed && res.failed.length) m += `
+⚠ Couldn't set: ${res.failed.slice(0, 5).join('; ')}.`;
+  add('ai', m);
 };
+
 // --- Scan & review, then fill ----------------------------------------------
 // PLAN_FILL returns every empty field with a proposed answer + where it came from.
 // The user edits inline (text/selects), regenerates single answers with ✨, and
@@ -273,11 +277,6 @@ function renderPlan(plan) {
   $('chat').scrollTop = $('chat').scrollHeight;
 }
 
-$('answer').onclick = async () => {
-  add('me', 'AI-answer questions');
-  const r = await tabSend('AUTO_ANSWER');
-  add('ai', r.ok ? (r.total ? `Answered ${r.done} of ${r.total} questions — review them.` : 'No open-ended question fields found here.') : '⚠ ' + r.error);
-};
 // Resume picker: always ask WHICH resume to attach (profile + LaTeX builder PDFs).
 $('resume').onclick = async () => {
   const r = await bg('LIST_RESUMES', {});
@@ -328,7 +327,7 @@ $('queue').onclick = async () => {
   if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'background unavailable'));
   const items = r.data || [];
   if (!items.length) return void add('ai', 'Queue is empty ✓ — the next daily run will refill it.');
-  add('ai', `⚡ ${items.length} job${items.length === 1 ? '' : 's'} queued. Open one, use Quick fill, submit, then mark it ✓.`);
+  add('ai', `⚡ ${items.length} job${items.length === 1 ? '' : 's'} queued. Open one, hit Fill now, submit, then mark it ✓.`);
   items.slice(0, 10).forEach((it) => {
     const title = `${it.title || 'Job'}${it.company ? ' @ ' + it.company : ''}${it.matchScore != null ? ` (match ${it.matchScore})` : ''}`;
     add('ai', title, [

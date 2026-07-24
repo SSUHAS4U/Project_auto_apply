@@ -311,6 +311,36 @@
     const { dot, grip, ai, save, note, close } = pill._parts;
     dot.style.display = pillExpanded ? 'none' : 'inline-flex';
     [grip, ai, save, note, close].forEach((el) => { el.style.display = pillExpanded ? '' : 'none'; });
+    positionPill();
+  }
+
+  /**
+   * Anchor the pill to the field it belongs to.
+   *  - collapsed: the ✨ handle sits INSIDE the field's right edge, like a suffix icon, so it
+   *    never covers the label, the value, or whatever is next to the field;
+   *  - expanded: hangs directly under the field, right-aligned to it, leaving the field itself
+   *    readable.
+   * It used to be dropped 10px off the field's right side (or below-left as a fallback), which
+   * is why it appeared to land wherever it liked and got in the way.
+   */
+  function positionPill() {
+    if (!pill || !pillField || pillDragged) return;
+    const r = pillField.getBoundingClientRect();
+    const pw = pill.offsetWidth || (pillExpanded ? 270 : 34);
+    const ph = pill.offsetHeight || 30;
+    let top, left;
+    if (!pillExpanded) {
+      top = r.top + (r.height - ph) / 2;
+      left = r.right - pw - 6;
+      if (r.width < pw + 28) left = r.right + 4;   // field too narrow: touch its right edge
+    } else {
+      top = r.bottom + 4;
+      left = r.right - pw;
+      if (top + ph > window.innerHeight - 4) top = Math.max(4, r.top - ph - 4);
+    }
+    left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
+    pill.style.top = (window.scrollY + Math.max(4, top)) + 'px';
+    pill.style.left = (window.scrollX + left) + 'px';
   }
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
@@ -381,24 +411,8 @@
     pillField = el;
     p._note.textContent = '';
     pillExpanded = false;      // a new field always starts as the small handle
-    renderPillMode();
     p.style.display = 'flex';
-    if (!pillDragged) {
-      // To the RIGHT of the field, vertically centered on it — clear of the label
-      // above and the value inside. Falls back to below-left when the field spans
-      // the full width and there's no room on the right.
-      const r = el.getBoundingClientRect();
-      const pw = p.offsetWidth || 270;
-      const ph = p.offsetHeight || 38;
-      if (r.right + 10 + pw <= window.innerWidth) {
-        p.style.top = (window.scrollY + Math.max(4, r.top + (r.height - ph) / 2)) + 'px';
-        p.style.left = (window.scrollX + r.right + 10) + 'px';
-      } else {
-        const fitsBelow = r.bottom + ph + 10 < window.innerHeight;
-        p.style.top = (window.scrollY + (fitsBelow ? r.bottom + 8 : Math.max(4, r.top - ph - 6))) + 'px';
-        p.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - pw - 8)) + 'px';
-      }
-    }
+    renderPillMode();          // sets collapsed layout AND anchors it to the field
     requestAnimationFrame(() => { p.style.opacity = '1'; });
   }
 
