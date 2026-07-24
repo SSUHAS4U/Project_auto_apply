@@ -1,5 +1,5 @@
 // Persistent, human-looking browser + the pause/heartbeat poller for the dashboard.
-import { chromium } from 'playwright-core';
+import { chromium, firefox } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -10,16 +10,44 @@ import path from 'node:path';
 export const APP_DIR = process.pkg ? path.dirname(process.execPath) : process.cwd();
 
 /**
- * Launch the user's real, installed Google Chrome with a persistent profile, so they log
- * into each portal ONCE and the session survives restarts. Using the system Chrome (rather
- * than a bundled Chromium) keeps the download small and the session indistinguishable from
- * normal use. Falls back to bundled Chromium in dev if present.
+ * Launch the automation browser.
+ *
+ * Preference order:
+ *  1. the bundled Camoufox (downloaded on first use) — no dependency on what's installed, and
+ *     hardened against the fingerprinting job boards actually check;
+ *  2. the user's Chrome / Edge, so an existing setup keeps working if the download fails.
+ *
+ * `headless` runs it with no window at all: once a portal is signed in, runs happen silently
+ * in the background and the terminal log is the only surface. The first run stays visible so
+ * the sign-in can actually be done.
  */
-export async function launchBrowser() {
+export async function launchBrowser({ headless = false, log = console.log } = {}) {
   const userDataDir = path.join(APP_DIR, '.profile'); // persisted logins live here
   fs.mkdirSync(userDataDir, { recursive: true });
+
+  // Firefox profiles are not Chromium profiles — keep them apart so neither corrupts the other.
+  const ffDir = path.join(APP_DIR, '.profile-ff');
+  const { ensureBrowser } = await import('./browser-setup.js');
+  const exe = await ensureBrowser(log).catch(() => null);
+  if (exe) {
+    try {
+      fs.mkdirSync(ffDir, { recursive: true });
+      const ctx = await firefox.launchPersistentContext(ffDir, {
+        executablePath: exe,
+        headless,
+        viewport: null,
+        // Inherit the machine's real locale/timezone — pinning them is itself a signal.
+      });
+      log(headless
+        ? '  Automation browser running in the background (no window).'
+        : '  Automation browser open.');
+      return { ctx, page: await harden(ctx) };
+    } catch (e) {
+      log(`  ! Bundled browser failed to start (${String(e.message).slice(0, 120)}) — using Chrome.`);
+    }
+  }
   const opts = {
-    headless: false,
+    headless,
     // A real window, not a scripted 1280x800 box — a fixed odd viewport is itself a signal.
     viewport: null,
     // Playwright disables the Chrome sandbox by default, which makes Chrome show the yellow
@@ -52,10 +80,9 @@ export async function launchBrowser() {
 }
 
 /**
- * Belt-and-braces fingerprint cleanup on top of the launch flags, applied to every page
- * (including ones the apply flows open later). We drive the user's REAL Chrome with their
- * real profile, so almost everything is already authentic — these patch the few properties
- * the DevTools protocol still leaks.
+ * Belt-and-braces fingerprint cleanup applied to every page (including ones the apply flows
+ * open later) — patches the few properties automation still leaks, on top of whatever
+ * hardening the browser itself provides.
  */
 async function harden(ctx) {
   await ctx.addInitScript(() => {

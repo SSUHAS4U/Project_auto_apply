@@ -5,7 +5,9 @@
 //  2) pull any Connect/Disconnect requests the dashboard queued and act on them
 //     (open the portal's login page, or clear its cookies).
 // Cookies never leave this machine — the backend only ever sees a true/false status.
-import { humanDelay } from './browser.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { humanDelay, APP_DIR } from './browser.js';
 
 const PORTALS = {
   linkedin: { home: 'https://www.linkedin.com', login: 'https://www.linkedin.com/login', cookie: 'li_at' },
@@ -47,12 +49,23 @@ function watchLogin(ctx, api, portal) {
 
 /** Report all portal session states to the backend (best-effort). */
 export async function reportSessions(ctx, api) {
+  let anySignedIn = false;
   for (const portal of Object.keys(PORTALS)) {
     try {
       const loggedIn = await isLoggedIn(ctx, portal);
+      if (loggedIn) anySignedIn = true;
       await api.session(portal, loggedIn, loggedIn ? 'session active' : 'not logged in');
     } catch { /* keep going */ }
   }
+  // The moment ANY portal is signed in, record it: every later start can then run with no
+  // window at all. This is what turns "watch a browser drive itself" into a background job.
+  try {
+    const marker = path.join(APP_DIR, '.signed-in');
+    if (anySignedIn && !fs.existsSync(marker)) {
+      fs.writeFileSync(marker, new Date().toISOString());
+      console.log('\n  ✓ Signed in — from the next start this runs invisibly in the background.\n');
+    }
+  } catch { /* non-fatal */ }
 }
 
 /**

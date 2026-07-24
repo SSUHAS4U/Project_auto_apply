@@ -83,12 +83,23 @@ async function main() {
   const hello = await api.hello().catch((e) => { console.error('  Auth failed:', e.message); process.exit(1); });
   console.log(`  Connected as ${hello.name || hello.userId}.`);
 
-  const { ctx, page } = await launchBrowser();
-  console.log('\n  Browser is open. Log into the portals you want to use:');
-  console.log('   • LinkedIn: https://www.linkedin.com/');
-  console.log('   • Indeed:   https://www.indeed.com/');
-  console.log('  (log in once — the session is remembered). Then hit ▶ for a portal in the dashboard.\n');
-  await page.goto('https://www.linkedin.com/').catch(() => {});
+  // Visible only until a portal is signed in. After that every run happens with no window at
+  // all — the terminal log is the whole interface, which is the point: you shouldn't have to
+  // watch a browser drive itself.
+  const signedInMarker = path.join(APP_DIR, '.signed-in');
+  const everSignedIn = fs.existsSync(signedInMarker);
+  const { ctx, page } = await launchBrowser({ headless: everSignedIn });
+
+  if (everSignedIn) {
+    console.log('\n  Running in the background — no browser window. Everything shows up here.');
+    console.log('  (Sign-in expired? Delete ".signed-in" next to the app and restart to log in again.)\n');
+  } else {
+    console.log('\n  Browser is open. Log into the portals you want to use:');
+    console.log('   • LinkedIn: https://www.linkedin.com/');
+    console.log('   • Indeed:   https://www.indeed.com/');
+    console.log('  (log in once — the session is remembered, and from then on it runs invisibly).\n');
+    await page.goto('https://www.linkedin.com/').catch(() => {});
+  }
 
   const state = { runId: null, portal: null, action: 'Idle — waiting for a run', paused: false };
   const stopStream = startPausePoller(api, state);
