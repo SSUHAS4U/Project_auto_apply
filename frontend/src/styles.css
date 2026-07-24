@@ -364,7 +364,9 @@ button:focus:not(:focus-visible) { outline: none; }
 .tsel-val { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tsel-caret { color: var(--text-faint); flex: none; transform: rotate(90deg); transition: transform .15s; }
 .tsel-caret.open { transform: rotate(-90deg); }
-.tsel-menu { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 100%;
+/* Portalled to <body> and positioned in JS: an absolute menu is clipped by any scrolling
+   ancestor, which is why the options were cut off inside the Filters dialog. */
+.tsel-menu { position: fixed; z-index: 2147483000; min-width: 100%;
   background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   box-shadow: var(--shadow); padding: 5px; display: flex; flex-direction: column; gap: 2px;
   max-height: 280px; overflow-y: auto; animation: tselIn .13s ease; }
