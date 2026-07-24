@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type ScoutedJob } from '../api/client';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
-import { JobCard } from '../components/JobCard';
+import { JobCardV2 } from '../components/JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 
 const SITE_META: Record<string, { label: string; color: string }> = {
   linkedin: { label: 'LinkedIn', color: '#0a66c2' },
@@ -21,6 +22,7 @@ export function ScoutPage() {
   const [running, setRunning] = useState(false);
   const [site, setSite] = useState('');
   const [withContacts, setWithContacts] = useState(false);
+  const skills = useProfileSkills();
 
   const load = () => {
     setLoading(true);
@@ -99,29 +101,26 @@ export function ScoutPage() {
               const emails = j.emails?.split(',').map((e) => e.trim()).filter(Boolean) ?? [];
               const phones = j.phones?.split(',').map((p) => p.trim()).filter(Boolean) ?? [];
               return (
-                <JobCard key={j.id}
+                <JobCardV2 key={j.id}
                   title={j.title}
                   company={j.company}
                   location={j.location}
+                  description={j.snippet}
                   url={j.url}
+                  source={j.sourceSite ?? meta.label}
+                  postedLabel={j.fetchedAt ? `seen ${fmtDate(j.fetchedAt)}` : j.postedHint}
                   score={typeof j.matchScore === 'number' ? j.matchScore : undefined}
-                  metaRight={j.fetchedAt ? `seen ${fmtDate(j.fetchedAt)}` : j.postedHint}
-                  badges={<span className="chip" style={{ background: meta.color + '22', color: meta.color, borderColor: meta.color + '55' }}>{meta.label}</span>}
-                  strengths={j.matchedKeywords ? `matched: ${j.matchedKeywords}` : undefined}
-                  actions={<>
+                  skills={skills}
+                  extras={<>
                     {emails.map((e) => (
-                      <a key={e} className="btn btn-sm" href={`mailto:${e}`} title="Email this contact"><Icon name="mail" size={13} /> {e}</a>
+                      <a key={e} className="jc2-act" href={`mailto:${e}`} title={`Email ${e}`}><Icon name="mail" size={14} /></a>
                     ))}
-                    {phones.map((p) => (
-                      <button key={p} className="btn btn-sm" onClick={() => copy(p)} title="Copy number"><Icon name="phone" size={13} /> {p}</button>
+                    {phones.map((ph) => (
+                      <button key={ph} className="jc2-act" onClick={() => copy(ph)} title={`Copy ${ph}`}><Icon name="phone" size={14} /></button>
                     ))}
-                    <span style={{ marginLeft: 'auto' }} />
-                    <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
-                    <button className="btn btn-ghost btn-sm" onClick={() => remove(j.id)} title="Remove from scout list"><Icon name="x" size={14} /></button>
+                    <button className="jc2-act" onClick={() => remove(j.id)} title="Remove"><Icon name="x" size={14} /></button>
                   </>}
-                >
-                  {j.snippet && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>{j.snippet}</div>}
-                </JobCard>
+                  actions={<a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>} />
               );
             })}
           </div>

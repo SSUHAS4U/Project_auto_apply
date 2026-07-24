@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { Job } from '../types';
 import { ApplyBadge, fmtDate, useToast } from '../lib/ui';
-import { JobCard } from '../components/JobCard';
+import { JobCardV2 } from '../components/JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 import { Icon } from '../components/Icon';
 
 export function DailyPicksPage() {
@@ -12,7 +13,7 @@ export function DailyPicksPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const skills = useProfileSkills();
 
   const load = () => {
     setLoading(true);
@@ -74,26 +75,22 @@ export function DailyPicksPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {jobs.map((j) => (
-              <JobCard key={j.id}
+              <JobCardV2 key={j.id}
                 title={j.title}
                 company={j.company}
-                location={j.location ?? (j.remote ? 'Remote' : undefined)}
+                location={j.location}
+                remote={j.remote}
+                description={j.description}
                 source={j.source}
                 url={j.url}
                 score={j.matchScore}
-                badges={<>
-                  <ApplyBadge type={j.applyType} />
-                  {j.applyType === 'email' && j.applyEmail && <span className="faint meta-item" style={{ fontSize: 12 }}><Icon name="mail" size={12} /> {j.applyEmail}</span>}
-                </>}
+                salaryText={j.salaryText}
+                skills={skills}
+                extras={<ApplyBadge type={j.applyType} />}
                 actions={<>
                   <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
                   <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setOpenId(openId === j.id ? null : j.id)}>
-                    {openId === j.id ? 'Hide' : 'Details'}
-                  </button>
-                </>}>
-                {openId === j.id && j.description && <div className="job-desc" style={{ marginTop: 12 }}>{j.description}</div>}
-              </JobCard>
+                </>} />
             ))}
           </div>
         )}

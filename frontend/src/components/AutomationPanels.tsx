@@ -4,7 +4,8 @@ import { api } from '../api/client';
 import type { AgentEvent, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
-import { CompanyLogo } from './CompanyLogo';
+import { JobCardV2 } from './JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 import { Modal } from './Modal';
 import { TerminalConsole } from './DesktopTerminal';
 import { isDesktopApp } from '../lib/desktop';
@@ -212,20 +213,13 @@ function loadDone(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(doneKey()) || '[]')); } catch { return new Set(); }
 }
 
-/** Fit % → a label + tone for the gradient panel. */
-function fitMeta(n: number): { label: string; tone: string } {
-  if (n >= 75) return { label: 'Great fit', tone: 'green' };
-  if (n >= 55) return { label: 'Good fit', tone: 'blue' };
-  if (n >= 40) return { label: 'Fair fit', tone: 'amber' };
-  return { label: 'Weak fit', tone: 'red' };
-}
-
 /** The expandable list under a selected metric — one rich card per job (real logo, meta, fit %). */
 function MetricList({ portal, cell, rows, done, onDone }: {
   portal: string; cell: { label: string; types: string[] };
   rows: AgentEvent[]; done: Set<string>; onDone: (key: string) => void;
 }) {
   const [asked, setAsked] = useState<Record<string, boolean>>({});
+  const skills = useProfileSkills();
   const isManual = cell.types.includes('manual_apply');
   const visible = isManual ? rows.filter((e) => !done.has(e.url || e.id)) : rows;
   const portalName = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
@@ -244,47 +238,26 @@ function MetricList({ portal, cell, rows, done, onDone }: {
         const key = e.url || e.id;
         const fitN = Number((e.detail || '').match(/fit\s+(\d+)/i)?.[1]);
         const fit = Number.isFinite(fitN) && fitN > 0 ? fitN : null;
-        const fm = fit ? fitMeta(fit) : null;
         return (
-          <div key={e.id} className="jrich">
-            <CompanyLogo company={e.company || e.title} size={46} />
-            <div className="jrich-main">
-              <a href={e.url} target="_blank" rel="noreferrer" className="jrich-title"
-                onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
-                {e.title || 'Role'}{e.url && <Icon name="external" size={12} style={{ opacity: .6 }} />}
-              </a>
-              <div className="jrich-sub">
-                {e.company && <span className="jrich-co">{e.company}</span>}
-                {e.company && <span className="jrich-dot">·</span>}
-                <span>{fmtDate(e.createdAt)}</span>
-              </div>
-              <div className="jrich-meta">
-                {e.salary && <span className="jrich-pill"><Icon name="target" size={12} /> {e.salary}</span>}
-                <span className="jrich-src">sourced from <Icon name={portal} size={12} /> {portalName}</span>
-              </div>
-              {e.description && <div className="jrich-desc">{e.description}</div>}
-            </div>
-            <div className="jrich-side">
-              {fm && (
-                <div className={`fitpanel tone-${fm.tone}`}>
-                  <div className="fitpanel-n">{fit}<span>%</span></div>
-                  <div className="fitpanel-t">{fm.label}</div>
-                </div>
-              )}
-              {isManual && asked[key] ? (
-                <div className="jrich-ask">
-                  <span className="faint" style={{ fontSize: 11.5 }}>Applied?</span>
-                  <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Yes</button>
-                  <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
-                </div>
-              ) : (
-                <a className="btn btn-sm jrich-open" href={e.url} target="_blank" rel="noreferrer"
-                  onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>
-                  Open <Icon name="external" size={12} />
-                </a>
-              )}
-            </div>
-          </div>
+          <JobCardV2 key={e.id}
+            title={e.title || 'Role'}
+            company={e.company}
+            description={e.description}
+            url={e.url}
+            source={portal}
+            postedLabel={fmtDate(e.createdAt)}
+            salaryText={e.salary}
+            score={fit ?? undefined}
+            skills={skills}
+            actions={isManual && asked[key] ? (
+              <>
+                <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Applied</button>
+                <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
+              </>
+            ) : (
+              <a className="btn btn-primary btn-sm" href={e.url} target="_blank" rel="noreferrer"
+                onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>Open ↗</a>
+            )} />
         );
       })}
       {isManual && <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>

@@ -4,7 +4,8 @@ import type { Job } from '../types';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
-import { JobCard } from '../components/JobCard';
+import { JobCardV2 } from '../components/JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 import { Select } from '../components/Select';
 
 // Friendly "next ingest" — e.g. "in 3h (8:00 PM)" or "tomorrow 7:00 AM".
@@ -54,6 +55,7 @@ export function JobsPage() {
   const [showMetrics, setShowMetrics] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const admin = isAdminUI();
+  const skills = useProfileSkills();
 
   const refreshSummary = () => { api.ingestSummary().then(setSummary).catch(() => {}); };
   useEffect(() => {
@@ -247,17 +249,20 @@ export function JobsPage() {
         ) : view === 'cards' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {jobs.map((j) => (
-              <JobCard key={j.id}
+              <JobCardV2 key={j.id}
                 title={j.title}
                 company={j.company}
-                location={j.location ?? (j.remote ? 'Remote' : undefined)}
+                location={j.location}
+                remote={j.remote}
+                description={j.description}
                 source={j.source}
                 url={j.url}
                 score={j.matchScore}
-                salary={j.salaryText}
-                metaRight={fmtDate(j.postedAt ?? j.fetchedAt)}
-                badges={<ApplyBadge type={j.applyType} />}
+                salaryText={j.salaryText}
+                postedLabel={fmtDate(j.postedAt ?? j.fetchedAt)}
+                skills={skills}
                 onOpen={() => setDetailJob(j)}
+                extras={<ApplyBadge type={j.applyType} />}
                 actions={<>
                   {j.applyType === 'email' && <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>}
                   <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
