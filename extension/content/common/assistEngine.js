@@ -279,17 +279,39 @@
     close.title = 'Close (Esc)';
     close.style.cssText = 'border:none;background:transparent;color:#9aa1b1;cursor:pointer;padding:4px 8px;font-size:12px;border-radius:999px';
     close.addEventListener('mousedown', (e) => e.preventDefault());
-    close.addEventListener('click', () => { pillSuppressed = true; hidePill(true); });
+    close.addEventListener('click', () => { pillExpanded = false; renderPillMode(); });
 
-    pill.append(grip, ai, save, note, close);
+    // Collapsed by default: ONE small ✨ handle. Clicking it expands to AI answer / Save.
+    // This keeps the feature on every field (nothing is taken away) while never throwing a
+    // wide bar over the page unasked — which was the actual annoyance.
+    const dot = document.createElement('button');
+    dot.type = 'button'; dot.textContent = '✨';
+    dot.title = 'JobPilot — AI answer or save this Q&A';
+    dot.style.cssText = 'border:none;background:transparent;color:#c7d2fe;cursor:pointer;'
+      + 'font:600 13px system-ui,sans-serif;padding:5px 9px;border-radius:999px';
+    dot.addEventListener('mouseenter', () => { dot.style.background = 'rgba(99,102,241,.35)'; });
+    dot.addEventListener('mouseleave', () => { dot.style.background = 'transparent'; });
+    dot.addEventListener('mousedown', (e) => e.preventDefault());
+    dot.addEventListener('click', () => { pillExpanded = true; renderPillMode(); });
+
+    pill.append(dot, grip, ai, save, note, close);
     pill._note = note;
+    pill._parts = { dot, grip, ai, save, note, close };
     document.body.appendChild(pill);
+    renderPillMode();
     return pill;
   }
 
   let pillDragged = false;
   let pillPinned = false;
-  let pillSuppressed = false; // ✕ dismisses the pill for the rest of this page (until reload)
+  let pillExpanded = false; // collapsed = just the ✨ handle
+
+  function renderPillMode() {
+    if (!pill || !pill._parts) return;
+    const { dot, grip, ai, save, note, close } = pill._parts;
+    dot.style.display = pillExpanded ? 'none' : 'inline-flex';
+    [grip, ai, save, note, close].forEach((el) => { el.style.display = pillExpanded ? '' : 'none'; });
+  }
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
   // options; custom dropdowns/typeaheads get a short value picked into the widget;
@@ -341,12 +363,16 @@
   // and value-typed inputs (date / tel / url / email / number) that have a label.
   function isPillTarget(el) {
     if (!el || el.disabled || el.offsetParent === null) return false;
-    if (pillSuppressed) return false;               // user dismissed it for this page
     if (el.tagName === 'SELECT') return true;
-    // Only REAL questions get the focus pill now — a textarea, a contenteditable box, or a
-    // text input whose label reads like a question. Short factual fields (name, email, phone,
-    // city) no longer trigger it, which is what made it feel like it popped up everywhere.
-    // Bulk filling of those still happens via "Scan & review, then fill".
+    // Available on ANY labelled field again — restricting it to long questions removed the
+    // ability to save a Q&A on ordinary fields. It's unobtrusive now because it starts as a
+    // small ✨ handle and only expands when clicked.
+    if (el.tagName === 'INPUT' && !el.readOnly) {
+      const t = (el.getAttribute('type') || 'text').toLowerCase();
+      if (['text', 'date', 'tel', 'url', 'email', 'number', 'search', ''].includes(t)) {
+        return (deriveQuestion(el) || '').length > 2;
+      }
+    }
     return isQuestionField(el);
   }
 
@@ -354,6 +380,8 @@
     const p = buildPill();
     pillField = el;
     p._note.textContent = '';
+    pillExpanded = false;      // a new field always starts as the small handle
+    renderPillMode();
     p.style.display = 'flex';
     if (!pillDragged) {
       // To the RIGHT of the field, vertically centered on it — clear of the label
@@ -470,6 +498,70 @@
 
   function ariaOptions(item, role) {
     return [...item.querySelectorAll(`[role="${role}"]`)].filter((o) => o.offsetParent !== null);
+  }
+
+  /**
+   * Collect plan units from Google/MS Forms' own structure: ONE question per
+   * [role="listitem"], its text in the heading, and exactly one answer widget inside.
+   *
+   * This is why the scanner used to see 5 fields on a 14-question form: it swept the page for
+   * roles/inputs and missed every choice widget, while this container layout describes the form
+   * exactly. Returns false when the page isn't listitem-based, so generic pages are unaffected.
+   */
+  function collectFormUnits(push) {
+    const qUnits = questionUnits();
+    if (!qUnits.length) return false;
+    for (const u of qUnits) {
+      const item = u.container;
+      const label = u.q;
+      if (!item || !label) continue;
+
+      const radios = ariaOptions(item, 'radio');
+      if (radios.length >= 2) {
+        if (radios.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+        const options = radios.map(labelOf).filter(Boolean);
+        if (options.length >= 2) { push({ els: radios, label, kind: 'aria-radio', options }); continue; }
+      }
+      const nradios = [...item.querySelectorAll('input[type="radio"]')].filter((r) => r.offsetParent !== null);
+      if (nradios.length >= 2) {
+        if (nradios.some((r) => r.checked)) continue;
+        const options = nradios.map(nativeLabel).filter(Boolean);
+        if (options.length >= 2) { push({ els: nradios, label, kind: 'radio', options }); continue; }
+      }
+      const checks = ariaOptions(item, 'checkbox');
+      if (checks.length >= 2) {
+        if (checks.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+        const options = checks.map(labelOf).filter(Boolean);
+        if (options.length >= 2) { push({ els: checks, label, kind: 'aria-checkbox', options }); continue; }
+      }
+      const nchecks = [...item.querySelectorAll('input[type="checkbox"]')].filter((c) => c.offsetParent !== null);
+      if (nchecks.length >= 2) {
+        if (nchecks.some((c) => c.checked)) continue;
+        const options = nchecks.map(nativeLabel).filter(Boolean);
+        if (options.length >= 2) { push({ els: nchecks, label, kind: 'checkbox', options }); continue; }
+      }
+      const select = item.querySelector('select');
+      if (select && select.offsetParent !== null) {
+        const options = [...select.options].map((o) => o.text.trim())
+          .filter((t) => t && !/^(choose|select|please)/i.test(t));
+        if (options.length >= 2) { push({ el: select, label, kind: 'select', options }); continue; }
+      }
+      // Forms dropdown: options only exist once it's opened, so mark it custom — planFill's
+      // reader opens it and pulls the real options before asking the AI to choose.
+      const listbox = item.querySelector('[role="listbox"]');
+      if (listbox && listbox.offsetParent !== null) { push({ el: listbox, label, kind: 'custom' }); continue; }
+
+      const dateInput = item.querySelector('input[type="date"]');
+      if (dateInput && dateInput.offsetParent !== null && !dateInput.value) {
+        push({ el: dateInput, label, kind: 'text' }); continue;
+      }
+      const textEl = item.querySelector('textarea, [contenteditable="true"], input[type="text"], input[type="email"], input[type="url"], input[type="tel"], input[type="number"], input:not([type])');
+      if (textEl && textEl.offsetParent !== null && !readValue(textEl).trim()) {
+        const isPara = textEl.tagName === 'TEXTAREA' || textEl.getAttribute('contenteditable') === 'true';
+        push({ el: textEl, label, kind: isPara || looksLikeQuestion(label) ? 'question' : 'text' });
+      }
+    }
+    return true;
   }
 
   // Answer one question unit using the right strategy for its control type.
@@ -759,99 +851,106 @@
       units.push(u);
     };
 
-    // text-like inputs / textareas / custom dropdown triggers (empty only)
-    q('input, textarea').forEach((el) => {
-      const type = (el.getAttribute('type') || 'text').toLowerCase();
-      if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
-      if (!vis(el) || el.readOnly || (el.value || '').trim()) return;
-      const label = deriveQuestion(el);
-      const isPara = el.tagName === 'TEXTAREA';
-      const combo = smart && (smart.isCustomDropdown(el) || isCombobox(el));
-      push({ el, label, kind: combo ? 'combo' : (isPara || looksLikeQuestion(label || '') ? 'question' : 'text') });
-    });
-    q('select').forEach((el) => {
-      if (!vis(el)) return;
-      const cur = (el.options[el.selectedIndex]?.text || '').trim().toLowerCase();
-      if (cur && !/^(select|choose|—|-|please)/.test(cur)) return;
-      const label = deriveQuestion(el);
-      const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
-      if (options.length < 2) return;
-      push({ el, label, kind: 'select', options });
-    });
-    // Custom dropdown TRIGGERS — the button/div widgets real ATSs use (Workday
-    // aria-haspopup buttons, react-select controls, MUI role=combobox divs…).
-    q('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="menu"], [class*="select__control" i], [data-automation-id*="select" i], [data-automation-id*="dropdown" i]')
-      .forEach((el) => {
-        if (['SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(el.tagName)) return; // inputs handled above
-        if (!shown(el) || el.closest('[role="listbox"], [role="option"]')) return;
-        const already = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        const label = deriveQuestion(el); // may be '' — the labeler passes name it later
-        // Skip widgets that clearly hold a chosen value already ("Select One" ≠ chosen).
-        if (already && label && norm(already) !== norm(label)
-            && !/select|choose|please|—|^-$|search/i.test(already) && already.length < 60 && !already.includes(label)) return;
-        push({ el, label, kind: 'custom' });
+    // Google/MS Forms describe themselves: one question per [role=listitem], heading + one
+    // widget. Use that when present — it's exact. Only fall back to sweeping the whole page
+    // for inputs/roles (which missed every choice widget on Forms) when it isn't.
+    const formMode = collectFormUnits(push);
+    if (!formMode) {
+      // text-like inputs / textareas / custom dropdown triggers (empty only)
+      q('input, textarea').forEach((el) => {
+        const type = (el.getAttribute('type') || 'text').toLowerCase();
+        if (el.tagName === 'INPUT' && !['text', 'url', 'tel', 'email', 'number', 'search', ''].includes(type)) return;
+        if (!vis(el) || el.readOnly || (el.value || '').trim()) return;
+        const label = deriveQuestion(el);
+        const isPara = el.tagName === 'TEXTAREA';
+        const combo = smart && (smart.isCustomDropdown(el) || isCombobox(el));
+        push({ el, label, kind: combo ? 'combo' : (isPara || looksLikeQuestion(label || '') ? 'question' : 'text') });
       });
-    // native radio groups
-    const rGroups = {};
-    q('input[type="radio"]').filter(vis).forEach((r, i) => { (rGroups[r.name || '__r' + i] ||= []).push(r); });
-    for (const k of Object.keys(rGroups)) {
-      const group = rGroups[k];
-      if (group.length < 2 || group.some((g) => g.checked)) continue;
-      const label = groupQuestion(group);
-      const options = group.map(nativeLabel).filter(Boolean);
-      if (!label || options.length < 2 || seen.has(norm(label))) continue;
-      seen.add(norm(label));
-      push({ els: group, label, kind: 'radio', options });
-    }
-    // ARIA radio groups — grouped by their CONTAINER, not by a [role=radiogroup] wrapper.
-    // Google Forms (and some Workday/MS layouts) don't always put role=radiogroup on the
-    // group, so requiring it made every radio question invisible — the core "it never fills
-    // radios" bug. Instead we collect every visible [role=radio] and bucket it by the nearest
-    // question container (radiogroup → Forms listitem → group/fieldset → parent).
-    const ariaGroupsByHolder = new Map();
-    for (const o of q('[role="radio"]').filter(shown)) {
-      const holder = o.closest('[role="radiogroup"]')
-        || o.closest('[role="listitem"], [data-params], [jsmodel], fieldset, [role="group"]')
-        || o.parentElement;
-      if (!holder) continue;
-      if (!ariaGroupsByHolder.has(holder)) ariaGroupsByHolder.set(holder, []);
-      ariaGroupsByHolder.get(holder).push(o);
-    }
-    for (const [holder, opts] of ariaGroupsByHolder) {
-      if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
-      const label = ariaGroupQuestion(holder);
-      const options = opts.map((o) => labelOf(o)).filter(Boolean);
-      if (!label || options.length < 2 || seen.has(norm(label))) continue;
-      seen.add(norm(label));
-      push({ els: opts, label, kind: 'aria-radio', options });
-    }
-    // native checkbox groups (multi)
-    const cGroups = {};
-    q('input[type="checkbox"]').filter((c) => vis(c) && c.name).forEach((c) => { (cGroups[c.name] ||= []).push(c); });
-    for (const k of Object.keys(cGroups)) {
-      const group = cGroups[k];
-      if (group.length < 2 || group.some((g) => g.checked)) continue;
-      const label = groupQuestion(group);
-      const options = group.map(nativeLabel).filter(Boolean);
-      if (!label || !options.length || seen.has(norm(label))) continue;
-      seen.add(norm(label));
-      push({ els: group, label, kind: 'checkbox', options });
-    }
-    // ARIA checkbox groups (Google Forms multi-select) — same container grouping as radios.
-    const ariaCbByHolder = new Map();
-    for (const o of q('[role="checkbox"]').filter(shown)) {
-      const holder = o.closest('[role="group"], [role="listitem"], [data-params], [jsmodel], fieldset') || o.parentElement;
-      if (!holder) continue;
-      if (!ariaCbByHolder.has(holder)) ariaCbByHolder.set(holder, []);
-      ariaCbByHolder.get(holder).push(o);
-    }
-    for (const [holder, opts] of ariaCbByHolder) {
-      if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
-      const label = ariaGroupQuestion(holder);
-      const options = opts.map((o) => labelOf(o)).filter(Boolean);
-      if (!label || options.length < 2 || seen.has(norm(label))) continue;
-      seen.add(norm(label));
-      push({ els: opts, label, kind: 'aria-checkbox', options });
+      q('select').forEach((el) => {
+        if (!vis(el)) return;
+        const cur = (el.options[el.selectedIndex]?.text || '').trim().toLowerCase();
+        if (cur && !/^(select|choose|—|-|please)/.test(cur)) return;
+        const label = deriveQuestion(el);
+        const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
+        if (options.length < 2) return;
+        push({ el, label, kind: 'select', options });
+      });
+      // Custom dropdown TRIGGERS — the button/div widgets real ATSs use (Workday
+      // aria-haspopup buttons, react-select controls, MUI role=combobox divs…).
+      q('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="menu"], [class*="select__control" i], [data-automation-id*="select" i], [data-automation-id*="dropdown" i]')
+        .forEach((el) => {
+          if (['SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(el.tagName)) return; // inputs handled above
+          if (!shown(el) || el.closest('[role="listbox"], [role="option"]')) return;
+          const already = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          const label = deriveQuestion(el); // may be '' — the labeler passes name it later
+          // Skip widgets that clearly hold a chosen value already ("Select One" ≠ chosen).
+          if (already && label && norm(already) !== norm(label)
+              && !/select|choose|please|—|^-$|search/i.test(already) && already.length < 60 && !already.includes(label)) return;
+          push({ el, label, kind: 'custom' });
+        });
+      // native radio groups
+      const rGroups = {};
+      q('input[type="radio"]').filter(vis).forEach((r, i) => { (rGroups[r.name || '__r' + i] ||= []).push(r); });
+      for (const k of Object.keys(rGroups)) {
+        const group = rGroups[k];
+        if (group.length < 2 || group.some((g) => g.checked)) continue;
+        const label = groupQuestion(group);
+        const options = group.map(nativeLabel).filter(Boolean);
+        if (!label || options.length < 2 || seen.has(norm(label))) continue;
+        seen.add(norm(label));
+        push({ els: group, label, kind: 'radio', options });
+      }
+      // ARIA radio groups — grouped by their CONTAINER, not by a [role=radiogroup] wrapper.
+      // Google Forms (and some Workday/MS layouts) don't always put role=radiogroup on the
+      // group, so requiring it made every radio question invisible — the core "it never fills
+      // radios" bug. Instead we collect every visible [role=radio] and bucket it by the nearest
+      // question container (radiogroup → Forms listitem → group/fieldset → parent).
+      const ariaGroupsByHolder = new Map();
+      for (const o of q('[role="radio"]').filter(shown)) {
+        const holder = o.closest('[role="radiogroup"]')
+          || o.closest('[role="listitem"], [data-params], [jsmodel], fieldset, [role="group"]')
+          || o.parentElement;
+        if (!holder) continue;
+        if (!ariaGroupsByHolder.has(holder)) ariaGroupsByHolder.set(holder, []);
+        ariaGroupsByHolder.get(holder).push(o);
+      }
+      for (const [holder, opts] of ariaGroupsByHolder) {
+        if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+        const label = ariaGroupQuestion(holder);
+        const options = opts.map((o) => labelOf(o)).filter(Boolean);
+        if (!label || options.length < 2 || seen.has(norm(label))) continue;
+        seen.add(norm(label));
+        push({ els: opts, label, kind: 'aria-radio', options });
+      }
+      // native checkbox groups (multi)
+      const cGroups = {};
+      q('input[type="checkbox"]').filter((c) => vis(c) && c.name).forEach((c) => { (cGroups[c.name] ||= []).push(c); });
+      for (const k of Object.keys(cGroups)) {
+        const group = cGroups[k];
+        if (group.length < 2 || group.some((g) => g.checked)) continue;
+        const label = groupQuestion(group);
+        const options = group.map(nativeLabel).filter(Boolean);
+        if (!label || !options.length || seen.has(norm(label))) continue;
+        seen.add(norm(label));
+        push({ els: group, label, kind: 'checkbox', options });
+      }
+      // ARIA checkbox groups (Google Forms multi-select) — same container grouping as radios.
+      const ariaCbByHolder = new Map();
+      for (const o of q('[role="checkbox"]').filter(shown)) {
+        const holder = o.closest('[role="group"], [role="listitem"], [data-params], [jsmodel], fieldset') || o.parentElement;
+        if (!holder) continue;
+        if (!ariaCbByHolder.has(holder)) ariaCbByHolder.set(holder, []);
+        ariaCbByHolder.get(holder).push(o);
+      }
+      for (const [holder, opts] of ariaCbByHolder) {
+        if (opts.length < 2 || opts.some((o) => o.getAttribute('aria-checked') === 'true')) continue;
+        const label = ariaGroupQuestion(holder);
+        const options = opts.map((o) => labelOf(o)).filter(Boolean);
+        if (!label || options.length < 2 || seen.has(norm(label))) continue;
+        seen.add(norm(label));
+        push({ els: opts, label, kind: 'aria-checkbox', options });
+      }
+
     }
 
     if (!units.length) return { plan: [] };

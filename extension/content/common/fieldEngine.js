@@ -243,6 +243,8 @@
   }
 
   // Floating badge with the fill summary. Never submits anything.
+  // Result badge. It used to have no way to close it and never auto-hid, so it just sat on
+  // the page. Now it has an ✕ and fades itself out after a while.
   function showBadge(text) {
     let b = document.getElementById('jobpilot-badge');
     if (!b) {
@@ -250,14 +252,30 @@
       b.id = 'jobpilot-badge';
       b.style.cssText = [
         'position:fixed', 'bottom:18px', 'right:18px', 'z-index:2147483647',
+        'display:flex', 'align-items:center', 'gap:10px',
         'background:#161a23', 'color:#e7e9ee', 'border:1px solid #6366f1',
-        'border-radius:10px', 'padding:10px 14px', 'font:600 13px system-ui,sans-serif',
-        'box-shadow:0 8px 30px rgba(0,0,0,.4)',
+        'border-radius:10px', 'padding:10px 10px 10px 14px', 'font:600 13px system-ui,sans-serif',
+        'box-shadow:0 8px 30px rgba(0,0,0,.4)', 'transition:opacity .2s ease',
       ].join(';');
+      const label = document.createElement('span');
+      label.id = 'jobpilot-badge-text';
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '✕';
+      x.title = 'Dismiss';
+      x.style.cssText = 'border:none;background:transparent;color:#9aa1b1;cursor:pointer;'
+        + 'font:600 13px system-ui,sans-serif;padding:2px 6px;border-radius:6px;line-height:1';
+      x.addEventListener('mouseenter', () => { x.style.background = 'rgba(255,255,255,.08)'; x.style.color = '#e7e9ee'; });
+      x.addEventListener('mouseleave', () => { x.style.background = 'transparent'; x.style.color = '#9aa1b1'; });
+      x.addEventListener('click', () => b.remove());
+      b.append(label, x);
       document.body.appendChild(b);
     }
-    b.textContent = text;
-    setTimeout(() => { if (b) b.style.opacity = '0.85'; }, 50);
+    const label = b.querySelector('#jobpilot-badge-text') || b;
+    label.textContent = text;
+    b.style.opacity = '1';
+    clearTimeout(b._fade);
+    b._fade = setTimeout(() => { if (b && b.isConnected) b.remove(); }, 12000);
   }
 
   function getProfile(force) {
