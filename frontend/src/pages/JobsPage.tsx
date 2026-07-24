@@ -62,6 +62,7 @@ export function JobsPage() {
   const [formKey, setFormKey] = useState(0); // remount inputs when filters reset externally
   const [applyJob, setApplyJob] = useState<Job | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<'table' | 'cards'>(
     () => (localStorage.getItem('jobpilot_jobs_view') as 'table' | 'cards') || 'cards');
   const chooseView = (v: 'table' | 'cards') => { localStorage.setItem('jobpilot_jobs_view', v); setView(v); };
@@ -235,58 +236,77 @@ export function JobsPage() {
         <div className="card stat"><div className="stat-label">Avg match (page)</div><div className="stat-value">{stats.avg}</div></div>
       </div>
 
-      <div className="filters" key={formKey}>
-        <div className="filt filt-wide">
-          <label className="filt-l">Roles <span className="faint">— type to search, pick as many as you like</span></label>
-          <TagInput value={rolesOf(filters)} suggestions={ROLE_SUGGESTIONS}
-            placeholder="e.g. Full Stack Developer"
-            onChange={(v) => apply({ role: v.length ? v.join(',') : undefined })} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Posted</label>
-          <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
-            options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24 hours' },
-              { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Experience</label>
-          <Select value={filters.level ?? ''} onChange={(v) => apply({ level: v || undefined })}
-            options={[{ value: '', label: 'Any experience' }, { value: 'entry', label: 'Entry / fresher' },
-              { value: 'mid', label: 'Mid level' }, { value: 'senior', label: 'Senior+' }]} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Location</label>
-          <input className="input" placeholder="Anywhere  (Enter)" defaultValue={filters.location}
-            onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Sort by</label>
-          <Select value={filters.sort ?? ''} onChange={(v) => apply({ sort: v || undefined })}
-            options={[{ value: '', label: 'Best match' }, { value: 'recent', label: 'Newest first' }]} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Apply type</label>
-          <Select value={filters.applyType ?? ''} onChange={(v) => apply({ applyType: v || undefined })}
-            options={[{ value: '', label: 'All' }, { value: 'email', label: 'Email' },
-              { value: 'ats', label: 'ATS' }, { value: 'url', label: 'URL' }]} />
-        </div>
-        <div className="filt">
-          <label className="filt-l">Min match</label>
-          <Select value={String(filters.minScore ?? '')} onChange={(v) => apply({ minScore: v ? Number(v) : undefined })}
-            options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' },
-              { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
-        </div>
-        <div className="filt-actions">
-          <button className="btn btn-sm" onClick={saveAsDefault} title="Open the board with these filters every time">
-            <Icon name="check" size={13} /> Save as default
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={clearAll} title="Back to your saved default">Reset</button>
-          <div className="segmented">
-            <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
-            <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
-          </div>
+      {/* One button, one dialog. The old inline bar sprawled across the page and still
+          couldn't show every filter clearly. */}
+      <div className="row" style={{ gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-primary" onClick={() => setFiltersOpen(true)}>
+          <Icon name="gear" size={14} /> Filters{activeChips.length > 0 ? ` · ${activeChips.length}` : ''}
+        </button>
+        <Select value={filters.sort ?? ''} onChange={(v) => apply({ sort: v || undefined })} style={{ width: 168 }}
+          options={[{ value: '', label: 'Best match' }, { value: 'recent', label: 'Newest first' }]} />
+        <span className="faint" style={{ fontSize: 12.5 }}>{total} job{total === 1 ? '' : 's'}</span>
+        <div className="segmented" style={{ marginLeft: 'auto' }}>
+          <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
+          <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
         </div>
       </div>
+
+      {filtersOpen && (
+        <Modal title="Filters" wide onClose={() => setFiltersOpen(false)}
+          footer={<>
+            <button className="btn btn-ghost" onClick={clearAll}>Reset to my default</button>
+            <button className="btn" onClick={saveAsDefault} title="Open the board with these every time">
+              <Icon name="check" size={14} /> Save as default
+            </button>
+            <button className="btn btn-primary" onClick={() => setFiltersOpen(false)}>Done</button>
+          </>}>
+          <div className="fgrid" key={formKey}>
+            <div className="filt filt-wide">
+              <label className="filt-l">Roles <span className="faint">— start typing, pick as many as you like</span></label>
+              <TagInput value={rolesOf(filters)} suggestions={ROLE_SUGGESTIONS}
+                placeholder="e.g. Full Stack Developer"
+                onChange={(v) => apply({ role: v.length ? v.join(',') : undefined })} />
+              <span className="filt-h">A title only has to contain what you pick, so “Software Engineer” also matches “Software Engineer II”.</span>
+            </div>
+            <div className="filt">
+              <label className="filt-l">Posted within</label>
+              <Select value={String(filters.postedWithin ?? '')} onChange={(v) => apply({ postedWithin: v ? Number(v) : undefined })}
+                options={[{ value: '', label: 'Any date' }, { value: '1', label: 'Last 24 hours' },
+                  { value: '3', label: 'Last 3 days' }, { value: '7', label: 'Last week' }]} />
+            </div>
+            <div className="filt">
+              <label className="filt-l">Experience level</label>
+              <Select value={filters.level ?? ''} onChange={(v) => apply({ level: v || undefined })}
+                options={[{ value: '', label: 'Any experience' }, { value: 'entry', label: 'Entry / fresher' },
+                  { value: 'mid', label: 'Mid level' }, { value: 'senior', label: 'Senior+' }]} />
+              <span className="filt-h">Uses the stated years when the posting has a description, and the title otherwise.</span>
+            </div>
+            <div className="filt">
+              <label className="filt-l">Location</label>
+              <input className="input" placeholder="Anywhere  (press Enter)" defaultValue={filters.location}
+                onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />
+            </div>
+            <div className="filt">
+              <label className="filt-l">Region</label>
+              <Select value={filters.region ?? ''} onChange={(v) => apply({ region: v || undefined })}
+                options={[{ value: '', label: 'Everywhere' }, { value: 'india', label: 'India' },
+                  { value: 'remote', label: 'Remote' }, { value: 'outside', label: 'Outside India' }]} />
+            </div>
+            <div className="filt">
+              <label className="filt-l">Apply type</label>
+              <Select value={filters.applyType ?? ''} onChange={(v) => apply({ applyType: v || undefined })}
+                options={[{ value: '', label: 'All' }, { value: 'email', label: 'Email' },
+                  { value: 'ats', label: 'ATS' }, { value: 'url', label: 'URL' }]} />
+            </div>
+            <div className="filt">
+              <label className="filt-l">Minimum match</label>
+              <Select value={String(filters.minScore ?? '')} onChange={(v) => apply({ minScore: v ? Number(v) : undefined })}
+                options={[{ value: '', label: 'Any score' }, { value: '50', label: '50+' },
+                  { value: '65', label: '65+' }, { value: '80', label: '80+' }]} />
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {activeChips.length > 0 && (
         <div className="row" style={{ gap: 8, marginBottom: 16, alignItems: 'center' }}>

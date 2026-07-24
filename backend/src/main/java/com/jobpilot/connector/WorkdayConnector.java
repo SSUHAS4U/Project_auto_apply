@@ -1,6 +1,7 @@
 package com.jobpilot.connector;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.jsoup.Jsoup;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -43,6 +44,8 @@ public class WorkdayConnector implements JobConnector {
     private static final int MAX_PAGES = 6;
     /** Stop paging once everything on a page is older than this (a little over the 7-day gate). */
     private static final int STOP_AFTER_DAYS = 10;
+    /** Ceiling on detail fetches per board per run, so one busy employer can't stall an ingest. */
+    private static final int MAX_DETAILS = 60;
 
     private static final Pattern DAYS = Pattern.compile("(\\d+)\\s*\\+?\\s*days?\\s*ago", Pattern.CASE_INSENSITIVE);
 
@@ -69,6 +72,7 @@ public class WorkdayConnector implements JobConnector {
 
         String endpoint = "https://" + site.host + "/wday/cxs/" + site.tenant + "/" + site.site + "/jobs";
         List<RawJob> out = new ArrayList<>();
+        int details = 0;
         try {
             for (int page = 0; page < MAX_PAGES; page++) {
                 String body = "{\"appliedFacets\":{},\"limit\":" + PAGE
@@ -88,9 +92,31 @@ public class WorkdayConnector implements JobConnector {
                     String path = j.path("externalPath").asText(null);
                     if (title == null || path == null) continue;
                     Instant posted = parsePostedOn(j.path("postedOn").asText(null));
-                    if (posted == null || posted.isAfter(Instant.now().minus(Duration.ofDays(STOP_AFTER_DAYS)))) {
-                        anyFresh = true;
+                    boolean fresh = posted == null
+                            || posted.isAfter(Instant.now().minus(Duration.ofDays(STOP_AFTER_DAYS)));
+                    if (fresh) anyFresh = true;
+
+                    String description = null;
+                    String employment = null;
+                    // Open the posting for its body. The listing has no description at all, which
+                    // left experience, employment type and the skills match unknowable for every
+                    // Workday job — filtering on the title alone was guesswork. This is only
+                    // affordable because the freshness window keeps the candidate set tiny: a
+                    // board with thousands of jobs still only has a handful posted this week.
+                    if (fresh && details < MAX_DETAILS) {
+                        details++;
+                        JsonNode d = detail(site, path);
+                        if (d != null) {
+                            String html = d.path("jobDescription").asText("");
+                            if (!html.isBlank()) description = Jsoup.parse(html).text();
+                            employment = blankToNull(d.path("timeType").asText(null));
+                            // startDate is an exact date — far better than re-deriving one from
+                            // "Posted Yesterday".
+                            Instant exact = parseStartDate(d.path("startDate").asText(null));
+                            if (exact != null) posted = exact;
+                        }
                     }
+
                     out.add(RawJob.builder()
                             .source(source())
                             .sourceJobId(j.path("bulletFields").path(0).asText(path))
@@ -98,9 +124,10 @@ public class WorkdayConnector implements JobConnector {
                             .company(p.getCompany() != null ? p.getCompany() : site.tenant)
                             .location(cleanLocation(j.path("locationsText").asText(null)))
                             .remote(isRemote(j.path("locationsText").asText("")))
-                            // The list endpoint carries no body; fetching each posting would be
-                            // an N+1 against a board with thousands of jobs. The URL opens the ad.
-                            .description(null)
+                            // Employment type is stated outright by Workday, so prepend it rather
+                            // than making the UI infer "Full time" from prose.
+                            .description(employment == null ? description
+                                    : (employment + ". " + (description == null ? "" : description)).trim())
                             .url("https://" + site.host + "/en-US/" + site.site + path)
                             .applyType("ats")
                             .postedAt(posted)
@@ -115,6 +142,39 @@ public class WorkdayConnector implements JobConnector {
             throw new ConnectorException("workday fetch failed for " + site.tenant + "/" + site.site, e);
         }
         return out;
+    }
+
+    /**
+     * One posting's full record: description, employment type and an exact start date.
+     * The payload wraps everything in "jobPostingInfo" (confirmed against a live tenant), so
+     * reading the root directly would silently yield empty fields.
+     */
+    private JsonNode detail(Site site, String externalPath) {
+        try {
+            JsonNode root = http.get()
+                    .uri("https://" + site.host + "/wday/cxs/" + site.tenant + "/" + site.site + externalPath)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve().body(JsonNode.class);
+            if (root == null) return null;
+            return root.has("jobPostingInfo") ? root.get("jobPostingInfo") : root;
+        } catch (Exception e) {
+            return null; // the listing data we already have is still worth keeping
+        }
+    }
+
+    /** Workday's startDate is a plain yyyy-MM-dd. */
+    static Instant parseStartDate(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(s.substring(0, 10))
+                    .atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     /**
