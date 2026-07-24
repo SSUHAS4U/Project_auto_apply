@@ -19,14 +19,20 @@ function fmtNext(iso: string): string {
   return sameDay ? `in ${hrs}h (${time})` : `tomorrow ${time}`;
 }
 
+// Titles worth surfacing by default — matched as "any of these" against the job title.
+// Comma-separated so the backend ORs them; edit the Role box to use your own set.
+const DEFAULT_ROLES = 'full stack,fullstack,front end,frontend,back end,backend,'
+  + 'software developer,software engineer,sde,devops';
+
 const FILTER_KEY = 'jobpilot_job_filters';
 function loadStoredFilters(): JobFilters {
   try {
     const raw = localStorage.getItem(FILTER_KEY);
     if (raw) return { page: 0, size: 25, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  // Default to fresh jobs only (last 7 days) — older listings aren't useful.
-  return { page: 0, size: 25, postedWithin: 7 };
+  // First-run defaults: the roles actually worth seeing, posted in the last 24 hours. Both are
+  // just starting values — they're stored per user, so changing either sticks.
+  return { page: 0, size: 25, postedWithin: 1, role: DEFAULT_ROLES };
 }
 
 export function JobsPage() {
@@ -206,7 +212,7 @@ export function JobsPage() {
       </div>
 
       <div className="toolbar" key={formKey}>
-        <input className="input" placeholder="Role / title…  (Enter)" defaultValue={filters.role}
+        <input className="input" placeholder="Roles — comma separated (Enter)" defaultValue={filters.role}
           onKeyDown={(e) => e.key === 'Enter' && apply({ role: (e.target as HTMLInputElement).value || undefined })} />
         <input className="input" placeholder="Location…  (Enter)" defaultValue={filters.location}
           onKeyDown={(e) => e.key === 'Enter' && apply({ location: (e.target as HTMLInputElement).value || undefined })} />

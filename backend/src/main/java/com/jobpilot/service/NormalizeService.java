@@ -89,7 +89,15 @@ public class NormalizeService {
         j.setDescription(truncate(r.getDescription(), 1500)); // cap memory + DB size
         j.setUrl(r.getUrl());
         j.setSalaryText(r.getSalaryText());
-        j.setPostedAt(r.getPostedAt());
+        // Freshness anchor. Many feeds (aggregators, some ATS boards) send no posted date, and
+        // an undated job used to sit on the board forever AND satisfy every "last 24h" filter.
+        // So: use the real date when we have one, otherwise fall back to when we FIRST saw it —
+        // never re-stamping an existing job, or it would look new on every ingest.
+        if (r.getPostedAt() != null) {
+            j.setPostedAt(r.getPostedAt());
+        } else if (j.getPostedAt() == null) {
+            j.setPostedAt(Instant.now());
+        }
         j.setRaw(r.getRaw());
         j.setFetchedAt(Instant.now());
 

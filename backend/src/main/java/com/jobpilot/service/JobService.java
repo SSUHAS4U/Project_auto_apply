@@ -59,7 +59,15 @@ public class JobService {
         Specification<Job> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (role != null && !role.isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("title")), "%" + role.toLowerCase() + "%"));
+                // Comma-separated = "any of these titles". Lets the board default to the set of
+                // roles you actually apply for (full stack / frontend / backend / SDE / devops…)
+                // instead of forcing one keyword at a time.
+                List<Predicate> anyRole = new ArrayList<>();
+                for (String term : role.split(",")) {
+                    String t = term.trim().toLowerCase();
+                    if (!t.isEmpty()) anyRole.add(cb.like(cb.lower(root.get("title")), "%" + t + "%"));
+                }
+                if (!anyRole.isEmpty()) ps.add(cb.or(anyRole.toArray(new Predicate[0])));
             }
             if (location != null && !location.isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("location")), "%" + location.toLowerCase() + "%"));
@@ -77,9 +85,11 @@ public class JobService {
                 ps.add(cb.greaterThanOrEqualTo(root.get("fetchedAt"), since));
             }
             if (freshCutoff != null) {
-                // Hide dated jobs older than the window; keep undated (most ATS) jobs visible.
-                ps.add(cb.or(cb.isNull(root.get("postedAt")),
-                        cb.greaterThanOrEqualTo(root.get("postedAt"), freshCutoff)));
+                // Judge age by the posted date, falling back to when we first fetched it. The
+                // previous rule let every undated job through ("postedAt IS NULL OR …"), which
+                // is why a "last 24 hours" filter still returned month-old listings.
+                ps.add(cb.greaterThanOrEqualTo(
+                        cb.coalesce(root.get("postedAt"), root.get("fetchedAt")), freshCutoff));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };

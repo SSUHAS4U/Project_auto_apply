@@ -60,9 +60,15 @@ public class DailyScheduler {
         }
     }
 
-    /** Daily Engine autopilot — for every profile that turned it on, run the full
-     *  ai-job-search cycle: scrape → rank → auto-apply the best-fit shortlist. */
-    @Scheduled(cron = "${jobpilot.schedule.auto-apply-cron:0 30 9 * * *}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
+    /**
+     * Daily Engine autopilot — DISABLED by default ("-").
+     *
+     * The engine's UI was removed (the app is Automation + Job board now), but this cron kept
+     * running: it scraped, ranked and tailored CVs, then raised "Application ready — …"
+     * notifications pointing at a screen that no longer exists. Dead work and confusing noise.
+     * Set jobpilot.schedule.auto-apply-cron to re-enable it if the engine ever comes back.
+     */
+    @Scheduled(cron = "${jobpilot.schedule.auto-apply-cron:-}", zone = "${jobpilot.schedule.zone:Asia/Kolkata}")
     public void runEngineAutopilot() {
         log.info("Scheduled engine autopilot starting…");
         try {

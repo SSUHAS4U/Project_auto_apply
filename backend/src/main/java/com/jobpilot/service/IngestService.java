@@ -216,11 +216,12 @@ public class IngestService {
     protected int upsert(RawJob r, Profile profile) {
         if (r.getTitle() == null || r.getUrl() == null) return 0;
         if (!normalize.isTechRole(r.getTitle())) return 0; // tech-only board
-        // Freshness: skip dated jobs older than the retention window (keep undated ATS jobs).
-        if (r.getPostedAt() != null
-                && r.getPostedAt().isBefore(java.time.Instant.now().minus(java.time.Duration.ofDays(maxAgeDays)))) {
-            return 0;
-        }
+        // Freshness gate — nothing older than the window ever enters the board. Undated jobs
+        // used to slip past this check entirely and live forever; they're now anchored to
+        // first-seen by NormalizeService, so an undated job that's been around too long is
+        // rejected here on re-ingest just like a dated one.
+        final java.time.Instant ageCutoff = java.time.Instant.now().minus(java.time.Duration.ofDays(maxAgeDays));
+        if (r.getPostedAt() != null && r.getPostedAt().isBefore(ageCutoff)) return 0;
         r.setRaw(null); // don't store the heavy raw payload (memory + DB)
         String hash = normalize.contentHash(r.getCompany(), r.getTitle(), r.getLocation());
         Optional<Job> existing = jobRepo.findByContentHash(hash);
