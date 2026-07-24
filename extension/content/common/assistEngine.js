@@ -315,32 +315,55 @@
   }
 
   /**
-   * Anchor the pill to the field it belongs to.
-   *  - collapsed: the ✨ handle sits INSIDE the field's right edge, like a suffix icon, so it
-   *    never covers the label, the value, or whatever is next to the field;
-   *  - expanded: hangs directly under the field, right-aligned to it, leaving the field itself
-   *    readable.
-   * It used to be dropped 10px off the field's right side (or below-left as a fallback), which
-   * is why it appeared to land wherever it liked and got in the way.
+   * Anchor the pill to its field, flipping like a dropdown when a side has no room.
+   *
+   * Candidates are tried best-first and the first one that fully fits the viewport wins:
+   * expanded → right of the field, else below, else above, else left; collapsed → inside the
+   * field's right edge (only when the field is wide enough to host it without covering the
+   * text), else just outside it, else above/below/left. If nothing fits anywhere, it falls
+   * back to sitting inside the field, clamped on screen — so it is never half off-screen and
+   * never parked somewhere unrelated to what you're answering.
    */
   function positionPill() {
     if (!pill || !pillField || pillDragged) return;
     const r = pillField.getBoundingClientRect();
     const pw = pill.offsetWidth || (pillExpanded ? 270 : 34);
     const ph = pill.offsetHeight || 30;
-    let top, left;
-    if (!pillExpanded) {
-      top = r.top + (r.height - ph) / 2;
-      left = r.right - pw - 6;
-      if (r.width < pw + 28) left = r.right + 4;   // field too narrow: touch its right edge
+    const M = 6;                                   // gap from the field and the screen edge
+    const VW = document.documentElement.clientWidth;
+    const VH = document.documentElement.clientHeight;
+    const midY = r.top + (r.height - ph) / 2;
+
+    const clampT = (t) => Math.max(M, Math.min(t, VH - ph - M));
+    const clampL = (l) => Math.max(M, Math.min(l, VW - pw - M));
+    // A side placement only needs HORIZONTAL room (its vertical position is clamped); a
+    // vertical placement only needs VERTICAL room (its horizontal position is clamped) —
+    // exactly how a dropdown behaves: it drops below and slides sideways to stay on screen,
+    // rather than leaping to the far side of the control.
+    const cands = [];
+    if (pillExpanded) {
+      cands.push({ axis: 'h', top: midY, left: r.right + M });             // right of the field
+      cands.push({ axis: 'v', top: r.bottom + M, left: r.right - pw });    // below
+      cands.push({ axis: 'v', top: r.top - ph - M, left: r.right - pw });  // above
+      cands.push({ axis: 'h', top: midY, left: r.left - pw - M });         // left
     } else {
-      top = r.bottom + 4;
-      left = r.right - pw;
-      if (top + ph > window.innerHeight - 4) top = Math.max(4, r.top - ph - 4);
+      if (r.width >= pw + 28) cands.push({ axis: 'h', top: midY, left: r.right - pw - M }); // inside
+      cands.push({ axis: 'h', top: midY, left: r.right + M });             // touching right edge
+      cands.push({ axis: 'v', top: r.bottom + 2, left: r.right - pw });    // below
+      cands.push({ axis: 'v', top: r.top - ph - 2, left: r.right - pw });  // above
+      cands.push({ axis: 'h', top: midY, left: r.left - pw - M });         // left
     }
-    left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
-    pill.style.top = (window.scrollY + Math.max(4, top)) + 'px';
-    pill.style.left = (window.scrollX + left) + 'px';
+
+    let pick = null;
+    for (const c of cands) {
+      const okH = c.left >= M && c.left + pw <= VW - M;
+      const okV = c.top >= M && c.top + ph <= VH - M;
+      if ((c.axis === 'h' && okH) || (c.axis === 'v' && okV)) { pick = [clampT(c.top), clampL(c.left)]; break; }
+    }
+    // Nowhere clean — overlay the field's right edge, kept on screen.
+    if (!pick) pick = [clampT(midY), clampL(r.right - pw - M)];
+    pill.style.top = (window.scrollY + pick[0]) + 'px';
+    pill.style.left = (window.scrollX + pick[1]) + 'px';
   }
 
   // Type-aware AI answer for the focused field: selects choose among their REAL
@@ -441,6 +464,15 @@
   function installPill() {
     if (document.__jobpilotPillInstalled) return;
     document.__jobpilotPillInstalled = true;
+    // Scrolling/resizing changes which side has room, so re-run the placement.
+    let reflowQueued = false;
+    const reflow = () => {
+      if (reflowQueued || !pill || !pillField || pill.style.display === 'none') return;
+      reflowQueued = true;
+      requestAnimationFrame(() => { reflowQueued = false; positionPill(); });
+    };
+    window.addEventListener('scroll', reflow, { passive: true, capture: true });
+    window.addEventListener('resize', reflow);
     document.addEventListener('focusin', (e) => {
       if (window.JobPilot && !window.JobPilot.isEnabled()) return;
       if (!looksLikeApplicationForm()) return;
