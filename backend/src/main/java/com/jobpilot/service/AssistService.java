@@ -82,6 +82,182 @@ public class AssistService {
     }
 
     /**
+     * What SHAPE of answer the question wants. Decided from the question text and the HTML
+     * control before any model runs, because this is the thing the model gets wrong: asked
+     * "College name" it will happily write a five-sentence pitch unless the shape is pinned
+     * down and then enforced on the way out.
+     */
+    private enum Shape { VALUE, YES_NO, NUMBER, DATE, URL, ESSAY }
+
+    /** Spelled out for the model, so the shape isn't left to its judgement. */
+    private static final Map<Shape, String> SHAPE_RULE = Map.of(
+            Shape.VALUE, "A SHORT VALUE ONLY — a name, a place, a title. No sentence, no explanation, "
+                    + "under 8 words. Never introduce yourself.",
+            Shape.YES_NO, "Exactly one word: Yes or No. Nothing else.",
+            Shape.NUMBER, "A bare number only — digits, no units, no words.",
+            Shape.DATE, "A date only, formatted YYYY-MM-DD. Nothing else.",
+            Shape.URL, "A single URL only. If the profile has none, output nothing at all.",
+            Shape.ESSAY, "2-5 sentences of first-person prose.");
+
+    private static final java.util.regex.Pattern ESSAY_Q = java.util.regex.Pattern.compile(
+            "why (do|are|would|should)|tell (us|me) about|describe|explain|elaborate|walk (us|me) through"
+                    + "|what (makes|motivates|interests|excites)|cover letter|in your own words"
+                    + "|greatest (strength|weakness)|challenge you|proud of|about yourself"
+                    + "|how (would|do) you (handle|approach|deal)|\\bexperience with\\b|\\bexposure to\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private static final java.util.regex.Pattern YES_NO_Q = java.util.regex.Pattern.compile(
+            "^\\s*(are|is|do|does|did|have|has|can|could|will|would|shall|should|were|was)\\b"
+                    + "|willing to|comfortable with|do you (have|hold|possess|require|need)"
+                    + "|authorized to|eligible to|require sponsorship|any (criminal|prior)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    // Salary/CTC and notice period are deliberately NOT here: "6.5 LPA" and "30 days" are the
+    // answers forms want, and stripping them to a bare number loses the unit.
+    private static final java.util.regex.Pattern NUMBER_Q = java.util.regex.Pattern.compile(
+            "how many|number of|years? of experience|\\bcgpa\\b|\\bgpa\\b|percentage|\\bmarks\\b"
+                    + "|\\bage\\b|graduation year|passing year",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private static Shape shapeOf(String question, String fieldType) {
+        // The control type is the strongest signal — a <input type=date> can only take a date.
+        if (fieldType != null) {
+            switch (fieldType) {
+                case "date": return Shape.DATE;
+                case "url": return Shape.URL;
+                case "number": return Shape.NUMBER;
+                case "tel", "email": return Shape.VALUE;
+                default: { /* fall through to the question text */ }
+            }
+        }
+        String q = question == null ? "" : question;
+        // An essay prompt stays an essay even in a one-line box — the user can expand it.
+        if (ESSAY_Q.matcher(q).find()) return Shape.ESSAY;
+        if (java.util.regex.Pattern.compile("linkedin|github|portfolio|website|leetcode|codechef|"
+                + "hackerrank|profile (url|link)|\\burl\\b", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(q).find()) return Shape.URL;
+        if (java.util.regex.Pattern.compile("date of birth|\\bdob\\b|birth ?date|available from|start date",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(q).find()) return Shape.DATE;
+        // NUMBER before YES_NO: "How many years do you have with Java?" opens with a quantity
+        // word but also contains "do you have", which would otherwise make it a yes/no.
+        if (NUMBER_Q.matcher(q).find()) return Shape.NUMBER;
+        if (YES_NO_Q.matcher(q).find()) return Shape.YES_NO;
+        // A "textarea" that asked nothing essay-like is still probably a short answer, but a
+        // long question almost always wants prose.
+        if ("textarea".equals(fieldType) && q.split("\\s+").length > 6) return Shape.ESSAY;
+        return q.split("\\s+").length > 12 ? Shape.ESSAY : Shape.VALUE;
+    }
+
+    /**
+     * The profile value for a question, resolved with plain string matching and NO model call.
+     *
+     * <p>This exists because the AI paths are the unreliable ones: they depend on a strict-JSON
+     * contract and on the model not editorialising. For the handful of questions every form
+     * asks, the answer is sitting in the profile and there is nothing to reason about — going
+     * through a model can only introduce error. Returns null when the question isn't one of
+     * these, or when the profile has no value for it.
+     */
+    private String directValue(String question, Profile p) {
+        String q = normalize(question);
+        if (q.isBlank() || p == null) return null;
+        NameParts n = NameParts.of(p);
+        Map<String, String> links = p.getLinks() == null ? Map.of() : p.getLinks();
+
+        // Longest/most specific patterns first: "first name" must beat a bare "name", and
+        // "current company" must beat "company".
+        if (has(q, "middle name")) return n.middle();
+        if (has(q, "first name", "given name", "forename", "fore name")) return n.first();
+        if (has(q, "last name", "surname", "family name", "sur name")) return n.last();
+        if (has(q, "full name", "your name", "candidate name", "applicant name", "name as per"))
+            return p.getFullName();
+        if (has(q, "father", "guardian")) return p.getFatherName();
+        if (has(q, "email", "e mail")) return p.getEmail();
+        if (has(q, "phone", "mobile", "contact number", "contact no", "whatsapp", "telephone"))
+            return p.getPhone();
+        if (has(q, "date of birth", "dob", "birth date")) return p.getDateOfBirth();
+        if (has(q, "gender")) return p.getGender();
+        if (has(q, "nationality")) return p.getNationality();
+        if (has(q, "marital")) return p.getMaritalStatus();
+        if (has(q, "linkedin")) return links.get("linkedin");
+        if (has(q, "github")) return links.get("github");
+        if (has(q, "leetcode")) return firstNonBlank(p.getLeetcodeUrl(), links.get("leetcode"));
+        if (has(q, "codechef")) return p.getCodechefUrl();
+        if (has(q, "portfolio", "personal website", "personal site")) return links.get("portfolio");
+        if (has(q, "college", "university", "institution", "institute", "alma mater"))
+            return p.getCollege();
+        if (has(q, "notice period")) return p.getNoticePeriod();
+        if (has(q, "current ctc", "present ctc", "current salary", "current compensation", "current package"))
+            return p.getCurrentCtc();
+        if (has(q, "expected ctc", "expected salary", "salary expectation", "expected compensation", "expected package"))
+            return p.getExpectedCtc();
+        if (has(q, "current company", "present company", "current employer", "present employer"))
+            return p.getCurrentCompany();
+        if (has(q, "current title", "current role", "current designation", "present designation"))
+            return p.getCurrentTitle();
+        if (has(q, "postal code", "zip code", "pin code", "pincode")) return p.getPostalCode();
+        if (has(q, "current city", "current location", "city")) return firstNonBlank(p.getCity(), p.getLocation());
+        if (has(q, "state", "province")) return p.getState();
+        if (has(q, "country")) return p.getCountry();
+        if (has(q, "work authorization", "work permit", "authorized to work")) return p.getWorkAuthorization();
+        return null;
+    }
+
+    private static boolean has(String q, String... needles) {
+        for (String n : needles) if (q.contains(n)) return true;
+        return false;
+    }
+
+    private static String firstNonBlank(String... vals) {
+        for (String v : vals) if (v != null && !v.isBlank()) return v;
+        return null;
+    }
+
+    /**
+     * Cut a model answer back to the shape the question asked for. Without this a "College
+     * name" field can receive a whole self-introduction — grammatical, grounded, and useless.
+     */
+    private static String enforceShape(String raw, Shape shape) {
+        if (raw == null) return "";
+        String s = raw.trim().replaceAll("^[\"'`]+|[\"'`]+$", "");
+        switch (shape) {
+            case ESSAY:
+                return s;
+            case YES_NO: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("\\b(yes|no)\\b", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(s);
+                return m.find() ? (m.group(1).substring(0, 1).toUpperCase(Locale.ENGLISH)
+                        + m.group(1).substring(1).toLowerCase(Locale.ENGLISH)) : s;
+            }
+            case NUMBER: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("-?\\d+(\\.\\d+)?").matcher(s);
+                return m.find() ? m.group() : s;
+            }
+            case URL: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("https?://\\S+|(?:www\\.)\\S+").matcher(s);
+                return m.find() ? m.group().replaceAll("[.,;)]+$", "") : (s.contains(" ") ? "" : s);
+            }
+            case DATE:
+                return toIsoDate(s);
+            case VALUE:
+            default: {
+                // A short factual field: keep the first sentence/line only, and drop the
+                // "My college is X" lead-in models add.
+                String one = s.split("\\r?\\n")[0].trim();
+                int stop = one.indexOf(". ");
+                if (stop > 0) one = one.substring(0, stop).trim();
+                one = one.replaceAll("^(?i)(my|the)\\s+[a-z /]{2,30}\\s+(is|was|are)\\s+", "").trim();
+                one = one.replaceAll("[.]$", "").trim();
+                // Still a paragraph? Then the model answered a different question than the one
+                // asked, and salvaging a fragment would paste something confidently wrong into
+                // a "College name" box. Empty is the honest result — the user can type it.
+                return one.split("\\s+").length > 10 ? "" : one;
+            }
+        }
+    }
+
+    /**
      * Answer a question — saved bank first; then, for factual fields (links, phone, DOB…),
      * the literal profile value; otherwise a format-aware AI answer. {@code fieldType} is
      * the HTML control hint (date / tel / url / email / number / textarea / dropdown / text).
@@ -105,27 +281,35 @@ public class AssistService {
         if (similar != null && similar.getAnswer() != null && !similar.getAnswer().isBlank()) {
             return Map.of("answer", similar.getAnswer(), "source", "saved");
         }
-        // 3. Factual field (or a value-typed control): the literal profile value, not prose.
+        Profile p = profiles.get();
+        Shape shape = shapeOf(question, fieldType);
+
+        // 3. Straight from the profile, no model involved. Every form asks these, the answer
+        //    is already stored, and a model can only get it wrong.
+        String direct = directValue(question, p);
+        if (direct != null && !direct.isBlank()) {
+            return Map.of("answer", shape == Shape.DATE ? toIsoDate(direct) : direct.trim(),
+                    "source", "profile");
+        }
+        // 4. Factual field the direct map doesn't cover: let the AI read it off the profile.
         boolean typedFactual = fieldType != null
                 && List.of("date", "tel", "url", "email", "number").contains(fieldType);
         if (typedFactual || FACTUAL_Q.matcher(question).find()) {
             String v = autofill(List.of(question.trim())).get(question.trim());
             if (v != null && !v.isBlank()) {
-                if ("date".equals(fieldType)) v = toIsoDate(v);
-                return Map.of("answer", v, "source", "profile");
+                return Map.of("answer", enforceShape(v, shape), "source", "profile");
             }
         }
-        // 4. Generate with AI, grounded in the profile and shaped to the control type.
+        // 5. Generate — but tell the model the exact shape, and enforce it on the way back.
         //    Do NOT auto-save — only the user's explicit "Save" adds to the bank.
-        Profile p = profiles.get();
         String prompt = "Candidate background:\n" + fullProfileContext(p)
                 + qaBankContext(userId)
                 + "\n\nApplication question: " + question.trim()
                 + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
+                + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
                 + "\n\nAnswer:";
         String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
-        if ("date".equals(fieldType)) generated = toIsoDate(generated);
-        return Map.of("answer", generated, "source", "ai");
+        return Map.of("answer", enforceShape(generated, shape), "source", "ai");
     }
 
     /** Best-effort YYYY-MM-DD for <input type=date>; returns the input when unparseable. */
@@ -403,8 +587,12 @@ public class AssistService {
     private String fullProfileContext(Profile p) {
         StringBuilder sb = new StringBuilder();
         line(sb, "Full name", p.getFullName());
-        line(sb, "First name", p.getFirstName());
-        line(sb, "Last name", p.getLastName());
+        // Derived when not set explicitly — forms split the name into three boxes far more
+        // often than users bother to fill first/middle/last in.
+        NameParts np = NameParts.of(p);
+        line(sb, "First name", np.first());
+        line(sb, "Middle name", np.middle());
+        line(sb, "Last name", np.last());
         line(sb, "Email", p.getEmail());
         line(sb, "Phone", p.getPhone());
         line(sb, "Alternate phone", p.getAlternatePhone());

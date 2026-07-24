@@ -103,8 +103,11 @@ public class ExtensionController {
         Profile p = profile.get();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("full_name", p.getFullName());
-        out.put("first_name", p.getFirstName());
-        out.put("last_name", p.getLastName());
+        // Derived when the user hasn't set them — most forms want the name in three boxes.
+        com.jobpilot.service.NameParts np = com.jobpilot.service.NameParts.of(p);
+        out.put("first_name", np.first());
+        out.put("middle_name", np.middle());
+        out.put("last_name", np.last());
         out.put("email", p.getEmail());
         out.put("phone", p.getPhone());
         out.put("headline", p.getHeadline());

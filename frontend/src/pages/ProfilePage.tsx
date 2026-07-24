@@ -8,6 +8,7 @@ import { TagInput } from '../components/TagInput';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { LOCATION_SUGGESTIONS } from '../lib/locations';
+import { nameParts } from '../lib/nameParts';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
@@ -120,6 +121,9 @@ export function ProfilePage() {
   }, []); // eslint-disable-line
 
   if (!p) return <div className="empty"><span className="spinner" /></div>;
+
+  // Shown as placeholders so the user can see the split that will actually be submitted.
+  const nameGuess = nameParts(p.fullName);
 
   const mark = (keys: string[]) => setDirty((d) => { const n = new Set(d); keys.forEach((k) => n.add(k)); return n; });
   const set = (patch: Partial<Profile>) => { setP({ ...p, ...patch }); mark(Object.keys(patch)); };
@@ -268,8 +272,12 @@ export function ProfilePage() {
           <Section ico="user" title="Identity">
             <div className="pf-grid">
               <Field label="Full name"><input className="input" value={p.fullName ?? ''} onChange={(e) => set({ fullName: e.target.value })} /></Field>
-              <Field label="First name"><input className="input" value={p.firstName ?? ''} onChange={(e) => set({ firstName: e.target.value })} /></Field>
-              <Field label="Last name"><input className="input" value={p.lastName ?? ''} onChange={(e) => set({ lastName: e.target.value })} /></Field>
+              {/* Forms split the name into three boxes. Left blank these are derived from the
+                  full name — set them only when the guess is wrong (e.g. "S Suhas" reads the
+                  leading initial as the surname, which is right for most Indian names). */}
+              <Field label="First name" hint="auto from full name if blank"><input className="input" value={p.firstName ?? ''} onChange={(e) => set({ firstName: e.target.value })} placeholder={nameGuess.first} /></Field>
+              <Field label="Middle name" hint="optional"><input className="input" value={p.middleName ?? ''} onChange={(e) => set({ middleName: e.target.value })} placeholder={nameGuess.middle || '—'} /></Field>
+              <Field label="Last name" hint="auto from full name if blank"><input className="input" value={p.lastName ?? ''} onChange={(e) => set({ lastName: e.target.value })} placeholder={nameGuess.last} /></Field>
               <Field label="Email"><input className="input" value={p.email ?? ''} onChange={(e) => set({ email: e.target.value })} /></Field>
               <Field label="Phone"><input className="input" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
               <Field label="Headline" full hint="one line, shown on every application"

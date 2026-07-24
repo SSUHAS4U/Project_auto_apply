@@ -76,6 +76,7 @@ export interface Profile {
   // personal
   fullName: string;
   firstName?: string;
+  middleName?: string;
   lastName?: string;
   email: string;
   phone?: string;

@@ -183,8 +183,10 @@ public class WorkerController {
         Profile p = profiles.get();
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("full_name", nz(p.getFullName()));
-        m.put("first_name", nz(p.getFirstName()));
-        m.put("last_name", nz(p.getLastName()));
+        com.jobpilot.service.NameParts np0 = com.jobpilot.service.NameParts.of(p);
+        m.put("first_name", np0.first());
+        m.put("middle_name", np0.middle());
+        m.put("last_name", np0.last());
         m.put("email", nz(p.getEmail()));
         m.put("phone", nz(p.getPhone()));
         m.put("location", nz(p.getLocation()));
@@ -200,7 +202,7 @@ public class WorkerController {
         m.put("notice_period", nz(p.getNoticePeriod()));
         m.put("work_authorization", nz(p.getWorkAuthorization()));
         // More Easy-Apply autofill answers, straight from the profile.
-        m.put("first_name_alt", nz(p.getFirstName()));
+        m.put("first_name_alt", np0.first());
         m.put("headline", nz(p.getHeadline()));
         m.put("address", nz(p.getAddress()));
         m.put("experience_level", nz(p.getExperienceLevel()));

@@ -22,6 +22,7 @@
   --danger: var(--red);
   --btn-bg: #1b1e27;
   --btn-bg-hover: #262a36;
+  --sidebar-w: 240px;
   --radius: 14px;
   --radius-sm: 10px;
   --radius-lg: 20px;
@@ -104,7 +105,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* Layout ------------------------------------------------------------------ */
-.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
 .sidebar {
   border-right: 1px solid var(--border);
   background: var(--bg-elev);
@@ -1075,17 +1076,20 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 }
 .empty .spinner { width: 30px; height: 30px; border-width: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* Centered in the CONTENT area (offset by the 240px sidebar so it isn't pulled left). */
-/* Centred on the VIEWPORT. It used to be pushed +120px (half the sidebar) to sit in the
-   middle of the content column, which reads as off-centre against the screen — and no
-   longer matched the page content once that was centred on the viewport too. */
+/* The toast anchors to the CONTENT column, not the viewport.
+   .sidebar is a real grid column, so every page the user reads is pushed --sidebar-w to the
+   right and centred inside what's left. A viewport-centred toast therefore lands exactly half
+   a sidebar (120px) to the left of the content it belongs to. Login/register render no
+   sidebar at all — that is why some toasts looked centred and others didn't. :has() lets one
+   rule cover both without the toast (a root-level sibling) knowing which layout is mounted. */
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: flex-start; gap: 10px;
   background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 12px 12px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 95; max-width: 420px; animation: toastIn .25s ease; }
 .toast-x { border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 17px; line-height: 1; padding: 0 2px; flex: none; border-radius: 5px; }
 .toast-x:hover { color: var(--text); background: var(--btn-bg-hover); }
 @keyframes toastIn { from { transform: translateX(-50%) translateY(14px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
-/* Sidebar becomes an off-canvas drawer at ≤860px → center on the full viewport again. */
+@media (min-width: 861px) { body:has(.sidebar) .toast { left: calc(50% + var(--sidebar-w) / 2); } }
+/* Sidebar becomes an off-canvas drawer at ≤860px → full-width, no offset. */
 @media (max-width: 860px) { .toast { left: 12px; right: 12px; transform: none; max-width: none; } @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } }
 .toast.error { border-left-color: var(--red); }
 .toast.success { border-left-color: var(--green); }

@@ -27,8 +27,9 @@
   // Synonym dictionary: profile key -> label keywords (normalized, lowercased).
   // Order matters — more specific keys are matched before generic ones.
   const SYNONYMS = {
-    first_name: ['first name', 'given name', 'forename'],
-    last_name: ['last name', 'surname', 'family name'],
+    first_name: ['first name', 'given name', 'forename', 'fore name'],
+    middle_name: ['middle name', 'middle initial'],
+    last_name: ['last name', 'surname', 'family name', 'sur name'],
     full_name: ['full name', 'your name', 'candidate name', 'applicant name', 'name'],
     email: ['email', 'e-mail', 'email address'],
     phone: ['phone', 'mobile', 'contact number', 'phone number', 'telephone', 'cell', 'whatsapp'],
@@ -71,6 +72,27 @@
     return '';
   }
 
+  // Split one stored name into the First / Middle / Last boxes forms ask for. Mirrors
+  // NameParts.java on the server so the extension and the automation agree.
+  //
+  // The leading single letter in names like "S Suhas" is a surname initial, not a first name
+  // — treating it as one puts a bare "S" in the First name box of every application.
+  function nameParts(full) {
+    const tok = String(full || '').trim().split(/\s+/).filter(Boolean);
+    if (!tok.length) return { first: '', middle: '', last: '' };
+    if (tok.length === 1) return { first: tok[0], middle: '', last: '' };
+    const isInitial = (t) => t.length === 1 || (t.length === 2 && t.endsWith('.'));
+    let lead = 0;
+    while (lead < tok.length - 1 && isInitial(tok[lead])) lead++;
+    if (lead > 0) {
+      const g = tok.slice(lead);
+      return g.length === 1
+        ? { first: g[0], middle: '', last: tok.slice(0, lead).join(' ') }
+        : { first: g[0], middle: g.slice(1, -1).join(' '), last: g[g.length - 1] };
+    }
+    return { first: tok[0], middle: tok.slice(1, -1).join(' '), last: tok[tok.length - 1] };
+  }
+
   // Resolve a profile key to a concrete value.
   function valueFor(key, profile) {
     if (!profile) return null;
@@ -79,8 +101,9 @@
     const name = profile.full_name || '';
     switch (key) {
       case 'full_name': return name;
-      case 'first_name': return profile.first_name || name.split(' ')[0] || '';
-      case 'last_name': return profile.last_name || name.split(' ').slice(1).join(' ') || '';
+      case 'first_name': return profile.first_name || nameParts(name).first;
+      case 'middle_name': return profile.middle_name || nameParts(name).middle;
+      case 'last_name': return profile.last_name || nameParts(name).last;
       case 'email': return profile.email || '';
       case 'phone': return profile.phone || '';
       case 'headline': return profile.headline || '';
