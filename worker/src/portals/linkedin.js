@@ -45,9 +45,21 @@ async function collectJobCards(page) {
       return { id, title: clean(t && (t.getAttribute('aria-label') || t.textContent)), company: clean(c && c.textContent) };
     }).filter((x) => x.id);
   }).catch(() => []);
-  const seen = new Set();
+  // Dedup by id AND by title+company. LinkedIn lists the same role many times under different
+  // job ids (promoted slots, reposts) — the "Full-stack app developer @ Kefilo" that appeared
+  // ~20× in one search was 20 distinct ids for one posting. Id-only dedup let it through and
+  // the worker ground the same job over and over. Collapse reposts to one.
+  const seenId = new Set();
+  const seenRole = new Set();
   const out = [];
-  for (const c of cards) { if (!seen.has(c.id)) { seen.add(c.id); out.push(c); } }
+  for (const c of cards) {
+    if (seenId.has(c.id)) continue;
+    seenId.add(c.id);
+    const roleKey = ((c.title || '') + '|' + (c.company || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (roleKey !== '|' && seenRole.has(roleKey)) continue; // same role, different id → skip
+    if (roleKey !== '|') seenRole.add(roleKey);
+    out.push(c);
+  }
   return out;
 }
 
@@ -351,24 +363,18 @@ async function easyApply(page, api, profile, resume, state) {
   // Selector list kept broad: LinkedIn renames these classes often, and the aria-label is
   // "Easy Apply to <role> at <company>" on current markup. Missing the button here is not a
   // cosmetic bug — it silently costs you the application.
-  const APPLY_SEL = [
-    'button.jobs-apply-button',
-    '.jobs-apply-button--top-card button',
-    'button[aria-label^="Easy Apply"]',
-    'button[aria-label*="Easy Apply"]',
-    '[data-live-test-job-apply-button]',
-    'button:has-text("Easy Apply")',
-  ].join(', ');
-  let btn = null;
-  for (let i = 0; i < 5 && !btn; i++) {
-    btn = await page.$(APPLY_SEL);
-    if (!btn) { await scrollTopCardIntoView(page); await humanDelay(700, 1300); }
-  }
+  const btn = await findEasyApplyButton(page);
   if (!btn) {
     // Only call it external when there's an EXPLICIT off-site apply control — never on a
     // loose "Apply" match (that false-positive was sending real Easy-Apply jobs to manual).
     const ext = await page.$('button[aria-label*="Apply on company"], a[aria-label*="Apply on company"], a.jobs-apply-button[href^="http"]');
-    return ext ? 'external' : 'none';
+    if (ext) return 'external';
+    // We reached "none" on an Easy-Apply-filtered search, i.e. the button we KNOW is there
+    // didn't turn up for us. Instead of a dead-end "did not render", print what the page
+    // actually is, so the next run shows the real cause (authwall? still loading? renamed
+    // control?) instead of leaving us to guess selectors blind.
+    await describeApplyArea(page).catch(() => {});
+    return 'none';
   }
   state.action = 'Easy Apply — opening the form';
   await btn.click({ timeout: 4000 }).catch(() => {});
@@ -413,6 +419,82 @@ async function easyApply(page, api, profile, resume, state) {
     return 'attention';
   }
   return 'none';
+}
+
+/**
+ * Find the Easy Apply button robustly.
+ *
+ * The button is React-rendered and LinkedIn renames its CSS classes constantly, so a fixed
+ * class list goes stale silently. The most stable handle is the ACCESSIBLE ROLE + NAME
+ * ("Easy Apply"), which is contractually stable because screen-reader users depend on it —
+ * that survives class renames. We wait for it to actually appear (it hydrates after the pane
+ * skeleton, which is why an early check saw nothing), scrolling the top card in between.
+ *
+ * Guarded to the top card / apply container so a "Easy Apply" mention elsewhere on the page
+ * (e.g. a "you can Easy Apply to jobs like this" promo) can't be mistaken for the control.
+ */
+async function findEasyApplyButton(page) {
+  const byRole = page.getByRole('button', { name: /easy apply/i });
+  const cssFallback = page.locator([
+    'button.jobs-apply-button',
+    '.jobs-apply-button--top-card button',
+    'button[aria-label*="Easy Apply" i]',
+    '[data-live-test-job-apply-button]',
+  ].join(', '));
+
+  for (let i = 0; i < 6; i++) {
+    // Role-based first: it's the resilient one.
+    const r = byRole.first();
+    if (await r.count().then((n) => n > 0).catch(() => false)) {
+      const h = await r.elementHandle().catch(() => null);
+      if (h && await h.isVisible().catch(() => false)) return h;
+    }
+    const c = cssFallback.first();
+    if (await c.count().then((n) => n > 0).catch(() => false)) {
+      const h = await c.elementHandle().catch(() => null);
+      if (h && await h.isVisible().catch(() => false)) return h;
+    }
+    await scrollTopCardIntoView(page);
+    await humanDelay(800, 1400);
+  }
+  return null;
+}
+
+/**
+ * When the apply button can't be found, log what the page really is. Terminal-only, one block,
+ * so a stuck run produces a diagnosis instead of an unexplained "Manual needed" x20. This is
+ * how we stop guessing selectors: the next real run tells us the actual DOM state.
+ */
+async function describeApplyArea(page) {
+  const info = await page.evaluate(() => {
+    const url = location.href;
+    const authwall = /\/login|\/authwall|\/signup|\/uas\/login/i.test(url);
+    // Every button that plausibly relates to applying, with the signals that matter.
+    const btns = [...document.querySelectorAll('button, a[role="button"]')]
+      .map((b) => ({
+        text: (b.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+        aria: (b.getAttribute('aria-label') || '').slice(0, 50),
+        disabled: b.disabled === true || b.getAttribute('aria-disabled') === 'true',
+      }))
+      .filter((b) => /apply|submit/i.test(b.text + ' ' + b.aria))
+      .slice(0, 8);
+    const modalOpen = !!document.querySelector('.jobs-easy-apply-modal, [data-test-modal][role="dialog"]');
+    const paneText = (document.querySelector('.job-details-jobs-unified-top-card, .jobs-unified-top-card')?.innerText || '')
+      .replace(/\s+/g, ' ').trim().slice(0, 120);
+    return { url, authwall, btns, modalOpen, paneText };
+  }).catch(() => null);
+
+  if (!info) { console.log('     [diag] could not read the page'); return; }
+  console.log('     [diag] URL:', info.url);
+  if (info.authwall) console.log('     [diag] ⚠ this is a LOGIN/AUTHWALL page — the session is not active here; log in again');
+  if (info.modalOpen) console.log('     [diag] an Easy-Apply modal IS open — the button was likely already clicked');
+  if (info.btns.length) {
+    console.log('     [diag] apply-related controls actually on the page:');
+    for (const b of info.btns) console.log(`        · "${b.text}"  aria="${b.aria}"${b.disabled ? '  (disabled)' : ''}`);
+  } else {
+    console.log('     [diag] NO button on the page contains "apply" or "submit" — the pane is empty or still loading');
+  }
+  if (info.paneText) console.log('     [diag] top-card text:', info.paneText);
 }
 
 async function dismissPostSubmit(page) {
