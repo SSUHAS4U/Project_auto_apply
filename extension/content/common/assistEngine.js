@@ -336,23 +336,21 @@
 
     const clampT = (t) => Math.max(M, Math.min(t, VH - ph - M));
     const clampL = (l) => Math.max(M, Math.min(l, VW - pw - M));
-    // A side placement only needs HORIZONTAL room (its vertical position is clamped); a
-    // vertical placement only needs VERTICAL room (its horizontal position is clamped) —
-    // exactly how a dropdown behaves: it drops below and slides sideways to stay on screen,
-    // rather than leaping to the far side of the control.
-    const cands = [];
-    if (pillExpanded) {
-      cands.push({ axis: 'h', top: midY, left: r.right + M });             // right of the field
-      cands.push({ axis: 'v', top: r.bottom + M, left: r.right - pw });    // below
-      cands.push({ axis: 'v', top: r.top - ph - M, left: r.right - pw });  // above
-      cands.push({ axis: 'h', top: midY, left: r.left - pw - M });         // left
-    } else {
-      if (r.width >= pw + 28) cands.push({ axis: 'h', top: midY, left: r.right - pw - M }); // inside
-      cands.push({ axis: 'h', top: midY, left: r.right + M });             // touching right edge
-      cands.push({ axis: 'v', top: r.bottom + 2, left: r.right - pw });    // below
-      cands.push({ axis: 'v', top: r.top - ph - 2, left: r.right - pw });  // above
-      cands.push({ axis: 'h', top: midY, left: r.left - pw - M });         // left
-    }
+
+    // The one rule that matters: DON'T sit on top of the field if there's anywhere it doesn't.
+    // So every candidate that lands OUTSIDE the field is tried before the one that overlaps it.
+    // A side ('h') placement only needs horizontal room (its top is clamped); a vertical ('v')
+    // placement only needs vertical room — like a dropdown that drops below and slides sideways
+    // to stay on screen instead of leaping to the far side of the control.
+    const cands = [
+      { axis: 'h', top: midY, left: r.right + M, overlaps: false },        // right of the field (preferred)
+      { axis: 'h', top: midY, left: r.left - pw - M, overlaps: false },    // left of the field
+      { axis: 'v', top: r.bottom + M, left: r.right - pw, overlaps: false }, // below, right-aligned
+      { axis: 'v', top: r.top - ph - M, left: r.right - pw, overlaps: false }, // above, right-aligned
+    ];
+    // Last resort only: tuck it against the field's inner right edge. Reached solely when the
+    // field hugs every screen edge and nothing outside fits — never when there's room beside it.
+    if (r.width >= pw + 28) cands.push({ axis: 'h', top: midY, left: r.right - pw - M, overlaps: true });
 
     let pick = null;
     for (const c of cands) {
@@ -360,8 +358,8 @@
       const okV = c.top >= M && c.top + ph <= VH - M;
       if ((c.axis === 'h' && okH) || (c.axis === 'v' && okV)) { pick = [clampT(c.top), clampL(c.left)]; break; }
     }
-    // Nowhere clean — overlay the field's right edge, kept on screen.
-    if (!pick) pick = [clampT(midY), clampL(r.right - pw - M)];
+    // Nothing fit at all — park it below the field (still not over the text), kept on screen.
+    if (!pick) pick = [clampT(r.bottom + M), clampL(r.right - pw)];
     pill.style.top = (window.scrollY + pick[0]) + 'px';
     pill.style.left = (window.scrollX + pick[1]) + 'px';
   }
