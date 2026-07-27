@@ -19,7 +19,7 @@ import { Api } from './api.js';
 import { launchBrowser, startPausePoller, sleep, APP_DIR } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
-import { reportSessions, handleConnectionActions } from './connections.js';
+import { reportSessions, handleConnectionActions, anyPortalLoggedIn } from './connections.js';
 
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
@@ -87,12 +87,27 @@ async function main() {
   // all — the terminal log is the whole interface, which is the point: you shouldn't have to
   // watch a browser drive itself.
   const signedInMarker = path.join(APP_DIR, '.signed-in');
-  const everSignedIn = fs.existsSync(signedInMarker);
-  const { ctx, page } = await launchBrowser({ headless: everSignedIn });
+  let background = fs.existsSync(signedInMarker);
+  let { ctx, page } = await launchBrowser({ headless: background });
 
-  if (everSignedIn) {
+  // The marker only HINTS that we ran signed-in once. The real authority is whether the
+  // browser profile still holds a live session. The marker outlives the session it was
+  // written for — the auth cookie expires, the profile is reset, or the app is uninstalled
+  // and reinstalled while %AppData% (where this lives) survives. When that happens a
+  // marker-only check would run headless against a dead session, with no window to fix it —
+  // exactly the "running in the background… can't sign in" trap. So verify, and if the
+  // session is actually gone, throw the marker away and reopen a real window to log in.
+  if (background && !(await anyPortalLoggedIn(ctx))) {
+    console.log('\n  The saved sign-in is no longer valid (it expired, or the browser profile was reset');
+    console.log('  — common right after a reinstall). Reopening a window so you can log in again…');
+    try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
+    background = false;
+    await ctx.close().catch(() => {});
+    ({ ctx, page } = await launchBrowser({ headless: false }));
+  }
+
+  if (background) {
     console.log('\n  Running in the background — no browser window. Everything shows up here.');
-    console.log('  (Sign-in expired? Delete ".signed-in" next to the app and restart to log in again.)\n');
   } else {
     console.log('\n  Browser is open. Log into the portals you want to use:');
     console.log('   • LinkedIn: https://www.linkedin.com/');

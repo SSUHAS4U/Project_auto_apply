@@ -29,6 +29,21 @@ async function isLoggedIn(ctx, portal) {
 }
 
 /**
+ * Is ANY portal actually signed in RIGHT NOW, judged by the real cookies in the profile?
+ *
+ * This is the authority for the headless-vs-window decision. The `.signed-in` marker can
+ * outlive the session it was written for — the cookie expires, the profile is reset, or the
+ * app is reinstalled — and then a marker-only check runs the browser headless against a dead
+ * session with no way to log back in. The cookies never lie; the marker is only a hint.
+ */
+export async function anyPortalLoggedIn(ctx) {
+  for (const portal of Object.keys(PORTALS)) {
+    if (await isLoggedIn(ctx, portal)) return true;
+  }
+  return false;
+}
+
+/**
  * After we open a portal's login tab, poll (up to ~3 min) and report the session as soon as
  * the auth cookie appears — so the dashboard flips to "Active" within seconds of sign-in.
  * Detached on purpose: it must keep working even while a block is running.
