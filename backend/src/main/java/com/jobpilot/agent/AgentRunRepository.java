@@ -2,6 +2,9 @@ package com.jobpilot.agent;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
@@ -10,7 +13,9 @@ import java.util.UUID;
 
 public interface AgentRunRepository extends JpaRepository<AgentRun, UUID> {
 
-    void deleteByUserId(UUID userId);
+    @Modifying
+    @Query("delete from AgentRun r where r.userId = :userId")
+    void deleteByUserId(@Param("userId") UUID userId);
 
     List<AgentRun> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable page);
 

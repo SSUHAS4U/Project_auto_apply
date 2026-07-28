@@ -196,7 +196,7 @@ function ResetDataCard() {
       {confirming ? (
         <div className="row" style={{ gap: 8 }}>
           <button className="btn btn-danger-solid btn-sm" onClick={reset} disabled={busy}>
-            {busy ? <span className="spinner" /> : <Icon name="trash" size={13} />} Yes, wipe it
+            {busy ? <><span className="spinner" /> Clearing…</> : <><Icon name="trash" size={13} /> Yes, wipe it</>}
           </button>
           <button className="btn btn-sm" onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>
         </div>

@@ -42,7 +42,21 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string> | undefined),
   };
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  // A request must never hang forever — a stuck server used to leave buttons spinning with no
+  // outcome (e.g. "Reset automation data"). Abort after 30s so the caller gets a real error and
+  // can stop its spinner. (PDF/compile endpoints use their own fetch, so they aren't affected.)
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers, signal: ctrl.signal });
+  } catch (e) {
+    throw ctrl.signal.aborted
+      ? new Error('The server took too long to respond. Please try again.')
+      : (e as Error);
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
     clearJwt();
     if (!location.pathname.startsWith('/login')) location.href = '/login';

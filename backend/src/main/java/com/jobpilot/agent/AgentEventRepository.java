@@ -2,6 +2,7 @@ package com.jobpilot.agent;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -11,7 +12,12 @@ import java.util.UUID;
 
 public interface AgentEventRepository extends JpaRepository<AgentEvent, UUID> {
 
-    void deleteByUserId(UUID userId);
+    // Bulk DELETE in one SQL statement. The derived deleteByUserId loaded every row and deleted
+    // it one at a time — on a user with thousands of events (the same job across every city
+    // search) that hung the "Reset automation data" request on the tiny VM.
+    @Modifying
+    @Query("delete from AgentEvent e where e.userId = :userId")
+    void deleteByUserId(@Param("userId") UUID userId);
 
     List<AgentEvent> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable page);
 
