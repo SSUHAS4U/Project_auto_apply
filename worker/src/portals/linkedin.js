@@ -156,7 +156,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
-      if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
+      if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
@@ -177,7 +177,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       for (const cardInfo of cards) {
         const id = cardInfo.id;
-        if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
+        if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
         try {
           // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
           // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
@@ -267,7 +267,12 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         } catch (e) {
           tally.failed++;
           logResult('failed', String(e.message || e).slice(0, 80));
-          await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: String(e).slice(0, 160) });
+          // apply_failed (with the job identity) — a REAL per-job failure, so the dashboard's
+          // "Failed" tile counts jobs that broke while applying, not every transient hiccup
+          // ("page wouldn't load", a 502) which stays a plain 'error' and isn't shown as failed.
+          await api.event({ runId: state.runId, portal: 'linkedin', type: 'apply_failed',
+            title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+            detail: String(e.message || e).slice(0, 160) });
         }
         await humanDelay(2000, 4000);
       }
@@ -297,7 +302,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
   const seen = new Set();
 
   for (const keyword of plan.keywords.slice(0, dedicated ? 5 : 2)) {
-    if (state.paused || Date.now() > phaseDeadline || found >= cap) break;
+    if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;
     state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
 

@@ -121,8 +121,17 @@ export function startPausePoller(api, state) {
         // It's a GET that only promotes queued→running, so polling it mid-run is a no-op.
         const r = await api.next();
         state.paused = !!(r && r.paused);
+        // STOP detection. Clicking Stop marks the run finished, so /next stops returning it.
+        // The block loop only re-checks /next between blocks, so without this a Stop wouldn't
+        // take effect until the whole current block (all those searches) finished — which read
+        // as "it doesn't stop until I disconnect". If the run we're mid-way through has vanished
+        // from /next (idle, or a different run), abort it now.
+        if (state.runId && !state.paused) {
+          const activeId = r && r.runId ? String(r.runId) : null;
+          if (activeId !== String(state.runId)) state.stopped = true;
+        }
       } catch (_) { /* transient network — try again next tick */ }
-      await sleep(4000);
+      await sleep(3000);
     }
   };
   tick();

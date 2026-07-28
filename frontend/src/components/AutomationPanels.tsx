@@ -157,16 +157,30 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
          { label: 'Connections sent', tone: 'blue', types: ['connection_sent'] },
          { label: 'Replies', tone: 'purple', types: ['reply_received'] },
          { label: 'Manual needed', tone: 'amber', types: ['manual_apply'] },
-         { label: 'Failed', tone: 'red', types: ['error'] }]
+         { label: 'Failed', tone: 'red', types: ['apply_failed'] }]
       : [{ label: 'Jobs found', tone: 'indigo', types: ['job_identified'] },
          { label: 'Relevant', tone: 'amber', types: ['relevant'] },
          { label: 'Applied', tone: 'green', types: ['applied', 'easy_apply'] },
          { label: 'Manual needed', tone: 'amber', types: ['manual_apply'] },
-         { label: 'Failed', tone: 'red', types: ['error'] }];
+         { label: 'Failed', tone: 'red', types: ['apply_failed'] }];
 
-    const count = (c: Cell) => c.types.includes('manual_apply')
-      ? list(c.types).filter((e) => !done.has(e.url || e.id)).length
-      : list(c.types).length;
+    // Count DISTINCT JOBS, not events. The same job appears in every city search, so counting
+    // raw events multiplied everything (7 jobs across 6 cities read as 40+). Dedupe by job
+    // identity — its URL, else title+company — so each tile is "how many jobs", which is what
+    // the labels claim and what makes the numbers reconcile with the applied list.
+    const jobKey = (e: AgentEvent) => (e.url || '').trim()
+      || ((e.title || '') + '|' + (e.company || '')).toLowerCase().trim();
+    const count = (c: Cell) => {
+      const seen = new Set<string>();
+      let n = 0;
+      for (const e of list(c.types)) {
+        if (c.types.includes('manual_apply') && done.has(e.url || e.id)) continue;
+        const k = jobKey(e);
+        if (k && k !== '|') { if (seen.has(k)) continue; seen.add(k); }
+        n++;
+      }
+      return n;
+    };
     const selectedCell = sel?.portal === portal ? cells.find((c) => c.label === sel.label) : null;
 
     return (

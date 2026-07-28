@@ -55,7 +55,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
-      if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
+      if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
 
       state.action = `Searching Indeed "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });
@@ -86,7 +86,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
         detail: `${keys.length} results for ${keyword} @ ${location}` });
 
       for (const jk of keys) {
-        if (state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
+        if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
         const jobPage = await ctx.newPage();
         try {
           await jobPage.goto(`https://www.indeed.com/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});

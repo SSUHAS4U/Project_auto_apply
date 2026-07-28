@@ -153,6 +153,7 @@ async function main() {
     state.runId = order.runId;
     state.portal = order.portal;
     state.paused = false;
+    state.stopped = false; // cleared per block; the pause poller sets it if Stop is clicked
     console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);
     await api.runStatus(order.runId, 'running', `Working ${order.portal}`);
     try {

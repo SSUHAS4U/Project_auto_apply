@@ -72,7 +72,9 @@ export function TerminalConsole() {
               <Icon name="play" size={13} /> Connect
             </button>
           )}
-          <button className="btn btn-sm" onClick={() => setLog('')} title="Clear the log"><Icon name="trash" size={13} /></button>
+          <button className="btn btn-sm" title="Clear the log"
+            onClick={() => { setLog(''); d?.clearLog?.().catch(() => {}); }}>
+            <Icon name="trash" size={13} /></button>
         </div>
       </div>
       <pre ref={bodyRef} className="term-body" onScroll={onScroll} style={{ flex: 1, minHeight: 200, margin: 0 }}>

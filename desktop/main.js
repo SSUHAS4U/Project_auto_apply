@@ -160,6 +160,8 @@ function createTray() {
 ipcMain.on('app:backendUrl', (e) => { e.returnValue = BACKEND_URL; });
 ipcMain.handle('worker:savedToken', () => savedToken());
 ipcMain.handle('worker:recentLog', () => logBuffer);
+// Delete really deletes: wipe the rolling buffer so the cleared log can't replay on remount.
+ipcMain.handle('worker:clearLog', () => { logBuffer = ''; return true; });
 ipcMain.handle('worker:status', () => (worker ? worker.status() : { running: false }));
 ipcMain.handle('worker:start', (_e, token) => {
   const t = (token || savedToken() || '').trim();
