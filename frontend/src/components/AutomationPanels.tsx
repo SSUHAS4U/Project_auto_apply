@@ -5,7 +5,6 @@ import type { AgentEvent, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { JobCardV2 } from './JobCardV2';
-import { ActivityChart } from './ActivityChart';
 import { useProfileSkills } from '../lib/useProfileSkills';
 import { Modal } from './Modal';
 import { TerminalConsole } from './DesktopTerminal';
@@ -127,16 +126,25 @@ function TerminalButton() {
 export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => {
-    const pull = () => api.agentEvents(400).then(setEvents).catch(() => {});
+    const pull = () => api.agentEvents(1000).then(setEvents).catch(() => {});
     pull();
     const t = setInterval(pull, 8000);
     return () => clearInterval(t);
   }, []);
 
-  // TODAY only — otherwise stale errors from earlier days (e.g. the old captcha loop) pile
-  // up here and read as "161 failed" even when nothing ran today.
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const todays = events.filter((e) => e.createdAt && new Date(e.createdAt) >= startOfToday);
+  // The tiles count activity over the SELECTED range (Day / Week / Month / Year), so the same
+  // numbers can be read for today or the whole year. Default Day — that's the live view, and it
+  // avoids stale errors from earlier days piling up.
+  const [range, setRange] = useState<'day' | 'week' | 'month' | 'year'>('day');
+  const since = (() => {
+    const d = new Date();
+    if (range === 'day') d.setHours(0, 0, 0, 0);
+    else if (range === 'week') d.setDate(d.getDate() - 7);
+    else if (range === 'month') d.setDate(d.getDate() - 30);
+    else d.setFullYear(d.getFullYear() - 1);
+    return d.getTime();
+  })();
+  const scoped = events.filter((e) => e.createdAt && new Date(e.createdAt).getTime() >= since);
 
   const [sel, setSel] = useState<{ portal: string; label: string } | null>(null);
   const [done, setDone] = useState<Set<string>>(() => loadDone());
@@ -147,7 +155,7 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
   });
 
   const block = (portal: 'linkedin' | 'indeed') => {
-    const ev = todays.filter((e) => e.portal === portal);
+    const ev = scoped.filter((e) => e.portal === portal);
     const list = (types: string[]) => ev.filter((e) => types.includes(e.type));
     type Cell = { label: string; tone: string; types: string[] };
     const cells: Cell[] = portal === 'linkedin'
@@ -186,10 +194,19 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
 
     return (
       <div className="card card-pad" key={portal}>
-        <div className="card-title">
-          <Icon name={portal} size={15} />
-          {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
-          <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a stat to see the jobs</span>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>
+            <Icon name={portal} size={15} />
+            {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
+            <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a stat to see the jobs</span>
+          </div>
+          <div className="ac-range">
+            {(['day', 'week', 'month', 'year'] as const).map((r) => (
+              <button key={r} className={`ac-range-b ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>
+                {r[0].toUpperCase() + r.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="pstat">
           {cells.map((c) => {
@@ -288,23 +305,9 @@ function MetricList({ portal, cell, rows, done, onDone }: {
  *  live activity feed. (Outreach/email lives in Connections, next to its toggles.) */
 export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
-  const [events, setEvents] = useState<AgentEvent[]>([]);
-  useEffect(() => {
-    const pull = () => api.agentEvents(600).then(setEvents).catch(() => {});
-    pull();
-    const t = setInterval(pull, 8000);
-    return () => clearInterval(t);
-  }, []);
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <PortalMetrics only={portal} />
-      <div className="card card-pad">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-          <div><b style={{ fontSize: 15 }}>{name} trend</b></div>
-          <div className="faint" style={{ fontSize: 12.5 }}>tap a series to hide it</div>
-        </div>
-        <ActivityChart events={events} portal={portal} />
-      </div>
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
       <ActivityFeed portal={portal} />
     </div>

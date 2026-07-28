@@ -128,7 +128,10 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
         </div>
       </div>
 
-      <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
+      {/* position:relative WITHOUT overflow so the tooltip can sit over the edges without
+          enabling a horizontal scrollbar; the SVG keeps its own overflow-x for tiny screens. */}
+      <div style={{ position: 'relative' }}>
+       <div style={{ width: '100%', overflowX: 'auto' }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Activity trend"
           style={{ display: 'block' }}
           onMouseMove={(e) => {
@@ -181,19 +184,31 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
             </text>
           )}
         </svg>
-        {/* hover tooltip — HTML overlay so it reads like the reference: date + each series value */}
-        {hover !== null && anyData && (
-          <div className="ac-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
-            <div className="ac-tip-date">{buckets[hover].label}</div>
-            {series.filter((s) => !hidden.has(s.key)).map((s) => (
-              <div key={s.key} className="ac-tip-row">
-                <span className="ac-dot" style={{ background: s.color }} />
-                <span className="ac-tip-lbl">{s.label}</span>
-                <b>{s.values[hover]}</b>
-              </div>
-            ))}
-          </div>
-        )}
+       </div>
+        {/* hover tooltip — HTML overlay so it reads like the reference: date + each series value.
+            Edge-aware: anchored to the RIGHT of the crosshair near the left edge and to the LEFT
+            near the right edge, so it never spills past the card (which was forcing a scrollbar). */}
+        {hover !== null && anyData && (() => {
+          const leftPct = (x(hover) / W) * 100;
+          const frac = n > 1 ? hover / (n - 1) : 0.5;
+          const style: React.CSSProperties = frac > 0.72
+            ? { right: `${100 - leftPct}%`, marginRight: 10 }
+            : frac < 0.28
+              ? { left: `${leftPct}%`, marginLeft: 10 }
+              : { left: `${leftPct}%`, transform: 'translateX(-50%)' };
+          return (
+            <div className="ac-tip" style={style}>
+              <div className="ac-tip-date">{buckets[hover].label}</div>
+              {series.filter((s) => !hidden.has(s.key)).map((s) => (
+                <div key={s.key} className="ac-tip-row">
+                  <span className="ac-dot" style={{ background: s.color }} />
+                  <span className="ac-tip-lbl">{s.label}</span>
+                  <b>{s.values[hover]}</b>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
