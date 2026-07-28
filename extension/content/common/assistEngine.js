@@ -182,11 +182,11 @@
     if (pill) return pill;
     pill = document.createElement('div');
     pill.id = 'jobpilot-pill';
+    // Base box only. The dark "pill" chrome (background/border/shadow/padding) is applied by
+    // renderPillMode ONLY when expanded — collapsed is just the ✨ star, nothing behind it.
     pill.style.cssText = [
       'position:absolute', 'z-index:2147483647', 'display:flex', 'align-items:center', 'gap:2px',
-      'padding:3px', 'border-radius:999px', 'background:rgba(17,20,29,.92)',
-      'backdrop-filter:blur(8px)', 'border:1px solid rgba(99,102,241,.45)',
-      'box-shadow:0 6px 24px rgba(0,0,0,.35)', 'font:600 12px system-ui,sans-serif',
+      'border-radius:999px', 'font:600 12px system-ui,sans-serif',
       'transition:opacity .12s ease', 'opacity:0',
     ].join(';');
 
@@ -284,12 +284,16 @@
     // Collapsed by default: ONE small ✨ handle. Clicking it expands to AI answer / Save.
     // This keeps the feature on every field (nothing is taken away) while never throwing a
     // wide bar over the page unasked — which was the actual annoyance.
+    // Collapsed handle: JUST the star. No background box — a soft drop-shadow keeps it legible
+    // on light and dark pages, and hovering adds a faint circular halo so it still reads as a
+    // button, without a hard black pill sitting on the page.
     const dot = document.createElement('button');
     dot.type = 'button'; dot.textContent = '✨';
     dot.title = 'JobPilot — AI answer or save this Q&A';
-    dot.style.cssText = 'border:none;background:transparent;color:#c7d2fe;cursor:pointer;'
-      + 'font:600 13px system-ui,sans-serif;padding:5px 9px;border-radius:999px';
-    dot.addEventListener('mouseenter', () => { dot.style.background = 'rgba(99,102,241,.35)'; });
+    dot.style.cssText = 'border:none;background:transparent;cursor:pointer;line-height:1;'
+      + 'font-size:18px;padding:2px;border-radius:999px;'
+      + 'filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));transition:background .12s';
+    dot.addEventListener('mouseenter', () => { dot.style.background = 'rgba(99,102,241,.20)'; });
     dot.addEventListener('mouseleave', () => { dot.style.background = 'transparent'; });
     dot.addEventListener('mousedown', (e) => e.preventDefault());
     dot.addEventListener('click', () => { pillExpanded = true; renderPillMode(); });
@@ -311,6 +315,22 @@
     const { dot, grip, ai, save, note, close } = pill._parts;
     dot.style.display = pillExpanded ? 'none' : 'inline-flex';
     [grip, ai, save, note, close].forEach((el) => { el.style.display = pillExpanded ? '' : 'none'; });
+    // The dark pill chrome belongs to the EXPANDED toolbar only. Collapsed = bare star.
+    if (pillExpanded) {
+      pill.style.background = 'rgba(17,20,29,.92)';
+      pill.style.backdropFilter = 'blur(8px)';
+      pill.style.webkitBackdropFilter = 'blur(8px)';
+      pill.style.border = '1px solid rgba(99,102,241,.45)';
+      pill.style.boxShadow = '0 6px 24px rgba(0,0,0,.35)';
+      pill.style.padding = '3px';
+    } else {
+      pill.style.background = 'transparent';
+      pill.style.backdropFilter = 'none';
+      pill.style.webkitBackdropFilter = 'none';
+      pill.style.border = 'none';
+      pill.style.boxShadow = 'none';
+      pill.style.padding = '0';
+    }
     positionPill();
   }
 
