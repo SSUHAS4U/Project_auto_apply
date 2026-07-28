@@ -20,6 +20,7 @@ import { launchBrowser, startPausePoller, sleep, APP_DIR } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import { reportSessions, handleConnectionActions, anyPortalLoggedIn } from './connections.js';
+import { logSummary } from './log.js';
 
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
@@ -152,19 +153,14 @@ async function main() {
     state.runId = order.runId;
     state.portal = order.portal;
     state.paused = false;
-    console.log(`▶ Running ${order.portal} block (run ${order.runId})`);
+    console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);
     await api.runStatus(order.runId, 'running', `Working ${order.portal}`);
     try {
       const res = await adapter(page, api, order.plan, state, ctx);
       await api.runStatus(order.runId, 'done', `Block complete — ${res.applied || 0} applied`);
       // Full breakdown, not just "applied": a 0 with no explanation is what made this feel
-      // like nothing was happening. Every job now lands in exactly one of these buckets.
-      const t = res || {};
-      console.log(`\n✓ ${order.portal} block done — ${t.applied || 0} submitted`
-        + `, ${t.manual || 0} manual`
-        + `, ${t.attention || 0} stopped on a question`
-        + `, ${t.skipped || 0} skipped`
-        + `, ${t.failed || 0} failed\n`);
+      // like nothing was happening. Every job lands in exactly one of these buckets.
+      logSummary(order.portal.charAt(0).toUpperCase() + order.portal.slice(1), res || {});
     } catch (e) {
       console.error(`✗ ${order.portal} block failed:`, e.message);
       await api.event({ runId: order.runId, portal: order.portal, type: 'error', detail: String(e).slice(0, 200) });

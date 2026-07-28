@@ -91,7 +91,9 @@ public class WorkerController {
         UUID u = UserContext.require();
         String q = b.getOrDefault("question", "");
         if (q.isBlank()) return Map.of("ok", false);
-        assist.recordPending(u, q);
+        // `answer` is what the automation used (may be blank). Stored so the owner can review
+        // and correct it in Profile → Autofill answers; never overwrites an answer they set.
+        assist.recordPending(u, q, b.get("answer"));
         return Map.of("ok", true);
     }
 

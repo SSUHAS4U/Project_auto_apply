@@ -40,8 +40,9 @@ export class Api {
   profile() { return this.#req('/api/worker/profile'); }
   resume() { return this.#req('/api/worker/resume'); }
   answer(question, options) { return this.#req('/api/worker/answer', { method: 'POST', body: { question, options } }); }
-  // A question we couldn't answer → stored as PENDING so the owner fills it once.
-  recordQuestion(question) { return this.#req('/api/worker/question', { method: 'POST', body: { question } }); }
+  // A screening question the automation hit → saved to Profile → Autofill answers so the
+  // owner can keep/correct an answer. `answer` is what we used (blank if we couldn't).
+  recordQuestion(question, answer) { return this.#req('/api/worker/question', { method: 'POST', body: { question, answer } }); }
   // HR email harvested from a hiring post → backend stores the lead and (when Auto-email
   // is on) tailors + emails an application automatically.
   hrLead(lead) { return this.#req('/api/worker/hr-lead', { method: 'POST', body: lead }); }

@@ -2,6 +2,7 @@
 // their labels; anything it can't answer from the profile it routes to the backend's
 // AI (/answer), which stays honest — it returns NEEDS_ATTENTION rather than inventing.
 import { humanDelay } from './browser.js';
+import { logField, logBlank } from './log.js';
 
 // profile key → label keywords that imply it. Ordered most-specific first (matchKey returns
 // the first hit), so e.g. "first name" wins over the generic "name". Covers the common
@@ -139,9 +140,9 @@ export async function fillChoices(page, api, root) {
       if (!ans.needsAttention && ans.answer) pick = String(ans.answer).trim();
     } catch { /* fall through to attention */ }
     if (!pick) {
-      console.log(`     ? ${question}  ->  NO ANSWER (saved to Profile > Autofill answers)`);
+      logBlank(question);
       attention.push(question);
-      await api.recordQuestion(question).catch(() => {});
+      await api.recordQuestion(question, '').catch(() => {});
       continue;
     }
     // Map the model's answer back onto a real option (exact → contains → first word).
@@ -150,10 +151,14 @@ export async function fillChoices(page, api, root) {
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().includes(low) || low.includes(o.toLowerCase()));
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().startsWith(low.split(/\s+/)[0]));
     if (idx < 0) {
-      console.log(`     ? ${question}  ->  "${pick}" did not match any option [${g.options.join(' | ')}]`);
-      attention.push(question); continue;
+      logBlank(question);
+      attention.push(question);
+      await api.recordQuestion(question, '').catch(() => {});
+      continue;
     }
-    console.log(`     - ${question}  ->  ${g.options[idx]}`);
+    logField(question, g.options[idx]);
+    // Save the screening question + the answer used, so it's reviewable/editable in Autofill.
+    await api.recordQuestion(question, g.options[idx]).catch(() => {});
     const radios = await (root || page).$$(`input[type=radio][name="${g.name.replace(/"/g, '\\"')}"]`);
     if (radios[idx]) {
       await radios[idx].check({ timeout: 2500 }).catch(async () => {
@@ -197,6 +202,9 @@ export async function fillForm(page, profile, api, root) {
       if (!label) continue;
       const key = matchKey(label);
       const tag = await el.evaluate((n) => n.tagName.toLowerCase());
+      // A field with no direct profile mapping is a custom SCREENING question — those are the
+      // ones worth saving to Autofill answers (not "First name" / "Email").
+      const isScreening = !key;
 
       let value = key ? profile[key] : null;
 
@@ -213,10 +221,10 @@ export async function fillForm(page, profile, api, root) {
           // submitted perfectly well with that box left empty.
           const required = await el.evaluate((n) =>
             n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
-          console.log(`     ? ${label}  ->  NO ANSWER${required ? '  (REQUIRED - application stopped)' : '  (optional - left blank)'}`);
+          logBlank(label);
           if (required) attention.push(label);
-          // store it as PENDING so the owner answers it once in Profile → Autofill answers
-          await api.recordQuestion(label).catch(() => {});
+          // Save it so the owner can keep an answer in Profile → Autofill answers.
+          await api.recordQuestion(label, '').catch(() => {});
           continue;
         }
         value = ans.answer;
@@ -231,7 +239,9 @@ export async function fillForm(page, profile, api, root) {
         await el.click({ timeout: 2000 }).catch(() => {});
         await el.fill(String(value)).catch(() => {});
       }
-      console.log(`     - ${label}  ->  ${String(value).replace(/\s+/g, ' ').slice(0, 70)}`);
+      logField(label, String(value).replace(/\s+/g, ' ').slice(0, 70));
+      // Screening questions (with the answer used) go to Autofill answers for review/override.
+      if (isScreening) await api.recordQuestion(label, String(value)).catch(() => {});
       filled.push(label);
       await humanDelay(250, 700);
     } catch { /* skip a stubborn field, keep going */ }

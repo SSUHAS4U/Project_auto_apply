@@ -1018,16 +1018,29 @@ public class AssistService {
      */
     @Transactional
     public QaPair recordPending(UUID userId, String question) {
+        return recordPending(userId, question, null);
+    }
+
+    /**
+     * Record a screening question the automation hit, so it shows up in Profile → Autofill
+     * answers for the owner to keep an answer for. {@code answer} is what the automation used
+     * (or blank if it couldn't answer) — stored so the owner can SEE and CORRECT it. A blank
+     * one is marked "pending" ("needs your answer"); a filled one "auto" (review if you like).
+     * Deduped by the normalised key and NEVER overwritten — once you edit an answer, it wins.
+     */
+    @Transactional
+    public QaPair recordPending(UUID userId, String question, String answer) {
         if (question == null || question.isBlank()) throw new IllegalArgumentException("question required");
         String key = normalize(question);
         Optional<QaPair> existing = qaRepo.findByUserIdAndQuestionKey(userId, key);
         if (existing.isPresent()) return existing.get();
+        String a = answer == null ? "" : answer.trim();
         QaPair q = new QaPair();
         q.setUserId(userId);
         q.setQuestion(question.trim());
         q.setQuestionKey(key);
-        q.setAnswer("");
-        q.setSource("pending");
+        q.setAnswer(a);
+        q.setSource(a.isBlank() ? "pending" : "auto");
         return qaRepo.save(q);
     }
 
