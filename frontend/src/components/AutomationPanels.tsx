@@ -5,6 +5,7 @@ import type { AgentEvent, AgentSchedule, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { JobCardV2 } from './JobCardV2';
+import { ActivityChart } from './ActivityChart';
 import { useProfileSkills } from '../lib/useProfileSkills';
 import { Modal } from './Modal';
 import { TerminalConsole } from './DesktopTerminal';
@@ -287,9 +288,23 @@ function MetricList({ portal, cell, rows, done, onDone }: {
  *  live activity feed. (Outreach/email lives in Connections, next to its toggles.) */
 export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  useEffect(() => {
+    const pull = () => api.agentEvents(600).then(setEvents).catch(() => {});
+    pull();
+    const t = setInterval(pull, 8000);
+    return () => clearInterval(t);
+  }, []);
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <PortalMetrics only={portal} />
+      <div className="card card-pad">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+          <div><b style={{ fontSize: 15 }}>{name} trend</b></div>
+          <div className="faint" style={{ fontSize: 12.5 }}>tap a series to hide it</div>
+        </div>
+        <ActivityChart events={events} portal={portal} />
+      </div>
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
       <ActivityFeed portal={portal} />
     </div>

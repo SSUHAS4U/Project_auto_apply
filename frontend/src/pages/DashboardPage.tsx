@@ -5,6 +5,7 @@ import type { AgentEvent, AgentStatus } from '../types';
 import { fmtDate, StatIcon } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
+import { ActivityChart } from '../components/ActivityChart';
 
 /**
  * Dashboard — the landing page. One glance at what the automation did today: status, the
@@ -95,9 +96,9 @@ export function DashboardPage() {
 
       {/* Activity trend */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-          <div><b style={{ fontSize: 15 }}>Activity trend</b> <span className="faint" style={{ fontSize: 12.5 }}>· today, hourly</span></div>
-          <div className="faint" style={{ fontSize: 12.5 }}>{events.length} events</div>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+          <div><b style={{ fontSize: 15 }}>Activity trend</b></div>
+          <div className="faint" style={{ fontSize: 12.5 }}>tap a series to hide it</div>
         </div>
         <ActivityChart events={events} />
       </div>
@@ -197,73 +198,6 @@ function Row({ label, value, tone, last }: { label: string; value: string; tone?
     <div className="row" style={{ justifyContent: 'space-between', padding: '7px 0', fontSize: 13.5, borderBottom: last ? 'none' : '1px solid var(--border)' }}>
       <span className="faint">{label}</span>
       {tone ? <span className={`tone tone-${tone}`}>{value}</span> : <b>{value}</b>}
-    </div>
-  );
-}
-
-// ---- hand-rolled activity chart (SVG area+line; no chart library) -----------
-
-function ActivityChart({ events }: { events: AgentEvent[] }) {
-  const series = useMemo(() => {
-    // bucket the last 14 hours by hour
-    const now = new Date();
-    const buckets: { h: number; label: string; n: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 3600_000);
-      buckets.push({ h: d.getHours(), label: `${String(d.getHours()).padStart(2, '0')}:00`, n: 0 });
-    }
-    const startMs = now.getTime() - 14 * 3600_000;
-    for (const e of events) {
-      const t = new Date(e.createdAt).getTime();
-      if (t < startMs) continue;
-      const idx = 13 - Math.floor((now.getTime() - t) / 3600_000);
-      if (idx >= 0 && idx < 14) buckets[idx].n++;
-    }
-    return buckets;
-  }, [events]);
-
-  // Rounded bars read far better than a line for sparse hourly counts (a line drags
-  // long flat stretches between spikes; bars show each hour honestly).
-  const W = 920, H = 190, padX = 14, padTop = 16, padBot = 26;
-  const max = Math.max(3, ...series.map((s) => s.n));
-  const innerW = W - 2 * padX;
-  const slot = innerW / series.length;
-  const bw = Math.min(30, slot * 0.55);
-  const barH = (n: number) => (n / max) * (H - padTop - padBot);
-  const hasData = series.some((s) => s.n > 0);
-
-  return (
-    <div style={{ width: '100%', overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Activity trend, last 14 hours">
-        <defs>
-          <linearGradient id="barfill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.55" />
-          </linearGradient>
-        </defs>
-        {/* subtle gridlines */}
-        {[0.5, 1].map((g) => {
-          const yy = padTop + (1 - g) * (H - padTop - padBot);
-          return <line key={g} x1={padX} x2={W - padX} y1={yy} y2={yy} stroke="var(--border)" strokeWidth="1" />;
-        })}
-        <line x1={padX} x2={W - padX} y1={H - padBot} y2={H - padBot} stroke="var(--border)" strokeWidth="1" />
-        {series.map((s, i) => {
-          const cx = padX + i * slot + slot / 2;
-          const h = Math.max(s.n > 0 ? 4 : 0, barH(s.n));
-          return (
-            <g key={i}>
-              {s.n > 0 && (
-                <>
-                  <rect x={cx - bw / 2} y={H - padBot - h} width={bw} height={h} rx={5} fill="url(#barfill)" />
-                  <text x={cx} y={H - padBot - h - 5} fontSize="10.5" fill="var(--text-dim)" textAnchor="middle" fontWeight="600">{s.n}</text>
-                </>
-              )}
-              {i % 2 === 0 && <text x={cx} y={H - 8} fontSize="10" fill="var(--text-faint)" textAnchor="middle">{s.label}</text>}
-            </g>
-          );
-        })}
-        {!hasData && <text x={W / 2} y={(H - padBot) / 2 + padTop} fontSize="13" fill="var(--text-faint)" textAnchor="middle">No activity in the last 14 hours</text>}
-      </svg>
     </div>
   );
 }
