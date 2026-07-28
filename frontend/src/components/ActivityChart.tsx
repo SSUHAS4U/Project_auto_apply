@@ -68,8 +68,12 @@ function smoothPath(pts: [number, number][]): string {
   return d;
 }
 
-export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal?: 'linkedin' | 'indeed' }) {
-  const [range, setRange] = useState<Range>('week');
+export function ActivityChart({ events, portal, range: rangeProp }:
+  { events: AgentEvent[]; portal?: 'linkedin' | 'indeed'; range?: Range }) {
+  // When a `range` is passed the chart is CONTROLLED (the Dashboard's single period dropdown
+  // drives it, and the built-in toggle is hidden) — so the graph and the cards share one filter.
+  const [rangeState, setRange] = useState<Range>('week');
+  const range = rangeProp ?? rangeState;
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<number | null>(null);
 
@@ -119,13 +123,15 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
             );
           })}
         </div>
-        <div className="ac-range">
-          {RANGES.map((r) => (
-            <button key={r.key} className={`ac-range-b ${range === r.key ? 'on' : ''}`} onClick={() => setRange(r.key)}>
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {rangeProp === undefined && (
+          <div className="ac-range">
+            {RANGES.map((r) => (
+              <button key={r.key} className={`ac-range-b ${range === r.key ? 'on' : ''}`} onClick={() => setRange(r.key)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* position:relative WITHOUT overflow so the tooltip can sit over the edges without

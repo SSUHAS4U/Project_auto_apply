@@ -6,6 +6,7 @@ import { fmtDate, StatIcon } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { ActivityChart } from '../components/ActivityChart';
+import { sinceFor, countJobs, type Period } from '../lib/metrics';
 
 /**
  * Dashboard — the landing page. One glance at what the automation did today: status, the
@@ -37,46 +38,50 @@ export function DashboardPage() {
   const nav = useNavigate();
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [period, setPeriod] = useState('total');       // default: everything so far
-  const [metrics, setMetrics] = useState<Record<string, number>>({});
+  const [period, setPeriod] = useState<Period>('total');   // default: everything so far
 
   useEffect(() => {
     const pull = () => {
       api.agentStatus().then(setAgent).catch(() => {});
-      api.agentEvents(100).then(setEvents).catch(() => {});
+      // Everything is computed from ONE events list (deduped, client-side) so the cards and the
+      // chart can never disagree. Pull enough to cover the range.
+      api.agentEvents(2000).then(setEvents).catch(() => {});
     };
     pull();
     const t = setInterval(pull, 6000);
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    const pull = () => api.agentMetrics(period).then(setMetrics).catch(() => {});
-    pull();
-    const t = setInterval(pull, 6000);
-    return () => clearInterval(t);
-  }, [period]);
-
-  const m = metrics;
   const running = !!agent?.activeRun && ['running', 'queued', 'needs_attention'].includes(agent.activeRun.status);
 
-  const tiles = [
-    { key: 'posts', label: 'Posts analysed', value: m?.postsAnalysed ?? 0, color: '#5b5bd6' },
-    { key: 'target', label: 'Jobs identified', value: m?.jobsIdentified ?? 0, color: '#2563eb' },
-    { key: 'star', label: 'Relevant jobs', value: m?.relevantJobs ?? 0, color: '#d97706' },
-    { key: 'send', label: 'Applied', value: m?.applied ?? 0, color: '#16a34a' },
-    { key: 'link', label: 'Connections sent', value: m?.connectionsSent ?? 0, color: '#7c3aed' },
-    { key: 'chat', label: 'Messages sent', value: m?.messagesSent ?? 0, color: '#0891b2' },
-    { key: 'mail', label: 'Emails sent', value: m?.emailsSent ?? 0, color: '#db2777' },
-    { key: 'reply', label: 'Replies received', value: m?.repliesReceived ?? 0, color: '#16a34a' },
-  ];
+  // The ONE filter — the dropdown — scopes both the cards and the chart to the same window.
+  const since = sinceFor(period);
+  const scoped = useMemo(
+    () => events.filter((e) => e.createdAt && new Date(e.createdAt).getTime() >= since),
+    [events, since]);
+  // Period → the chart's x-axis granularity (today: hourly, week/month: daily, all: monthly).
+  const chartRange = ({ today: 'day', week: 'week', month: 'month', total: 'year' } as const)[period];
 
-  // Recent action per metric type, for the mini-lists on each tile.
+  // Each card counts DISTINCT JOBS over the scoped window — same helper the chart uses, so
+  // "Jobs identified" here equals what the chart sums. (Was raw event counts → 100 jobs read
+  // as 710 because the same job appears in every city search.)
+  const tiles = [
+    { key: 'posts', label: 'Posts analysed', types: ['post_analysed'], color: '#5b5bd6' },
+    { key: 'target', label: 'Jobs identified', types: ['job_identified'], color: '#2563eb' },
+    { key: 'star', label: 'Relevant jobs', types: ['relevant'], color: '#d97706' },
+    { key: 'send', label: 'Applied', types: ['applied', 'easy_apply'], color: '#16a34a' },
+    { key: 'link', label: 'Connections sent', types: ['connection_sent'], color: '#7c3aed' },
+    { key: 'chat', label: 'Messages sent', types: ['message_sent'], color: '#0891b2' },
+    { key: 'mail', label: 'Emails sent', types: ['email_sent'], color: '#db2777' },
+    { key: 'reply', label: 'Replies received', types: ['reply_received'], color: '#16a34a' },
+  ].map((t) => ({ ...t, value: countJobs(scoped, t.types) }));
+
+  // Recent action per metric type (scoped), for the mini-lists on each tile.
   const recentByType = useMemo(() => {
     const map: Record<string, AgentEvent[]> = {};
-    for (const e of events) (map[e.type] ??= []).push(e);
+    for (const e of scoped) (map[e.type] ??= []).push(e);
     return map;
-  }, [events]);
+  }, [scoped]);
 
   return (
     <>
@@ -89,18 +94,18 @@ export function DashboardPage() {
           <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
             <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
           </span>
-          <Select value={period} onChange={setPeriod} ariaLabel="Metrics period"
+          <Select value={period} onChange={(v) => setPeriod(v as Period)} ariaLabel="Metrics period"
             options={PERIODS.map((p) => ({ value: p.key, label: p.label }))} />
         </div>
       </div>
 
-      {/* Activity trend */}
+      {/* Activity trend — same period + same data as the cards */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
           <div><b style={{ fontSize: 15 }}>Activity trend</b></div>
           <div className="faint" style={{ fontSize: 12.5 }}>tap a series to hide it</div>
         </div>
-        <ActivityChart events={events} />
+        <ActivityChart events={scoped} range={chartRange} />
       </div>
 
       {/* Metric tiles */}
