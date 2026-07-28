@@ -155,10 +155,11 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
           {buckets.map((b, i) => (i % step === 0 || i === n - 1) && (
             <text key={i} x={x(i)} y={H - 10} fontSize="10" fill="var(--text-faint)" textAnchor="middle">{b.label}</text>
           ))}
-          {/* hover guideline */}
+          {/* hover guideline — a thin rect (its `x` is CSS-animatable, unlike a line's x1/x2)
+              so it GLIDES between points as the cursor moves. */}
           {hover !== null && (
-            <line x1={x(hover)} x2={x(hover)} y1={padTop} y2={padTop + innerH}
-              stroke="var(--text-faint)" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+            <rect className="ac-crosshair" x={x(hover) - 0.5} y={padTop} width="1" height={innerH}
+              fill="var(--text-faint)" opacity="0.55" />
           )}
           {/* one smooth line per visible series */}
           {series.filter((s) => !hidden.has(s.key)).map((s) => {
@@ -170,9 +171,9 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
                 {n <= 31 && pts.map(([px, py], i) => s.values[i] > 0 && (
                   <circle key={i} cx={px} cy={py} r="2.6" fill={s.color} />
                 ))}
-                {/* enlarged marker on the hovered bucket */}
+                {/* enlarged marker on the hovered bucket — glides between points */}
                 {hover !== null && (
-                  <circle cx={x(hover)} cy={y(s.values[hover])} r="4.5" fill={s.color}
+                  <circle className="ac-marker" cx={x(hover)} cy={y(s.values[hover])} r="4.5" fill={s.color}
                     stroke="var(--bg-card)" strokeWidth="2" />
                 )}
               </g>

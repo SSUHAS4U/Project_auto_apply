@@ -1063,7 +1063,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 9px;
   box-shadow: var(--shadow); padding: 8px 11px; font-size: 12px; z-index: 5;
   min-width: 132px; max-width: 220px;
+  transition: left .13s ease, right .13s ease;
 }
+/* Chromium animates SVG geometry as CSS props, so the crosshair + hover markers glide smoothly
+   from point to point as the cursor moves, instead of snapping. */
+.ac-crosshair { transition: x .13s ease; }
+.ac-marker { transition: cx .13s ease, cy .13s ease; }
 .ac-tip-date { font-weight: 700; font-size: 12px; color: var(--text); margin-bottom: 6px; }
 .ac-tip-row { display: flex; align-items: center; gap: 7px; line-height: 1.7; }
 .ac-tip-row .ac-tip-lbl { color: var(--text-dim); flex: 1; }

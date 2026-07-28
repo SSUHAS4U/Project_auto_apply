@@ -25,6 +25,25 @@ import { logSummary } from './log.js';
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
 
+// Playwright's Firefox backend occasionally throws from one of its OWN internal navigation
+// events — e.g. `removeChildFramesRecursively → _getChildFrames` on a frame that's already
+// gone as a page redirects. These fire on Playwright's event emitter, not inside any await we
+// control, so a try/catch around our navigation can't catch them. Left unhandled, ONE of them
+// crashes the entire worker mid-run (exit 1) even though the browser is otherwise fine and had
+// been submitting jobs. Keep the process alive and let the per-job try/catch handle anything
+// that actually breaks the current job. We log every one so a real, recurring fault is visible.
+let recoveredErrors = 0;
+function recover(kind, err) {
+  recoveredErrors++;
+  const msg = String((err && err.message) || err || '').slice(0, 160);
+  console.error(`  ⚠ recovered from ${kind} (run continues): ${msg}`);
+  // If they storm in, the browser is genuinely dead — exit so the desktop app can relaunch a
+  // clean worker instead of spinning uselessly.
+  if (recoveredErrors > 40) { console.error('  too many browser errors — restarting the worker'); process.exit(1); }
+}
+process.on('uncaughtException', (err) => recover('a browser-internal error', err));
+process.on('unhandledRejection', (err) => recover('an unhandled rejection', err));
+
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a.trim()); }));
