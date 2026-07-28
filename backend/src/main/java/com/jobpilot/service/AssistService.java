@@ -499,6 +499,20 @@ public class AssistService {
         Profile p = profiles.get();
         Shape shape = shapeOf(question, fieldType);
 
+        // 2b. Some forms list the choices INSIDE the question text of a plain input:
+        //     "current work mode: 1.remote 2.hybrid 3.onsite" or
+        //     "asset pickup: 1.mumbai 2.bangalore 3.chennai".
+        // There are no radio options for the DOM to hand us, so without this the model answers
+        // "Yes" to a work-mode question, or types the profile city ("Vijayawada") that isn't
+        // even one of the offered cities. Pull the embedded options out and CHOOSE among them.
+        List<String> embedded = embeddedOptions(question);
+        if (!embedded.isEmpty()) {
+            Map<String, Object> c = choose(question, embedded, false);
+            @SuppressWarnings("unchecked")
+            List<String> sel = c.get("selected") instanceof List ? (List<String>) c.get("selected") : List.of();
+            if (!sel.isEmpty()) return Map.of("answer", sel.get(0), "source", "ai");
+        }
+
         // 3. Straight from the profile, no model involved. Every form asks these, the answer
         //    is already stored, and a model can only get it wrong.
         String direct = directValue(question, p);
@@ -524,7 +538,56 @@ public class AssistService {
                 + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
                 + "\n\nAnswer:";
         String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
-        return Map.of("answer", enforceShape(generated, shape), "source", "ai");
+        String shaped = sanitizeNumberAnswer(question, enforceShape(generated, shape), p);
+        return Map.of("answer", shaped, "source", "ai");
+    }
+
+    /**
+     * Options written into a plain input's question text, e.g. "1.remote 2.hybrid 3.onsite".
+     * Returns them only when there are at least two — otherwise it isn't a choice question.
+     */
+    private static List<String> embeddedOptions(String question) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\\b\\d\\s*[.)]\\s*([A-Za-z][\\w /&+.\\-]*?)(?=\\s*\\d\\s*[.)]|\\s*\\??\\s*$)")
+                .matcher(question == null ? "" : question);
+        List<String> opts = new ArrayList<>();
+        while (m.find()) {
+            String o = m.group(1).trim().replaceAll("[.,;:]+$", "").trim();
+            if (!o.isBlank() && o.length() <= 40) opts.add(o);
+        }
+        return opts.size() >= 2 ? opts : List.of();
+    }
+
+    /**
+     * Keep "how many years of X" answers sane. Asked about a tool the candidate barely knows,
+     * the model — told "a bare number only" — can grab an unrelated number from the profile
+     * context (a PIN, a phone fragment): that is where the "520010 years of Go" came from. A
+     * years-of-a-single-skill answer cannot exceed the candidate's TOTAL experience, so anything
+     * above that (or negative) is replaced with the total, or 1 when the total is unknown.
+     */
+    private static String sanitizeNumberAnswer(String question, String value, Profile p) {
+        if (value == null || value.isBlank()) return value;
+        String q = question == null ? "" : question.toLowerCase(Locale.ENGLISH);
+        boolean yearsQ = q.contains("how many year") || q.contains("years experience")
+                || (q.contains("year") && q.contains("experience"));
+        if (!yearsQ) return value;
+        try {
+            double n = Double.parseDouble(value.trim());
+            double total = parseYears(p == null ? null : p.getYearsExperience());
+            double cap = total > 0 ? total : 40;  // a single skill can't exceed total experience
+            if (n < 0 || n > cap) return total > 0 ? trimNumber(total) : "1";
+        } catch (NumberFormatException ignore) { /* non-numeric — leave it */ }
+        return value;
+    }
+
+    private static double parseYears(String s) {
+        if (s == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+(\\.\\d+)?").matcher(s);
+        return m.find() ? Double.parseDouble(m.group()) : 0;
+    }
+
+    private static String trimNumber(double d) {
+        return d == Math.floor(d) ? String.valueOf((long) d) : String.valueOf(d);
     }
 
     /** Best-effort YYYY-MM-DD for <input type=date>; returns the input when unparseable. */
