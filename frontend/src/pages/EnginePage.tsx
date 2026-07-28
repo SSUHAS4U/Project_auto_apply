@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, type QaPair } from '../api/client';
 import type { EnginePrefill, EngineStatus } from '../types';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
@@ -16,7 +16,7 @@ import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../compo
  * searches + Easy-Applies there). The old cross-source "engine/Sourcing" layer was removed.
  */
 
-type Tab = 'setup' | 'activity' | 'schedule';
+type Tab = 'setup' | 'questions' | 'activity' | 'schedule';
 
 function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
   return <span className={`tone tone-${tone}`}>{text}</span>;
@@ -48,7 +48,8 @@ export function EnginePage() {
   const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed';
   const head = HEAD[section] ?? HEAD[''];
   const autoTabs: [Tab, string, string][] = [
-    ['setup', 'gear', 'Setup'], ['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule'],
+    ['setup', 'gear', 'Setup'], ['questions', 'clipboard', 'LinkedIn questions'],
+    ['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule'],
   ];
   const activeTab: Tab = autoTabs.some(([t]) => t === tab) ? tab : 'setup';
 
@@ -79,6 +80,7 @@ export function EnginePage() {
               ))}
             </div>
             {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
+            {activeTab === 'questions' && <LinkedInQuestions />}
             {activeTab === 'activity' && <ActivityFeed />}
             {activeTab === 'schedule' && <ScheduleEditor />}
           </>
@@ -92,6 +94,109 @@ const HEAD: Record<string, { title: string; sub: string }> = {
   linkedin: { title: 'LinkedIn', sub: 'What the automation does on LinkedIn — searched, relevant, applied, connections, emails and manual-needed. Tap a tile to see the jobs.' },
   indeed: { title: 'Indeed', sub: 'What the automation does on Indeed — searched, relevant, applied and manual-needed. Tap a tile to see the jobs.' },
 };
+
+// ---- LinkedIn questions -----------------------------------------------------
+// Screening questions the automation met that NEITHER your profile nor job profile could
+// answer on their own — so it either left them blank or had the AI guess. Keep an answer here
+// once and every later application with the same question uses it. (source pending|auto; the
+// answers you Save from the extension live in Profile → Autofill answers, not here.)
+
+function LinkedInQuestions() {
+  const toast = useToast();
+  const [items, setItems] = useState<QaPair[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const load = () => api.qaList()
+    .then((list) => setItems(list.filter((q) => q.source === 'pending' || q.source === 'auto')
+      // Unanswered first — those are the ones actually waiting on you.
+      .sort((a, b) => Number(!!(a.answer && a.answer.trim())) - Number(!!(b.answer && b.answer.trim())))))
+    .catch(() => setItems([]));
+  useEffect(() => { load(); }, []);
+
+  const startEdit = (it: QaPair) => { setEditing(it.id); setDraft(it.answer || ''); };
+  const saveEdit = async (it: QaPair) => {
+    if (!draft.trim()) { toast('Type an answer first', 'error'); return; }
+    setBusy(it.id);
+    try {
+      const updated = await api.qaUpdate(it.id, { question: it.question, answer: draft.trim() });
+      setItems((x) => (x ?? []).map((i) => (i.id === it.id ? updated : i)));
+      setEditing(null);
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+  const remove = async (it: QaPair) => {
+    if (!window.confirm('Delete this question?')) return;
+    setBusy(it.id);
+    try { await api.qaDelete(it.id); setItems((x) => (x ?? []).filter((i) => i.id !== it.id)); }
+    catch (e) { toast((e as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+
+  if (items === null) return <div className="empty"><span className="spinner" /></div>;
+
+  return (
+    <div className="card card-pad">
+      <div className="section-title" style={{ marginBottom: 4 }}>LinkedIn questions</div>
+      <div className="faint" style={{ fontSize: 13, marginBottom: 16 }}>
+        Questions the automation hit that your profile couldn’t answer. Give an answer once and
+        it’s reused on every future application with the same question.
+      </div>
+      {items.length === 0 ? (
+        <div className="faint" style={{ fontSize: 13 }}>
+          Nothing yet. When the automation meets a question it can’t answer from your profile,
+          it lands here for you to answer.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {items.map((it) => {
+            const answered = !!(it.answer && it.answer.trim());
+            return (
+              <div key={it.id} className="lq-row">
+                <div className="lq-body">
+                  <div className="lq-label">Question</div>
+                  <div className="lq-question">{it.question}</div>
+                  <div className="lq-label" style={{ marginTop: 10 }}>
+                    Answer {!answered && <span className="tone tone-amber">needs your answer</span>}
+                  </div>
+                  {editing === it.id ? (
+                    <textarea className="input" rows={2} autoFocus value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Type the answer to use for this question…"
+                      style={{ marginTop: 4, width: '100%' }} />
+                  ) : (
+                    <div className={`lq-answer ${answered ? '' : 'faint'}`}>
+                      {answered ? it.answer : 'No answer yet'}
+                    </div>
+                  )}
+                </div>
+                <div className="lq-actions">
+                  {editing === it.id ? (
+                    <>
+                      <button className="btn btn-primary btn-sm" disabled={busy === it.id} onClick={() => saveEdit(it)}>Save</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit answer">
+                        <Icon name="pen" size={13} /> Edit
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
+                        style={{ color: 'var(--danger,#ef4444)' }} title="Delete">
+                        <Icon name="trash" size={13} /> Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 // ---- Setup ------------------------------------------------------------------
