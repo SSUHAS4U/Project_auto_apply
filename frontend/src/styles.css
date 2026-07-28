@@ -1125,21 +1125,23 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 }
 .empty .spinner { width: 30px; height: 30px; border-width: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* The toast anchors to the CONTENT column, not the viewport.
-   .sidebar is a real grid column, so every page the user reads is pushed --sidebar-w to the
-   right and centred inside what's left. A viewport-centred toast therefore lands exactly half
-   a sidebar (120px) to the left of the content it belongs to. Login/register render no
-   sidebar at all — that is why some toasts looked centred and others didn't. :has() lets one
-   rule cover both without the toast (a root-level sibling) knowing which layout is mounted. */
-.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+/* ONE consistent spot on EVERY page: bottom-CENTRE of the VIEWPORT.
+   - Centred (not the corner) — the bottom-right holds the floating assistant hub, so a
+     corner toast would sit on top of it.
+   - Viewport-relative, NOT content-relative: earlier it was offset to the content column's
+     centre, but different pages use different containers (capped / full-width / inside a
+     modal), so the same coordinate looked centred on one page and off on another. Anchoring to
+     the viewport removes all per-page variation — no :has(), no sidebar maths. Pixel-identical
+     everywhere. */
+.toast { position: fixed; bottom: 24px; left: 50%; right: auto; transform: translateX(-50%);
   display: flex; align-items: flex-start; gap: 10px;
-  background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 12px 12px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 95; max-width: 420px; animation: toastIn .25s ease; }
+  background: var(--bg-card); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 12px 12px 16px; font-size: 13px; box-shadow: var(--shadow); z-index: 200; max-width: 380px; animation: toastIn .25s ease; }
 .toast-x { border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 17px; line-height: 1; padding: 0 2px; flex: none; border-radius: 5px; }
 .toast-x:hover { color: var(--text); background: var(--btn-bg-hover); }
 @keyframes toastIn { from { transform: translateX(-50%) translateY(14px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
-@media (min-width: 861px) { body:has(.sidebar) .toast { left: calc(50% + var(--sidebar-w) / 2); } }
-/* Sidebar becomes an off-canvas drawer at ≤860px → full-width, no offset. */
-@media (max-width: 860px) { .toast { left: 12px; right: 12px; transform: none; max-width: none; } @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } }
+/* Phones: span the bottom with equal side gutters (still one consistent spot). */
+@media (max-width: 560px) { .toast { left: 12px; right: 12px; transform: none; max-width: none; }
+  @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } }
 .toast.error { border-left-color: var(--red); }
 .toast.success { border-left-color: var(--green); }
 @keyframes slideIn { from { transform: translateY(12px); opacity: 0; } }
