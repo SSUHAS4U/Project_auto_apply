@@ -72,7 +72,17 @@ function labelFor(el) {
   });
 }
 
+// A question that lists its own choices — "current work mode: 1.remote 2.hybrid 3.onsite" or
+// "asset pickup: 1.mumbai 2.bangalore 3.chennai". These must NOT be keyword-matched: a word
+// inside the options ("onsite", "location") would map the whole question to a profile field
+// and fill the wrong value ("Yes", the profile city). They go to the backend, which reads the
+// embedded options and chooses one of them.
+function hasEmbeddedOptions(label) {
+  return (label.match(/\d\s*[.)]\s*[a-z]/gi) || []).length >= 2;
+}
+
 function matchKey(label) {
+  if (hasEmbeddedOptions(label)) return null;
   for (const [key, words] of Object.entries(SYNONYMS)) {
     if (words.some((w) => label.includes(w))) return key;
   }

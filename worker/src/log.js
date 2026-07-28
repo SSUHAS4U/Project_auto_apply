@@ -48,11 +48,17 @@ export function logBlank(question) {
 const RESULTS = {
   applied:   '     ✅ Submitted',
   external:  '     ↗  External site — listed under Manual needed',
-  attention: '     ⏸  Paused — a question needs your answer (see above)',
+  attention: '     ⏸  Paused — needs your answer',
   none:      "     ✋ Manual needed — the Easy Apply form didn't open",
   failed:    '     ✗  Failed',
 };
 export function logResult(kind, extra) {
+  // For a pause, name the exact question that stopped it and where to answer it.
+  if (kind === 'attention' && extra) {
+    console.log(`     ⏸  Paused — needs your answer:  “${cleanQuestion(extra)}”`);
+    console.log('        Answer it in  Automation → LinkedIn questions,  then it applies next time.');
+    return;
+  }
   console.log((RESULTS[kind] || `     → ${kind}`) + (extra ? `  (${extra})` : ''));
 }
 

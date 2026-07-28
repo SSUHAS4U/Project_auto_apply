@@ -292,6 +292,28 @@ public class AssistService {
                 pending.add(f);
             }
         }
+        // Deterministic profile facts BEFORE the model: gender, name, city, links, DOB… A model
+        // asked to choose gender from [Male, Female, …] can pick the wrong one; the profile
+        // already states it. Resolve these with no model call (matched to a real option when the
+        // control is a choice) and only send what's genuinely left to the model.
+        List<Map<String, Object>> undecided = new ArrayList<>();
+        for (Map<String, Object> f : pending) {
+            String id = txt(f.get("id"));
+            String dv = directValue(txt(f.get("label")), p);
+            if (dv != null && !dv.isBlank()) {
+                List<String> opts = optionsOf(f);
+                if (!opts.isEmpty()) {
+                    String opt = matchOption(opts, dv);
+                    if (opt != null) { out.put(id, Map.of("value", opt, "source", "profile", "reason", "from your profile")); continue; }
+                } else {
+                    String shaped = enforceShape(dv, shapeOf(txt(f.get("label")), txt(f.get("kind"))));
+                    if (!shaped.isBlank()) { out.put(id, Map.of("value", shaped, "source", "profile", "reason", "from your profile")); continue; }
+                }
+            }
+            undecided.add(f);
+        }
+        pending = undecided;
+
         if (pending.isEmpty() || !ai.isEnabled()) {
             fallbackFill(pending, p, out);
             return Map.of("answers", out);
@@ -520,6 +542,17 @@ public class AssistService {
             return Map.of("answer", shape == Shape.DATE ? toIsoDate(direct) : direct.trim(),
                     "source", "profile");
         }
+
+        // 3b. Salary/rate questions that aren't the standard CTC ("current in-hand MONTHLY
+        //     salary", "expected hourly rate"). DERIVE monthly from the stored CTC — never let
+        //     the model invent one (it produced 33333/66667 from nothing). If there's no CTC to
+        //     derive from, return blank so it's recorded for YOU to set, not guessed.
+        if (SALARY_Q.matcher(question).find()) {
+            String sal = deriveSalary(question, p);
+            if (sal != null) return Map.of("answer", sal, "source", "profile");
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "set your salary once in LinkedIn questions");
+        }
         // 4. Factual field the direct map doesn't cover: let the AI read it off the profile.
         boolean typedFactual = fieldType != null
                 && List.of("date", "tel", "url", "email", "number").contains(fieldType);
@@ -580,10 +613,67 @@ public class AssistService {
         return value;
     }
 
+    /**
+     * Match a profile value to one of a control's real options. Exact (case-insensitive) FIRST,
+     * so "Male" never falls through to a substring hit on "Female". Returns null if none fits.
+     */
+    private static String matchOption(List<String> options, String value) {
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim();
+        for (String o : options) if (o.trim().equalsIgnoreCase(v)) return o;
+        String vl = v.toLowerCase(Locale.ENGLISH);
+        for (String o : options) {
+            String ol = o.toLowerCase(Locale.ENGLISH).trim();
+            // Word-boundary containment, so "male" can't match inside "female".
+            if (ol.matches(".*\\b" + java.util.regex.Pattern.quote(vl) + "\\b.*")
+                    || vl.matches(".*\\b" + java.util.regex.Pattern.quote(ol) + "\\b.*")) return o;
+        }
+        return null;
+    }
+
     private static double parseYears(String s) {
         if (s == null) return 0;
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+(\\.\\d+)?").matcher(s);
         return m.find() ? Double.parseDouble(m.group()) : 0;
+    }
+
+    // Salary / pay / rate / stipend questions. The standard "current CTC" / "expected CTC" are
+    // handled by directValue; this catches the DERIVED variants (monthly, in-hand, hourly).
+    private static final java.util.regex.Pattern SALARY_Q = java.util.regex.Pattern.compile(
+            "salary|\\bctc\\b|compensation|\\bpay\\b|package|remuneration|stipend|\\brate\\b|in.?hand|take.?home",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Monthly (or annual) figure derived from the stored CTC. Returns null when there's nothing
+     * to derive from — the caller then leaves it for the owner instead of inventing a number.
+     */
+    private static String deriveSalary(String question, Profile p) {
+        if (p == null) return null;
+        String q = question.toLowerCase(Locale.ENGLISH);
+        boolean expected = q.contains("expect") || q.contains("desired") || q.contains("demand");
+        String ctc = expected ? p.getExpectedCtc()
+                : (q.contains("current") || q.contains("present") || q.contains("in-hand")
+                   || q.contains("in hand") || q.contains("take home")) ? p.getCurrentCtc()
+                : p.getExpectedCtc();  // a bare "salary" question → what you're asking for
+        double annual = parseCtcToAnnual(ctc);
+        if (annual <= 0) return null;
+        boolean monthly = q.contains("month") || q.contains("in-hand") || q.contains("in hand")
+                || q.contains("take home") || q.contains("per month") || q.contains("/month");
+        return trimNumber(Math.round(monthly ? annual / 12.0 : annual));
+    }
+
+    /** "8 LPA"/"8 lakh"/"800000"/"8" → 800000 (annual ₹). 0 when unparseable. */
+    private static double parseCtcToAnnual(String s) {
+        if (s == null || s.isBlank()) return 0;
+        String t = s.toLowerCase(Locale.ENGLISH).replaceAll("[,₹\\s]", "");
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+(\\.\\d+)?").matcher(t);
+        if (!m.find()) return 0;
+        double n = Double.parseDouble(m.group());
+        if (t.contains("lpa") || t.contains("lakh") || t.contains("lac")) return n * 100_000;
+        if (t.contains("cr")) return n * 10_000_000;
+        if (t.contains("k")) return n * 1_000;
+        // Bare number: the Indian convention "8" means 8 LPA; a big number is already annual.
+        return n < 100 ? n * 100_000 : n;
     }
 
     private static String trimNumber(double d) {
@@ -616,6 +706,16 @@ public class AssistService {
             throw new IllegalArgumentException("question and options are required");
         }
         Profile p = profiles.get();
+
+        // A stored profile fact beats the model. Asked to CHOOSE gender from [Male, Female, …]
+        // the model can pick wrong (it selected "Female" for a male candidate); the profile
+        // already says which, so match that to a real option and skip the model entirely.
+        if (!multi) {
+            String dv = directValue(question, p);
+            String opt = dv == null ? null : matchOption(options, dv);
+            if (opt != null) return Map.of("selected", List.of(opt));
+        }
+
         StringBuilder opts = new StringBuilder();
         for (int i = 0; i < options.size(); i++) {
             opts.append(i + 1).append(". ").append(options.get(i)).append("\n");

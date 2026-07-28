@@ -232,6 +232,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
           logJobHeader(title || 'Role', company || '', canJudge ? `fit ${score}` : 'no description');
           beginJob(); // reset per-job de-duplication of the field rows below
+          state.blockedQuestions = null;
           const result = await easyApply(page, api, profile, resume, state);
           if (result === 'applied') {
             applied++;
@@ -248,9 +249,10 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
               url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score} — apply manually (external form)` });
           } else if (result === 'attention') {
             tally.attention++;
-            logResult('attention');
+            const blocked = (state.blockedQuestions || [])[0];
+            logResult('attention', blocked);
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title, company, detail: 'needs attention — an unanswerable question' });
+              title, company, detail: blocked ? `needs your answer: ${blocked}` : 'needs attention — an unanswerable question' });
           } else {
             // 'none'. The search is Easy-Apply-filtered (f_AL=true), so EVERY result genuinely
             // has an Easy Apply button — reaching here means the button didn't render for us,
@@ -398,7 +400,9 @@ async function easyApply(page, api, profile, resume, state) {
     const { attention: choiceAttention } = await fillChoices(page, api, modal);
     attention.push(...choiceAttention);
     if (attention.length) {
-      // an unanswerable question — don't submit a half-filled application
+      // an unanswerable question — don't submit a half-filled application. Remember WHICH
+      // question(s) blocked it so the result line can name them.
+      state.blockedQuestions = attention;
       await closeModal(page);
       return 'attention';
     }
