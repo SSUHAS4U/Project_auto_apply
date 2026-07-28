@@ -108,16 +108,39 @@
   }
 
   // Original-case question text (unlike fieldEngine's normalized label).
+  // First meaningful text inside a question block that is NOT the input's own placeholder/value
+  // and NOT an option label — the question title, for forms that don't mark it up (MS Forms).
+  function firstBlockQuestion(container, inputEl, clean) {
+    const own = clean(inputEl && (inputEl.value || inputEl.placeholder || inputEl.getAttribute('aria-label') || ''));
+    for (const node of container.querySelectorAll('*')) {
+      if (node.querySelector('input, textarea, select, [role="radio"], [role="checkbox"], [role="listbox"]')) continue;
+      if (node.closest('label, [role="radio"], [role="checkbox"], [role="option"]')) continue;
+      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(node.tagName)) continue;
+      const t = clean(node.textContent);
+      if (t.length > 2 && t.length < 200 && t !== own && !/^(enter your answer|your answer)$/i.test(t)) return t;
+    }
+    return '';
+  }
+
   function deriveQuestion(el) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const strip = (s) => clean(s).replace(/\s*\*\s*$/, '').replace(/\s*Required question\s*$/i, '').trim();
 
-    // 1. The enclosing question heading (Google/MS Forms put the real question here, while
-    //    the field's own aria-label is just "Your answer" — so this MUST come first).
-    const item = el.closest && el.closest('[role="listitem"], .freebirdFormviewerComponentsQuestionBaseRoot');
+    // 1. The enclosing question block. Google Forms uses [role=listitem]; MICROSOFT Forms uses
+    //    [data-automation-id="questionItem"] and gives the input a generic "Enter your answer"
+    //    aria-label — so the real question ("Your Name", "Your Email ID") lives in the block's
+    //    title, and reading that MUST come before the aria-label fallback below. Without this
+    //    branch every Microsoft Forms field came out labelled by its control type.
+    const item = el.closest && el.closest(
+      '[role="listitem"], .freebirdFormviewerComponentsQuestionBaseRoot, [data-automation-id="questionItem"]');
     if (item) {
-      const head = item.querySelector('[role="heading"], .M7eMe, .freebirdFormviewerComponentsQuestionBaseTitle');
-      if (head && strip(head.textContent).length > 4) return strip(head.textContent).slice(0, 500);
+      const head = item.querySelector('[role="heading"], .M7eMe, '
+        + '.freebirdFormviewerComponentsQuestionBaseTitle, [data-automation-id="questionTitle"]');
+      if (head && strip(head.textContent).length > 1) return strip(head.textContent).slice(0, 500);
+      // No explicit title element (common on Microsoft Forms): take the first real text inside
+      // the block that isn't an option label or the input's own placeholder.
+      const t = firstBlockQuestion(item, el, clean);
+      if (t && strip(t).length > 1) return strip(t).slice(0, 500);
     }
     // 2. aria-label — but ignore the generic placeholder ones.
     const al = el.getAttribute && el.getAttribute('aria-label');
@@ -507,7 +530,7 @@
   // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
   const DENY_HOSTS = /(^|\.)(chat\.openai|chatgpt|claude\.ai|gemini\.google|bard\.google|copilot\.microsoft|bing|perplexity|you|poe|phind|google|duckduckgo|youtube|x|twitter|facebook|instagram|reddit|whatsapp|telegram|discord|slack|notion|figma|stackoverflow|github|gitlab)\.com/i;
   // Sites that ARE application/recruiting forms — always allow.
-  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap|hcltech\.com|freshers\.)/i;
+  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.cloud\.microsoft|forms\.microsoft\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap|hcltech\.com|freshers\.)/i;
 
   function looksLikeApplicationForm() {
     const host = location.hostname;
@@ -1451,7 +1474,7 @@
   function sourceLabel() {
     const h = location.hostname;
     if (h === 'docs.google.com' && location.pathname.startsWith('/forms')) return 'google-form';
-    if (h === 'forms.office.com' || h === 'forms.microsoft.com') return 'ms-form';
+    if (/forms\.(office|microsoft)\.com$/.test(h) || h === 'forms.cloud.microsoft') return 'ms-form';
     if (h.endsWith('typeform.com')) return 'typeform';
     if (h.includes('myworkdayjobs') || h.includes('workday')) return 'workday';
     if (h.includes('greenhouse.io')) return 'greenhouse';

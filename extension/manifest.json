@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Assistant",
-  "version": "0.9.23",
+  "version": "0.9.24",
   "description": "Autofill job forms (Google/MS Forms, ATS) and save listings to your JobPilot tracker. You always review & submit.",
   "permissions": [
     "storage",
@@ -19,6 +19,8 @@
     "https://docs.google.com/*",
     "https://forms.gle/*",
     "https://forms.office.com/*",
+    "https://forms.cloud.microsoft/*",
+    "https://forms.microsoft.com/*",
     "https://*.linkedin.com/*",
     "https://*.naukri.com/*",
     "https://*.indeed.com/*"
@@ -56,7 +58,9 @@
     },
     {
       "matches": [
-        "https://forms.office.com/*"
+        "https://forms.office.com/*",
+        "https://forms.cloud.microsoft/*",
+        "https://forms.microsoft.com/*"
       ],
       "js": [
         "content/common/smartFill.js",

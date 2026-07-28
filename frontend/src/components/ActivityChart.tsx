@@ -71,6 +71,7 @@ function smoothPath(pts: [number, number][]): string {
 export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal?: 'linkedin' | 'indeed' }) {
   const [range, setRange] = useState<Range>('week');
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [hover, setHover] = useState<number | null>(null);
 
   const { series, buckets } = useMemo(() => {
     const bks = buildBuckets(range);
@@ -127,8 +128,16 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
         </div>
       </div>
 
-      <div style={{ width: '100%', overflowX: 'auto' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Activity trend">
+      <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Activity trend"
+          style={{ display: 'block' }}
+          onMouseMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const vbX = ((e.clientX - r.left) / r.width) * W;      // client px → viewBox units
+            const i = Math.round(((vbX - padL) / innerW) * (n - 1));
+            setHover(Math.max(0, Math.min(n - 1, i)));
+          }}
+          onMouseLeave={() => setHover(null)}>
           {/* horizontal gridlines + y labels */}
           {[0, 0.5, 1].map((g) => {
             const yy = padTop + (1 - g) * innerH;
@@ -143,6 +152,11 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
           {buckets.map((b, i) => (i % step === 0 || i === n - 1) && (
             <text key={i} x={x(i)} y={H - 10} fontSize="10" fill="var(--text-faint)" textAnchor="middle">{b.label}</text>
           ))}
+          {/* hover guideline */}
+          {hover !== null && (
+            <line x1={x(hover)} x2={x(hover)} y1={padTop} y2={padTop + innerH}
+              stroke="var(--text-faint)" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+          )}
           {/* one smooth line per visible series */}
           {series.filter((s) => !hidden.has(s.key)).map((s) => {
             const pts: [number, number][] = s.values.map((v, i) => [x(i), y(v)]);
@@ -153,6 +167,11 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
                 {n <= 31 && pts.map(([px, py], i) => s.values[i] > 0 && (
                   <circle key={i} cx={px} cy={py} r="2.6" fill={s.color} />
                 ))}
+                {/* enlarged marker on the hovered bucket */}
+                {hover !== null && (
+                  <circle cx={x(hover)} cy={y(s.values[hover])} r="4.5" fill={s.color}
+                    stroke="var(--bg-card)" strokeWidth="2" />
+                )}
               </g>
             );
           })}
@@ -162,6 +181,19 @@ export function ActivityChart({ events, portal }: { events: AgentEvent[]; portal
             </text>
           )}
         </svg>
+        {/* hover tooltip — HTML overlay so it reads like the reference: date + each series value */}
+        {hover !== null && anyData && (
+          <div className="ac-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
+            <div className="ac-tip-date">{buckets[hover].label}</div>
+            {series.filter((s) => !hidden.has(s.key)).map((s) => (
+              <div key={s.key} className="ac-tip-row">
+                <span className="ac-dot" style={{ background: s.color }} />
+                <span className="ac-tip-lbl">{s.label}</span>
+                <b>{s.values[hover]}</b>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
