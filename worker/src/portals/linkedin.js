@@ -380,18 +380,21 @@ async function easyApply(page, api, profile, resume, state) {
   await btn.click({ timeout: 4000 }).catch(() => {});
   await humanDelay(1500, 2800);
 
+  let modalSeen = false;
   for (let step = 0; step < 12; step++) {
     if (state.paused) { await closeModal(page); return 'attention'; }
     const modal = await page.$('.jobs-easy-apply-modal, [data-test-modal][role="dialog"]');
     if (!modal) break;
+    modalSeen = true;
 
     // Narrate each step so the live feed caption shows the Easy Apply progressing.
     state.action = `Easy Apply — step ${step + 1} (filling the form)`;
-    await uploadResume(page, resume).catch(() => {});
-    const { attention } = await fillForm(page, profile, api);
+    // EVERYTHING scoped to `modal`: the fill helpers must not touch the search header behind it.
+    await uploadResume(page, resume, modal).catch(() => {});
+    const { attention } = await fillForm(page, profile, api, modal);
     // Screening questions are mostly radio groups, which fillForm skips — answer them too,
     // otherwise the step can never validate and Submit never appears.
-    const { attention: choiceAttention } = await fillChoices(page, api);
+    const { attention: choiceAttention } = await fillChoices(page, api, modal);
     attention.push(...choiceAttention);
     if (attention.length) {
       // an unanswerable question — don't submit a half-filled application
@@ -399,8 +402,8 @@ async function easyApply(page, api, profile, resume, state) {
       return 'attention';
     }
 
-    // Submit if we can; otherwise advance.
-    const submit = await page.$('button[aria-label="Submit application"]');
+    // Submit if we can; otherwise advance. Scoped to the modal so we click ITS buttons.
+    const submit = await modal.$('button[aria-label="Submit application"]');
     if (submit) {
       state.action = 'Easy Apply — submitting';
       await submit.click({ timeout: 4000 }).catch(() => {});
@@ -408,7 +411,7 @@ async function easyApply(page, api, profile, resume, state) {
       await dismissPostSubmit(page);
       return 'applied';
     }
-    const next = await page.$('button[aria-label="Continue to next step"], button[aria-label="Review your application"]');
+    const next = await modal.$('button[aria-label="Continue to next step"], button[aria-label="Review your application"]');
     if (next) {
       state.action = `Easy Apply — step ${step + 1} done, continuing`;
       await next.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue;
@@ -418,6 +421,9 @@ async function easyApply(page, api, profile, resume, state) {
     await closeModal(page);
     return 'attention';
   }
+  // The modal DID open (we clicked Easy Apply and saw it) but we ran out of steps without a
+  // Submit — a long/looping form we couldn't finish. That is NOT "button didn't render"; say so.
+  if (modalSeen) { await closeModal(page); return 'attention'; }
   return 'none';
 }
 

@@ -91,18 +91,23 @@ function matchKey(label) {
  * the application was abandoned — which is exactly the "hundreds relevant, zero applied"
  * pattern. Returns the questions we genuinely couldn't answer.
  */
-export async function fillChoices(page, api) {
+export async function fillChoices(page, api, root) {
   const attention = [];
 
   // Read every visible, unanswered radio group with its question + option labels in one pass.
-  const groups = await page.evaluate(() => {
+  // `root`, when given, is the Easy-Apply modal — scope EVERYTHING to it. Without this the scan
+  // reaches the whole page and starts "answering" LinkedIn's own search header ("search by
+  // title…", "city, state, or zip code"), which never advances the modal. The modal is the
+  // form; the page around it is not.
+  const scanIn = (rootEl) => {
+    const scope = rootEl || document;
     const out = [];
     const seen = new Set();
     const txt = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    document.querySelectorAll('input[type=radio]').forEach((el) => {
+    scope.querySelectorAll('input[type=radio]').forEach((el) => {
       if (!el.name || seen.has(el.name) || el.offsetParent === null) return;
       seen.add(el.name);
-      const radios = [...document.querySelectorAll(`input[type=radio][name="${CSS.escape(el.name)}"]`)];
+      const radios = [...scope.querySelectorAll(`input[type=radio][name="${CSS.escape(el.name)}"]`)];
       const labelOf = (r) => {
         const l = r.labels && r.labels[0];
         if (l) return txt(l.textContent);
@@ -120,7 +125,10 @@ export async function fillChoices(page, api) {
       out.push({ name: el.name, question: q, options: radios.map(labelOf), answered: radios.some((r) => r.checked) });
     });
     return out;
-  }).catch(() => []);
+  };
+  // ElementHandle.evaluate passes the element as the first arg; Page.evaluate passes nothing —
+  // so scanIn(undefined) falls back to `document`. One function, both scopes.
+  const groups = await (root ? root.evaluate(scanIn) : page.evaluate(scanIn)).catch(() => []);
 
   for (const g of groups) {
     if (g.answered || !g.options.length) continue;
@@ -146,7 +154,7 @@ export async function fillChoices(page, api) {
       attention.push(question); continue;
     }
     console.log(`     - ${question}  ->  ${g.options[idx]}`);
-    const radios = await page.$$(`input[type=radio][name="${g.name.replace(/"/g, '\\"')}"]`);
+    const radios = await (root || page).$$(`input[type=radio][name="${g.name.replace(/"/g, '\\"')}"]`);
     if (radios[idx]) {
       await radios[idx].check({ timeout: 2500 }).catch(async () => {
         await radios[idx].click({ force: true, timeout: 2500 }).catch(() => {});
@@ -156,7 +164,7 @@ export async function fillChoices(page, api) {
   }
 
   // Consent / acknowledgement checkboxes block submission until ticked.
-  const boxes = await page.$$('input[type=checkbox]:visible');
+  const boxes = await (root || page).$$('input[type=checkbox]:visible');
   for (const b of boxes) {
     try {
       if (await b.isChecked()) continue;
@@ -170,10 +178,13 @@ export async function fillChoices(page, api) {
   return { attention };
 }
 
-export async function fillForm(page, profile, api) {
+export async function fillForm(page, profile, api, root) {
   const filled = [];
   const attention = [];
-  const inputs = await page.$$('input:visible, textarea:visible, select:visible');
+  // Scope to the modal when given. Filling `page` reaches LinkedIn's search header — the
+  // "search by title, skill, or company" / "city, state, or zip code" boxes that kept getting
+  // typed into while the modal's own fields stayed empty and it never advanced.
+  const inputs = await (root || page).$$('input:visible, textarea:visible, select:visible');
 
   for (const el of inputs) {
     try {
@@ -229,9 +240,9 @@ export async function fillForm(page, profile, api) {
 }
 
 /** Attach the resume PDF (base64 from the backend) to a file input, if the form has one. */
-export async function uploadResume(page, resume) {
+export async function uploadResume(page, resume, root) {
   if (!resume || !resume.hasResume) return false;
-  const input = await page.$('input[type=file]');
+  const input = await (root || page).$('input[type=file]');
   if (!input) return false;
   const buffer = Buffer.from(resume.contentBase64, 'base64');
   await input.setInputFiles({

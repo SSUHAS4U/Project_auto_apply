@@ -256,24 +256,28 @@ public class WorkerController {
         List<String> options = b.get("options") instanceof List ? (List<String>) b.get("options") : null;
         if (!ai.isEnabled()) return Map.of("answer", "", "needsAttention", true, "reason", "AI off");
 
-        Profile p = profiles.get();
-        String profileFacts = "Name: " + nz(p.getFullName()) + "; Title: " + nz(p.getCurrentTitle())
-                + "; Experience(yrs): " + nz(p.getYearsExperience()) + "; Notice: " + nz(p.getNoticePeriod())
-                + "; Current CTC: " + nz(p.getCurrentCtc()) + "; Expected CTC: " + nz(p.getExpectedCtc())
-                + "; Location: " + nz(p.getLocation()) + "; Work auth: " + nz(p.getWorkAuthorization())
-                + "; Skills: " + (p.getSkills() == null ? "" : String.join(", ", p.getSkills()));
-        String sys = """
-                You answer job-application screening questions AS the candidate, using ONLY
-                the provided profile facts. Be concise and literal (a form field value, not a
-                paragraph). If options are given, return EXACTLY one of them. If the profile
-                cannot support an honest answer, return the token NEEDS_ATTENTION. Never invent
-                numbers, dates, or qualifications.""";
-        String user = "PROFILE FACTS:\n" + profileFacts + "\n\nQUESTION: " + question
-                + (options != null ? "\nOPTIONS: " + String.join(" | ", options) : "");
-        String out = nz(ai.complete(sys, user, true, false)).trim();
-        if (out.isBlank() || out.contains("NEEDS_ATTENTION"))
-            return Map.of("answer", "", "needsAttention", true, "reason", "not supported by profile");
-        return Map.of("answer", out);
+        // Route through the SAME engine the extension uses, instead of a separate fast-model
+        // prompt with a thin profile. That old path is what answered "how many years of Go?"
+        // with a PIN code (520010): fast model, no shape enforcement, no verification.
+        // AssistService.choose() constrains the answer to a real option; answer() decides the
+        // shape (a "how many years" question becomes a bare number, and an out-of-range or
+        // non-numeric result is dropped) and reads the full profile with the strong model.
+        try {
+            if (options != null && !options.isEmpty()) {
+                Map<String, Object> r = assist.choose(question, options, false);
+                @SuppressWarnings("unchecked")
+                List<String> sel = r.get("selected") instanceof List ? (List<String>) r.get("selected") : List.of();
+                if (sel.isEmpty()) return Map.of("answer", "", "needsAttention", true, "reason", "no option fit the profile");
+                return Map.of("answer", sel.get(0));
+            }
+            Map<String, Object> r = assist.answer(question);
+            String out = nz((String) r.get("answer")).trim();
+            if (out.isBlank())
+                return Map.of("answer", "", "needsAttention", true, "reason", "not supported by profile");
+            return Map.of("answer", out);
+        } catch (Exception e) {
+            return Map.of("answer", "", "needsAttention", true, "reason", "answer failed");
+        }
     }
 
     /** Record a discovered recruiter/hiring-manager for the Network CRM. */
