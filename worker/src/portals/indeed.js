@@ -49,13 +49,14 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
+  const applyCap = Math.min(plan.applyCap || 20, 20); // hard ceiling: 20 Indeed applies per run
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
-      if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
+      if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
 
       state.action = `Searching Indeed "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });

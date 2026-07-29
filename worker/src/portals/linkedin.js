@@ -130,33 +130,18 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   let applied = 0;
   const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
 
-  // Every run scans hiring posts first (harvests recruiter emails → the backend auto-emails
-  // a tailored application). It's short in 'apply' mode and gets the whole slot in 'outreach'
-  // mode. Only a strict 'outreach' block stops there; otherwise we go on to Easy Apply.
   const mode = plan.mode || 'all';
-  try { await scanHiringPosts(page, api, plan, state, mode === 'outreach'); }
-  catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+  // Apply to at most 15 jobs per run, THEN spend the rest of the block on outreach. A hard
+  // ceiling regardless of the schedule's own cap (which defaults to 200).
+  const applyCap = Math.min(plan.applyCap || 15, 15);
 
-  // Connection outreach (gated by the Auto-message toggle). Every run FOLLOWS UP any invites
-  // that were accepted — marks them connected and DMs them with the résumé attached. New
-  // invites go out in outreach/default blocks; strict 'apply' blocks stay focused on applying.
-  if (plan.autoMessage !== false) {
-    try {
-      // Send fresh invites on every run (the default block mode is 'apply', so gating this on
-      // non-apply meant invites never went out). Bounded by connectCap inside the function.
-      await sendConnectionRequests(page, api, plan, state);
-      await checkAcceptances(page, api, state);
-      await sendApprovedMessages(page, api, resume, state);
-    } catch (e) {
-      await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `outreach ended: ${String(e).slice(0, 120)}` });
-    }
-  }
-  if (mode === 'outreach') return { applied };
-
-  outer:
-  for (const keyword of plan.keywords) {
-    for (const location of plan.locations) {
-      if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
+  // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
+  if (mode !== 'outreach') {
+    console.log(`\n  ══ Phase 1: Easy Apply (up to ${applyCap} this run) ══`);
+    outer:
+    for (const keyword of plan.keywords) {
+      for (const location of plan.locations) {
+        if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
@@ -177,7 +162,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       for (const cardInfo of cards) {
         const id = cardInfo.id;
-        if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 100)) break outer;
+        if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
         try {
           // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
           // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
@@ -277,6 +262,27 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         await humanDelay(2000, 4000);
       }
     }
+    }
+  }
+
+  // ── PHASE 2 — apply quota met (or no more jobs): spend the rest of the block on OUTREACH. ──
+  // Scan hiring posts for recruiter emails (the backend then mails them a tailored note + your
+  // résumé) and send/di follow-up LinkedIn connections + messages.
+  if (!state.stopped && !state.paused && Date.now() < deadline) {
+    console.log(`\n  ══ Phase 2: Outreach (applied ${applied}/${applyCap}) — connections, messages, HR emails ══`);
+    try { await scanHiringPosts(page, api, plan, state, true); }  // dedicated = true → the big scan
+    catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
+    if (plan.autoMessage !== false) {
+      try {
+        await sendConnectionRequests(page, api, plan, state);
+        await checkAcceptances(page, api, state);
+        await sendApprovedMessages(page, api, resume, state);
+      } catch (e) {
+        await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `outreach ended: ${String(e).slice(0, 120)}` });
+      }
+    } else {
+      console.log('     (Auto-message is OFF — enable it on the Connections page to send invites + messages)');
+    }
   }
   return { applied, ...tally };
 }
@@ -294,14 +300,17 @@ const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|sup
  * capped so it never eats the Easy Apply phase.
  */
 async function scanHiringPosts(page, api, plan, state, dedicated = false) {
-  // Dedicated outreach block: the whole slot + a bigger lead cap and more keywords.
-  const cap = dedicated ? 15 : 5;
+  // Dedicated outreach phase (after the apply quota) gets the whole slot, all keywords, more
+  // scrolling and a much bigger email cap — so it actually harvests recruiter emails at scale.
+  const cap = dedicated ? 40 : 8;
+  const scrolls = dedicated ? 8 : 4;
   const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
   let analysed = 0;
   const seen = new Set();
+  console.log(`\n  🔎 Scanning hiring posts for recruiter emails (up to ${cap})…`);
 
-  for (const keyword of plan.keywords.slice(0, dedicated ? 5 : 2)) {
+  for (const keyword of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
     if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;
     state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
@@ -318,7 +327,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
       return;
     }
 
-    for (let scroll = 0; scroll < 4 && found < cap && Date.now() < phaseDeadline; scroll++) {
+    for (let scroll = 0; scroll < scrolls && found < cap && Date.now() < phaseDeadline; scroll++) {
       // read every post currently rendered
       const posts = await page.$$eval('div.feed-shared-update-v2, li.artdeco-card', (els) =>
         els.slice(0, 30).map((el) => {
@@ -342,6 +351,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
           }).catch(() => ({ ok: false }));
           if (r.ok && !r.duplicate) {
             found++;
+            console.log(`     ✉ ${email}  →  ${r.applying ? 'mailing a tailored note + résumé' : 'saved (auto-email off / post too short)'}`);
             await api.event({ runId: state.runId, portal: 'linkedin', type: r.applying ? 'email_sent' : 'info',
               title: `HR lead: ${email}`, url: post.link || undefined,
               detail: r.applying ? 'tailoring application — will auto-email when ready' : 'lead saved (auto-email off or post too short)' });
@@ -356,6 +366,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
       detail: `scanned ${analysed} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
   }
+  console.log(`     scanned ${analysed} post(s) → ${found} recruiter email(s)`);
   if (found > 0) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
       detail: `post scan done — ${found} HR lead(s) captured` });

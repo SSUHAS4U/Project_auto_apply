@@ -92,7 +92,8 @@ async function dismissDialog(page) {
 export async function sendConnectionRequests(page, api, plan, state) {
   const cap = Math.min(plan.connectCap || 20, 25); // stay well under LinkedIn's weekly limit
   const deadline = Date.now() + Math.min((plan.blockMinutes || 60), 40) * 60_000;
-  let sent = 0;
+  let sent = 0, skipped = 0;
+  console.log(`\n  🤝 Connections — inviting recruiters (up to ${cap})…`);
 
   for (const keyword of (plan.keywords || []).slice(0, 4)) {
     if (state.paused || sent >= cap || Date.now() > deadline) break;
@@ -100,9 +101,10 @@ export async function sendConnectionRequests(page, api, plan, state) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
     await page.goto(peopleSearchUrl(keyword), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await humanDelay(2200, 3600);
-    if (loggedOut(page)) return sent;
+    if (loggedOut(page)) { console.log('     ⚠ not signed in — log into linkedin.com in the automation browser'); return sent; }
 
     const people = await collectPeople(page);
+    console.log(`     "${keyword} recruiter" → ${people.length} people found`);
     for (const person of people) {
       if (state.paused || sent >= cap || Date.now() > deadline) break;
       try {
@@ -111,7 +113,7 @@ export async function sendConnectionRequests(page, api, plan, state) {
           portal: 'linkedin', name: person.name, profileUrl: person.profileUrl,
           company, role: person.headline,
         }).catch(() => ({}));
-        if (!id) continue;
+        if (!id) { skipped++; continue; }
 
         const { note } = await api.connectionNote(id).catch(() => ({ note: '' }));
         // Send the invite from the person's profile page (stable place for the Connect button).
@@ -121,20 +123,27 @@ export async function sendConnectionRequests(page, api, plan, state) {
 
         const result = await inviteWithNote(page, null, note || '');
         if (result === 'limit') {
+          console.log('     ⚠ LinkedIn weekly invite limit reached — pausing connections');
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
             detail: 'LinkedIn weekly invite limit reached — pausing connection requests.' });
           return sent;
         }
         if (result === true) {
           sent++;
+          console.log(`     + invited ${person.name}${company ? ` · ${company}` : ''}`);
           await api.setConnectionStatus(id, { status: 'connection_sent', runId: state.runId, note }).catch(() => {});
+        } else {
+          skipped++;
+          console.log(`     · skipped ${person.name} (no Connect button — already connected / pending / follow-only)`);
         }
       } catch (e) {
+        skipped++;
         await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: `invite: ${String(e).slice(0, 120)}` });
       }
       await humanDelay(2500, 4500);
     }
   }
+  console.log(`     connections: ${sent} invited, ${skipped} skipped`);
   if (sent > 0) await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `sent ${sent} connection request(s)` });
   return sent;
 }
@@ -143,6 +152,7 @@ export async function sendConnectionRequests(page, api, plan, state) {
 export async function checkAcceptances(page, api, state) {
   const pending = await api.pendingConnections().catch(() => []);
   let accepted = 0;
+  console.log(`\n  ✅ Follow-ups — ${pending.length} invite(s) awaiting acceptance…`);
   for (const c of pending.slice(0, 12)) {
     if (state.paused || !c.profileUrl) continue;
     try {
@@ -172,6 +182,7 @@ export async function checkAcceptances(page, api, state) {
 export async function sendApprovedMessages(page, api, resume, state) {
   const msgs = await api.approvedMessages().catch(() => []);
   let done = 0;
+  console.log(`\n  💬 Messages — ${msgs.length} approved follow-up(s) to send (résumé attached)…`);
   for (const m of msgs) {
     if (state.paused) break;
     if ((m.portal && m.portal !== 'linkedin') || !m.profileUrl) continue;
@@ -213,10 +224,12 @@ export async function sendApprovedMessages(page, api, resume, state) {
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
         title: `Messaged ${m.name || 'a connection'}`, url: m.profileUrl, detail: 'sent with résumé attached' });
       done++;
+      console.log(`     + messaged ${m.name || 'a connection'}`);
     } catch (e) {
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'error', detail: `message: ${String(e).slice(0, 120)}` });
     }
     await humanDelay(2000, 3500);
   }
+  console.log(`     messages: ${done} sent`);
   return done;
 }
