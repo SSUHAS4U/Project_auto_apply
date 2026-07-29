@@ -195,7 +195,16 @@ public class AssistService {
         if (has(q, "current title", "current role", "current designation", "present designation"))
             return p.getCurrentTitle();
         if (has(q, "postal code", "zip code", "pin code", "pincode")) return p.getPostalCode();
-        if (has(q, "current city", "current location", "city")) return firstNonBlank(p.getCity(), p.getLocation());
+        // Location on a JOB APPLICATION: use the candidate's PREFERRED work city (the first of
+        // their preferred locations), not their home town. Applying to jobs in Bengaluru/Chennai/
+        // Hyderabad, a candidate presents as available there — so "location (city)" gets Bengaluru,
+        // not Vijayawada. Falls back to the actual city only when no preference is set.
+        if (has(q, "current city", "current location", "location (city)", "preferred location",
+                "job location", "work location", "city")) {
+            if (p.getPreferredLocations() != null && !p.getPreferredLocations().isEmpty())
+                return p.getPreferredLocations().get(0);
+            return firstNonBlank(p.getCity(), p.getLocation());
+        }
         if (has(q, "state", "province")) return p.getState();
         if (has(q, "country")) return p.getCountry();
         if (has(q, "work authorization", "work permit", "authorized to work")) return p.getWorkAuthorization();

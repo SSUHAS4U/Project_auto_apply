@@ -81,6 +81,18 @@ function hasEmbeddedOptions(label) {
   return (label.match(/\d\s*[.)]\s*[a-z]/gi) || []).length >= 2;
 }
 
+// A text input that autocompletes from a dropdown (LinkedIn's City field, react-select inputs…).
+// These need a suggestion PICKED, not just text typed, or the form treats them as empty.
+async function isTypeahead(el) {
+  return el.evaluate((n) => {
+    if (n.tagName !== 'INPUT') return false;
+    const ac = (n.getAttribute('aria-autocomplete') || '').toLowerCase();
+    return n.getAttribute('role') === 'combobox' || ac === 'list' || ac === 'both'
+      || !!n.getAttribute('aria-controls') || !!n.getAttribute('aria-owns')
+      || (n.getAttribute('autocomplete') === 'off' && n.hasAttribute('aria-expanded'));
+  }).catch(() => false);
+}
+
 function matchKey(label) {
   if (hasEmbeddedOptions(label)) return null;
   for (const [key, words] of Object.entries(SYNONYMS)) {
@@ -245,6 +257,18 @@ export async function fillForm(page, profile, api, root) {
         await el.selectOption({ label: value }).catch(async () => {
           await el.selectOption(value).catch(() => {});
         });
+      } else if (await isTypeahead(el)) {
+        // A typeahead/autocomplete (LinkedIn's "City" field is one): typing raw text shows a
+        // dropdown but leaves the field WITHOUT a committed value, so the form refuses to
+        // advance — that is why every "location (city)" job paused. Type it, wait for the
+        // suggestions, then pick the first one so a real value is selected.
+        await el.click({ timeout: 2000 }).catch(() => {});
+        await el.fill('').catch(() => {});
+        await el.type(String(value), { delay: 45 }).catch(() => {});
+        await humanDelay(800, 1300);
+        await el.press('ArrowDown').catch(() => {});
+        await humanDelay(150, 350);
+        await el.press('Enter').catch(() => {});
       } else {
         await el.click({ timeout: 2000 }).catch(() => {});
         await el.fill(String(value)).catch(() => {});
