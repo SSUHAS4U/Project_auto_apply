@@ -121,6 +121,54 @@ function TerminalButton() {
   );
 }
 
+// ---- Per-run apply-cap setting (the gear on each portal card) ---------------
+
+/** A gear that opens a small popup to set this portal's Easy-Apply-per-run limit. */
+function LimitGear({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [cap, setCap] = useState<number | ''>('');
+  const [saving, setSaving] = useState(false);
+  const key = portal === 'linkedin' ? 'linkedinApplyCap' : 'indeedApplyCap';
+
+  const load = () => api.agentLimits().then((l) => setCap(l[key])).catch(() => {});
+  const openIt = () => { load(); setOpen(true); };
+  const save = async () => {
+    const n = Number(cap);
+    if (!Number.isFinite(n) || n < 1) { toast('Enter a number ≥ 1', 'error'); return; }
+    setSaving(true);
+    try { await api.agentSetLimits({ [key]: Math.min(Math.round(n), 100) }); toast('Limit saved', 'success'); setOpen(false); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <button className="btn btn-ghost btn-sm" title="Set applies per run" onClick={openIt}>
+        <Icon name="gear" size={14} />
+      </button>
+      {open && (
+        <Modal title={`${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} — applies per run`} onClose={() => setOpen(false)}>
+          <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+            How many jobs the automation Easy-Applies to in one run before
+            {portal === 'linkedin' ? ' switching to outreach (connections, messages, HR emails).' : ' the run ends.'}
+          </div>
+          <label className="pf-f" style={{ maxWidth: 200 }}>
+            <span className="pf-f-l">Applies per run</span>
+            <input className="input" type="number" min={1} max={100} value={cap}
+              onChange={(e) => setCap(e.target.value === '' ? '' : Number(e.target.value))} autoFocus />
+          </label>
+          <div className="row" style={{ gap: 8, marginTop: 16 }}>
+            <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
+              {saving ? <span className="spinner" /> : <Icon name="check" size={13} />} Save
+            </button>
+            <button className="btn btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 // ---- Per-portal metrics (LinkedIn vs Indeed) --------------------------------
 
 export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
@@ -200,12 +248,15 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
             {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
             <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a stat to see the jobs</span>
           </div>
-          <div className="ac-range">
-            {(['day', 'week', 'month', 'year'] as const).map((r) => (
-              <button key={r} className={`ac-range-b ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>
-                {r[0].toUpperCase() + r.slice(1)}
-              </button>
-            ))}
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <div className="ac-range">
+              {(['day', 'week', 'month', 'year'] as const).map((r) => (
+                <button key={r} className={`ac-range-b ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>
+                  {r[0].toUpperCase() + r.slice(1)}
+                </button>
+              ))}
+            </div>
+            <LimitGear portal={portal} />
           </div>
         </div>
         <div className="pstat">

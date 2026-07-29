@@ -131,17 +131,19 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
 
   const mode = plan.mode || 'all';
-  // Apply to at most 15 jobs per run, THEN spend the rest of the block on outreach. A hard
-  // ceiling regardless of the schedule's own cap (which defaults to 200).
-  const applyCap = Math.min(plan.applyCap || 15, 15);
+  // Per-run apply cap comes from the gear setting (default 15). Phase 1 also gets AT MOST one
+  // hour: if it can't hit the cap in that time it stops applying and moves to outreach, so a
+  // slow apply phase never eats the whole block.
+  const applyCap = plan.applyCap || 15;
+  const phase1Deadline = Math.min(deadline, Date.now() + 60 * 60_000);
 
   // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
   if (mode !== 'outreach') {
-    console.log(`\n  ══ Phase 1: Easy Apply (up to ${applyCap} this run) ══`);
+    console.log(`\n  ══ Phase 1: Easy Apply (up to ${applyCap}, max 1h) ══`);
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {
-        if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
+        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) break outer;
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
@@ -162,7 +164,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       for (const cardInfo of cards) {
         const id = cardInfo.id;
-        if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
+        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) break outer;
         try {
           // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
           // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
@@ -274,7 +276,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
     if (plan.autoMessage !== false) {
       try {
-        await sendConnectionRequests(page, api, plan, state);
+        await sendConnectionRequests(page, api, plan, state, resume);
         await checkAcceptances(page, api, state);
         await sendApprovedMessages(page, api, resume, state);
       } catch (e) {
@@ -300,15 +302,15 @@ const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|sup
  * capped so it never eats the Easy Apply phase.
  */
 async function scanHiringPosts(page, api, plan, state, dedicated = false) {
-  // Dedicated outreach phase (after the apply quota) gets the whole slot, all keywords, more
-  // scrolling and a much bigger email cap — so it actually harvests recruiter emails at scale.
-  const cap = dedicated ? 40 : 8;
-  const scrolls = dedicated ? 8 : 4;
+  // Dedicated outreach phase (after the apply quota) is UNCAPPED — it scans every keyword,
+  // scrolls deep, and keeps harvesting recruiter emails until the block's time runs out.
+  const cap = dedicated ? Infinity : 8;
+  const scrolls = dedicated ? 25 : 4;
   const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
   let analysed = 0;
   const seen = new Set();
-  console.log(`\n  🔎 Scanning hiring posts for recruiter emails (up to ${cap})…`);
+  console.log(`\n  🔎 Scanning hiring posts for recruiter emails (${cap === Infinity ? 'no cap' : 'up to ' + cap})…`);
 
   for (const keyword of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
     if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;

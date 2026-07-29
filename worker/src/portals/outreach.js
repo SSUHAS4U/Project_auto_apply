@@ -88,15 +88,50 @@ async function dismissDialog(page) {
   if (x) await x.click({ timeout: 2000 }).catch(() => {});
 }
 
-/** Phase 1 — send fresh connection requests to recruiters for the user's roles. */
-export async function sendConnectionRequests(page, api, plan, state) {
-  const cap = Math.min(plan.connectCap || 20, 25); // stay well under LinkedIn's weekly limit
-  const deadline = Date.now() + Math.min((plan.blockMinutes || 60), 40) * 60_000;
-  let sent = 0, skipped = 0;
-  console.log(`\n  🤝 Connections — inviting recruiters (up to ${cap})…`);
+/**
+ * On an already-open PROFILE page: open Message, attach the résumé, type the body, and Send.
+ * Returns true only if actually sent. Used for accepted-invite follow-ups AND for people who
+ * are directly messageable (already 1st-degree / Open Profile / a hiring-post author) so we can
+ * reach them WITHOUT a connection request.
+ */
+async function composeMessage(page, resume, body) {
+  const msgBtn = await page.$('button[aria-label*="Message"], a[aria-label*="Message"]');
+  if (!msgBtn) return false;
+  await msgBtn.click({ timeout: 3000 }).catch(() => {});
+  await humanDelay(1400, 2400);
+  if (resume && resume.hasResume) {
+    const fileInput = await page.$('.msg-form__attachment-container input[type="file"], form.msg-form input[type="file"], input[type="file"]');
+    if (fileInput) {
+      await fileInput.setInputFiles({
+        name: resume.filename || 'resume.pdf', mimeType: 'application/pdf',
+        buffer: Buffer.from(resume.contentBase64, 'base64'),
+      }).catch(() => {});
+      await humanDelay(1200, 2200);
+    }
+  }
+  const box = await page.$('.msg-form__contenteditable, div[role="textbox"][contenteditable="true"]');
+  if (!box) return false;
+  await box.click({ timeout: 2000 }).catch(() => {});
+  await page.keyboard.type(body || '', { delay: 15 }).catch(() => {});
+  await humanDelay(800, 1500);
+  const send = await page.$('button.msg-form__send-button, button[type="submit"]:has-text("Send")');
+  if (!send) return false;
+  await send.click({ timeout: 3000 }).catch(() => {});
+  await humanDelay(1200, 2200);
+  return true;
+}
 
-  for (const keyword of (plan.keywords || []).slice(0, 4)) {
-    if (state.paused || sent >= cap || Date.now() > deadline) break;
+/** Phase 1 — send fresh connection requests to recruiters for the user's roles. */
+export async function sendConnectionRequests(page, api, plan, state, resume) {
+  // Uncapped: keep inviting for the rest of the block. LinkedIn's own weekly invite limit is
+  // still respected — inviteWithNote returns 'limit' and we stop gracefully when it's hit.
+  const cap = plan.connectCap || 1000;
+  const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
+  let sent = 0, skipped = 0;
+  console.log('\n  🤝 Connections — inviting recruiters (until the weekly limit / block ends)…');
+
+  for (const keyword of (plan.keywords || [])) {
+    if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
     state.action = `Finding recruiters for "${keyword}"`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
     await page.goto(peopleSearchUrl(keyword), { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -106,7 +141,7 @@ export async function sendConnectionRequests(page, api, plan, state) {
     const people = await collectPeople(page);
     console.log(`     "${keyword} recruiter" → ${people.length} people found`);
     for (const person of people) {
-      if (state.paused || sent >= cap || Date.now() > deadline) break;
+      if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
       try {
         const company = person.headline.split(/ at | @ /i)[1]?.trim() || '';
         const { id } = await api.upsertContact({
@@ -133,8 +168,20 @@ export async function sendConnectionRequests(page, api, plan, state) {
           console.log(`     + invited ${person.name}${company ? ` · ${company}` : ''}`);
           await api.setConnectionStatus(id, { status: 'connection_sent', runId: state.runId, note }).catch(() => {});
         } else {
-          skipped++;
-          console.log(`     · skipped ${person.name} (no Connect button — already connected / pending / follow-only)`);
+          // No Connect button → they may allow a DIRECT message (Open Profile / already
+          // connected / a hiring-post author). Message them straight away with the résumé
+          // instead of skipping — no request needed.
+          const dm = await composeMessage(page, resume, note || '').catch(() => false);
+          if (dm) {
+            sent++;
+            console.log(`     ✉ messaged ${person.name} directly (no request needed)`);
+            await api.setConnectionStatus(id, { status: 'connected', runId: state.runId }).catch(() => {});
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
+              title: `Messaged ${person.name}`, url: person.profileUrl, detail: 'direct message with résumé' });
+          } else {
+            skipped++;
+            console.log(`     · skipped ${person.name} (no Connect and no Message available)`);
+          }
         }
       } catch (e) {
         skipped++;
@@ -154,7 +201,7 @@ export async function checkAcceptances(page, api, state) {
   let accepted = 0;
   console.log(`\n  ✅ Follow-ups — ${pending.length} invite(s) awaiting acceptance…`);
   for (const c of pending.slice(0, 12)) {
-    if (state.paused || !c.profileUrl) continue;
+    if (state.stopped || state.paused || !c.profileUrl) continue;
     try {
       await page.goto(c.profileUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await humanDelay(1500, 2600);
@@ -184,42 +231,14 @@ export async function sendApprovedMessages(page, api, resume, state) {
   let done = 0;
   console.log(`\n  💬 Messages — ${msgs.length} approved follow-up(s) to send (résumé attached)…`);
   for (const m of msgs) {
-    if (state.paused) break;
+    if (state.stopped || state.paused) break;
     if ((m.portal && m.portal !== 'linkedin') || !m.profileUrl) continue;
     try {
       await page.goto(m.profileUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await humanDelay(1500, 2600);
       if (loggedOut(page)) return done;
 
-      const msgBtn = await page.$('button[aria-label*="Message"], a[aria-label*="Message"]');
-      if (!msgBtn) continue;
-      await msgBtn.click({ timeout: 3000 }).catch(() => {});
-      await humanDelay(1400, 2400);
-
-      // Attach the résumé to the open compose box (best-effort — a hidden file input).
-      if (resume && resume.hasResume) {
-        const fileInput = await page.$('.msg-form__attachment-container input[type="file"], form.msg-form input[type="file"], input[type="file"]');
-        if (fileInput) {
-          await fileInput.setInputFiles({
-            name: resume.filename || 'resume.pdf', mimeType: 'application/pdf',
-            buffer: Buffer.from(resume.contentBase64, 'base64'),
-          }).catch(() => {});
-          await humanDelay(1200, 2200);
-        }
-      }
-
-      // Type into the contenteditable message box, then send.
-      const box = await page.$('.msg-form__contenteditable, div[role="textbox"][contenteditable="true"]');
-      if (!box) continue;
-      await box.click({ timeout: 2000 }).catch(() => {});
-      await page.keyboard.type(m.body || '', { delay: 15 }).catch(() => {});
-      await humanDelay(800, 1500);
-
-      const send = await page.$('button.msg-form__send-button, button[type="submit"]:has-text("Send")');
-      if (!send) continue;
-      await send.click({ timeout: 3000 }).catch(() => {});
-      await humanDelay(1200, 2200);
-
+      if (!(await composeMessage(page, resume, m.body || ''))) continue;
       await api.markSent(m.id).catch(() => {});
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
         title: `Messaged ${m.name || 'a connection'}`, url: m.profileUrl, detail: 'sent with résumé attached' });

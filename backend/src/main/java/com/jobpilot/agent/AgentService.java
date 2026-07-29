@@ -506,14 +506,21 @@ public class AgentService {
         }
         if (locations.isEmpty()) locations.add("India");
 
+        boolean indeed = portal.equalsIgnoreCase("indeed");
         Map<String, Object> plan = new LinkedHashMap<>();
         plan.put("portal", portal);
         plan.put("keywords", keywords.stream().distinct().limit(6).toList());
         plan.put("locations", locations.stream().distinct().limit(6).toList());
-        plan.put("applyCap", block != null ? block.getApplyCap() : 200);
-        plan.put("connectCap", block != null ? block.getConnectCap() : 100);
-        plan.put("messageCap", block != null ? block.getMessageCap() : 50);
-        plan.put("blockMinutes", block != null ? block.getDurationMins() : 120);
+        // Per-run apply cap comes from the gear setting (LinkedIn default 15, Indeed 20). Outreach
+        // caps are effectively uncapped now — the worker still stops on LinkedIn's own weekly
+        // invite limit, but we don't impose an artificial one.
+        plan.put("applyCap", applyCapFor(portal));
+        plan.put("connectCap", 1000);
+        plan.put("messageCap", 1000);
+        // A run keeps going for the whole block until you stop it: LinkedIn 3h (apply → outreach),
+        // Indeed 1.5h. A schedule block's own duration still overrides if set.
+        plan.put("blockMinutes", block != null && block.getDurationMins() > 0
+                ? block.getDurationMins() : (indeed ? 90 : 180));
         plan.put("mode", block == null || block.getMode() == null || block.getMode().isBlank()
                 ? "apply" : block.getMode());
         plan.putAll(flows()); // flow toggles ride along so the worker honours them
@@ -566,6 +573,29 @@ public class AgentService {
         FLOW_KEYS.forEach((name, key) ->
                 out.put(name, settings.get(key).map(Boolean::parseBoolean).orElse(true)));
         return out;
+    }
+
+    // ---- per-run apply caps (the gear icon on the LinkedIn / Indeed pages) --------
+    private static final String LI_CAP_KEY = "agent_linkedin_apply_cap";
+    private static final String IN_CAP_KEY = "agent_indeed_apply_cap";
+
+    public Map<String, Object> limits() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(15));
+        m.put("indeedApplyCap", settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20));
+        return m;
+    }
+
+    public Map<String, Object> setLimits(Integer linkedinCap, Integer indeedCap) {
+        if (linkedinCap != null && linkedinCap > 0) settings.put(LI_CAP_KEY, String.valueOf(Math.min(linkedinCap, 100)));
+        if (indeedCap != null && indeedCap > 0) settings.put(IN_CAP_KEY, String.valueOf(Math.min(indeedCap, 100)));
+        return limits();
+    }
+
+    private int applyCapFor(String portal) {
+        return portal.equalsIgnoreCase("indeed")
+                ? settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20)
+                : settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(15);
     }
 
     public void setFlow(String name, boolean value) {

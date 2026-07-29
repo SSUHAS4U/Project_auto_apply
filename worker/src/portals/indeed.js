@@ -49,7 +49,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
-  const applyCap = Math.min(plan.applyCap || 20, 20); // hard ceiling: 20 Indeed applies per run
+  const applyCap = plan.applyCap || 20; // per-run cap from the gear setting (default 20)
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 

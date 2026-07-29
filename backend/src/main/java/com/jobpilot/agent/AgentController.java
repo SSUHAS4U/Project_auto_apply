@@ -119,6 +119,21 @@ public class AgentController {
         return agent.flows();
     }
 
+    /** Per-run Easy-Apply caps (the gear on the LinkedIn / Indeed pages). */
+    @GetMapping("/limits")
+    public Map<String, Object> limits() {
+        UserContext.require();
+        return agent.limits();
+    }
+
+    @PutMapping("/limits")
+    public Map<String, Object> setLimits(@RequestBody Map<String, Object> b) {
+        UserContext.require();
+        Integer li = b.get("linkedinApplyCap") instanceof Number n ? n.intValue() : null;
+        Integer in = b.get("indeedApplyCap") instanceof Number n ? n.intValue() : null;
+        return agent.setLimits(li, in);
+    }
+
     @PutMapping("/flows")
     public Map<String, Object> setFlows(@RequestBody Map<String, Object> b) {
         UserContext.require();
