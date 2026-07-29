@@ -4,7 +4,7 @@
 // are skipped. Indeed is aggressive about bot detection, so this is deliberately slow and
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
 import { humanDelay, sleep } from '../browser.js';
-import { fillForm, fillChoices, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 
 // See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
 // keyword-overlap number. Skip only clearly senior roles or postings we read well that
@@ -48,11 +48,16 @@ async function looksBlocked(page) {
 export async function runIndeed(page, api, plan, state, ctx) {
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
-  const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
+  // An Indeed run lasts ~1.5h unless you stop it (floor enforced here so a stale schedule row
+  // can't cut it short). Indeed has no post-scan/outreach phase — it only applies.
+  const blockMin = Math.max(plan.blockMinutes || 90, 90);
+  const deadline = Date.now() + blockMin * 60_000;
   const applyCap = plan.applyCap || 20; // per-run cap from the gear setting (default 20)
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 
+  console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block`);
+  let totalResults = 0;
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
@@ -62,6 +67,10 @@ export async function runIndeed(page, api, plan, state, ctx) {
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });
       await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await humanDelay(2800, 5000);
+      // Signed in? Indeed shows job cards to guests too, but apply needs a session — and the
+      // page layout differs, which can silently yield zero cards.
+      const url = page.url();
+      const loggedOut = /\/account\/login|secure\.indeed\.com|\/hp\?/i.test(url);
 
       if (await looksBlocked(page)) {
         blockedStreak++;
@@ -83,11 +92,13 @@ export async function runIndeed(page, api, plan, state, ctx) {
       blockedStreak = 0;
 
       const keys = await collectJobKeys(page);
+      totalResults += keys.length;
+      console.log(`  🔎 ${keyword} · ${location} → ${keys.length} result(s)${keys.length === 0 && loggedOut ? '  ⚠ looks signed-out' : ''}`);
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
         detail: `${keys.length} results for ${keyword} @ ${location}` });
 
       for (const jk of keys) {
-        if (state.stopped || state.paused || Date.now() > deadline || applied >= (plan.applyCap || 80)) break outer;
+        if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
         const jobPage = await ctx.newPage();
         try {
           await jobPage.goto(`https://www.indeed.com/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -144,6 +155,15 @@ export async function runIndeed(page, api, plan, state, ctx) {
       }
     }
   }
+  // If EVERY search returned zero, say why in plain terms rather than a silent 0/0/0/0/0.
+  if (totalResults === 0) {
+    console.log('\n  ✋ Indeed returned no jobs for any search. Usual causes:');
+    console.log('     · not signed in to Indeed in the automation browser (log in once, then run again)');
+    console.log('     · a captcha / "verify you are human" wall');
+    console.log('     · Indeed changed its results markup');
+    await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+      detail: 'Indeed returned no jobs — sign into indeed.com in the automation browser (or solve the captcha), then run again.' });
+  }
   return { applied };
 }
 
@@ -168,7 +188,9 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
     const { attention } = await fillForm(applyPage, profile, api);
     // Indeed's screening step is radio-group based too — fillForm skips those.
     const { attention: choiceAttention } = await fillChoices(applyPage, api);
-    attention.push(...choiceAttention);
+    // Custom dropdowns — pick the closest option from what the dropdown offers.
+    const { attention: dropAttention } = await fillDropdowns(applyPage, profile, api);
+    attention.push(...choiceAttention, ...dropAttention);
     if (attention.length) return 'attention';
 
     const submit = await applyPage.$('button:has-text("Submit application"), button[type="submit"]:has-text("Submit")');

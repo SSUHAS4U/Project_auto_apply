@@ -22,7 +22,9 @@ const SYNONYMS = {
   location: ['current location', 'location'],
   current_title: ['current designation', 'job title', 'current title', 'designation', 'current role'],
   current_company: ['current company', 'current employer', 'employer', 'organisation', 'organization'],
-  years_experience: ['years of experience', 'total experience', 'how many years', 'relevant experience', 'experience in years', 'years exp', 'experience', ' exp'],
+  // NOTE: no bare 'experience'/' exp' here. " exp" matched "what is your EXPected ctc?", so
+  // every expected-salary question was answered with the years-of-experience value (→ "1").
+  years_experience: ['years of experience', 'total experience', 'how many years', 'relevant experience', 'experience in years', 'years exp'],
   experience_level: ['experience level', 'seniority'],
   job_type: ['job type', 'employment type'],
   current_ctc: ['current ctc', 'current salary', 'current compensation', 'present salary'],
@@ -254,9 +256,16 @@ export async function fillForm(page, profile, api, root) {
       if (!value) continue;
 
       if (tag === 'select') {
-        await el.selectOption({ label: value }).catch(async () => {
-          await el.selectOption(value).catch(() => {});
-        });
+        // Pick the CLOSEST option, not an exact-label match: "Male" must still select an option
+        // labelled "Male " or "male", "1" must land in a "0-2 years" style bucket, etc.
+        const opts = await el.$$eval('option', (os) => os
+          .map((o) => ({ label: (o.textContent || '').replace(/\s+/g, ' ').trim(), value: o.value }))
+          .filter((o) => o.label && !/^(select|choose|please|--)/i.test(o.label)));
+        const v = String(value).toLowerCase().trim();
+        const m = opts.find((o) => o.label.toLowerCase() === v)
+          || opts.find((o) => o.label.toLowerCase().includes(v) || v.includes(o.label.toLowerCase()))
+          || opts.find((o) => o.label.toLowerCase().split(/[\s/–-]+/).some((w) => v.split(/[\s/–-]+/).includes(w)));
+        if (m) await el.selectOption(m.value).catch(() => el.selectOption({ label: m.label }).catch(() => {}));
       } else if (await isTypeahead(el)) {
         // A typeahead/autocomplete (LinkedIn's "City" field is one): typing raw text shows a
         // dropdown but leaves the field WITHOUT a committed value, so the form refuses to
@@ -281,6 +290,76 @@ export async function fillForm(page, profile, api, root) {
     } catch { /* skip a stubborn field, keep going */ }
   }
   return { filled, attention };
+}
+
+/**
+ * Fill CUSTOM dropdowns — the button/div widgets (LinkedIn & Indeed react-select style) that
+ * are NOT a native <select>, so fillForm never sees them. For each one: read its label, OPEN it
+ * to reveal the real options, ask the backend to pick the closest to the profile, then CLICK
+ * that option. This is what makes a question with no text field get answered from its dropdown.
+ */
+export async function fillDropdowns(page, profile, api, root) {
+  const scope = root || page;
+  const attention = [];
+  const triggers = await scope.$$(
+    '[role="combobox"]:visible, [aria-haspopup="listbox"]:visible, '
+    + '[class*="select__control" i]:visible, [data-automation-id*="dropdown" i]:visible, '
+    + '[data-automation-id*="select" i]:visible').catch(() => []);
+
+  for (const t of triggers) {
+    try {
+      const tag = await t.evaluate((n) => n.tagName.toLowerCase());
+      if (tag === 'select' || tag === 'input' || tag === 'textarea') continue; // native handled elsewhere
+      // Already shows a chosen value? ("Select…"/"Choose"/a placeholder don't count.)
+      const cur = (await t.evaluate((n) => (n.innerText || '').replace(/\s+/g, ' ').trim())).toLowerCase();
+      if (cur && cur.length < 40 && !/select|choose|please|^-+$|^—$/.test(cur)) continue;
+
+      const label = await labelFor(t);
+      if (!label) continue;
+
+      await t.click({ timeout: 2500 }).catch(() => {});
+      await humanDelay(500, 1000);
+      const opts = await page.$$eval(
+        '[role="option"], [role="listbox"] li, [class*="select__option" i], [class*="menu" i] [role="option"]',
+        (els) => [...new Set(els.map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter((s) => s && s.length < 80))]).catch(() => []);
+      if (opts.length < 1) { await page.keyboard.press('Escape').catch(() => {}); continue; }
+
+      // Closest option: profile value first, else let the backend choose from the REAL options.
+      const key = matchKey(label);
+      let want = key ? profile[key] : null;
+      const near = (val) => {
+        if (!val) return null;
+        const v = String(val).toLowerCase().trim();
+        return opts.find((o) => o.toLowerCase() === v)
+          || opts.find((o) => o.toLowerCase().includes(v) || v.includes(o.toLowerCase()))
+          || opts.find((o) => o.toLowerCase().split(/[\s/–-]+/).some((w) => v.split(/[\s/–-]+/).includes(w)));
+      };
+      let choice = near(want);
+      if (!choice) {
+        const ans = await api.answer(label, opts).catch(() => ({}));
+        if (ans && ans.answer) choice = near(ans.answer);
+      }
+      if (!choice) {
+        await page.keyboard.press('Escape').catch(() => {});
+        logBlank(label);
+        await api.recordQuestion(label, '').catch(() => {});
+        const req = await t.evaluate((n) => n.getAttribute('aria-required') === 'true' || !!n.closest('[required]')).catch(() => false);
+        if (req) attention.push(label);
+        continue;
+      }
+
+      // Click the option whose text is our choice.
+      const safe = choice.replace(/["\\]/g, '');
+      const optEl = await page.$(`[role="option"]:has-text("${safe}"), [class*="select__option" i]:has-text("${safe}"), [role="listbox"] li:has-text("${safe}")`);
+      if (optEl) await optEl.click({ timeout: 2500 }).catch(() => {});
+      else await page.keyboard.press('Escape').catch(() => {});
+      logField(label, choice);
+      await api.recordQuestion(label, choice).catch(() => {});
+      await humanDelay(300, 700);
+    } catch { /* skip a stubborn dropdown, keep going */ }
+  }
+  return { attention };
 }
 
 /** Attach the resume PDF (base64 from the backend) to a file input, if the form has one. */

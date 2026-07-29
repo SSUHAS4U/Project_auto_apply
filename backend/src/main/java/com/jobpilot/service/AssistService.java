@@ -516,14 +516,19 @@ public class AssistService {
         UUID userId = UserContext.require();
         String key = normalize(question);
 
-        // 1. Exact key match in the bank (skip PENDING pairs — blank answers awaiting the user).
+        // 1. Exact key match in the bank — but ONLY answers YOU own (saved from the extension or
+        //    edited in LinkedIn questions). Entries the automation guessed are stored as "auto"
+        //    purely so you can review/correct them; reusing those created a feedback loop that
+        //    memorised a wrong answer forever (that's how "expected ctc = 1" kept coming back).
         Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key)
-                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
+                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank())
+                .filter(q -> !"auto".equals(q.getSource()));
         if (exact.isPresent()) {
             return Map.of("answer", exact.get().getAnswer(), "source", "saved");
         }
-        // 2. Fuzzy match against the bank (token overlap) — reuse a similar answer.
-        QaPair similar = bestMatch(qaRepo.findByUserIdOrderByUpdatedAtDesc(userId), key);
+        // 2. Fuzzy match against your own answers (token overlap) — reuse a similar one.
+        QaPair similar = bestMatch(qaRepo.findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(q -> !"auto".equals(q.getSource())).toList(), key);
         if (similar != null && similar.getAnswer() != null && !similar.getAnswer().isBlank()) {
             return Map.of("answer", similar.getAnswer(), "source", "saved");
         }
@@ -1166,6 +1171,9 @@ public class AssistService {
                 .orElseThrow(() -> new IllegalArgumentException("saved answer not found"));
         if (question != null && !question.isBlank()) { q.setQuestion(question.trim()); q.setQuestionKey(normalize(question)); }
         if (answer != null && !answer.isBlank()) q.setAnswer(answer.trim());
+        // You edited it → it's now YOUR answer, and answer() will reuse it verbatim from now on.
+        // (Answers the automation guessed stay "auto" and are NOT reused — see answer().)
+        q.setSource("manual");
         q.setUpdatedAt(Instant.now());
         return qaRepo.save(q);
     }

@@ -5,7 +5,7 @@
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
 import { humanDelay, sleep } from '../browser.js';
-import { fillForm, fillChoices, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages } from './outreach.js';
 
@@ -126,16 +126,25 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
-  const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
+  // A LinkedIn run lasts ~3h unless you stop it. The 180-minute floor is enforced HERE, not
+  // just server-side: an old schedule row with a short duration made the deadline expire during
+  // Phase 1, so Phase 2 was skipped and the block ended right after applying — exactly the
+  // "it stopped midway / never got to the post analysis" case.
+  const blockMin = Math.max(plan.blockMinutes || 180, 180);
+  const deadline = Date.now() + blockMin * 60_000;
   let applied = 0;
   const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
 
   const mode = plan.mode || 'all';
   // Per-run apply cap comes from the gear setting (default 15). Phase 1 also gets AT MOST one
-  // hour: if it can't hit the cap in that time it stops applying and moves to outreach, so a
-  // slow apply phase never eats the whole block.
+  // hour: if it can't hit the cap in that time it stops applying and moves to outreach.
   const applyCap = plan.applyCap || 15;
-  const phase1Deadline = Math.min(deadline, Date.now() + 60 * 60_000);
+  const phase1Deadline = Date.now() + 60 * 60_000;
+  // Jobs already handled THIS RUN. LinkedIn returns the same posting in every city search, so
+  // without this the worker re-opened and re-answered the same job 5-6 times (the HeadSpin /
+  // Jobgether rows repeating in Hyderabad, Chennai, Remote, Mumbai…) and burned the hour on
+  // duplicates instead of reaching new jobs.
+  const doneJobs = new Set();
 
   // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
   if (mode !== 'outreach') {
@@ -165,6 +174,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       for (const cardInfo of cards) {
         const id = cardInfo.id;
         if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) break outer;
+        // Skip anything already handled in this run (same posting, different city search).
+        const roleKey = ((cardInfo.title || '') + '|' + (cardInfo.company || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+        if (doneJobs.has(id) || (roleKey !== '|' && doneJobs.has(roleKey))) continue;
+        doneJobs.add(id);
+        if (roleKey !== '|') doneJobs.add(roleKey);
         try {
           // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
           // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
@@ -416,7 +430,10 @@ async function easyApply(page, api, profile, resume, state) {
     // Screening questions are mostly radio groups, which fillForm skips — answer them too,
     // otherwise the step can never validate and Submit never appears.
     const { attention: choiceAttention } = await fillChoices(page, api, modal);
-    attention.push(...choiceAttention);
+    // Custom dropdowns (non-native <select>) — pick the closest option from what the dropdown
+    // actually offers. Without this a required dropdown stays empty and the form won't submit.
+    const { attention: dropAttention } = await fillDropdowns(page, profile, api, modal);
+    attention.push(...choiceAttention, ...dropAttention);
     if (attention.length) {
       // an unanswerable question — don't submit a half-filled application. Remember WHICH
       // question(s) blocked it so the result line can name them.
