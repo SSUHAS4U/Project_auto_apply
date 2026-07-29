@@ -32,6 +32,15 @@ const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
 // crashes the entire worker mid-run (exit 1) even though the browser is otherwise fine and had
 // been submitting jobs. Keep the process alive and let the per-job try/catch handle anything
 // that actually breaks the current job. We log every one so a real, recurring fault is visible.
+/** Is the automation page still usable? False once the browser/context has been closed. */
+async function pageAlive(page) {
+  try {
+    if (!page || page.isClosed?.()) return false;
+    await page.evaluate(() => 1);
+    return true;
+  } catch { return false; }
+}
+
 let recoveredErrors = 0;
 function recover(kind, err) {
   recoveredErrors++;
@@ -176,6 +185,15 @@ async function main() {
     console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);
     await api.runStatus(order.runId, 'running', `Working ${order.portal}`);
     try {
+      // The browser can die between blocks (Playwright's own crash, or the window was closed).
+      // The process-level guards keep the WORKER alive, but every later action then fails with
+      // "Target page, context or browser has been closed" forever. Check it's alive and
+      // relaunch if not, so a dead browser self-heals instead of failing every run.
+      if (!(await pageAlive(page))) {
+        console.log('  ⟳ the automation browser had closed — reopening it…');
+        await ctx.close().catch(() => {});
+        ({ ctx, page } = await launchBrowser({ headless: background }));
+      }
       const res = await adapter(page, api, order.plan, state, ctx);
       await api.runStatus(order.runId, 'done', `Block complete — ${res.applied || 0} applied`);
       // Full breakdown, not just "applied": a 0 with no explanation is what made this feel

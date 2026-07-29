@@ -12,20 +12,68 @@ import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 const FIT_THRESHOLD = 25;
 const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
-function searchUrl(keyword, location) {
+// Indeed is COUNTRY-SPECIFIC: www.indeed.com is the US site and returns nothing for an Indian
+// city — which is exactly why every search came back "0 results". Indian jobs live on
+// in.indeed.com. Pick the domain from the search location / the profile's country.
+const COUNTRY_HOSTS = [
+  [/\b(india|bengaluru|bangalore|hyderabad|chennai|mumbai|pune|delhi|noida|gurugram|gurgaon|kolkata|ahmedabad|kochi|coimbatore|vijayawada|visakhapatnam|indore|jaipur|chandigarh)\b/i, 'in.indeed.com'],
+  [/\b(united kingdom|uk|london|manchester)\b/i, 'uk.indeed.com'],
+  [/\b(canada|toronto|vancouver)\b/i, 'ca.indeed.com'],
+  [/\b(australia|sydney|melbourne)\b/i, 'au.indeed.com'],
+  [/\b(singapore)\b/i, 'sg.indeed.com'],
+  [/\b(germany|berlin|munich)\b/i, 'de.indeed.com'],
+];
+function hostFor(location, profile) {
+  const hay = `${location || ''} ${profile?.location || ''} ${profile?.country || ''}`;
+  for (const [re, host] of COUNTRY_HOSTS) if (re.test(hay)) return host;
+  return 'www.indeed.com';
+}
+
+function searchUrl(keyword, location, profile) {
   const p = new URLSearchParams({ q: keyword, sort: 'date' });
   if (location && location.toLowerCase() !== 'remote') p.set('l', location);
   else p.set('l', 'Remote');
-  return `https://www.indeed.com/jobs?${p.toString()}`;
+  return `https://${hostFor(location, profile)}/jobs?${p.toString()}`;
 }
 
 async function collectJobKeys(page) {
+  // Indeed renames these constantly; cast wide and also mine any /viewjob?jk= or /rc/clk?jk=
+  // link on the page so a class rename can't zero out the whole search.
   const keys = await page.$$eval(
-    'a.jcs-JobTitle[data-jk], a[data-jk], div.job_seen_beacon a[href*="jk="]',
-    (nodes) => nodes.map((n) => n.getAttribute('data-jk')
-      || (n.getAttribute('href') || '').match(/jk=([0-9a-f]+)/)?.[1]).filter(Boolean),
+    '[data-jk], a[href*="jk="], a[href*="/viewjob"], .job_seen_beacon, [data-testid="slider_item"]',
+    (nodes) => nodes.flatMap((n) => {
+      const out = [];
+      const dj = n.getAttribute && n.getAttribute('data-jk');
+      if (dj) out.push(dj);
+      const href = (n.getAttribute && n.getAttribute('href')) || '';
+      const m = href.match(/[?&]jk=([0-9a-zA-Z]+)/);
+      if (m) out.push(m[1]);
+      const inner = n.querySelector && n.querySelector('[data-jk], a[href*="jk="]');
+      if (inner) {
+        const idj = inner.getAttribute('data-jk');
+        if (idj) out.push(idj);
+        const im = (inner.getAttribute('href') || '').match(/[?&]jk=([0-9a-zA-Z]+)/);
+        if (im) out.push(im[1]);
+      }
+      return out;
+    }).filter(Boolean),
   ).catch(() => []);
   return [...new Set(keys)];
+}
+
+/** When a search yields nothing, print what the page actually is — no more silent zeros. */
+async function describeSearch(page) {
+  const info = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title.slice(0, 90),
+    cards: document.querySelectorAll('[data-jk], .job_seen_beacon').length,
+    bodyStart: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+  })).catch(() => null);
+  if (!info) { console.log('     [diag] could not read the page'); return; }
+  console.log(`     [diag] landed on: ${info.url}`);
+  console.log(`     [diag] title: ${info.title}`);
+  console.log(`     [diag] job cards in DOM: ${info.cards}`);
+  console.log(`     [diag] page text: ${info.bodyStart}`);
 }
 
 async function readPosting(page) {
@@ -58,6 +106,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
   console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block`);
   let totalResults = 0;
+  let diagShown = false;   // dump the page diagnostics once, not on every empty search
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
@@ -65,7 +114,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
       state.action = `Searching Indeed "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });
-      await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.goto(searchUrl(keyword, location, profile), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await humanDelay(2800, 5000);
       // Signed in? Indeed shows job cards to guests too, but apply needs a session — and the
       // page layout differs, which can silently yield zero cards.
@@ -94,6 +143,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
       const keys = await collectJobKeys(page);
       totalResults += keys.length;
       console.log(`  🔎 ${keyword} · ${location} → ${keys.length} result(s)${keys.length === 0 && loggedOut ? '  ⚠ looks signed-out' : ''}`);
+      if (keys.length === 0 && !diagShown) { diagShown = true; await describeSearch(page).catch(() => {}); }
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
         detail: `${keys.length} results for ${keyword} @ ${location}` });
 
