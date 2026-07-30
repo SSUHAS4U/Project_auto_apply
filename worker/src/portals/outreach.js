@@ -25,22 +25,54 @@ function loggedOut(page) {
   return /\/login|\/authwall|signup/i.test(page.url());
 }
 
-/** Pull the people result cards currently rendered (name, profile URL, headline). */
+/**
+ * Pull the people results (name, profile URL, headline).
+ *
+ * Anchored on the PROFILE LINKS themselves (a[href*="/in/"]), not on result-card class names.
+ * The old selectors (reusable-search__result-container / entity-result) are LinkedIn's previous
+ * search DOM — they now match nothing, which is why every keyword reported "0 people found"
+ * even though the page was full of recruiters. A /in/ link is what a person result IS, so this
+ * survives the class renames.
+ */
 async function collectPeople(page) {
-  return page.$$eval(
-    'li.reusable-search__result-container, div.entity-result, li.artdeco-list__item',
-    (cards) => cards.map((el) => {
-      const link = el.querySelector('a[href*="/in/"]');
-      const nameEl = el.querySelector('.entity-result__title-text a span[aria-hidden="true"], span.entity-result__title-text');
-      const headline = el.querySelector('.entity-result__primary-subtitle, .entity-result__summary');
-      const href = link ? link.href.split('?')[0] : '';
-      return {
-        name: (nameEl?.textContent || '').replace(/\s+/g, ' ').trim(),
-        profileUrl: href,
-        headline: (headline?.textContent || '').replace(/\s+/g, ' ').trim(),
-      };
-    }).filter((p) => p.profileUrl && p.name && !/LinkedIn Member/i.test(p.name)),
-  ).catch(() => []);
+  return page.$$eval('a[href*="/in/"]', (links) => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const out = [];
+    const seen = new Set();
+    for (const a of links) {
+      const href = (a.href || '').split('?')[0];
+      if (!/\/in\/[^/]+\/?$/.test(href) || seen.has(href)) continue;
+      // Walk up to the row/card that holds this link so we can read the headline near it.
+      let box = a;
+      for (let i = 0; i < 5 && box.parentElement; i++) {
+        box = box.parentElement;
+        if (box.matches('li, [data-view-name], .artdeco-list__item, div[componentkey]')) break;
+      }
+      const name = clean(a.getAttribute('aria-label') || a.innerText).split('\n')[0];
+      if (!name || /LinkedIn Member/i.test(name) || name.length > 60) continue;
+      const boxText = clean(box.innerText);
+      // The headline is usually the line after the name inside the same card.
+      const after = boxText.split(name).slice(1).join(name);
+      const headline = clean(after).split('•')[0].slice(0, 140);
+      seen.add(href);
+      out.push({ name, profileUrl: href, headline });
+    }
+    return out;
+  }).catch(() => []);
+}
+
+/** Print what a search page actually contains when it yields nothing. */
+async function describePeoplePage(page) {
+  const info = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title.slice(0, 80),
+    profileLinks: document.querySelectorAll('a[href*="/in/"]').length,
+    text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+  })).catch(() => null);
+  if (!info) return;
+  console.log(`     [diag] ${info.url}`);
+  console.log(`     [diag] title: ${info.title} · /in/ links on page: ${info.profileLinks}`);
+  console.log(`     [diag] text: ${info.text}`);
 }
 
 /**
@@ -128,6 +160,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
   const cap = plan.connectCap || 1000;
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
   let sent = 0, skipped = 0;
+  let peopleDiagShown = false;
   console.log('\n  🤝 Connections — inviting recruiters (until the weekly limit / block ends)…');
 
   for (const keyword of (plan.keywords || [])) {
@@ -140,6 +173,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
 
     const people = await collectPeople(page);
     console.log(`     "${keyword} recruiter" → ${people.length} people found`);
+    if (people.length === 0 && !peopleDiagShown) { peopleDiagShown = true; await describePeoplePage(page).catch(() => {}); }
     for (const person of people) {
       if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
       try {

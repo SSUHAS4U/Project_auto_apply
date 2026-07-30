@@ -345,12 +345,23 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
 
     for (let scroll = 0; scroll < scrolls && found < cap && Date.now() < phaseDeadline; scroll++) {
       // read every post currently rendered
-      const posts = await page.$$eval('div.feed-shared-update-v2, li.artdeco-card', (els) =>
-        els.slice(0, 30).map((el) => {
-          const name = el.querySelector('.update-components-actor__title span[aria-hidden]')?.textContent?.trim() || '';
-          const link = el.querySelector('a.app-aware-link[href*="/feed/update/"]')?.href || '';
-          return { name, link, text: (el.innerText || '').slice(0, 4500) };
-        })).catch(() => []);
+      // Class-independent: try the known post containers, but if LinkedIn has renamed them
+      // (which is why this reported "scanned 0 posts"), fall back to the WHOLE PAGE as one
+      // blob — we only need the text to mine recruiter emails out of it.
+      const posts = await page.evaluate(() => {
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        let els = [...document.querySelectorAll(
+          'div.feed-shared-update-v2, li.artdeco-card, [data-urn*="activity"], [data-id*="activity"], div[data-view-name*="feed"]')];
+        if (els.length === 0) {
+          const body = document.body;
+          return body ? [{ name: '', link: location.href, text: (body.innerText || '').slice(0, 60000) }] : [];
+        }
+        return els.slice(0, 40).map((el) => {
+          const a = el.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
+          const nameEl = el.querySelector('.update-components-actor__title span[aria-hidden], .update-components-actor__title, a[href*="/in/"]');
+          return { name: clean(nameEl?.textContent).slice(0, 60), link: a?.href || '', text: (el.innerText || '').slice(0, 4500) };
+        });
+      }).catch(() => []);
       analysed += posts.length;
 
       for (const post of posts) {

@@ -4,6 +4,7 @@
 // are skipped. Indeed is aggressive about bot detection, so this is deliberately slow and
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
 import { humanDelay, sleep } from '../browser.js';
+import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 
 // See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
@@ -107,6 +108,9 @@ export async function runIndeed(page, api, plan, state, ctx) {
   console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block`);
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
+  // Indeed returns the same postings for every city (16 each time in the last run), so without
+  // this the worker re-opened and re-processed the identical 16 jobs six times over.
+  const doneJobs = new Set();
   outer:
   for (const keyword of plan.keywords) {
     for (const location of plan.locations) {
@@ -149,6 +153,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
       for (const jk of keys) {
         if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
+        if (doneJobs.has(jk)) continue;   // already handled this run (another city's search)
+        doneJobs.add(jk);
         const jobPage = await ctx.newPage();
         try {
           await jobPage.goto(`https://www.indeed.com/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -166,18 +172,24 @@ export async function runIndeed(page, api, plan, state, ctx) {
           if (SENIOR_RE.test(post.title || '')) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
+            logSkipped(post.title || 'Role', 'senior/leadership role');
             continue;
           }
           if (canJudge && score < FIT_THRESHOLD) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company, detail: `skip — low fit ${score}` });
+            logSkipped(post.title || 'Role', `low fit ${score}`);
             continue;
           }
           await api.event({ runId: state.runId, portal: 'indeed', type: 'relevant',
             title: post.title, company: post.company,
             detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
 
+          logJobHeader(post.title || 'Role', post.company || '', canJudge ? `fit ${score}` : 'no description');
+          beginJob();
           const result = await indeedApply(jobPage, api, profile, resume, state, ctx);
+          logResult(result === 'applied' ? 'applied' : result === 'external' ? 'external'
+            : result === 'attention' ? 'attention' : 'none');
           if (result === 'applied') {
             applied++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
