@@ -343,6 +343,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
       return;
     }
 
+    let analysedHere = 0;   // posts read for THIS keyword (the cumulative one is `analysed`)
     for (let scroll = 0; scroll < scrolls && found < cap && Date.now() < phaseDeadline; scroll++) {
       // read every post currently rendered
       // Class-independent: try the known post containers, but if LinkedIn has renamed them
@@ -363,6 +364,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
         });
       }).catch(() => []);
       analysed += posts.length;
+      analysedHere += posts.length;
 
       for (const post of posts) {
         const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
@@ -391,7 +393,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
     // Surface the outreach phase per keyword — otherwise a scan that finds no recruiter
     // email is indistinguishable from a scan that never ran.
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
-      detail: `scanned ${analysed} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
+      detail: `scanned ${analysedHere} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
   }
   console.log(`     scanned ${analysed} post(s) → ${found} recruiter email(s)`);
   if (found > 0) {

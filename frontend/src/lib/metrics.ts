@@ -27,6 +27,17 @@ export const jobKey = (e: AgentEvent) => (e.url || '').trim()
  * connection_sent, reply_received…) are counted individually, which is correct for them.
  */
 export function countJobs(events: AgentEvent[], types: string[]): number {
+  // "Posts analysed" is not one-event-per-post: the worker emits ONE event per keyword whose
+  // detail reads "scanned N hiring post(s) for …". Counting those events showed 6 (the number
+  // of keyword batches) when 150 posts had actually been read — so sum the N instead. The
+  // worker writes a PER-KEYWORD count for exactly this reason.
+  if (types.length === 1 && types[0] === 'post_analysed') {
+    return events.reduce((sum, e) => {
+      if (e.type !== 'post_analysed') return sum;
+      const m = /scanned\s+(\d+)/i.exec(e.detail || '');
+      return sum + (m ? Number(m[1]) : 1);
+    }, 0);
+  }
   const seen = new Set<string>();
   let n = 0;
   for (const e of events) {
