@@ -105,7 +105,11 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 
-  console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block`);
+  // ONE country host for the whole run — used for the searches AND the job pages. The job page
+  // used to be hardcoded to www.indeed.com while the search ran on in.indeed.com, so every job
+  // opened on the US site, redirected, and was silently dropped: "16 results" then nothing.
+  const host = hostFor((plan.locations || [])[0], profile);
+  console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block · ${host}`);
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   // Indeed returns the same postings for every city (16 each time in the last run), so without
@@ -157,14 +161,14 @@ export async function runIndeed(page, api, plan, state, ctx) {
         doneJobs.add(jk);
         const jobPage = await ctx.newPage();
         try {
-          await jobPage.goto(`https://www.indeed.com/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          await jobPage.goto(`https://${host}/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
           await humanDelay(1800, 3200);
           if (await looksBlocked(jobPage)) { await jobPage.close(); continue; }
 
           const post = await readPosting(jobPage);
           state.action = `Reviewing: ${post.title}`;
           await api.event({ runId: state.runId, portal: 'indeed', type: 'job_identified',
-            title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}`,
+            title: post.title, company: post.company, url: `https://${host}/viewjob?jk=${jk}`,
             salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
           const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
@@ -193,11 +197,11 @@ export async function runIndeed(page, api, plan, state, ctx) {
           if (result === 'applied') {
             applied++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
-              title: post.title, company: post.company, url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: `fit ${score}` });
+              title: post.title, company: post.company, url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score}` });
           } else if (result === 'external') {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
-              url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
+              url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
           } else if (result === 'attention') {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company, detail: 'needs attention — an unanswerable question' });
@@ -206,7 +210,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
             // emitted NOTHING, so the job disappeared with no counter and no error.
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
-              url: `https://www.indeed.com/viewjob?jk=${jk}`, detail: 'no Indeed Apply button found — apply manually' });
+              url: `https://${host}/viewjob?jk=${jk}`, detail: 'no Indeed Apply button found — apply manually' });
           }
         } catch (e) {
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error', detail: String(e).slice(0, 160) });

@@ -15,8 +15,16 @@ import { humanDelay } from '../browser.js';
 
 const NOTE_LIMIT = 300;
 
-function peopleSearchUrl(keyword) {
-  const p = new URLSearchParams({ keywords: `${keyword} recruiter`, origin: 'GLOBAL_SEARCH_HEADER' });
+// Include the target CITY in the query. Without it LinkedIn returned recruiters worldwide
+// (US/EU names that can't be connected to or messaged from here) — 35 people found, 0 usable.
+// "<role> recruiter <city>" keeps the results in the market you're actually applying to.
+function peopleSearchUrl(keyword, location) {
+  const loc = location && location.toLowerCase() !== 'remote' ? ` ${location}` : ' India';
+  const p = new URLSearchParams({
+    keywords: `${keyword} recruiter${loc}`,
+    origin: 'GLOBAL_SEARCH_HEADER',
+    network: '["S","O"]',   // 2nd-degree + out-of-network: the ones you CAN still invite
+  });
   return `https://www.linkedin.com/search/results/people/?${p.toString()}`;
 }
 
@@ -81,17 +89,35 @@ async function describePeoplePage(page) {
  */
 async function inviteWithNote(page, scope, note) {
   const root = scope || page;
-  let connect = await root.$('button[aria-label*="Invite"][aria-label*="connect"], button:has-text("Connect")');
+  // Find Connect by what the button SAYS, not by a class/aria pattern. On a real profile the
+  // control is variously aria-label="Invite Jane Doe to connect", plain text "Connect", or
+  // hidden behind "More" — and the previous narrow selector matched none of them, which is why
+  // every single person came back "no Connect available".
+  const findConnect = async () => {
+    const handles = await root.$$('button, [role="button"], div[role="button"] , a[role="button"]');
+    for (const h of handles) {
+      const label = await h.evaluate((n) => (
+        (n.getAttribute('aria-label') || '') + ' ' + (n.innerText || '')
+      ).replace(/\s+/g, ' ').trim().toLowerCase()).catch(() => '');
+      if (!label) continue;
+      if (/\bconnect\b/.test(label) && !/message|follow|more|pending|connected/.test(label)) {
+        if (await h.isVisible().catch(() => false)) return h;
+      }
+    }
+    return null;
+  };
+
+  let connect = await findConnect();
   if (!connect) {
-    // Some cards hide Connect behind a "More" overflow menu.
-    const more = await root.$('button[aria-label*="More actions"], button[aria-label="More"]');
+    // Connect is often tucked into the "More" overflow on 2nd/3rd-degree profiles.
+    const more = await root.$('button[aria-label*="More actions"], button[aria-label="More"], button:has-text("More")');
     if (more) {
       await more.click({ timeout: 3000 }).catch(() => {});
-      await humanDelay(500, 1000);
-      connect = await page.$('div[role="menu"] [aria-label*="connect"], div.artdeco-dropdown__content [role="button"]:has-text("Connect")');
+      await humanDelay(600, 1100);
+      connect = await findConnect();
     }
   }
-  if (!connect) return false; // already connected / can't invite → skip
+  if (!connect) return false; // already connected / follow-only / can't invite → caller may DM
 
   await connect.click({ timeout: 3000 }).catch(() => {});
   await humanDelay(900, 1600);
@@ -163,16 +189,20 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
   let peopleDiagShown = false;
   console.log('\n  🤝 Connections — inviting recruiters (until the weekly limit / block ends)…');
 
-  for (const keyword of (plan.keywords || [])) {
+  // Widen the net: every role × every target city, so the pool is large AND local.
+  const cities = (plan.locations && plan.locations.length ? plan.locations : ['India']);
+  const searches = [];
+  for (const keyword of (plan.keywords || [])) for (const city of cities) searches.push([keyword, city]);
+  for (const [keyword, city] of searches) {
     if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
-    state.action = `Finding recruiters for "${keyword}"`;
+    state.action = `Finding recruiters for "${keyword}" in ${city}`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
-    await page.goto(peopleSearchUrl(keyword), { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.goto(peopleSearchUrl(keyword, city), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await humanDelay(2200, 3600);
     if (loggedOut(page)) { console.log('     ⚠ not signed in — log into linkedin.com in the automation browser'); return sent; }
 
     const people = await collectPeople(page);
-    console.log(`     "${keyword} recruiter" → ${people.length} people found`);
+    console.log(`     "${keyword} recruiter · ${city}" → ${people.length} people found`);
     if (people.length === 0 && !peopleDiagShown) { peopleDiagShown = true; await describePeoplePage(page).catch(() => {}); }
     for (const person of people) {
       if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
