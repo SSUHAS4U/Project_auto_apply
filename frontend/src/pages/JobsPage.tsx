@@ -115,7 +115,11 @@ export function JobsPage() {
     localStorage.setItem(FILTER_KEY, JSON.stringify(persist));
   }, [filters]);
 
-  useEffect(() => { load(filters); /* eslint-disable-next-line */ }, [filters.page, filters.size]);
+  // Reload ONLY when the page or page size changes. Other filter edits go through `apply`,
+  // which reloads itself — depending on the whole `filters` object here would fire a second,
+  // duplicate request on every keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(filters); }, [filters.page, filters.size]);
 
   const apply = (patch: Partial<JobFilters>) => {
     const next = { ...filters, ...patch, page: 0 };

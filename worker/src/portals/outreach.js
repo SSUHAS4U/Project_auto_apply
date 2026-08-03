@@ -351,6 +351,54 @@ export async function checkAcceptances(page, api, state) {
   return accepted;
 }
 
+/**
+ * Phase 4 — the staged follow-up sequence (Day 1 → 2 → 5 → 10, then archive).
+ *
+ * A single message after the connection was accepted threw away most of the value of making
+ * the connection: most replies come from the second or third touch. The backend decides who is
+ * due and writes the body for THAT stage, so message 3 doesn't repeat message 1, and it archives
+ * the contact once the sequence is spent — nobody is nudged forever.
+ */
+export async function sendFollowUps(page, api, resume, state, plan = {}) {
+  const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
+  const due = await api.followUps(15).catch(() => []);
+  if (due.length === 0) { console.log('\n  📨 Follow-ups — none due today.'); return 0; }
+
+  console.log(`\n  📨 Follow-ups — ${due.length} due (Day 1 → 2 → 5 → 10, then archived)…`);
+  let sent = 0;
+  for (const f of due) {
+    if (state.stopped || state.paused || Date.now() > deadline) break;
+    if (!f.profileUrl || !f.body) continue;
+    try {
+      await page.goto(f.profileUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await humanDelay(1500, 2600);
+      if (loggedOut(page)) return sent;
+
+      // Only the FIRST follow-up carries the résumé; re-attaching it every time reads as
+      // automated, and they already have it.
+      const withResume = f.stage === 0 ? resume : null;
+      if (!(await composeMessage(page, withResume, f.body))) {
+        console.log(`     · ${f.name} — no message box (they may have disconnected)`);
+        continue;
+      }
+      // Only advance the stage once the message actually went out, so a failure retries the
+      // same touch tomorrow instead of silently skipping it.
+      const r = await api.followUpSent(f.contactId).catch(() => ({ ok: false }));
+      sent++;
+      console.log(`     + ${f.name} — ${f.label}${r.archived ? ' (sequence complete, archived)' : ''}`);
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
+        title: `Follow-up to ${f.name || 'a connection'}`, url: f.profileUrl,
+        detail: `${f.label}${f.company ? ` · ${f.company}` : ''}` });
+    } catch (e) {
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+        detail: `follow-up: ${String(e).slice(0, 120)}` });
+    }
+    await humanDelay(2500, 4500);
+  }
+  console.log(`     follow-ups: ${sent} sent`);
+  return sent;
+}
+
 /** Phase 3 — send approved follow-up messages as DMs with the résumé attached. */
 export async function sendApprovedMessages(page, api, resume, state) {
   const msgs = await api.approvedMessages().catch(() => []);

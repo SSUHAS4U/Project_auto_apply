@@ -32,11 +32,12 @@ public class WorkerController {
     private final com.jobpilot.service.ComposeService compose;
     private final FitService fit;
     private final OutreachGuard guard;
+    private final FollowUpService followUps;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
                             com.jobpilot.service.AssistService assist,
                             com.jobpilot.service.ComposeService compose,
-                            FitService fit, OutreachGuard guard) {
+                            FitService fit, OutreachGuard guard, FollowUpService followUps) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
@@ -44,6 +45,7 @@ public class WorkerController {
         this.compose = compose;
         this.fit = fit;
         this.guard = guard;
+        this.followUps = followUps;
     }
 
     /**
@@ -197,6 +199,35 @@ public class WorkerController {
         List<String> recent = posts instanceof List<?> l
                 ? l.stream().map(String::valueOf).filter(s -> !s.isBlank()).toList() : List.of();
         return fit.recruiterFit(str(b.get("name")), str(b.get("headline")), recent);
+    }
+
+    /**
+     * Contacts whose next follow-up is due (Day 1 → 2 → 5 → 10, counted from the last touch).
+     * Each carries the angle for THIS touch, so message 3 doesn't repeat message 1.
+     */
+    @GetMapping("/follow-ups")
+    public List<Map<String, Object>> followUps(@RequestParam(defaultValue = "15") int limit) {
+        UUID u = UserContext.require();
+        return followUps.due(u, java.time.Instant.now(), Math.min(limit, 50)).stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("contactId", c.getId().toString());
+            m.put("name", nz(c.getName()));
+            m.put("profileUrl", nz(c.getProfileUrl()));
+            m.put("company", nz(c.getCompany()));
+            m.put("stage", c.getFollowUpStage());
+            m.put("label", followUps.labelFor(c.getFollowUpStage()));
+            m.put("body", agent.followUpNote(u, c.getId(), followUps.angleFor(c.getFollowUpStage())));
+            return m;
+        }).toList();
+    }
+
+    /** The worker reports a follow-up actually went out — advances the stage and the clock. */
+    @PostMapping("/follow-up-sent")
+    public Map<String, Object> followUpSent(@RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        PortalContact c = followUps.recordTouch(u, uuid(b.get("contactId")), java.time.Instant.now());
+        if (c == null) return Map.of("ok", false);
+        return Map.of("ok", true, "stage", c.getFollowUpStage(), "archived", c.getArchivedAt() != null);
     }
 
     /** Is this post a real opening? Replaces the email regex that found nothing in 150 posts. */

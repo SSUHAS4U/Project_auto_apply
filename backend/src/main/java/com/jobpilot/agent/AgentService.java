@@ -959,6 +959,44 @@ public class AgentService {
     }
 
     /**
+     * A follow-up message for a contact who already accepted, shaped by which touch this is.
+     *
+     * @param angle what THIS touch is for (from {@link FollowUpService#angleFor}). Without it
+     *              every follow-up reads like the first one, which is how a sequence turns into
+     *              nagging instead of a conversation.
+     */
+    public String followUpNote(UUID userId, UUID contactId, String angle) {
+        PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
+        Profile p = profiles.get();
+        String first = firstNameOf(c);
+        String base = "Hi " + first + ", following up on my note"
+                + (c != null && c.getCompany() != null && !c.getCompany().isBlank()
+                   ? " about opportunities at " + c.getCompany() : "") + ".";
+        if (!ai.isEnabled()) return cleanOutbound(base);
+
+        String sys = """
+                Write ONE short LinkedIn follow-up message, first person, warm and concrete.
+                Under 400 characters. No clichés ("just checking in", "circling back"), no
+                pressure, no invented facts — use only the candidate details given.
+                Do not restate things an earlier message already covered.
+                THIS MESSAGE'S PURPOSE: %s
+                Output ONLY the message text.""".formatted(
+                        angle == null || angle.isBlank() ? "a brief, useful nudge" : angle);
+        String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
+                + (p.getSkills() == null || p.getSkills().isEmpty() ? ""
+                    : "\nSKILLS: " + String.join(", ", p.getSkills().stream().limit(10).toList()))
+                + (p.getProjects() == null || p.getProjects().isEmpty() ? ""
+                    : "\nPROJECTS: " + p.getProjects().stream().limit(3).map(String::valueOf)
+                        .reduce((a, b) -> a + " | " + b).orElse(""))
+                + "\nCONTACT: " + (c == null ? "a recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
+                + "\nDRAFT: " + base;
+        String out = nz(ai.complete(sys, user, true, false)).trim();
+        if (out.isBlank() || out.length() > 600) out = base;
+        out = cleanOutbound(out);
+        return out.length() > 600 ? out.substring(0, 597) + "…" : out;
+    }
+
+    /**
      * @param topic what this person recently posted about, when we verified them that way.
      *              Naming it is the difference between a note that could have been sent to
      *              anyone and one that proves we read their post.

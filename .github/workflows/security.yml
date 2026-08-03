@@ -1,0 +1,80 @@
+name: security
+
+# Static analysis and dependency/image scanning. Runs on every push and PR, plus a weekly
+# sweep so a newly-disclosed CVE in an unchanged dependency still surfaces.
+#
+# This codebase stores portal credentials, drives a logged-in browser, and emails on the
+# owner's behalf, so injection and leaked-secret findings matter more than usual.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request: {}
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC — catches CVEs disclosed since the last push
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # so findings land in the repo's Security tab
+
+jobs:
+  # Static security analysis: injection, XSS, path traversal, hardcoded secrets, OWASP patterns.
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/security-audit
+            p/secrets
+            p/java
+            p/javascript
+            p/typescript
+            p/react
+        # Report, don't block: a first run on an unscanned codebase will surface a backlog,
+        # and failing every build on day one just teaches everyone to ignore it.
+        continue-on-error: true
+        env:
+          SEMGREP_SEND_METRICS: "0"
+
+  # Vulnerable OS packages and libraries in the backend image that ships to the VM.
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan the repo for vulnerable dependencies and secrets
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true      # noise: unfixed CVEs give nothing to act on
+          format: sarif
+          output: trivy.sarif
+        continue-on-error: true
+      - name: Publish findings to the Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy.sarif') != ''
+        with:
+          sarif_file: trivy.sarif
+        continue-on-error: true
+
+  # A dependency with a known advisory is the cheapest thing to catch.
+  audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [frontend, worker, desktop, extension]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: npm audit (${{ matrix.dir }})
+        working-directory: ${{ matrix.dir }}
+        run: |
+          if [ ! -f package.json ]; then echo "no package.json — skipping"; exit 0; fi
+          npm audit --audit-level=high || true

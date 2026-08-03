@@ -7,7 +7,7 @@
 import { humanDelay, sleep } from '../browser.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
-import { sendConnectionRequests, checkAcceptances, sendApprovedMessages } from './outreach.js';
+import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
 import { shouldApply } from '../gate.js';
 
 // You already searched YOUR keywords with the Easy-Apply filter on, so a listing here is
@@ -328,6 +328,9 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         await sendConnectionRequests(page, api, plan, state, resume);
         await checkAcceptances(page, api, state);
         await sendApprovedMessages(page, api, resume, state);
+        // The staged sequence for people who accepted earlier — Day 1 → 2 → 5 → 10, then
+        // archived. Runs last so a fresh invite this block isn't followed up in the same hour.
+        await sendFollowUps(page, api, resume, state, plan);
       } catch (e) {
         await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `outreach ended: ${String(e).slice(0, 120)}` });
       }
