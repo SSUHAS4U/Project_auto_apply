@@ -33,8 +33,10 @@ jobs:
             script: dist:mac
             out: JobPilot-macOS.dmg
     runs-on: ${{ matrix.os }}
-    # A slow/failed platform never blocks the others — each publishes on its own.
-    continue-on-error: true
+    # `fail-fast: false` above is what keeps one platform's failure from cancelling the others,
+    # so each still publishes on its own. `continue-on-error` is deliberately NOT set: it made
+    # the RUN report success even when all three platforms failed to package, which is how a
+    # release shipped with no installers at all and the failure went unnoticed.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,6 +69,9 @@ jobs:
       # Stamp the tag into desktop/package.json first, so the worker can print which build it
       # is on its first log line. Guessing whether an installer predates a fix wastes a whole
       # debugging round-trip on both sides.
+      # NOTE: the key is `jobpilotBuild`, NOT `build` — in package.json `build` is
+      # electron-builder's own configuration block (appId, files, nsis, …). Writing a string
+      # there deletes the entire build config and every platform fails to package.
       - name: Stamp the build version
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -74,9 +79,10 @@ jobs:
           node -e "
             const fs = require('fs'), f = 'desktop/package.json';
             const p = JSON.parse(fs.readFileSync(f, 'utf8'));
-            p.build = process.argv[1];
+            if (typeof p.build !== 'object') { console.error('refusing: package.json build config is missing'); process.exit(1); }
+            p.jobpilotBuild = process.argv[1];
             fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
-            console.log('stamped build =', p.build);
+            console.log('stamped jobpilotBuild =', p.jobpilotBuild, '| electron-builder config intact:', Object.keys(p.build).join(','));
           " '${{ github.ref_name }}'
       - name: Install desktop deps
         working-directory: desktop

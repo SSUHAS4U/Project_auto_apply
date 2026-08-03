@@ -55,7 +55,9 @@ class WorkerManager {
         // Stamp the build into the worker so every log says which version produced it.
         // Without this there is no way to tell an old installer's log from a new one, and
         // "did that fix ship?" becomes guesswork on both sides.
-        JOBPILOT_BUILD: process.env.JOBPILOT_BUILD || require('./package.json').build || 'dev',
+        // `jobpilotBuild`, not `build`: package.json's `build` is electron-builder's config
+        // block, and CI must never write a string into it.
+        JOBPILOT_BUILD: process.env.JOBPILOT_BUILD || require('./package.json').jobpilotBuild || 'dev',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
