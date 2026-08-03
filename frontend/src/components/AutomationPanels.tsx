@@ -53,6 +53,7 @@ export function RunControls() {
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
 
   const online = status?.workerOnline ?? false;
+  const inApp = isDesktopApp();   // starting a run needs the local worker
   const run = status?.activeRun ?? null;
   const live = !!run && ['running', 'queued', 'needs_attention'].includes(run.status);
 
@@ -85,17 +86,21 @@ export function RunControls() {
           </button>
           <button className="btn btn-sm btn-danger-solid" onClick={stop} disabled={busy}><Icon name="x" size={13} /> Stop</button>
         </>
-      ) : (
+      ) : inApp ? (
+        // Starting a run needs the local worker, which only exists in the desktop app — in a
+        // browser these buttons could never do anything, so they aren't shown there at all.
         <>
           <button className="btn btn-primary btn-sm" onClick={() => start('linkedin')} disabled={busy || !online}
-            title={online ? 'Run a LinkedIn block now' : 'Open JobPilot Desktop first (Connections)'}>
+            title={online ? 'Run a LinkedIn block now' : 'The automation is still starting'}>
             <Icon name="play" size={13} /> Run LinkedIn
           </button>
           <button className="btn btn-sm" onClick={() => start('indeed')} disabled={busy || !online}
-            title={online ? 'Run an Indeed block now' : 'Open JobPilot Desktop first (Connections)'}>
+            title={online ? 'Run an Indeed block now' : 'The automation is still starting'}>
             <Icon name="play" size={13} /> Run Indeed
           </button>
         </>
+      ) : (
+        <span className="faint" style={{ fontSize: 12.5 }}>Runs happen in JobPilot Desktop</span>
       )}
       {/* Terminal stays right here in the Auto Apply header (it's ALSO in the floating hub). */}
       <TerminalButton />
