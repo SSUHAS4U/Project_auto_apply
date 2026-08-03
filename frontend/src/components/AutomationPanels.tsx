@@ -79,16 +79,19 @@ export function RunControls() {
       <span className={`tone ${live ? 'tone-green live-pulse' : online ? 'tone-blue' : 'tone-slate'}`} style={{ padding: '5px 11px' }}>
         <span className="live-dot" /> {live ? `running · ${run?.portal}` : online ? 'desktop ready' : 'desktop offline'}
       </span>
-      {live ? (
+      {/* EVERY run control is desktop-only. The automation is driven by the local worker, so
+          Run / Pause / Stop belong where that worker lives; the web is a read-only view of what
+          the automation has done. */}
+      {!inApp ? (
+        <span className="faint" style={{ fontSize: 12.5 }}>Runs are controlled in JobPilot Desktop</span>
+      ) : live ? (
         <>
           <button className="btn btn-sm" onClick={pause} disabled={busy}>
             <Icon name={status?.paused ? 'play' : 'pause'} size={13} /> {status?.paused ? 'Resume' : 'Pause'}
           </button>
           <button className="btn btn-sm btn-danger-solid" onClick={stop} disabled={busy}><Icon name="x" size={13} /> Stop</button>
         </>
-      ) : inApp ? (
-        // Starting a run needs the local worker, which only exists in the desktop app — in a
-        // browser these buttons could never do anything, so they aren't shown there at all.
+      ) : (
         <>
           <button className="btn btn-primary btn-sm" onClick={() => start('linkedin')} disabled={busy || !online}
             title={online ? 'Run a LinkedIn block now' : 'The automation is still starting'}>
@@ -99,8 +102,6 @@ export function RunControls() {
             <Icon name="play" size={13} /> Run Indeed
           </button>
         </>
-      ) : (
-        <span className="faint" style={{ fontSize: 12.5 }}>Runs happen in JobPilot Desktop</span>
       )}
       {/* Terminal stays right here in the Auto Apply header (it's ALSO in the floating hub). */}
       <TerminalButton />
@@ -120,55 +121,6 @@ function TerminalButton() {
       {open && (
         <Modal title="Automation terminal" onClose={() => setOpen(false)} wide>
           <div style={{ height: '62vh' }}><TerminalConsole /></div>
-        </Modal>
-      )}
-    </>
-  );
-}
-
-// ---- Per-run apply-cap setting (the gear on each portal card) ---------------
-
-/** A gear that opens a small popup to set this portal's Easy-Apply-per-run limit. */
-function LimitGear({ portal }: { portal: 'linkedin' | 'indeed' }) {
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [cap, setCap] = useState<number | ''>('');
-  const [saving, setSaving] = useState(false);
-  const key = portal === 'linkedin' ? 'linkedinApplyCap' : 'indeedApplyCap';
-
-  const load = () => api.agentLimits().then((l) => setCap(l[key])).catch(() => {});
-  const openIt = () => { load(); setOpen(true); };
-  const save = async () => {
-    const n = Number(cap);
-    if (!Number.isFinite(n) || n < 1) { toast('Enter a number ≥ 1', 'error'); return; }
-    setSaving(true);
-    try { await api.agentSetLimits({ [key]: Math.min(Math.round(n), 100) }); toast('Limit saved', 'success'); setOpen(false); }
-    catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
-  };
-
-  return (
-    <>
-      <button className="btn btn-ghost btn-sm" title="Applications per day" onClick={openIt}>
-        <Icon name="gear" size={14} />
-      </button>
-      {open && (
-        <Modal title={`${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} — applications per day`} onClose={() => setOpen(false)}>
-          <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-            How many applications to send on this portal per DAY. Each run does whatever is still
-            left of that number, so an unfinished quota carries over to the next run.
-            {portal === 'linkedin' ? ' Once it is met, runs spend all their time on outreach.' : ''}
-          </div>
-          <label className="pf-f" style={{ maxWidth: 200 }}>
-            <span className="pf-f-l">Applications per day</span>
-            <input className="input" type="number" min={1} max={100} value={cap}
-              onChange={(e) => setCap(e.target.value === '' ? '' : Number(e.target.value))} autoFocus />
-          </label>
-          <div className="row" style={{ gap: 8, marginTop: 16 }}>
-            <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-              {saving ? <span className="spinner" /> : <Icon name="check" size={13} />} Save
-            </button>
-            <button className="btn btn-sm" onClick={() => setOpen(false)}>Cancel</button>
-          </div>
         </Modal>
       )}
     </>
@@ -254,15 +206,14 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
             {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
             <span className="faint" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>· tap a stat to see the jobs</span>
           </div>
-          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <div className="ac-range">
-              {(['day', 'week', 'month', 'year'] as const).map((r) => (
-                <button key={r} className={`ac-range-b ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>
-                  {r[0].toUpperCase() + r.slice(1)}
-                </button>
-              ))}
-            </div>
-            <LimitGear portal={portal} />
+          {/* No settings gear here — the per-day caps live in Automation → Schedule with the
+              rest of the cadence, so there is one place to configure the automation. */}
+          <div className="ac-range">
+            {(['day', 'week', 'month', 'year'] as const).map((r) => (
+              <button key={r} className={`ac-range-b ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>
+                {r[0].toUpperCase() + r.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
         <div className="pstat">
