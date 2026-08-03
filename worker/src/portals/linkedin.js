@@ -138,7 +138,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const mode = plan.mode || 'all';
   // Per-run apply cap comes from the gear setting (default 15). Phase 1 also gets AT MOST one
   // hour: if it can't hit the cap in that time it stops applying and moves to outreach.
-  const applyCap = plan.applyCap || 15;
+  // applyCap is what's LEFT of today's quota (the backend subtracts what already went out),
+  // so an unfinished quota automatically rolls into the next run.
+  const applyCap = plan.applyCap ?? 15;
+  const dailyTarget = plan.dailyTarget || applyCap;
+  const doneToday = plan.appliedToday || 0;
   const phase1Deadline = Date.now() + 60 * 60_000;
   // Jobs already handled THIS RUN. LinkedIn returns the same posting in every city search, so
   // without this the worker re-opened and re-answered the same job 5-6 times (the HeadSpin /
@@ -147,8 +151,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const doneJobs = new Set();
 
   // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
-  if (mode !== 'outreach') {
-    console.log(`\n  ══ Phase 1: Easy Apply (up to ${applyCap}, max 1h) ══`);
+  if (mode !== 'outreach' && applyCap > 0) {
+    console.log(`\n  ══ Phase 1: Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max 1h) ══`);
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {
@@ -290,7 +294,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // Scan hiring posts for recruiter emails (the backend then mails them a tailored note + your
   // résumé) and send/di follow-up LinkedIn connections + messages.
   if (!state.stopped && !state.paused && Date.now() < deadline) {
-    console.log(`\n  ══ Phase 2: Outreach (applied ${applied}/${applyCap}) — connections, messages, HR emails ══`);
+    if (applyCap === 0) console.log(`\n  ✓ Today's ${dailyTarget} LinkedIn applications are already done — all remaining time goes to outreach.`);
+    console.log(`\n  ══ Phase 2: Outreach (${doneToday + applied}/${dailyTarget} applied today) — connections, messages, HR emails ══`);
     try { await scanHiringPosts(page, api, plan, state, true); }  // dedicated = true → the big scan
     catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
     if (plan.autoMessage !== false) {

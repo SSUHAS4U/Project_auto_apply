@@ -1,17 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { desktop, isDesktopApp } from '../lib/desktop';
-import { useToast } from '../lib/ui';
 import { Icon } from './Icon';
 
 /**
  * The automation terminal, embeddable — it runs the local worker and streams its live
  * output. Lives inside the floating hub's "Terminal" tab (desktop app only; in a plain
- * browser isDesktopApp() is false and the hub hides the tab). One click connects: we mint
- * the worker token from your session, so there's no code to paste.
+ * browser isDesktopApp() is false and the hub hides the tab). It STARTS ITSELF when the app
+ * opens — there is no Connect button here; portals are connected once on the Connections page.
  */
 export function TerminalConsole() {
-  const toast = useToast();
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState('');
@@ -28,8 +26,10 @@ export function TerminalConsole() {
     d.getRecentLog?.().then((buf) => { if (buf) setLog((prev) => prev || buf.replace(/\r/g, '')); }).catch(() => {});
     const offLog = d.onWorkerLog((chunk) => setLog((prev) => (prev + chunk.replace(/\r/g, '')).slice(-80000)));
     const offStatus = d.onWorkerStatus((s) => setRunning(s.running));
-    return () => { offLog(); offStatus(); };
-  }, [d]);
+    // If it isn't already running a moment after mount, start it — no click required.
+    const t = setTimeout(() => { d.getWorkerStatus().then((s) => { if (!s.running) autoStart(); }).catch(() => {}); }, 1500);
+    return () => { clearTimeout(t); offLog(); offStatus(); };
+  }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -38,13 +38,16 @@ export function TerminalConsole() {
 
   if (!isDesktopApp()) return null;
 
-  const connect = async () => {
+  // Belt-and-braces auto-start: the Electron shell already starts the worker when the app
+  // opens, but if it hasn't (first mount after a manual Stop, or a token minted just now),
+  // start it here too. Silent — no button, no toast; the log shows what's happening.
+  const autoStart = async () => {
+    if (running || busy) return;
     setBusy(true);
     try {
       const { token } = await api.agentIssueToken();
       await d!.startWorker(token);
-      toast('Connecting the automation worker…', 'success');
-    } catch (e) { toast((e as Error).message, 'error'); }
+    } catch { /* the log surfaces the reason */ }
     finally { setBusy(false); }
   };
   const disconnect = async () => {
@@ -63,14 +66,15 @@ export function TerminalConsole() {
           {running && <span className="live-dot" />}{running ? 'connected' : 'not connected'}
         </span>
         <div style={{ marginLeft: 'auto' }} className="row">
+          {/* No Connect button here: the automation starts itself when the app opens. This is a
+              LOG, not a control panel. Stop is kept for when you want to halt it deliberately;
+              connecting a portal for the first time happens on the Connections page. */}
           {running ? (
             <button className="btn btn-sm btn-danger-solid" onClick={disconnect} disabled={busy}>
-              <Icon name="x" size={13} /> Disconnect
+              <Icon name="x" size={13} /> Stop
             </button>
           ) : (
-            <button className="btn btn-primary btn-sm" onClick={connect} disabled={busy}>
-              <Icon name="play" size={13} /> Connect
-            </button>
+            <span className="faint" style={{ fontSize: 12.5 }}>starts automatically…</span>
           )}
           <button className="btn btn-sm" title="Clear the log"
             onClick={() => { setLog(''); d?.clearLog?.().catch(() => {}); }}>
@@ -78,7 +82,7 @@ export function TerminalConsole() {
         </div>
       </div>
       <pre ref={bodyRef} className="term-body" onScroll={onScroll} style={{ flex: 1, minHeight: 200, margin: 0 }}>
-        {log || 'Click Connect to start the automation worker. A Chrome window opens the first time so you can sign into LinkedIn / Indeed once — after that it runs on schedule and streams here.'}
+        {log || 'Starting the automation…\n\nIf this is your first run, connect LinkedIn / Indeed once on the Connections page. After that it starts automatically every time you open the app.'}
       </pre>
     </div>
   );

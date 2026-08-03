@@ -25,6 +25,15 @@ public interface AgentEventRepository extends JpaRepository<AgentEvent, UUID> {
 
     long countByUserIdAndTypeAndCreatedAtAfter(UUID userId, String type, Instant after);
 
+    /** How many applications went out on ONE portal since a cutoff — powers the daily quota. */
+    @Query("""
+            select count(e) from AgentEvent e
+            where e.userId = :userId and e.portal = :portal
+              and e.type in ('applied', 'easy_apply') and e.createdAt > :since
+            """)
+    long countAppliedSince(@Param("userId") UUID userId, @Param("portal") String portal,
+                           @Param("since") Instant since);
+
     /** [type, count] since a cutoff — powers the dashboard metric cards in one query. */
     @Query("""
             select e.type, count(e) from AgentEvent e

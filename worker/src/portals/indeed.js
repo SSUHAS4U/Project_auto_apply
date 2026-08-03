@@ -101,7 +101,11 @@ export async function runIndeed(page, api, plan, state, ctx) {
   // can't cut it short). Indeed has no post-scan/outreach phase — it only applies.
   const blockMin = Math.max(plan.blockMinutes || 90, 90);
   const deadline = Date.now() + blockMin * 60_000;
-  const applyCap = plan.applyCap || 20; // per-run cap from the gear setting (default 20)
+  // What's LEFT of today's Indeed quota — the backend subtracts today's applications, so a
+  // shortfall carries into the next run automatically.
+  const applyCap = plan.applyCap ?? 20;
+  const dailyTarget = plan.dailyTarget || applyCap;
+  const doneToday = plan.appliedToday || 0;
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
 
@@ -109,7 +113,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
   // used to be hardcoded to www.indeed.com while the search ran on in.indeed.com, so every job
   // opened on the US site, redirected, and was silently dropped: "16 results" then nothing.
   const host = hostFor((plan.locations || [])[0], profile);
-  console.log(`\n  Indeed — up to ${applyCap} applies, ${blockMin}min block · ${host}`);
+  console.log(`\n  Indeed — ${doneToday}/${dailyTarget} done today, ${applyCap} to go · ${blockMin}min block · ${host}`);
+  if (applyCap === 0) { console.log("  ✓ Today's Indeed quota is already met — nothing to do."); return { applied: 0 }; }
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   // Indeed returns the same postings for every city (16 each time in the last run), so without

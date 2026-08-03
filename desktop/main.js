@@ -97,6 +97,18 @@ async function createWindow() {
   win.loadURL(`http://127.0.0.1:${PORT}/`);
   win.on('closed', () => { win = null; });
 
+  // AUTO-CONNECT. Opening the app IS the trigger — there is nothing manual to press. If a
+  // connect token was saved on a previous run (i.e. this isn't a brand-new install), the
+  // worker starts on its own as soon as the window is ready. A new user connects once from
+  // the Connections page; after that it's automatic, forever.
+  win.webContents.once('did-finish-load', () => {
+    const t = (savedToken() || '').trim();
+    if (!t) { sendLog('\nNot connected yet — open Connections and connect once. After that this starts automatically.\n'); return; }
+    if (worker && worker.running) return;
+    sendLog('\n▶ Auto-starting the automation (saved connection)…\n');
+    try { worker.start({ backendUrl: BACKEND_URL, token: t }); } catch { /* surfaced in the log */ }
+  });
+
   // Closing the window HIDES it instead of quitting, so the automation keeps running in the
   // background (scheduled blocks still fire). Quit deliberately from the tray menu.
   win.on('close', (e) => {

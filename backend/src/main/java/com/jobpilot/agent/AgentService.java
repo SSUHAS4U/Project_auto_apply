@@ -511,10 +511,17 @@ public class AgentService {
         plan.put("portal", portal);
         plan.put("keywords", keywords.stream().distinct().limit(6).toList());
         plan.put("locations", locations.stream().distinct().limit(6).toList());
-        // Per-run apply cap comes from the gear setting (LinkedIn default 15, Indeed 20). Outreach
-        // caps are effectively uncapped now — the worker still stops on LinkedIn's own weekly
-        // invite limit, but we don't impose an artificial one.
-        plan.put("applyCap", applyCapFor(portal));
+        // DAILY QUOTA, not a per-run number. The gear sets how many applications you want on
+        // this portal PER DAY; each run is allowed however many of those are still outstanding.
+        // So a run that only manages 6 of 20 leaves 14 for the next run — the shortfall carries
+        // forward automatically instead of being lost, and once the day's quota is met the run
+        // spends all its time on outreach instead of applying.
+        int dailyTarget = applyCapFor(portal);
+        long doneToday = events.countAppliedSince(userId, portal, startOfTodayUtc());
+        int remaining = (int) Math.max(0, dailyTarget - doneToday);
+        plan.put("applyCap", remaining);
+        plan.put("dailyTarget", dailyTarget);
+        plan.put("appliedToday", doneToday);
         plan.put("connectCap", 1000);
         plan.put("messageCap", 1000);
         // A run keeps going for the whole block until you stop it: LinkedIn 3h (apply → outreach),
@@ -581,7 +588,7 @@ public class AgentService {
 
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(15));
+        m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20));
         m.put("indeedApplyCap", settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20));
         return m;
     }
@@ -592,10 +599,16 @@ public class AgentService {
         return limits();
     }
 
+    /** Midnight in the user's working day. The VM runs UTC; IST is the operating timezone. */
+    private static Instant startOfTodayUtc() {
+        java.time.ZoneId zone = java.time.ZoneId.of("Asia/Kolkata");
+        return java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant();
+    }
+
     private int applyCapFor(String portal) {
         return portal.equalsIgnoreCase("indeed")
                 ? settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20)
-                : settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(15);
+                : settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20);
     }
 
     public void setFlow(String name, boolean value) {
