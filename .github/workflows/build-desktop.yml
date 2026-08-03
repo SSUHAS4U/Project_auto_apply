@@ -71,18 +71,36 @@ jobs:
         working-directory: desktop
         run: npm run ${{ matrix.script }}
 
-      - name: Publish installer to the release
+      # Stamp the release version INTO the filename, so a downloaded installer says which
+      # version it is (JobPilot-desktop-v78-Windows-Setup.exe). With a fixed name you cannot
+      # tell a fresh download from an old one sitting in your Downloads folder.
+      # Both names are published: the versioned one for clarity, and the original fixed name so
+      # /releases/latest/download/<fixed> keeps working as a stable fallback link.
+      - name: Add a versioned copy of the installer
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        working-directory: desktop/dist
+        run: |
+          set -e
+          base='${{ matrix.out }}'                 # e.g. JobPilot-Windows-Setup.exe
+          name="${base%.*}"; ext="${base##*.}"     # JobPilot-Windows-Setup | exe
+          cp "$base" "JobPilot-${{ github.ref_name }}-${name#JobPilot-}.$ext"
+          ls -la
+
+      - name: Publish installers to the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: JobPilot ${{ github.ref_name }}
           body: |
-            Install JobPilot, sign in with your account, and click **Connect** in the built-in
-            terminal (next to Watch live). Requires Google Chrome installed.
+            Download the file with **${{ github.ref_name }}** in its name — that's this release.
+            Requires Google Chrome installed. Open the app, connect LinkedIn / Indeed once on the
+            Connections page, and the automation starts by itself from then on.
 
-            - Windows: `JobPilot-Windows-Setup.exe`  (unknown-publisher warning → More info → Run anyway)
-            - macOS (Apple Silicon): `JobPilot-macOS.dmg`
-            - Linux: `JobPilot-Linux.AppImage`  (`chmod +x` once, then run)
-          files: desktop/dist/${{ matrix.out }}
+            - Windows: unknown-publisher warning → More info → Run anyway
+            - Linux: `chmod +x` the AppImage once, then run it
+          files: |
+            desktop/dist/${{ matrix.out }}
+            desktop/dist/JobPilot-${{ github.ref_name }}-*
           make_latest: true
