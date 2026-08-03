@@ -5,6 +5,8 @@ import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { DesktopSetup } from '../components/DesktopSetup';
+import { DownloadDesktop } from '../components/DownloadDesktop';
+import { isDesktopApp } from '../lib/desktop';
 
 /**
  * Connections — the board of everything the agent works through: portal sessions (sign-in
@@ -59,9 +61,12 @@ export function ConnectionsPage() {
   };
 
   const online = status?.workerOnline ?? false;
+  // The desktop app is the only place portal sessions exist, so it owns status + connect.
+  const inApp = isDesktopApp();
 
   const connect = async (portal: string) => {
-    if (!online) { toast('Open JobPilot Desktop first — it isn’t running.', 'error'); return; }
+    // In-app the worker auto-starts, but it takes a moment on a cold launch.
+    if (!online) { toast('The automation is still starting — try again in a few seconds.', 'error'); return; }
     setBusy(portal);
     try {
       await api.agentConnect(portal);
@@ -91,17 +96,33 @@ export function ConnectionsPage() {
             stays on your machine — this server never sees your password or cookies.
           </div>
         </div>
-        <span className={`tone ${online ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '6px 12px' }}>
-          <span className="live-dot" /> {online ? 'JobPilot Desktop running' : 'Desktop app offline'}
-        </span>
+        {/* Live status is only truthful INSIDE the desktop app — that's where the worker and the
+            portal sessions actually live. In a browser it was reporting a state it can't see, so
+            the web build shows guidance instead of a status it would only get wrong. */}
+        {inApp && (
+          <span className={`tone ${online ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '6px 12px' }}>
+            <span className="live-dot" /> {online ? 'Automation running' : 'Automation starting…'}
+          </span>
+        )}
       </div>
 
-      {!online && (
-        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--amber)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Icon name="alert" size={16} className="t-amber" style={{ flex: 'none' }} />
-          <span style={{ fontSize: 13.5 }}>
-            Connecting needs the JobPilot Desktop app running on your PC — set it up below (one time).
-          </span>
+      {!inApp && (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="section-title" style={{ marginBottom: 8 }}>
+            <Icon name="download" size={15} /> Connecting happens in the desktop app
+          </div>
+          <div className="faint" style={{ fontSize: 13.5, lineHeight: 1.65, marginBottom: 14 }}>
+            Your LinkedIn / Indeed sign-in stays on your own machine, so the connection is made in
+            the JobPilot Desktop app — never here. Three steps, once:
+            <ol style={{ margin: '10px 0 0', paddingLeft: 20 }}>
+              <li>Download and install JobPilot Desktop.</li>
+              <li>Open it and go to <b>Connections</b> — click <b>Connect</b> for LinkedIn and Indeed,
+                  then sign in normally in the window that opens.</li>
+              <li>That's it. The sign-in is remembered, and the automation starts by itself every
+                  time you open the app.</li>
+            </ol>
+          </div>
+          <DownloadDesktop />
         </div>
       )}
 
@@ -119,26 +140,34 @@ export function ConnectionsPage() {
                   <div className="conn-name">{p.name}</div>
                   <div className="faint" style={{ fontSize: 12.5 }}>{p.sub}</div>
                 </div>
-                <span className={`tone tone-${connected ? 'green live-pulse' : s.tone}`}>
-                  {connected && <span className="live-dot" />}{s.label}
-                </span>
+                {inApp && (
+                  <span className={`tone tone-${connected ? 'green live-pulse' : s.tone}`}>
+                    {connected && <span className="live-dot" />}{s.label}
+                  </span>
+                )}
               </div>
-              {connected ? (
+              {/* Connect/Disconnect belong to the desktop app — the browser can't drive a sign-in
+                  on your machine, so showing the buttons here would only ever fail. */}
+              {!inApp ? (
+                <div className="faint" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                  Connect this from <b>JobPilot Desktop → Connections</b>. Signing in once is enough —
+                  it's remembered from then on.
+                </div>
+              ) : connected ? (
                 <button className="btn" style={{ width: '100%' }} onClick={() => disconnect(key)} disabled={busy === key}>
                   Disconnect {p.name}
                 </button>
               ) : (
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => connect(key)}
-                  disabled={busy === key || c?.status === 'connecting' || !online}
-                  title={online ? '' : 'Open JobPilot Desktop first'}>
+                  disabled={busy === key || c?.status === 'connecting'}>
                   {busy === key || c?.status === 'connecting' ? <span className="spinner" /> : <Icon name="link" size={14} />}{' '}
                   {c?.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
                 </button>
               )}
-              {c?.detail && !connected && (
+              {inApp && c?.detail && !connected && (
                 <div className={c.status === 'connecting' ? 'faint' : 't-amber'} style={{ fontSize: 12, marginTop: 8 }}>{c.detail}</div>
               )}
-              {c?.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}
+              {inApp && c?.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}
             </div>
           );
         })}
@@ -214,10 +243,13 @@ export function ConnectionsPage() {
         </button>
       </div>
 
-      {/* Desktop app onboarding — download + connect code (moved here from Agent) */}
-      <div id="desktop-setup" style={{ marginTop: 16, scrollMarginTop: 16 }}>
-        <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
-      </div>
+      {/* Desktop onboarding is for people who DON'T have the app yet — inside the app it's
+          noise (it's installed, and the worker connects itself). */}
+      {!inApp && (
+        <div id="desktop-setup" style={{ marginTop: 16, scrollMarginTop: 16 }}>
+          <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
+        </div>
+      )}
 
       <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
         <b>What happens when you click Connect</b>
