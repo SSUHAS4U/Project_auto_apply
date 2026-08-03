@@ -26,4 +26,10 @@ public interface AgentRunRepository extends JpaRepository<AgentRun, UUID> {
 
     /** Has this portal already had a run start within the current schedule window? */
     boolean existsByUserIdAndPortalAndCreatedAtGreaterThanEqual(UUID userId, String portal, Instant since);
+
+    /** The most recent run for a portal — used to alternate portals fairly. */
+    Optional<AgentRun> findFirstByUserIdAndPortalOrderByCreatedAtDesc(UUID userId, String portal);
+
+    /** How many runs this portal has had today — bounds outreach-only LinkedIn blocks. */
+    long countByUserIdAndPortalAndCreatedAtGreaterThanEqual(UUID userId, String portal, Instant since);
 }

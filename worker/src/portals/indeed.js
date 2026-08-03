@@ -36,11 +36,14 @@ function hostFor(location, profile) {
 // to find anything new on. `start` is Indeed's offset parameter (0, 10, 20 …).
 const PAGES_PER_SEARCH = 3;
 
-function searchUrl(keyword, location, profile, start = 0) {
+function searchUrl(keyword, location, profile, start = 0, maxAgeDays = 0) {
   const p = new URLSearchParams({ q: keyword, sort: 'date' });
   if (location && location.toLowerCase() !== 'remote') p.set('l', location);
   else p.set('l', 'Remote');
   if (start > 0) p.set('start', String(start));
+  // `fromage` = max posting age in days. Without it the "sorted by date" pages still run out
+  // into months-old postings that are almost certainly filled.
+  if (maxAgeDays > 0) p.set('fromage', String(Math.min(maxAgeDays, 30)));
   return `https://${hostFor(location, profile)}/jobs?${p.toString()}`;
 }
 
@@ -126,6 +129,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
+  const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
   let sawAnyFresh = false; // did ANY search yield a job we hadn't already handled?
   let opened = 0;          // job pages actually opened — the number that was invisible before
   // Indeed returns the same postings for every city (16 each time in the last run), so without
@@ -138,7 +142,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
       state.action = `Searching Indeed "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });
-      await page.goto(searchUrl(keyword, location, profile), { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.goto(searchUrl(keyword, location, profile, 0, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await humanDelay(2800, 5000);
       // Signed in? Indeed shows job cards to guests too, but apply needs a session — and the
       // page layout differs, which can silently yield zero cards.
@@ -170,7 +174,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
       for (let pg = 1; pg < PAGES_PER_SEARCH; pg++) {
         if (state.stopped || state.paused || Date.now() > deadline) break;
         const before = keys.length;
-        await page.goto(searchUrl(keyword, location, profile, pg * 10), { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.goto(searchUrl(keyword, location, profile, pg * 10, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
         await humanDelay(2200, 4000);
         if (await looksBlocked(page)) break;
         for (const k of await collectJobKeys(page)) if (!keys.includes(k)) keys.push(k);

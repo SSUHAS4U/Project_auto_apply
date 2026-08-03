@@ -212,6 +212,62 @@ public class FitService {
         }
     }
 
+    // ---- 3. is this POST a real opening? -------------------------------------
+
+    private static final String POST_INTENT_SYSTEM = """
+        You classify a single LinkedIn post. Decide whether it announces a JOB OPENING the
+        reader could apply or refer themselves to — a specific role being hired, a referral
+        offer, or a team actively growing.
+
+        Does NOT count: someone announcing they got a job, someone looking for work, congratulation
+        posts, general industry commentary, course/bootcamp promotion, or hiring news about a
+        company the author doesn't work at.
+
+        Reply with ONLY this JSON and nothing else:
+        {"isHiring": <true|false>, "confidence": <0-100 integer>,
+         "role": "<the role being hired, or empty>", "topic": "<short phrase naming the opening>"}
+        """;
+
+    /**
+     * Read one hiring post. Post scanning used to be a bare email regex, so 150 posts yielded
+     * nothing at all — most recruiters never put an address in the text. Classifying intent
+     * turns the same scan into a list of people worth contacting, with the post as the opener.
+     */
+    public Map<String, Object> postIntent(String postText) {
+        String text = nz(postText).trim();
+        Map<String, Object> no = post(false, 0, "", "", "short");
+        if (text.length() < 60) return no;
+
+        String key = "post:" + Objects.hash(text.toLowerCase());
+        Map<String, Object> hit = cache.get(key);
+        if (hit != null) return hit;
+        if (!ai.isEnabled()) return no;
+
+        Map<String, Object> out;
+        try {
+            JsonNode n = parseJson(ai.complete(POST_INTENT_SYSTEM,
+                    text.substring(0, Math.min(text.length(), 2500)), true, true));
+            out = n == null ? post(false, 0, "", "", "unreadable")
+                    : post(n.path("isHiring").asBoolean(false), clamp(n.path("confidence").asInt(0)),
+                           n.path("role").asText(""), n.path("topic").asText(""), "ai");
+        } catch (Exception e) {
+            log.debug("postIntent AI failed: {}", e.getMessage());
+            out = post(false, 0, "", "", "unavailable");
+        }
+        cache.put(key, out);
+        return out;
+    }
+
+    private Map<String, Object> post(boolean isHiring, int confidence, String role, String topic, String source) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("isHiring", isHiring);
+        m.put("confidence", confidence);
+        m.put("role", role == null ? "" : role);
+        m.put("topic", topic == null ? "" : topic);
+        m.put("source", source);
+        return m;
+    }
+
     private Map<String, Object> person(boolean isRecruiter, boolean hiringNow, int confidence,
                                        String topic, String reason, String source) {
         Map<String, Object> m = new LinkedHashMap<>();

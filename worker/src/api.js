@@ -39,6 +39,14 @@ export class Api {
   evaluate(job) { return this.#req('/api/worker/evaluate', { method: 'POST', body: job }); }
   /** Is this person a recruiter / hiring? { contact, isRecruiter, hiringNow, confidence, topic } */
   verifyPerson(p) { return this.#req('/api/worker/verify-person', { method: 'POST', body: p }); }
+  /** Is this post a real opening? { isHiring, confidence, role, topic } */
+  postIntent(text) { return this.#req('/api/worker/post-intent', { method: 'POST', body: { text } }); }
+  /**
+   * Ask permission to contact someone AND record it in one call. Returns { ok } or
+   * { ok:false, reason }. Must be called immediately before sending — it is the throttle
+   * and the duplicate check, and it writes the row that enforces both.
+   */
+  outreachClaim(body) { return this.#req('/api/worker/outreach-claim', { method: 'POST', body }); }
   profile() { return this.#req('/api/worker/profile'); }
   resume() { return this.#req('/api/worker/resume'); }
   answer(question, options) { return this.#req('/api/worker/answer', { method: 'POST', body: { question, options } }); }

@@ -18,10 +18,17 @@ import { shouldApply } from '../gate.js';
 const FIT_THRESHOLD = 25;
 const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
-function searchUrl(keyword, location) {
+// LinkedIn pages at 25 results and offsets with `start`. Reading only page 1 capped every
+// search at 25 regardless of how many matches existed.
+const PAGES_PER_SEARCH = 3;
+
+function searchUrl(keyword, location, start = 0, maxAgeDays = 0) {
   const p = new URLSearchParams({ keywords: keyword, f_AL: 'true', sortBy: 'DD' }); // f_AL = Easy Apply only
   if (location && location.toLowerCase() !== 'remote') p.set('location', location);
   else p.set('f_WT', '2'); // remote
+  if (start > 0) p.set('start', String(start));
+  // f_TPR=r<seconds> — "posted within". Keeps months-old, almost certainly filled postings out.
+  if (maxAgeDays > 0) p.set('f_TPR', `r${Math.round(maxAgeDays * 86400)}`);
   return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
 }
 
@@ -143,6 +150,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // applyCap is what's LEFT of today's quota (the backend subtracts what already went out),
   // so an unfinished quota automatically rolls into the next run.
   const applyCap = plan.applyCap ?? 15;
+  const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
   const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
@@ -162,10 +170,21 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
-      await page.goto(searchUrl(keyword, location), { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.goto(searchUrl(keyword, location, 0, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await waitForResults(page);
 
       const cards = await collectJobCards(page);
+      // Walk further result pages. collectJobCards already collapses reposts, so the stop
+      // condition is "this page added nothing new", the same rule Indeed uses.
+      const seenIds = new Set(cards.map((c) => c.id));
+      for (let pg = 1; pg < PAGES_PER_SEARCH; pg++) {
+        if (state.stopped || state.paused || Date.now() > phase1Deadline) break;
+        await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await waitForResults(page);
+        const more = (await collectJobCards(page)).filter((c) => !seenIds.has(c.id));
+        if (more.length === 0) break;
+        for (const c of more) { seenIds.add(c.id); cards.push(c); }
+      }
       const landed = page.url();
       const needsLogin = /\/login|\/authwall|signup/i.test(landed);
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
@@ -339,6 +358,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
   const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
   let analysed = 0;
+  let hiringPosts = 0;   // posts classified as real openings (no email needed)
   const seen = new Set();
   console.log(`\n  🔎 Scanning hiring posts for recruiter emails (${cap === Infinity ? 'no cap' : 'up to ' + cap})…`);
 
@@ -376,7 +396,11 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
         return els.slice(0, 40).map((el) => {
           const a = el.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
           const nameEl = el.querySelector('.update-components-actor__title span[aria-hidden], .update-components-actor__title, a[href*="/in/"]');
-          return { name: clean(nameEl?.textContent).slice(0, 60), link: a?.href || '', text: (el.innerText || '').slice(0, 4500) };
+          const authorA = el.querySelector('a[href*="/in/"]');
+          const authorUrl = authorA ? (authorA.href || '').split('?')[0] : '';
+          return { name: clean(nameEl?.textContent).slice(0, 60), link: a?.href || '',
+                   authorUrl: /\/in\//.test(authorUrl) ? authorUrl : '',
+                   text: (el.innerText || '').slice(0, 4500) };
         });
       }).catch(() => []);
       analysed += posts.length;
@@ -384,6 +408,30 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
 
       for (const post of posts) {
         const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
+
+        // A post with no email address used to be worth nothing — which is why 150 posts
+        // yielded 0 leads. Most recruiters never put an address in the text; the opening is
+        // still real, and the author is still worth contacting. Classify the intent, and when
+        // it IS an opening, capture the author as a lead with the post as the opener.
+        if (emails.length === 0 && post.authorUrl && found < cap) {
+          if (seen.has(post.authorUrl)) continue;
+          const intent = await api.postIntent(post.text).catch(() => ({ isHiring: false }));
+          if (intent.isHiring && (intent.confidence ?? 0) >= (plan.personConfMin ?? 80)) {
+            seen.add(post.authorUrl);
+            hiringPosts++;
+            await api.upsertContact({
+              portal: 'linkedin', name: post.name, profileUrl: post.authorUrl,
+              company: '', role: intent.role || 'hiring post author',
+              sourceJobUrl: post.link || undefined,
+            }).catch(() => {});
+            console.log(`     📣 ${post.name || 'someone'} is hiring — ${intent.topic || intent.role || 'an opening'}`);
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
+              title: intent.role || 'Hiring post', url: post.link || post.authorUrl,
+              detail: `${post.name || 'author'} — ${intent.topic || 'posted an opening'} (${intent.confidence}% sure)` });
+          }
+          continue;
+        }
+
         for (const email of emails) {
           if (seen.has(email.toLowerCase()) || found >= cap) continue;
           seen.add(email.toLowerCase());
@@ -411,7 +459,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
       detail: `scanned ${analysedHere} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
   }
-  console.log(`     scanned ${analysed} post(s) → ${found} recruiter email(s)`);
+  console.log(`     scanned ${analysed} post(s) → ${found} recruiter email(s) · ${hiringPosts} hiring author(s) captured`);
   if (found > 0) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
       detail: `post scan done — ${found} HR lead(s) captured` });

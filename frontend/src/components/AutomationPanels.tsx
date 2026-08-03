@@ -549,9 +549,9 @@ export function ScheduleEditor() {
           <Icon name="clock" size={15} /> How the automation paces itself
         </div>
         <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 16 }}>
-          It runs whenever JobPilot Desktop is open — there are no start times to set. These
-          decide how long each part runs and how much it does per day. Anything a run doesn't
-          finish carries over to the next one.
+          It runs whenever JobPilot Desktop is open — there are no start times to set. A block
+          starts as soon as a portal still owes work for today and the rest gap has passed, and
+          the two portals alternate. Anything a run doesn't finish carries over to the next one.
         </div>
 
         <div className="pf-grid">
@@ -574,6 +574,7 @@ export function ScheduleEditor() {
         <div className="pf-grid">
           <F k="fitMin" label="Minimum résumé fit" hint="to apply at all" unit="out of 100" />
           <F k="personConfMin" label="Minimum certainty they hire" hint="to contact them" unit="out of 100" />
+          <F k="maxAgeDays" label="Ignore postings older than" hint="stale jobs are usually filled" unit="days" />
         </div>
 
         <div className="row" style={{ gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -593,7 +594,8 @@ export function ScheduleEditor() {
           2. <b>LinkedIn — outreach</b> ({cfg.linkedinOutreachMins}m): scan hiring posts, email recruiters, send connections and messages<br />
           3. <b>Rest</b> ({cfg.restMins}m)<br />
           4. <b>Indeed</b> ({cfg.indeedMins}m, up to {cfg.indeedApplyCap} applications)<br />
-          5. <b>Rest</b> ({cfg.restMins}m), then back to the top — with whatever is left of the day's quotas.
+          5. <b>Rest</b> ({cfg.restMins}m), then whichever portal ran longest ago goes again — with
+          whatever is left of the day's quotas. Once both are met it stops until tomorrow.
         </div>
       </div>
     </div>

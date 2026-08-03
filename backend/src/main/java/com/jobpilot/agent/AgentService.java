@@ -49,6 +49,11 @@ public class AgentService {
 
     private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
 
+    /** Titles the automation must never apply to, whatever the search returns. */
+    private static final List<String> EXCLUDE_TITLES = List.of(
+            "senior", "sr.", "lead", "principal", "staff", "architect",
+            "manager", "director", "head of", "vp", "vice president");
+
     public AgentService(AgentRunRepository runs, AgentEventRepository events,
                         AgentScheduleRepository schedules, LiveFrameService frames,
                         SettingsService settings, ProfileService profiles, KeywordMatchScorer scorer,
@@ -539,6 +544,10 @@ public class AgentService {
         // shows, and so they can be retuned without shipping a new desktop build.
         plan.put("fitMin", cfg.get("fitMin"));
         plan.put("personConfMin", cfg.get("personConfMin"));
+        plan.put("maxAgeDays", cfg.get("maxAgeDays"));
+        // Titles the worker must never apply to. Sent as data so the rule is visible and
+        // tunable, instead of being a regex frozen inside two separate portal adapters.
+        plan.put("excludeTitles", EXCLUDE_TITLES);
         plan.putAll(flows()); // flow toggles ride along so the worker honours them
         return plan;
     }
@@ -640,6 +649,8 @@ public class AgentService {
     private static final String FIT_MIN = "agent_fit_min";
     /** Minimum confidence before the worker may contact a person. */
     private static final String PERSON_CONF_MIN = "agent_person_conf_min";
+    /** Ignore postings older than this many days. */
+    private static final String MAX_AGE_DAYS = "agent_max_age_days";
 
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -653,6 +664,7 @@ public class AgentService {
         // contacted. 75 / 80 are the spec's thresholds.
         m.put("fitMin", settings.get(FIT_MIN).map(Integer::parseInt).orElse(75));
         m.put("personConfMin", settings.get(PERSON_CONF_MIN).map(Integer::parseInt).orElse(80));
+        m.put("maxAgeDays", settings.get(MAX_AGE_DAYS).map(Integer::parseInt).orElse(30));
         return m;
     }
 
@@ -666,6 +678,7 @@ public class AgentService {
         putInt(body, "restMins", REST_MINS, 0, 240);
         putInt(body, "fitMin", FIT_MIN, 0, 100);
         putInt(body, "personConfMin", PERSON_CONF_MIN, 0, 100);
+        putInt(body, "maxAgeDays", MAX_AGE_DAYS, 1, 365);
         return limits();
     }
 
@@ -727,44 +740,44 @@ public class AgentService {
                 .toInstant();
     }
 
+    /** How many LinkedIn blocks a day may run purely for outreach once its apply quota is met. */
+    private static final int OUTREACH_BLOCKS_PER_DAY = 2;
+
     /**
-     * Start the portal whose scheduled block is active right now, if nothing is already
-     * running for this user. Conservative: it never interrupts a live run — the worker's
-     * own block deadline ends it, and the next tick picks up the following block. Returns
-     * a short summary for the dashboard / logs.
+     * Start whatever work is still owed today, if nothing is already running.
+     *
+     * This used to require an {@code AgentSchedule} row whose clock-time window was open right
+     * now — while the Schedule tab told the owner there were no start times to set. A user who
+     * configured everything correctly could sit there while nothing ever started, with no
+     * visible reason. The trigger is now what the UI has always claimed: the app being open,
+     * plus outstanding daily quota.
+     *
+     * Guards, in order: paused → desktop actually running → nothing already live → the rest
+     * window has elapsed → some portal still owes work.
      */
     @Transactional
     public String tickRotationForUser(UUID userId) {
         if (isPaused()) return "paused";
-        List<AgentSchedule> blocks = schedules.findByUserIdOrderByOrdAsc(userId);
-        if (blocks.isEmpty()) return "no schedule";
-        int nowMin = java.time.LocalTime.now(ZONE).toSecondOfDay() / 60;
-        AgentSchedule block = activeBlock(blocks, nowMin);
-        if (block == null) return "no active block now";
-        // Naukri automation is parked — never auto-start it from the rotation.
-        if ("naukri".equalsIgnoreCase(block.getPortal())) return "naukri parked (in progress)";
+        // No worker, no run. Queueing a run nothing can pick up just leaves a phantom "queued"
+        // on the dashboard and burns the once-per-day slot.
+        if (!isWorkerOnline(userId)) return "JobPilot Desktop isn't running";
 
         AgentRun live = activeRun(userId);
-        if (live != null) {
-            return block.getPortal().equals(live.getPortal())
-                    ? "already running " + block.getPortal()
-                    : "waiting — " + live.getPortal() + " still finishing";
+        if (live != null) return "already running " + live.getPortal();
+
+        // Rest between blocks, so finishing one doesn't immediately start the next.
+        int restMins = intSetting(limits().get("restMins"), 30);
+        Instant lastEnd = lastFinishedAt(userId);
+        if (lastEnd != null && lastEnd.isAfter(Instant.now().minusSeconds(restMins * 60L))) {
+            return "resting (" + restMins + "m between blocks)";
         }
 
-        // Start each block ONCE per window. The rotation ticks every ~5 min, so without this
-        // guard a block whose run finished early (nothing to apply to / not logged in) would
-        // be re-started every 5 minutes for the block's whole duration — the "0 applied" spam
-        // and the "it stops and restarts every 5 minutes" the owner saw. If a run for this
-        // portal already started at/after this block's start time today, don't launch another.
-        Instant blockStart = blockStartInstant(block);
-        if (blockStart != null && runs.existsByUserIdAndPortalAndCreatedAtGreaterThanEqual(
-                userId, block.getPortal(), blockStart)) {
-            return block.getPortal() + " already ran this block";
-        }
+        String portal = nextPortalWithWork(userId);
+        if (portal == null) return "all of today's quotas are met";
 
-        startOrGetRun(userId, block.getPortal());
-        log.info("Rotation started {} for user {}", block.getPortal(), userId);
-        return "started " + block.getPortal();
+        startOrGetRun(userId, portal);
+        log.info("Rotation started {} for user {}", portal, userId);
+        return "started " + portal;
     }
 
     // ---- "when did it run / when does it run next" --------------------------
@@ -815,43 +828,87 @@ public class AgentService {
     }
 
     /**
-     * When the rotation would next start this portal: "now" if a window is open and hasn't been
-     * used yet today, otherwise the next window's start (rolling to tomorrow once today's are
-     * spent). Null when the portal has no enabled block with a usable start time.
+     * Which portal is owed work right now, or null when the day is done.
+     *
+     * Whichever portal ran least recently goes first, so one can't starve the other across a
+     * long day. LinkedIn stays eligible for a bounded number of blocks after its apply quota is
+     * met, because its second phase is outreach — stopping it dead at 20 applications would
+     * silently switch off connections and HR emails for the rest of the day.
      */
-    Instant nextWindowStart(UUID userId, String portal, Instant now) {
-        java.time.LocalDate today = now.atZone(ZONE).toLocalDate();
-        int nowMin = now.atZone(ZONE).toLocalTime().toSecondOfDay() / 60;
-        Instant best = null;
-        for (AgentSchedule b : schedules.findByUserIdOrderByOrdAsc(userId)) {
-            if (!b.isEnabled() || !portal.equalsIgnoreCase(b.getPortal())) continue;
-            Integer start = parseHhmm(b.getStartTime());
-            if (start == null || start >= 24 * 60) continue;  // "25:00" etc. — unusable
-            int end = start + Math.max(1, b.getDurationMins());
-            Instant todayStart = today.atTime(start / 60, start % 60).atZone(ZONE).toInstant();
-
-            Instant candidate;
-            if (nowMin >= start && nowMin < end) {
-                // The window is open. It fires immediately UNLESS this block already had its
-                // run — the same once-per-window guard tickRotationForUser applies.
-                candidate = runs.existsByUserIdAndPortalAndCreatedAtGreaterThanEqual(userId, portal, todayStart)
-                        ? todayStart.plus(1, java.time.temporal.ChronoUnit.DAYS)
-                        : now;
-            } else if (nowMin < start) {
-                candidate = todayStart;                                            // later today
-            } else {
-                candidate = todayStart.plus(1, java.time.temporal.ChronoUnit.DAYS); // window passed
+    String nextPortalWithWork(UUID userId) {
+        Instant dayStart = startOfTodayUtc();
+        String best = null;
+        Instant bestLastRun = null;
+        for (String portal : List.of("linkedin", "indeed")) {   // naukri is parked
+            if (!portalOwesWork(userId, portal, dayStart)) continue;
+            Instant last = runs.findFirstByUserIdAndPortalOrderByCreatedAtDesc(userId, portal)
+                    .map(AgentRun::getCreatedAt).orElse(null);
+            // A portal that has never run goes first; otherwise the older last-run wins.
+            if (best == null || last == null || (bestLastRun != null && last.isBefore(bestLastRun))) {
+                best = portal;
+                bestLastRun = last;
             }
-            if (best == null || candidate.isBefore(best)) best = candidate;
         }
         return best;
     }
 
-    /** Scheduler entry point — advance the rotation for every user that has a schedule. */
+    boolean portalOwesWork(UUID userId, String portal, Instant dayStart) {
+        long appliedToday = events.countAppliedSince(userId, portal, dayStart);
+        if (appliedToday < applyCapFor(portal)) return true;
+        // Quota met. LinkedIn may still run for outreach, up to a daily ceiling so it cannot
+        // loop all day once there is nothing left to apply to.
+        return "linkedin".equalsIgnoreCase(portal)
+                && runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(userId, portal, dayStart)
+                   < OUTREACH_BLOCKS_PER_DAY;
+    }
+
+    /** When the most recent run for this user ended (either portal), or null if none has. */
+    Instant lastFinishedAt(UUID userId) {
+        return runs.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5)).stream()
+                .map(AgentRun::getEndedAt)
+                .filter(Objects::nonNull)
+                .max(Instant::compareTo)
+                .orElse(null);
+    }
+
+    private static int intSetting(Object v, int fallback) {
+        return v instanceof Number n ? n.intValue() : fallback;
+    }
+
+    /**
+     * When this portal would next start.
+     *
+     * The trigger is quota + rest, not a clock-time block, so this answers the same question the
+     * rotation actually asks: is work owed now (→ due immediately), are we resting (→ when rest
+     * ends), or is the day done (→ tomorrow's reset at midnight IST)? Null only when the desktop
+     * app isn't running, because then nothing is coming at all.
+     */
+    Instant nextWindowStart(UUID userId, String portal, Instant now) {
+        if (isPaused() || !isWorkerOnline(userId)) return null;
+        Instant dayStart = startOfTodayUtc();
+        if (!portalOwesWork(userId, portal, dayStart)) {
+            // Quota met — the next opportunity is when the daily counters reset.
+            return java.time.LocalDate.now(ZONE).plusDays(1).atStartOfDay(ZONE).toInstant();
+        }
+        int restMins = intSetting(limits().get("restMins"), 30);
+        Instant lastEnd = lastFinishedAt(userId);
+        Instant restUntil = lastEnd == null ? null : lastEnd.plusSeconds(restMins * 60L);
+        if (restUntil != null && restUntil.isAfter(now)) return restUntil;
+        return now;   // owed work and not resting: the next tick starts it
+    }
+
+    /**
+     * Scheduler entry point — advance the rotation for every user whose desktop app is running.
+     *
+     * Previously this only considered users who had an {@code AgentSchedule} row, which meant a
+     * user with no schedule was never even looked at. The trigger is the app being open, so the
+     * heartbeat is the right list to walk; schedule rows are still included for anyone who has
+     * them, so nobody is dropped.
+     */
     @Transactional
     public void tickRotation() {
         if (isPaused()) return;
-        java.util.Set<UUID> users = new java.util.LinkedHashSet<>();
+        java.util.Set<UUID> users = new java.util.LinkedHashSet<>(lastWorkerSeen.keySet());
         for (AgentSchedule b : schedules.findAll()) users.add(b.getUserId());
         for (UUID u : users) {
             try {

@@ -12,7 +12,7 @@
 // DOM often, so a selector miss skips that one item instead of breaking the run. Nothing is
 // invented and nothing sends unless your template/toggle allow it (the backend enforces that).
 import { humanDelay } from '../browser.js';
-import { shouldContact } from '../gate.js';
+import { shouldContact, claimOutreach } from '../gate.js';
 
 const NOTE_LIMIT = 300;
 
@@ -207,7 +207,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
   // still respected — inviteWithNote returns 'limit' and we stop gracefully when it's hit.
   const cap = plan.connectCap || 1000;
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
-  let sent = 0, skipped = 0, rejected = 0;
+  let sent = 0, skipped = 0, rejected = 0, throttled = 0;
   let peopleDiagShown = false;
   console.log('\n  🤝 Connections — verifying each person, then inviting the ones who hire…');
 
@@ -258,6 +258,18 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
           }
         }
 
+        // Anti-spam + duplicate guard, immediately before we send anything. This both checks
+        // and records, so a retry cannot double-message someone.
+        const claim = await claimOutreach(api, {
+          company, role: keyword, recruiterUrl: person.profileUrl,
+          recruiterName: person.name, resumeVersion: resume?.filename || '',
+        });
+        if (!claim.ok) {
+          throttled++;
+          console.log(`     ⊘ ${person.name} — ${claim.reason}`);
+          continue;
+        }
+
         const { id } = await api.upsertContact({
           portal: 'linkedin', name: person.name, profileUrl: person.profileUrl,
           company, role: person.headline,
@@ -302,7 +314,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
       await humanDelay(2500, 4500);
     }
   }
-  console.log(`     connections: ${sent} contacted · ${rejected} rejected (not hiring) · ${skipped} unreachable`);
+  console.log(`     connections: ${sent} contacted · ${rejected} not hiring · ${throttled} already contacted / rate-limited · ${skipped} unreachable`);
   if (sent > 0) await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `sent ${sent} connection request(s)` });
   if (rejected > 0) await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
     detail: `${rejected} profile(s) rejected — not recruiters and not posting about hiring` });

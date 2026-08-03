@@ -39,6 +39,16 @@ export async function shouldApply(api, post, plan = {}) {
   const reason = (v.reason || '').trim();
   const missing = Array.isArray(v.missing) ? v.missing.filter(Boolean).slice(0, 3) : [];
 
+  // `source: "keyword"` means the AI could not render a verdict and this is keyword overlap —
+  // the very signal that approved a Python role at 38 for a Java résumé. It is not a safe
+  // substitute for the rubric, so an unevaluated job becomes a manual lead. A missed job costs
+  // a click; a wrong application costs credibility with a real employer.
+  if (v.source === 'keyword') {
+    return { ok: false, score, techMatch: false, manual: true,
+      reason: reason || 'AI evaluator unavailable',
+      label: `not evaluated (AI unavailable) — left for manual review` };
+  }
+
   // BOTH conditions, per the spec: a high score with the wrong stack is still the wrong job.
   if (!techMatch) {
     return { ok: false, score, techMatch, reason,
@@ -73,4 +83,25 @@ export async function shouldContact(api, person, plan = {}, posts = []) {
   }
   return { ok: true, reason: v.reason || '', topic: v.topic || '', confidence,
     isRecruiter: !!v.isRecruiter, hiringNow: !!v.hiringNow };
+}
+
+/**
+ * Final check immediately before sending: the anti-spam limits and the duplicate guard.
+ *
+ * Separate from shouldContact on purpose. shouldContact answers "is this the right kind of
+ * person" and costs a model call; this answers "have we already, or too often" and also RECORDS
+ * the attempt. Doing both in one server call is what makes it safe against a retry sending twice.
+ */
+export async function claimOutreach(api, { portal = 'linkedin', company, role, recruiterUrl, recruiterName, resumeVersion }) {
+  try {
+    const r = await api.outreachClaim({ portal, company: company || '', role: role || '',
+      recruiterUrl: recruiterUrl || '', recruiterName: recruiterName || '', resumeVersion: resumeVersion || '' });
+    // `=== true`, not truthy: only an explicit boolean is permission to contact someone.
+    // A stray string or a malformed reply must never read as a yes.
+    return r && r.ok === true ? { ok: true } : { ok: false, reason: (r && r.reason) || 'blocked' };
+  } catch {
+    // Fail CLOSED: if we can't confirm this isn't a duplicate, don't send. An unsent message
+    // costs nothing; a second one to the same recruiter costs credibility.
+    return { ok: false, reason: 'could not check the outreach limits' };
+  }
 }

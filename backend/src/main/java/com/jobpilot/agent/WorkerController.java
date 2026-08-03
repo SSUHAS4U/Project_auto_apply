@@ -31,17 +31,19 @@ public class WorkerController {
     private final com.jobpilot.service.AssistService assist;
     private final com.jobpilot.service.ComposeService compose;
     private final FitService fit;
+    private final OutreachGuard guard;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
                             com.jobpilot.service.AssistService assist,
                             com.jobpilot.service.ComposeService compose,
-                            FitService fit) {
+                            FitService fit, OutreachGuard guard) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
         this.assist = assist;
         this.compose = compose;
         this.fit = fit;
+        this.guard = guard;
     }
 
     /**
@@ -195,6 +197,25 @@ public class WorkerController {
         List<String> recent = posts instanceof List<?> l
                 ? l.stream().map(String::valueOf).filter(s -> !s.isBlank()).toList() : List.of();
         return fit.recruiterFit(str(b.get("name")), str(b.get("headline")), recent);
+    }
+
+    /** Is this post a real opening? Replaces the email regex that found nothing in 150 posts. */
+    @PostMapping("/post-intent")
+    public Map<String, Object> postIntent(@RequestBody Map<String, String> b) {
+        UserContext.require();
+        return fit.postIntent(b.get("text"));
+    }
+
+    /**
+     * May the worker contact this person — and record it in the same call. Enforces the
+     * idempotency hash and the per-company / per-recruiter / per-day limits. Check-then-record
+     * as ONE operation, so a retry can't slip a duplicate through between the two.
+     */
+    @PostMapping("/outreach-claim")
+    public Map<String, Object> outreachClaim(@RequestBody Map<String, String> b) {
+        UUID u = UserContext.require();
+        return guard.claim(u, b.get("portal"), b.get("company"), b.get("role"),
+                b.get("recruiterUrl"), b.get("recruiterName"), nz(b.get("resumeVersion")));
     }
 
     /** The flattened profile answers the worker fills portal forms with. */
