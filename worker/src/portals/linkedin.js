@@ -8,6 +8,7 @@ import { humanDelay, sleep } from '../browser.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages } from './outreach.js';
+import { shouldApply } from '../gate.js';
 
 // You already searched YOUR keywords with the Easy-Apply filter on, so a listing here is
 // something you asked for. We don't re-gate it hard on a keyword-overlap number (that
@@ -223,25 +224,29 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
             salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
-          const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
-          const canJudge = (post.description || '').length > 60; // did we actually read the posting?
           if (SENIOR_RE.test(title)) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: 'skip — senior/leadership role' });
             tally.skipped++; logSkipped(title, 'senior/leadership role');
             continue;
           }
-          if (canJudge && score < FIT_THRESHOLD) {
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-              title, company, detail: `skip — low fit ${score}` });
-            tally.skipped++; logSkipped(title, `low fit ${score}`);
+          // The compatibility gate: résumé-aware, and it must pass on BOTH score and stack.
+          const gate = await shouldApply(api, post, plan);
+          if (!gate.ok) {
+            // A job we can't judge isn't discarded — it becomes a manual lead, so a thin
+            // description costs you a click rather than an unseen opportunity.
+            await api.event({ runId: state.runId, portal: 'linkedin',
+              type: gate.manual ? 'manual_apply' : 'info', title, company,
+              url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `skip — ${gate.label}` });
+            if (gate.manual) tally.manual++; else tally.skipped++;
+            logSkipped(title, gate.label);
             continue;
           }
+          const score = gate.score;
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'relevant',
-            title, company,
-            detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
+            title, company, detail: gate.label });
 
-          logJobHeader(title || 'Role', company || '', canJudge ? `fit ${score}` : 'no description');
+          logJobHeader(title || 'Role', company || '', gate.label);
           beginJob(); // reset per-job de-duplication of the field rows below
           state.blockedQuestions = null;
           const result = await easyApply(page, api, profile, resume, state);

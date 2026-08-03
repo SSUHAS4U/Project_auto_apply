@@ -509,7 +509,7 @@ public class AgentService {
         boolean indeed = portal.equalsIgnoreCase("indeed");
         Map<String, Object> plan = new LinkedHashMap<>();
         plan.put("portal", portal);
-        plan.put("keywords", keywords.stream().distinct().limit(6).toList());
+        plan.put("keywords", expandQueries(keywords, p));
         plan.put("locations", locations.stream().distinct().limit(6).toList());
         // DAILY QUOTA, not a per-run number. The gear sets how many applications you want on
         // this portal PER DAY; each run is allowed however many of those are still outstanding.
@@ -535,8 +535,46 @@ public class AgentService {
         plan.put("blockMinutes", indeed ? (int) cfg.get("indeedMins") : liApply + liOutreach);
         plan.put("mode", block == null || block.getMode() == null || block.getMode().isBlank()
                 ? "apply" : block.getMode());
+        // The gates. Sent with the plan so the worker enforces the same numbers the dashboard
+        // shows, and so they can be retuned without shipping a new desktop build.
+        plan.put("fitMin", cfg.get("fitMin"));
+        plan.put("personConfMin", cfg.get("personConfMin"));
         plan.putAll(flows()); // flow toggles ride along so the worker honours them
         return plan;
+    }
+
+    /**
+     * Widen the search without making it random.
+     *
+     * One keyword per target role found the same ~16 postings on every city. This pairs each role
+     * with the candidate's strongest skills to produce extra, still-relevant queries ("Full Stack
+     * Developer Java", "Full Stack Developer React"), which is how a human searches when the first
+     * page runs dry. Deterministic throughout: the inputs are ordered, the output is de-duplicated
+     * and sorted, so the same profile always searches the same terms in the same order.
+     */
+    List<String> expandQueries(List<String> roles, Profile p) {
+        LinkedHashSet<String> base = new LinkedHashSet<>();
+        roles.stream().map(String::trim).filter(s -> !s.isBlank()).forEach(base::add);
+        if (base.isEmpty()) base.add("software engineer");
+
+        // Only skills that name a technology are useful as query modifiers; "communication" or
+        // "teamwork" would drag in noise, so anything long or multi-word is left out.
+        List<String> techSkills = (p.getSkills() == null ? List.<String>of() : p.getSkills()).stream()
+                .map(s -> s == null ? "" : s.trim())
+                .filter(s -> s.length() >= 2 && s.length() <= 18 && !s.contains(" "))
+                .distinct().limit(6).toList();
+
+        LinkedHashSet<String> out = new LinkedHashSet<>(base);
+        for (String role : base) {
+            for (String skill : techSkills) {
+                if (role.toLowerCase().contains(skill.toLowerCase())) continue;  // already implied
+                out.add(role + " " + skill);
+            }
+        }
+        // Stable order so two runs of the same profile search identically.
+        List<String> sorted = new ArrayList<>(out);
+        sorted.sort(String::compareToIgnoreCase);
+        return sorted.stream().limit(12).toList();
     }
 
     /**
@@ -598,6 +636,10 @@ public class AgentService {
     private static final String LI_OUTREACH_MINS = "agent_linkedin_outreach_mins";
     private static final String IN_MINS = "agent_indeed_mins";
     private static final String REST_MINS = "agent_rest_mins";
+    /** Minimum résumé-compatibility score before the worker may apply. */
+    private static final String FIT_MIN = "agent_fit_min";
+    /** Minimum confidence before the worker may contact a person. */
+    private static final String PERSON_CONF_MIN = "agent_person_conf_min";
 
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -607,6 +649,10 @@ public class AgentService {
         m.put("linkedinOutreachMins", settings.get(LI_OUTREACH_MINS).map(Integer::parseInt).orElse(120));
         m.put("indeedMins", settings.get(IN_MINS).map(Integer::parseInt).orElse(120));
         m.put("restMins", settings.get(REST_MINS).map(Integer::parseInt).orElse(30));
+        // Tunable without a rebuild: the gates that decide what gets applied to and who gets
+        // contacted. 75 / 80 are the spec's thresholds.
+        m.put("fitMin", settings.get(FIT_MIN).map(Integer::parseInt).orElse(75));
+        m.put("personConfMin", settings.get(PERSON_CONF_MIN).map(Integer::parseInt).orElse(80));
         return m;
     }
 
@@ -618,6 +664,8 @@ public class AgentService {
         putInt(body, "linkedinOutreachMins", LI_OUTREACH_MINS, 10, 480);
         putInt(body, "indeedMins", IN_MINS, 10, 480);
         putInt(body, "restMins", REST_MINS, 0, 240);
+        putInt(body, "fitMin", FIT_MIN, 0, 100);
+        putInt(body, "personConfMin", PERSON_CONF_MIN, 0, 100);
         return limits();
     }
 
@@ -850,6 +898,15 @@ public class AgentService {
      * kept under LinkedIn's ~300-char note limit and never fabricating anything.
      */
     public String connectionNote(UUID userId, UUID contactId) {
+        return connectionNote(userId, contactId, null);
+    }
+
+    /**
+     * @param topic what this person recently posted about, when we verified them that way.
+     *              Naming it is the difference between a note that could have been sent to
+     *              anyone and one that proves we read their post.
+     */
+    public String connectionNote(UUID userId, UUID contactId, String topic) {
         PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
         Profile p = profiles.get();
         String template = messageTemplate();
@@ -862,9 +919,15 @@ public class AgentService {
             String sys = """
                     Rewrite this LinkedIn connection note for a higher acceptance rate: warm, specific,
                     human, first person, UNDER 280 characters, no clichés, no fabricated facts. Keep any
-                    real name/role/company. Output ONLY the note text.""";
+                    real name/role/company. If a POST TOPIC is given, open by referring to it
+                    specifically — that is the whole reason this person is being contacted — then state
+                    in one clause why the candidate's actual skills fit. Never invent a post that isn't
+                    given. Output ONLY the note text.""";
             String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
+                    + (p.getSkills() == null || p.getSkills().isEmpty() ? ""
+                        : "\nCANDIDATE SKILLS: " + String.join(", ", p.getSkills().stream().limit(10).toList()))
                     + "\nCONTACT: " + (c == null ? "a recruiter" : nz(c.getName()) + " at " + nz(c.getCompany()))
+                    + (topic == null || topic.isBlank() ? "" : "\nPOST TOPIC: " + topic)
                     + "\nDRAFT: " + base;
             String opt = nz(ai.complete(sys, user, true, false)).trim();
             if (!opt.isBlank() && opt.length() <= 300) base = opt;

@@ -12,6 +12,7 @@
 // DOM often, so a selector miss skips that one item instead of breaking the run. Nothing is
 // invented and nothing sends unless your template/toggle allow it (the backend enforces that).
 import { humanDelay } from '../browser.js';
+import { shouldContact } from '../gate.js';
 
 const NOTE_LIMIT = 300;
 
@@ -47,9 +48,14 @@ async function collectPeople(page) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const out = [];
     const seen = new Set();
+    // Only links inside the RESULTS list. Taking every /in/ link on the page also swept up
+    // "People also viewed", the feed rail and the footer — profiles that were never search
+    // results, which is why so many had no Connect and no Message button at all.
+    const inResults = (a) => !!a.closest('main, [role="main"], .search-results-container, ul.reusable-search__entity-result-list');
     for (const a of links) {
       const href = (a.href || '').split('?')[0];
       if (!/\/in\/[^/]+\/?$/.test(href) || seen.has(href)) continue;
+      if (!inResults(a)) continue;
       // Walk up to the row/card that holds this link so we can read the headline near it.
       let box = a;
       for (let i = 0; i < 5 && box.parentElement; i++) {
@@ -67,6 +73,22 @@ async function collectPeople(page) {
     }
     return out;
   }).catch(() => []);
+}
+
+/**
+ * The person's own recent posts, read from their profile's activity section.
+ *
+ * This is the evidence for "are they actually hiring?" — a headline that doesn't say recruiter
+ * can still belong to an engineer who posted "my team is hiring, DM me". Returns up to 3 posts;
+ * an empty list simply means we have nothing to judge on, and the caller treats that as no.
+ */
+async function readRecentPosts(page) {
+  return page.$$eval(
+    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update, .pv-recent-activity-item',
+    (nodes) => nodes.slice(0, 3)
+      .map((n) => (n.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 700))
+      .filter((t) => t.length > 40),
+  ).catch(() => []);
 }
 
 /** Print what a search page actually contains when it yields nothing. */
@@ -185,9 +207,9 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
   // still respected — inviteWithNote returns 'limit' and we stop gracefully when it's hit.
   const cap = plan.connectCap || 1000;
   const deadline = Date.now() + (plan.blockMinutes || 120) * 60_000;
-  let sent = 0, skipped = 0;
+  let sent = 0, skipped = 0, rejected = 0;
   let peopleDiagShown = false;
-  console.log('\n  🤝 Connections — inviting recruiters (until the weekly limit / block ends)…');
+  console.log('\n  🤝 Connections — verifying each person, then inviting the ones who hire…');
 
   // Widen the net: every role × every target city, so the pool is large AND local.
   const cities = (plan.locations && plan.locations.length ? plan.locations : ['India']);
@@ -207,18 +229,44 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
     for (const person of people) {
       if (state.stopped || state.paused || sent >= cap || Date.now() > deadline) break;
       try {
+        // GATE 1 — the headline, before we spend a page load on them. This is what was missing:
+        // every result was invited or messaged regardless of who they were.
+        const quick = await shouldContact(api, person, plan, []);
+        if (!quick.ok && !quick.topic && /not a hiring role|no recruiter title/i.test(quick.reason)) {
+          rejected++;
+          console.log(`     ✗ ${person.name} — ${quick.reason}`);
+          continue;
+        }
+
         const company = person.headline.split(/ at | @ /i)[1]?.trim() || '';
+        // Send the invite from the person's profile page (stable place for the Connect button).
+        await page.goto(person.profileUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await humanDelay(1500, 2600);
+        if (loggedOut(page)) return sent;
+
+        // GATE 2 — the ambiguous middle: read what they've actually posted and ask whether it
+        // is about hiring. No hiring signal in the headline AND none in the posts ⇒ no contact.
+        let verdict = quick;
+        if (!quick.ok) {
+          const posts = await readRecentPosts(page).catch(() => []);
+          verdict = await shouldContact(api, person, plan, posts);
+          if (!verdict.ok) {
+            rejected++;
+            console.log(`     ✗ ${person.name} — ${verdict.reason}`);
+            await humanDelay(1200, 2200);
+            continue;
+          }
+        }
+
         const { id } = await api.upsertContact({
           portal: 'linkedin', name: person.name, profileUrl: person.profileUrl,
           company, role: person.headline,
         }).catch(() => ({}));
         if (!id) { skipped++; continue; }
 
-        const { note } = await api.connectionNote(id).catch(() => ({ note: '' }));
-        // Send the invite from the person's profile page (stable place for the Connect button).
-        await page.goto(person.profileUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
-        await humanDelay(1500, 2600);
-        if (loggedOut(page)) return sent;
+        // The note references what they posted about, when we know it — the difference between
+        // "I am interested" and a message that proves we read their post.
+        const { note } = await api.connectionNote(id, verdict.topic || '').catch(() => ({ note: '' }));
 
         const result = await inviteWithNote(page, null, note || '');
         if (result === 'limit') {
@@ -254,8 +302,10 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
       await humanDelay(2500, 4500);
     }
   }
-  console.log(`     connections: ${sent} invited, ${skipped} skipped`);
+  console.log(`     connections: ${sent} contacted · ${rejected} rejected (not hiring) · ${skipped} unreachable`);
   if (sent > 0) await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `sent ${sent} connection request(s)` });
+  if (rejected > 0) await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+    detail: `${rejected} profile(s) rejected — not recruiters and not posting about hiring` });
   return sent;
 }
 

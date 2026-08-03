@@ -37,6 +37,8 @@ export class Api {
   }
   connectionActions() { return this.#req('/api/worker/connection-actions'); }
   evaluate(job) { return this.#req('/api/worker/evaluate', { method: 'POST', body: job }); }
+  /** Is this person a recruiter / hiring? { contact, isRecruiter, hiringNow, confidence, topic } */
+  verifyPerson(p) { return this.#req('/api/worker/verify-person', { method: 'POST', body: p }); }
   profile() { return this.#req('/api/worker/profile'); }
   resume() { return this.#req('/api/worker/resume'); }
   answer(question, options) { return this.#req('/api/worker/answer', { method: 'POST', body: { question, options } }); }
@@ -52,6 +54,9 @@ export class Api {
   markSent(id) { return this.#req(`/api/worker/messages/${id}/sent`, { method: 'POST' }); }
   // Connection outreach: invites we're waiting on, the short note to attach, and lifecycle.
   pendingConnections() { return this.#req('/api/worker/contacts/pending'); }
-  connectionNote(contactId) { return this.#req('/api/worker/connection-note', { method: 'POST', body: { contactId } }); }
+  /** `topic` is what they posted about, so the note can reference something real. */
+  connectionNote(contactId, topic = '') {
+    return this.#req('/api/worker/connection-note', { method: 'POST', body: { contactId, topic } });
+  }
   setConnectionStatus(id, body) { return this.#req(`/api/worker/contact/${id}/connection-status`, { method: 'POST', body }); }
 }

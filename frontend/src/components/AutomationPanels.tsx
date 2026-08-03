@@ -563,6 +563,19 @@ export function ScheduleEditor() {
           <F k="restMins" label="Rest between blocks" hint="pause before the next one" unit="minutes" />
         </div>
 
+        <div className="section-title" style={{ margin: '22px 0 4px' }}>
+          <Icon name="target" size={15} /> How picky it is
+        </div>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 14 }}>
+          Nothing is applied to unless your résumé actually matches its stack, and nobody is
+          contacted unless they recruit or posted about hiring. Raise these to apply less and
+          better; lower them to cast wider.
+        </div>
+        <div className="pf-grid">
+          <F k="fitMin" label="Minimum résumé fit" hint="to apply at all" unit="out of 100" />
+          <F k="personConfMin" label="Minimum certainty they hire" hint="to contact them" unit="out of 100" />
+        </div>
+
         <div className="row" style={{ gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save settings

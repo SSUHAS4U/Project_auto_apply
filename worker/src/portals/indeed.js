@@ -6,6 +6,7 @@
 import { humanDelay, sleep } from '../browser.js';
 import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
+import { shouldApply } from '../gate.js';
 
 // See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
 // keyword-overlap number. Skip only clearly senior roles or postings we read well that
@@ -118,6 +119,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   if (applyCap === 0) { console.log("  ✓ Today's Indeed quota is already met — nothing to do."); return { applied: 0 }; }
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
+  let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
   // Indeed returns the same postings for every city (16 each time in the last run), so without
   // this the worker re-opened and re-processed the identical 16 jobs six times over.
   const doneJobs = new Set();
@@ -169,7 +171,25 @@ export async function runIndeed(page, api, plan, state, ctx) {
         try {
           await jobPage.goto(`https://${host}/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
           await humanDelay(1800, 3200);
-          if (await looksBlocked(jobPage)) { await jobPage.close(); continue; }
+          // A blocked job page used to `continue` in total silence — no log, no event, no
+          // counter. With every viewjob behind a captcha the run printed its searches and then
+          // appeared to hang forever, which is exactly the "16 results, then nothing" loop.
+          if (await looksBlocked(jobPage)) {
+            blockedJobs++;
+            if (blockedJobs === 1) console.log('     ⚠ job pages are behind a checkpoint — solve it in the browser');
+            await jobPage.close();
+            // Three in a row means the session is walled, not a one-off: stop rather than
+            // grinding through hundreds of identical blocks.
+            if (blockedJobs >= 3) {
+              console.log(`     ✋ ${blockedJobs} job pages blocked in a row — ending the Indeed block.`);
+              await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+                detail: `Indeed is showing a checkpoint on job pages (${blockedJobs} in a row). Open Indeed in the automation browser, solve it, then run again.` });
+              await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha on job pages').catch(() => {});
+              return { applied };
+            }
+            continue;
+          }
+          blockedJobs = 0;
 
           const post = await readPosting(jobPage);
           state.action = `Reviewing: ${post.title}`;
@@ -177,25 +197,26 @@ export async function runIndeed(page, api, plan, state, ctx) {
             title: post.title, company: post.company, url: `https://${host}/viewjob?jk=${jk}`,
             salary: post.salary, description: (post.description || '').replace(/\s+/g, ' ').slice(0, 400) });
 
-          const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
-          const canJudge = (post.description || '').length > 60;
           if (SENIOR_RE.test(post.title || '')) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
             logSkipped(post.title || 'Role', 'senior/leadership role');
             continue;
           }
-          if (canJudge && score < FIT_THRESHOLD) {
-            await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
-              title: post.title, company: post.company, detail: `skip — low fit ${score}` });
-            logSkipped(post.title || 'Role', `low fit ${score}`);
+          // Same gate LinkedIn uses — one place decides, so the two portals can't disagree.
+          const gate = await shouldApply(api, post, plan);
+          if (!gate.ok) {
+            await api.event({ runId: state.runId, portal: 'indeed',
+              type: gate.manual ? 'manual_apply' : 'info', title: post.title, company: post.company,
+              url: `https://${host}/viewjob?jk=${jk}`, detail: `skip — ${gate.label}` });
+            logSkipped(post.title || 'Role', gate.label);
             continue;
           }
+          const score = gate.score;
           await api.event({ runId: state.runId, portal: 'indeed', type: 'relevant',
-            title: post.title, company: post.company,
-            detail: canJudge ? `fit ${score}` : 'matched your search — applying' });
+            title: post.title, company: post.company, detail: gate.label });
 
-          logJobHeader(post.title || 'Role', post.company || '', canJudge ? `fit ${score}` : 'no description');
+          logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
           const result = await indeedApply(jobPage, api, profile, resume, state, ctx);
           logResult(result === 'applied' ? 'applied' : result === 'external' ? 'external'

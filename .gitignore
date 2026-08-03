@@ -32,3 +32,7 @@ backend/uploads/
 .DS_Store
 .playwright-mcp/
 jobpilot-prod.env
+
+# Local-only working doc: how the automation actually behaves right now.
+# Deliberately NOT committed — it is a live scratchpad, updated as behaviour changes.
+AUTOMATION.md

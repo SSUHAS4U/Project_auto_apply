@@ -30,15 +30,18 @@ public class WorkerController {
     private final AiService ai;
     private final com.jobpilot.service.AssistService assist;
     private final com.jobpilot.service.ComposeService compose;
+    private final FitService fit;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
                             com.jobpilot.service.AssistService assist,
-                            com.jobpilot.service.ComposeService compose) {
+                            com.jobpilot.service.ComposeService compose,
+                            FitService fit) {
         this.agent = agent;
         this.profiles = profiles;
         this.ai = ai;
         this.assist = assist;
         this.compose = compose;
+        this.fit = fit;
     }
 
     /**
@@ -170,12 +173,28 @@ public class WorkerController {
         return Map.of("id", r.getId().toString(), "status", r.getStatus());
     }
 
-    /** Quick keyword fit for a portal listing (reuses the ingest scorer). */
+    /**
+     * Should the worker apply to this listing? Résumé-aware, not keyword overlap: returns
+     * score + techMatch + the reason, so a Python role never slips past a Java/MERN résumé on
+     * a matching job title alone. Falls back to the keyword score if the AI is unavailable.
+     */
     @PostMapping("/evaluate")
     public Map<String, Object> evaluate(@RequestBody Map<String, String> b) {
         UserContext.require();
-        int score = agent.evaluate(b.get("title"), b.get("company"), b.get("location"), b.get("description"));
-        return Map.of("score", score);
+        return fit.jobFit(b.get("title"), b.get("company"), b.get("location"), b.get("description"));
+    }
+
+    /**
+     * Should the worker contact this person at all? Headline decides outright where it can;
+     * their recent posts are read only for the ambiguous middle. No evidence ⇒ no contact.
+     */
+    @PostMapping("/verify-person")
+    public Map<String, Object> verifyPerson(@RequestBody Map<String, Object> b) {
+        UserContext.require();
+        Object posts = b.get("posts");
+        List<String> recent = posts instanceof List<?> l
+                ? l.stream().map(String::valueOf).filter(s -> !s.isBlank()).toList() : List.of();
+        return fit.recruiterFit(str(b.get("name")), str(b.get("headline")), recent);
     }
 
     /** The flattened profile answers the worker fills portal forms with. */
@@ -321,7 +340,7 @@ public class WorkerController {
     @PostMapping("/connection-note")
     public Map<String, Object> connectionNote(@RequestBody Map<String, String> b) {
         UUID u = UserContext.require();
-        return Map.of("note", agent.connectionNote(u, uuid(b.get("contactId"))));
+        return Map.of("note", agent.connectionNote(u, uuid(b.get("contactId")), b.get("topic")));
     }
 
     /**
