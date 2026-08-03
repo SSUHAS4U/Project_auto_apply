@@ -67,9 +67,14 @@ jobs:
       - name: Install desktop deps
         working-directory: desktop
         run: npm install
+      # electron-builder downloads Electron + code-sign helpers here, and that fetch fails
+      # intermittently (desktop-v79's Windows job died this way with no code change at all).
+      # A failed platform leaves `latest` with no installer for it, so retry once before
+      # giving up rather than publishing a release with a dead download link.
       - name: Build installer
+        shell: bash
         working-directory: desktop
-        run: npm run ${{ matrix.script }}
+        run: npm run ${{ matrix.script }} || (echo "::warning::installer build failed, retrying once" && sleep 20 && npm run ${{ matrix.script }})
 
       # Stamp the release version INTO the filename, so a downloaded installer says which
       # version it is (JobPilot-desktop-v78-Windows-Setup.exe). With a fixed name you cannot

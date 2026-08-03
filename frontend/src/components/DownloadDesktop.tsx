@@ -49,33 +49,57 @@ export function DownloadDesktop({ compact = false }: { compact?: boolean }) {
     return () => { alive = false; };
   }, []);
 
-  // Prefer the asset whose name carries the version; else the stable fallback URL.
-  const hrefFor = (key: string) => {
+  // The asset for a platform in the resolved release, if it built. One platform can fail while
+  // the others publish (the matrix is continue-on-error), so this can legitimately be missing.
+  const assetFor = (key: string) => {
     const d = DOWNLOADS[key];
-    const versioned = rel?.assets.find((a) => a.name.includes(rel.tag) && d.match.test(a.name));
-    return versioned?.url ?? `${RELEASE_BASE}/${d.file}`;
+    return rel?.assets.find((a) => a.name.includes(rel.tag) && d.match.test(a.name));
   };
-  const fileFor = (key: string) => {
-    const d = DOWNLOADS[key];
-    return rel?.assets.find((a) => a.name.includes(rel.tag) && d.match.test(a.name))?.name ?? d.file;
-  };
+  // Missing only counts once the release actually loaded — if GitHub is unreachable or rate-limits
+  // us we know nothing, so we keep the stable fallback link rather than crying wolf.
+  const missing = (key: string) => !!rel && !assetFor(key);
+  const hrefFor = (key: string) => assetFor(key)?.url ?? `${RELEASE_BASE}/${DOWNLOADS[key].file}`;
+  const fileFor = (key: string) => assetFor(key)?.name ?? DOWNLOADS[key].file;
 
   return (
     <div>
-      <a className="btn btn-primary" href={hrefFor(primary)} download>
-        <Icon name="download" size={14} /> {DOWNLOADS[primary].label}
-        {rel && <span style={{ opacity: 0.85, marginLeft: 6 }}>· {rel.tag}</span>}
-      </a>
+      {missing(primary) ? (
+        // Don't hand out a link we know is dead — say so and point at the releases page.
+        <div>
+          <span className="btn btn-primary" aria-disabled="true"
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+            <Icon name="download" size={14} /> {DOWNLOADS[primary].label}
+          </span>
+          <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+            This platform's installer didn't build for <code>{rel!.tag}</code>.{' '}
+            <a href={`https://github.com/${REPO}/releases`} target="_blank" rel="noreferrer"
+              style={{ textDecoration: 'underline' }}>Pick an earlier release</a> for now.
+          </div>
+        </div>
+      ) : (
+        <a className="btn btn-primary" href={hrefFor(primary)} download>
+          <Icon name="download" size={14} /> {DOWNLOADS[primary].label}
+          {rel && <span style={{ opacity: 0.85, marginLeft: 6 }}>· {rel.tag}</span>}
+        </a>
+      )}
       {!compact && (
         <>
-          <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
-            You'll get <code>{fileFor(primary)}</code> — the version is in the filename, so you can
-            always tell which build you're running.
-          </div>
+          {!missing(primary) && (
+            <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
+              You'll get <code>{fileFor(primary)}</code> — the version is in the filename, so you
+              can always tell which build you're running.
+            </div>
+          )}
           <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
             {others.map((k) => (
-              <a key={k} href={hrefFor(k)} download className="faint"
-                style={{ fontSize: 12.5, textDecoration: 'underline' }}>{DOWNLOADS[k].label}</a>
+              missing(k) ? (
+                <span key={k} className="faint" style={{ fontSize: 12.5, opacity: 0.45 }}>
+                  {DOWNLOADS[k].label} — not in {rel!.tag}
+                </span>
+              ) : (
+                <a key={k} href={hrefFor(k)} download className="faint"
+                  style={{ fontSize: 12.5, textDecoration: 'underline' }}>{DOWNLOADS[k].label}</a>
+              )
             ))}
           </div>
           <div className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>
