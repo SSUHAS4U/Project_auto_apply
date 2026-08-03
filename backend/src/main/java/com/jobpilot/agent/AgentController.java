@@ -223,6 +223,12 @@ public class AgentController {
         return agent.saveSchedule(UserContext.require(), blocks);
     }
 
+    /** Live/last/next run for ONE portal — powers the Runs card on the LinkedIn & Indeed pages. */
+    @GetMapping("/run-info")
+    public Map<String, Object> runInfo(@RequestParam String portal) {
+        return agent.runInfo(UserContext.require(), portal);
+    }
+
     /** Advance the rotation now (also runs automatically every few minutes). */
     @PostMapping("/rotation/run")
     public Map<String, Object> rotateNow() {

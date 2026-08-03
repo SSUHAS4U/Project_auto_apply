@@ -1,5 +1,5 @@
 import type {
-  AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentSchedule, AgentStatus,
+  AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentRunInfo, AgentSchedule, AgentStatus,
   Application, ApplicationEvent, AssistantJob,
   EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
   EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
@@ -260,6 +260,7 @@ export const api = {
   agentPause: (paused: boolean) =>
     req<{ paused: boolean }>('/api/agent/pause', { method: 'POST', body: JSON.stringify({ paused }) }),
   agentRuns: (limit = 20) => req<AgentRun[]>(`/api/agent/runs?limit=${limit}`),
+  agentRunInfo: (portal: string) => req<AgentRunInfo>(`/api/agent/run-info?portal=${portal}`),
   agentFrame: () => req<AgentFrame>('/api/agent/frame'),
   agentEvents: (limit = 60) => req<AgentEvent[]>(`/api/agent/events?limit=${limit}`),
   agentSchedule: () => req<AgentSchedule[]>('/api/agent/schedule'),

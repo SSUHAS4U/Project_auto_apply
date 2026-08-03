@@ -231,6 +231,32 @@ export interface AgentStatus {
   liveUpdatedAt?: string | null;
 }
 
+/** One run in the Runs card — the live one, or the last finished one. */
+export interface RunSummary {
+  id: string;
+  status: string;
+  startedAt?: string;
+  endedAt?: string;
+  currentAction?: string;
+  searched: number;
+  applied: number;
+  connected: number;
+  messaged: number;
+  failed: number;
+}
+
+/** Live / previous / next run for ONE portal (GET /api/agent/run-info?portal=…). */
+export interface AgentRunInfo {
+  portal: string;
+  paused: boolean;
+  workerOnline: boolean;
+  current: RunSummary | null;
+  /** Set when the OTHER portal is mid-run, which is what's holding this one back. */
+  busyWith: string | null;
+  previous: RunSummary | null;
+  nextAt: string | null;
+}
+
 export interface AgentEvent {
   id: string;
   type: string;

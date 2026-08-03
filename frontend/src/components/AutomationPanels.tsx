@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { api } from '../api/client';
-import type { AgentEvent, AgentStatus } from '../types';
+import type { AgentEvent, AgentRunInfo, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { JobCardV2 } from './JobCardV2';
@@ -239,7 +239,7 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
   };
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    <div className="portal-panel">
       {(!only || only === 'linkedin') && block('linkedin')}
       {(!only || only === 'indeed') && block('indeed')}
     </div>
@@ -314,10 +314,152 @@ function MetricList({ portal, cell, rows, done, onDone }: {
 export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    // .portal-panel, not an inline grid: its rows need min-width:0 or the metrics strip's
+    // min-content width (~930px) pushes the whole page sideways on a narrow screen.
+    <div className="portal-panel">
       <PortalMetrics only={portal} />
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
-      <ActivityFeed portal={portal} />
+      {/* Activity says WHAT happened; the Runs card beside it says WHEN — is it running right
+          now, when did the last run finish, when does the next one start. */}
+      <div className="run-wrap">
+        <div className="run-split">
+          <ActivityFeed portal={portal} />
+          <RunStatusCard portal={portal} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Runs card: is it running, when was the last one, when is the next ------
+
+/** "8m", "1h 22m", "2d 3h" — a duration in the smallest units that stay readable. */
+function fmtDuration(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}h ${mins % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** "today 20:00" / "tomorrow 09:30" / "12 Aug, 09:30" — a clock time you can act on. */
+function fmtWhen(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = (a: Date) => new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const days = Math.round((day(d) - day(new Date())) / 86400000);
+  if (days === 0) return `today ${time}`;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days === -1) return `yesterday ${time}`;
+  return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
+/**
+ * The "when" panel for a portal page. The automation starts itself now, so without this there
+ * is no way to tell a run that is quietly working from one that never started.
+ */
+export function RunStatusCard({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const [info, setInfo] = useState<AgentRunInfo | null>(null);
+  const [failed, setFailed] = useState(false);
+  // Re-render on a timer as well as on fetch, so "running for 12m" keeps counting up.
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const pull = () => api.agentRunInfo(portal)
+      .then((r) => { if (alive) { setInfo(r); setFailed(false); } })
+      .catch(() => { if (alive) setFailed(true); });
+    pull();
+    const t = setInterval(pull, 5000);
+    const t2 = setInterval(() => alive && tick((n) => n + 1), 30000);
+    return () => { alive = false; clearInterval(t); clearInterval(t2); };
+  }, [portal]);
+
+  const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
+  if (failed && !info) {
+    return (
+      <div className="card card-pad run-card">
+        <div className="run-card-h"><Icon name="clock" size={15} /> Runs</div>
+        <div className="faint" style={{ fontSize: 12.5 }}>Couldn’t load run times — retrying.</div>
+      </div>
+    );
+  }
+  if (!info) return <div className="card card-pad run-card"><span className="spinner" /></div>;
+
+  const cur = info.current;
+  const live = !!cur && ['running', 'queued', 'needs_attention'].includes(cur.status);
+  const state = info.paused ? 'paused' : live ? 'running' : 'idle';
+  const tone = { running: 'green', paused: 'amber', idle: 'slate' }[state];
+  const label = { running: `Running${cur?.status === 'queued' ? ' · starting' : ''}`, paused: 'Paused', idle: 'Not running' }[state];
+
+  return (
+    <div className="card card-pad run-card">
+      <div className="run-card-h"><Icon name="clock" size={15} /> {name} runs</div>
+
+      {/* Now — the answer to "has it actually started?" */}
+      <div className="run-now">
+        <span className={`tone tone-${tone} ${live ? 'live-pulse' : ''}`} style={{ padding: '4px 10px' }}>
+          <span className="live-dot" /> {label}
+        </span>
+        {live && cur?.startedAt && (
+          <div className="run-since">
+            Started {fmtWhen(cur.startedAt)} · running for {fmtDuration(Date.now() - new Date(cur.startedAt).getTime())}
+          </div>
+        )}
+        {live && cur?.currentAction && <div className="run-action">{cur.currentAction}</div>}
+        {live && cur && (
+          <div className="run-tally">
+            {cur.applied} applied · {cur.searched} seen
+            {portal === 'linkedin' && ` · ${cur.connected} connected`}
+          </div>
+        )}
+        {!live && info.paused && <div className="run-since">Resume it to start the next run.</div>}
+        {!live && !info.paused && info.busyWith && (
+          <div className="run-since">Waiting — the {info.busyWith} run has to finish first.</div>
+        )}
+        {!live && !info.paused && !info.busyWith && !info.workerOnline && (
+          <div className="run-since">Open JobPilot Desktop — runs need it open.</div>
+        )}
+      </div>
+
+      <Line label="Previous run" >
+        {info.previous?.startedAt ? (
+          <>
+            <b>{fmtWhen(info.previous.startedAt)}</b>
+            {info.previous.endedAt && (
+              <span className="faint"> · ran {fmtDuration(
+                new Date(info.previous.endedAt).getTime() - new Date(info.previous.startedAt).getTime())}</span>
+            )}
+            <div className="faint" style={{ fontSize: 12 }}>
+              {info.previous.applied} applied
+              {info.previous.status === 'failed' && <span style={{ color: 'var(--red)' }}> · stopped early</span>}
+            </div>
+          </>
+        ) : <span className="faint">No finished run yet</span>}
+      </Line>
+
+      <Line label="Next run">
+        {info.paused ? <span className="faint">Paused — nothing scheduled</span>
+          : live ? <span className="faint">After this one finishes</span>
+          : info.nextAt ? (
+            // A next time in the past means the window is open and it is due right now.
+            new Date(info.nextAt).getTime() <= Date.now() + 60000
+              ? <><b>Due now</b><div className="faint" style={{ fontSize: 12 }}>
+                  {info.workerOnline ? 'Starting within a few minutes' : 'Waiting for JobPilot Desktop'}</div></>
+              : <><b>{fmtWhen(info.nextAt)}</b><div className="faint" style={{ fontSize: 12 }}>
+                  in {fmtDuration(new Date(info.nextAt).getTime() - Date.now())}</div></>
+          ) : <span className="faint">No {name} block scheduled</span>}
+      </Line>
+    </div>
+  );
+}
+
+function Line({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="run-line">
+      <div className="run-line-l">{label}</div>
+      <div className="run-line-v">{children}</div>
     </div>
   );
 }

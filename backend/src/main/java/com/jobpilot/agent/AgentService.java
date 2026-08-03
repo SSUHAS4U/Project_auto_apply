@@ -719,6 +719,86 @@ public class AgentService {
         return "started " + block.getPortal();
     }
 
+    // ---- "when did it run / when does it run next" --------------------------
+
+    /**
+     * What the LinkedIn / Indeed page shows next to its activity feed: whether a run is live
+     * right now and since when, how the last one finished, and when the next window opens.
+     *
+     * Deliberately derived from the SAME schedule and the same "already ran this block" guard
+     * the rotation uses, so the card cannot drift from what the automation actually does.
+     */
+    public Map<String, Object> runInfo(UUID userId, String portal) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("portal", portal);
+        m.put("paused", isPaused());
+        m.put("workerOnline", isWorkerOnline(userId));
+
+        AgentRun live = activeRun(userId);
+        boolean isMine = live != null && portal.equalsIgnoreCase(live.getPortal());
+        m.put("current", isMine ? runMap(live) : null);
+        // A live run on the OTHER portal is why this one isn't starting — name it, rather than
+        // showing a "next run" time that the rotation will refuse to honour anyway.
+        m.put("busyWith", live != null && !isMine ? live.getPortal() : null);
+
+        m.put("previous", runs.findFirstByUserIdAndPortalAndStatusInOrderByCreatedAtDesc(
+                userId, portal, List.of("done", "failed")).map(this::runMap).orElse(null));
+
+        // Paused means nothing is coming until it's resumed — don't promise a time.
+        m.put("nextAt", isPaused() ? null : nextWindowStart(userId, portal, Instant.now()));
+        return m;
+    }
+
+    private Map<String, Object> runMap(AgentRun r) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", r.getId().toString());
+        m.put("status", r.getStatus());
+        // startedAt is only set once a worker picks the run up; fall back so a queued run
+        // still reports the moment it was created rather than an empty timestamp.
+        m.put("startedAt", r.getStartedAt() != null ? r.getStartedAt() : r.getCreatedAt());
+        m.put("endedAt", r.getEndedAt());
+        m.put("currentAction", r.getCurrentAction());
+        m.put("searched", r.getSearched());
+        m.put("applied", r.getApplied());
+        m.put("connected", r.getConnected());
+        m.put("messaged", r.getMessaged());
+        m.put("failed", r.getFailed());
+        return m;
+    }
+
+    /**
+     * When the rotation would next start this portal: "now" if a window is open and hasn't been
+     * used yet today, otherwise the next window's start (rolling to tomorrow once today's are
+     * spent). Null when the portal has no enabled block with a usable start time.
+     */
+    Instant nextWindowStart(UUID userId, String portal, Instant now) {
+        java.time.LocalDate today = now.atZone(ZONE).toLocalDate();
+        int nowMin = now.atZone(ZONE).toLocalTime().toSecondOfDay() / 60;
+        Instant best = null;
+        for (AgentSchedule b : schedules.findByUserIdOrderByOrdAsc(userId)) {
+            if (!b.isEnabled() || !portal.equalsIgnoreCase(b.getPortal())) continue;
+            Integer start = parseHhmm(b.getStartTime());
+            if (start == null || start >= 24 * 60) continue;  // "25:00" etc. — unusable
+            int end = start + Math.max(1, b.getDurationMins());
+            Instant todayStart = today.atTime(start / 60, start % 60).atZone(ZONE).toInstant();
+
+            Instant candidate;
+            if (nowMin >= start && nowMin < end) {
+                // The window is open. It fires immediately UNLESS this block already had its
+                // run — the same once-per-window guard tickRotationForUser applies.
+                candidate = runs.existsByUserIdAndPortalAndCreatedAtGreaterThanEqual(userId, portal, todayStart)
+                        ? todayStart.plus(1, java.time.temporal.ChronoUnit.DAYS)
+                        : now;
+            } else if (nowMin < start) {
+                candidate = todayStart;                                            // later today
+            } else {
+                candidate = todayStart.plus(1, java.time.temporal.ChronoUnit.DAYS); // window passed
+            }
+            if (best == null || candidate.isBefore(best)) best = candidate;
+        }
+        return best;
+    }
+
     /** Scheduler entry point — advance the rotation for every user that has a schedule. */
     @Transactional
     public void tickRotation() {

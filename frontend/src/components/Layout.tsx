@@ -4,6 +4,7 @@ import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 import { getTheme, toggleTheme, type Theme } from '../lib/theme';
 import { Icon, Logo } from './Icon';
 import { AssistantWidget } from './AssistantWidget';
+import { useRunStartToast } from '../lib/useRunToast';
 
 /**
  * Sidebar navigation, grouped: top-level destinations with collapsible children so the
@@ -64,6 +65,9 @@ export function Layout() {
   const [theme, setTheme] = useState<Theme>(getTheme());
   const location = useLocation();
   const nav = useNavigate();
+
+  // Runs start by themselves now — tell the owner when one does, on whatever page they're on.
+  useRunStartToast();
 
   // Which group is expanded — default to the group owning the current route.
   const groupOf = (path: string) =>
