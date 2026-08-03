@@ -99,7 +99,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   // An Indeed run lasts ~1.5h unless you stop it (floor enforced here so a stale schedule row
   // can't cut it short). Indeed has no post-scan/outreach phase — it only applies.
-  const blockMin = Math.max(plan.blockMinutes || 90, 90);
+  // Duration comes from Automation → Schedule (Indeed minutes).
+  const blockMin = Math.max(plan.blockMinutes || 120, 15);
   const deadline = Date.now() + blockMin * 60_000;
   // What's LEFT of today's Indeed quota — the backend subtracts today's applications, so a
   // shortfall carries into the next run automatically.

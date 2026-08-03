@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { api } from '../api/client';
-import type { AgentEvent, AgentSchedule, AgentStatus } from '../types';
+import type { AgentEvent, AgentStatus } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { JobCardV2 } from './JobCardV2';
@@ -143,17 +143,18 @@ function LimitGear({ portal }: { portal: 'linkedin' | 'indeed' }) {
 
   return (
     <>
-      <button className="btn btn-ghost btn-sm" title="Set applies per run" onClick={openIt}>
+      <button className="btn btn-ghost btn-sm" title="Applications per day" onClick={openIt}>
         <Icon name="gear" size={14} />
       </button>
       {open && (
-        <Modal title={`${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} — applies per run`} onClose={() => setOpen(false)}>
+        <Modal title={`${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} — applications per day`} onClose={() => setOpen(false)}>
           <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-            How many jobs the automation Easy-Applies to in one run before
-            {portal === 'linkedin' ? ' switching to outreach (connections, messages, HR emails).' : ' the run ends.'}
+            How many applications to send on this portal per DAY. Each run does whatever is still
+            left of that number, so an unfinished quota carries over to the next run.
+            {portal === 'linkedin' ? ' Once it is met, runs spend all their time on outreach.' : ''}
           </div>
           <label className="pf-f" style={{ maxWidth: 200 }}>
-            <span className="pf-f-l">Applies per run</span>
+            <span className="pf-f-l">Applications per day</span>
             <input className="input" type="number" min={1} max={100} value={cap}
               onChange={(e) => setCap(e.target.value === '' ? '' : Number(e.target.value))} autoFocus />
           </label>
@@ -403,97 +404,87 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
   );
 }
 
-// ---- Schedule editor --------------------------------------------------------
+// ---- Cadence editor (was: start-time schedule) ------------------------------
 
+/**
+ * How the automation paces itself. The old editor asked WHEN each block should start, which
+ * made no sense once the automation runs whenever the desktop app is open — so this asks HOW
+ * MUCH instead: how long each phase runs, how many applications per portal per day, and how
+ * long to rest in between. The daily counts carry over: whatever a run doesn't finish is left
+ * for the next one.
+ */
 export function ScheduleEditor() {
   const toast = useToast();
-  const [blocks, setBlocks] = useState<AgentSchedule[]>([]);
-  useEffect(() => { api.agentSchedule().then(setBlocks).catch(() => {}); }, []);
+  const [cfg, setCfg] = useState<Record<string, number> | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const upd = (i: number, patch: Partial<AgentSchedule>) =>
-    setBlocks((bs) => bs.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  useEffect(() => { api.agentLimits().then((l) => setCfg(l as unknown as Record<string, number>)).catch(() => {}); }, []);
+
+  const set = (k: string, v: number) => setCfg((c) => ({ ...(c || {}), [k]: v }));
   const save = async () => {
-    try { setBlocks(await api.agentSaveSchedule(blocks)); toast('Schedule saved', 'success'); }
-    catch (e) { toast((e as Error).message, 'error'); }
-  };
-  const usePreset = async () => {
-    if (!window.confirm('Replace your schedule with the recommended plan? (Easy Apply 2×/day per portal + one long evening outreach slot)')) return;
-    try { setBlocks(await api.agentSchedulePreset()); toast('Recommended plan applied', 'success'); }
-    catch (e) { toast((e as Error).message, 'error'); }
+    if (!cfg) return;
+    setSaving(true);
+    try { setCfg(await api.agentSetLimits(cfg) as unknown as Record<string, number>); toast('Automation settings saved', 'success'); }
+    catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
   };
 
-  const PORTAL: Record<string, { color: string; letter: string; parked?: boolean }> = {
-    linkedin: { color: '#0A66C2', letter: 'in' },
-    indeed: { color: '#2557A7', letter: 'i' },
-    naukri: { color: '#6D28D9', letter: 'n', parked: true },
-  };
+  if (!cfg) return <div className="empty"><span className="spinner" /></div>;
+
+  const F = ({ k, label, hint, unit }: { k: string; label: string; hint: string; unit: string }) => (
+    <label className="pf-f">
+      <span className="pf-f-l">{label}<span className="pf-f-hint">{hint}</span></span>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <input className="input" type="number" min={0} style={{ width: 110 }}
+          value={cfg[k] ?? 0} onChange={(e) => set(k, Number(e.target.value))} />
+        <span className="faint" style={{ fontSize: 12.5 }}>{unit}</span>
+      </div>
+    </label>
+  );
+
+  const cycle = (cfg.linkedinApplyMins || 0) + (cfg.linkedinOutreachMins || 0)
+    + (cfg.indeedMins || 0) + 2 * (cfg.restMins || 0);
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div className="card card-pad" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        <Icon name="clock" size={16} style={{ color: 'var(--accent-hi)', flex: 'none', transform: 'translateY(1px)' }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14.5 }}>Runs automatically, every day</div>
-          <div className="faint" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
-            When JobPilot Desktop is connected, each block below starts on its own at its time.
-            <b> Apply</b> = Easy Apply only · <b>Outreach</b> = scan posts, harvest HR emails, send connections
-            (give it the most time). Blank keywords/locations come from your Job profile.
-          </div>
+      <div className="card card-pad">
+        <div className="section-title" style={{ marginBottom: 4 }}>
+          <Icon name="clock" size={15} /> How the automation paces itself
         </div>
-        <button className="btn btn-sm" onClick={usePreset} style={{ flex: 'none' }}><Icon name="sparkles" size={13} /> Recommended plan</button>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 16 }}>
+          It runs whenever JobPilot Desktop is open — there are no start times to set. These
+          decide how long each part runs and how much it does per day. Anything a run doesn't
+          finish carries over to the next one.
+        </div>
+
+        <div className="pf-grid">
+          <F k="linkedinApplyCap" label="LinkedIn applications" hint="per day" unit="applications" />
+          <F k="indeedApplyCap" label="Indeed applications" hint="per day" unit="applications" />
+          <F k="linkedinApplyMins" label="LinkedIn — Easy Apply" hint="time spent applying" unit="minutes" />
+          <F k="linkedinOutreachMins" label="LinkedIn — outreach" hint="posts, HR emails, connections" unit="minutes" />
+          <F k="indeedMins" label="Indeed" hint="applying only" unit="minutes" />
+          <F k="restMins" label="Rest between blocks" hint="pause before the next one" unit="minutes" />
+        </div>
+
+        <div className="row" style={{ gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save settings
+          </button>
+          <span className="faint" style={{ fontSize: 12.5 }}>
+            One full cycle ≈ {Math.floor(cycle / 60)}h {cycle % 60}m
+          </span>
+        </div>
       </div>
 
-      {blocks.length === 0 && (
-        <div className="card card-pad empty"><div className="big"><Icon name="clock" size={32} /></div>No schedule yet — click “Recommended plan” to set the daily runs.</div>
-      )}
-
-      {blocks.map((b, i) => {
-        const meta = PORTAL[b.portal] ?? { color: 'var(--accent)', letter: b.portal[0] };
-        return (
-          <div key={i} className={`card sched-card ${b.enabled && !meta.parked ? '' : 'off'}`}>
-            <div className="sched-head">
-              <div className="conn-logo" style={{ width: 40, height: 40, borderRadius: 11, fontSize: 15, background: meta.color }}>{meta.letter}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="conn-name" style={{ textTransform: 'capitalize' }}>{b.portal}
-                  {meta.parked && <span className="tone tone-amber" style={{ marginLeft: 8 }}>in progress</span>}</div>
-                <div className="faint" style={{ fontSize: 12 }}>
-                  {b.mode === 'outreach' ? 'Outreach — posts, HR emails, connections' : 'Easy Apply'} · {b.startTime || '—'} for {b.durationMins}m
-                </div>
-              </div>
-              <button role="switch" aria-checked={b.enabled} aria-label={`${b.portal} enabled`}
-                className={`switch ${b.enabled ? 'on' : ''}`} onClick={() => upd(i, { enabled: !b.enabled })} disabled={meta.parked}>
-                <span className="knob" />
-              </button>
-            </div>
-
-            <div className="sched-grid">
-              <label className="field">Mode
-                <select className="select" value={b.mode ?? 'apply'} onChange={(e) => upd(i, { mode: e.target.value })} disabled={meta.parked}>
-                  <option value="apply">Apply</option><option value="outreach">Outreach</option>
-                </select>
-              </label>
-              <label className="field">Start time
-                <input className="input" value={b.startTime ?? ''} placeholder="09:00" onChange={(e) => upd(i, { startTime: e.target.value })} disabled={meta.parked} />
-              </label>
-              <label className="field">Duration (min)
-                <input className="input" type="number" value={b.durationMins} onChange={(e) => upd(i, { durationMins: +e.target.value })} disabled={meta.parked} />
-              </label>
-              <label className="field">Apply cap
-                <input className="input" type="number" value={b.applyCap} onChange={(e) => upd(i, { applyCap: +e.target.value })} disabled={meta.parked} />
-              </label>
-            </div>
-            <div className="grid2" style={{ marginTop: 10 }}>
-              <label className="field">Keywords <span className="faint">— blank = from profile</span>
-                <input className="input" value={b.keywords ?? ''} onChange={(e) => upd(i, { keywords: e.target.value })} disabled={meta.parked} />
-              </label>
-              <label className="field">Locations
-                <input className="input" value={b.locations ?? ''} onChange={(e) => upd(i, { locations: e.target.value })} disabled={meta.parked} />
-              </label>
-            </div>
-          </div>
-        );
-      })}
-      {blocks.length > 0 && <div><button className="btn btn-primary" onClick={save}><Icon name="check" size={14} /> Save schedule</button></div>}
+      <div className="card card-pad" style={{ fontSize: 13 }}>
+        <b>The cycle</b>
+        <div className="faint" style={{ marginTop: 8, lineHeight: 1.9 }}>
+          1. <b>LinkedIn — Easy Apply</b> ({cfg.linkedinApplyMins}m, or until the day's {cfg.linkedinApplyCap} are done)<br />
+          2. <b>LinkedIn — outreach</b> ({cfg.linkedinOutreachMins}m): scan hiring posts, email recruiters, send connections and messages<br />
+          3. <b>Rest</b> ({cfg.restMins}m)<br />
+          4. <b>Indeed</b> ({cfg.indeedMins}m, up to {cfg.indeedApplyCap} applications)<br />
+          5. <b>Rest</b> ({cfg.restMins}m), then back to the top — with whatever is left of the day's quotas.
+        </div>
+      </div>
     </div>
   );
 }

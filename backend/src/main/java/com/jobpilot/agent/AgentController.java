@@ -129,9 +129,7 @@ public class AgentController {
     @PutMapping("/limits")
     public Map<String, Object> setLimits(@RequestBody Map<String, Object> b) {
         UserContext.require();
-        Integer li = b.get("linkedinApplyCap") instanceof Number n ? n.intValue() : null;
-        Integer in = b.get("indeedApplyCap") instanceof Number n ? n.intValue() : null;
-        return agent.setLimits(li, in);
+        return agent.setLimits(b);
     }
 
     @PutMapping("/flows")

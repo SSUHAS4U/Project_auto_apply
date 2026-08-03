@@ -130,7 +130,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // just server-side: an old schedule row with a short duration made the deadline expire during
   // Phase 1, so Phase 2 was skipped and the block ended right after applying — exactly the
   // "it stopped midway / never got to the post analysis" case.
-  const blockMin = Math.max(plan.blockMinutes || 180, 180);
+  // Durations come from Automation → Schedule (apply mins + outreach mins).
+  const blockMin = Math.max(plan.blockMinutes || 210, 30);
   const deadline = Date.now() + blockMin * 60_000;
   let applied = 0;
   const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
@@ -143,7 +144,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const applyCap = plan.applyCap ?? 15;
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
-  const phase1Deadline = Date.now() + 60 * 60_000;
+  const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
   // Jobs already handled THIS RUN. LinkedIn returns the same posting in every city search, so
   // without this the worker re-opened and re-answered the same job 5-6 times (the HeadSpin /
   // Jobgether rows repeating in Hyderabad, Chennai, Remote, Mumbai…) and burned the hour on
@@ -152,7 +153,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
   // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
   if (mode !== 'outreach' && applyCap > 0) {
-    console.log(`\n  ══ Phase 1: Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max 1h) ══`);
+    console.log(`\n  ══ Phase 1: Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max ${plan.phase1Minutes || 90}m) ══`);
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {

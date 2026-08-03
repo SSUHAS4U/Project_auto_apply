@@ -4,14 +4,13 @@ import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
-import { DesktopSetup } from '../components/DesktopSetup';
 import { DownloadDesktop } from '../components/DownloadDesktop';
 import { isDesktopApp } from '../lib/desktop';
 
 /**
  * Connections — the board of everything the agent works through: portal sessions (sign-in
  * stays on the user's machine) + email, and the flow-control toggles that govern what the
- * automation may do. Desktop-app setup lives at the bottom of this page (DesktopSetup).
+ * automation may do. Status + Connect are desktop-only; the web build explains how instead.
  */
 
 const PORTALS: Record<string, { name: string; color: string; letter: string; sub: string; parked?: boolean }> = {
@@ -243,22 +242,22 @@ export function ConnectionsPage() {
         </button>
       </div>
 
-      {/* Desktop onboarding is for people who DON'T have the app yet — inside the app it's
-          noise (it's installed, and the worker connects itself). */}
-      {!inApp && (
-        <div id="desktop-setup" style={{ marginTop: 16, scrollMarginTop: 16 }}>
-          <DesktopSetup configured={status?.workerConfigured ?? false} onChange={load} />
+      {/* One explanation, in the right place: the web already has the "Connecting happens in the
+          desktop app" card at the top (download + steps), so the old DesktopSetup block and the
+          "What happens when you click Connect" note were saying the same thing twice — and both
+          still described clicking Connect in the terminal, which no longer exists. In the app,
+          this short note is the only guidance needed. */}
+      {inApp && (
+        <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
+          <b>What happens when you click Connect</b>
+          <p className="faint" style={{ margin: '6px 0 0', lineHeight: 1.7 }}>
+            A browser opens on that portal's login page. You sign in once — the login is saved on your
+            computer, never on our servers — and the card turns <b className="t-green">Active</b> within
+            seconds. From then on the automation searches and applies there for you, starting by itself
+            every time you open the app.
+          </p>
         </div>
       )}
-
-      <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
-        <b>What happens when you click Connect</b>
-        <p className="faint" style={{ margin: '6px 0 0', lineHeight: 1.7 }}>
-          A browser opens on that portal's login page. You sign in once — the login is saved on your computer,
-          never on our servers — and the card turns <b className="t-green">Active</b> within seconds. From then
-          on the agent can search and apply there for you.
-        </p>
-      </div>
     </>
   );
 }

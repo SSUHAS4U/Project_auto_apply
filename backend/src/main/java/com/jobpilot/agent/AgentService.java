@@ -524,10 +524,15 @@ public class AgentService {
         plan.put("appliedToday", doneToday);
         plan.put("connectCap", 1000);
         plan.put("messageCap", 1000);
-        // A run keeps going for the whole block until you stop it: LinkedIn 3h (apply → outreach),
-        // Indeed 1.5h. A schedule block's own duration still overrides if set.
-        plan.put("blockMinutes", block != null && block.getDurationMins() > 0
-                ? block.getDurationMins() : (indeed ? 90 : 180));
+        // Durations come from the cadence settings (Automation → Schedule), not from a start-time
+        // schedule row: LinkedIn runs applyMins of Easy Apply then outreachMins of outreach;
+        // Indeed runs indeedMins. restMins is how long the app waits between blocks.
+        Map<String, Object> cfg = limits();
+        int liApply = (int) cfg.get("linkedinApplyMins");
+        int liOutreach = (int) cfg.get("linkedinOutreachMins");
+        plan.put("phase1Minutes", liApply);
+        plan.put("restMinutes", cfg.get("restMins"));
+        plan.put("blockMinutes", indeed ? (int) cfg.get("indeedMins") : liApply + liOutreach);
         plan.put("mode", block == null || block.getMode() == null || block.getMode().isBlank()
                 ? "apply" : block.getMode());
         plan.putAll(flows()); // flow toggles ride along so the worker honours them
@@ -586,17 +591,40 @@ public class AgentService {
     private static final String LI_CAP_KEY = "agent_linkedin_apply_cap";
     private static final String IN_CAP_KEY = "agent_indeed_apply_cap";
 
+    // How long each phase runs and how long the automation rests between blocks. These replace
+    // the old start-time schedule: you no longer say WHEN it runs (it runs whenever the app is
+    // open) — you say HOW MUCH of each thing it does.
+    private static final String LI_APPLY_MINS = "agent_linkedin_apply_mins";
+    private static final String LI_OUTREACH_MINS = "agent_linkedin_outreach_mins";
+    private static final String IN_MINS = "agent_indeed_mins";
+    private static final String REST_MINS = "agent_rest_mins";
+
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20));
         m.put("indeedApplyCap", settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20));
+        m.put("linkedinApplyMins", settings.get(LI_APPLY_MINS).map(Integer::parseInt).orElse(90));
+        m.put("linkedinOutreachMins", settings.get(LI_OUTREACH_MINS).map(Integer::parseInt).orElse(120));
+        m.put("indeedMins", settings.get(IN_MINS).map(Integer::parseInt).orElse(120));
+        m.put("restMins", settings.get(REST_MINS).map(Integer::parseInt).orElse(30));
         return m;
     }
 
-    public Map<String, Object> setLimits(Integer linkedinCap, Integer indeedCap) {
-        if (linkedinCap != null && linkedinCap > 0) settings.put(LI_CAP_KEY, String.valueOf(Math.min(linkedinCap, 100)));
-        if (indeedCap != null && indeedCap > 0) settings.put(IN_CAP_KEY, String.valueOf(Math.min(indeedCap, 100)));
+    /** Save any subset of the cadence settings; each is clamped to something sane. */
+    public Map<String, Object> setLimits(Map<String, Object> body) {
+        putInt(body, "linkedinApplyCap", LI_CAP_KEY, 1, 200);
+        putInt(body, "indeedApplyCap", IN_CAP_KEY, 1, 200);
+        putInt(body, "linkedinApplyMins", LI_APPLY_MINS, 10, 480);
+        putInt(body, "linkedinOutreachMins", LI_OUTREACH_MINS, 10, 480);
+        putInt(body, "indeedMins", IN_MINS, 10, 480);
+        putInt(body, "restMins", REST_MINS, 0, 240);
         return limits();
+    }
+
+    private void putInt(Map<String, Object> body, String field, String key, int min, int max) {
+        Object v = body == null ? null : body.get(field);
+        if (!(v instanceof Number n)) return;
+        settings.put(key, String.valueOf(Math.max(min, Math.min(n.intValue(), max))));
     }
 
     /** Midnight in the user's working day. The VM runs UTC; IST is the operating timezone. */
