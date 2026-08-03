@@ -105,7 +105,9 @@ export function ActivityChart({ events, portal, range: rangeProp }:
   const step = Math.max(1, Math.round(n / 7));
 
   const toggle = (k: string) => setHidden((prev) => {
-    const nx = new Set(prev); nx.has(k) ? nx.delete(k) : nx.add(k); return nx;
+    const nx = new Set(prev);
+    if (nx.has(k)) nx.delete(k); else nx.add(k);
+    return nx;
   });
 
   return (

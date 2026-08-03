@@ -39,6 +39,10 @@ export class Api {
   evaluate(job) { return this.#req('/api/worker/evaluate', { method: 'POST', body: job }); }
   /** Is this person a recruiter / hiring? { contact, isRecruiter, hiringNow, confidence, topic } */
   verifyPerson(p) { return this.#req('/api/worker/verify-person', { method: 'POST', body: p }); }
+  /** Contacts whose next follow-up is due, each with the body written for THAT touch. */
+  followUps(limit = 15) { return this.#req(`/api/worker/follow-ups?limit=${limit}`); }
+  /** Report a follow-up actually went out — advances the stage and restarts the clock. */
+  followUpSent(contactId) { return this.#req('/api/worker/follow-up-sent', { method: 'POST', body: { contactId } }); }
   /** Is this post a real opening? { isHiring, confidence, role, topic } */
   postIntent(text) { return this.#req('/api/worker/post-intent', { method: 'POST', body: { text } }); }
   /**
