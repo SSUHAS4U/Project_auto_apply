@@ -52,6 +52,10 @@ class WorkerManager {
         ELECTRON_RUN_AS_NODE: '1',
         JOBPILOT_BACKEND_URL: backendUrl,
         JOBPILOT_WORKER_TOKEN: token,
+        // Stamp the build into the worker so every log says which version produced it.
+        // Without this there is no way to tell an old installer's log from a new one, and
+        // "did that fix ship?" becomes guesswork on both sides.
+        JOBPILOT_BUILD: process.env.JOBPILOT_BUILD || require('./package.json').build || 'dev',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

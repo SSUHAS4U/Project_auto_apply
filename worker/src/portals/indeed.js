@@ -31,10 +31,16 @@ function hostFor(location, profile) {
   return 'www.indeed.com';
 }
 
-function searchUrl(keyword, location, profile) {
+// Indeed pages at ~15 results. Reading only page 1 is why every search reported "16 result(s)"
+// and why the same handful of postings came back for every city — there was never a second page
+// to find anything new on. `start` is Indeed's offset parameter (0, 10, 20 …).
+const PAGES_PER_SEARCH = 3;
+
+function searchUrl(keyword, location, profile, start = 0) {
   const p = new URLSearchParams({ q: keyword, sort: 'date' });
   if (location && location.toLowerCase() !== 'remote') p.set('l', location);
   else p.set('l', 'Remote');
+  if (start > 0) p.set('start', String(start));
   return `https://${hostFor(location, profile)}/jobs?${p.toString()}`;
 }
 
@@ -120,6 +126,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
+  let sawAnyFresh = false; // did ANY search yield a job we hadn't already handled?
+  let opened = 0;          // job pages actually opened — the number that was invisible before
   // Indeed returns the same postings for every city (16 each time in the last run), so without
   // this the worker re-opened and re-processed the identical 16 jobs six times over.
   const doneJobs = new Set();
@@ -156,9 +164,27 @@ export async function runIndeed(page, api, plan, state, ctx) {
       }
       blockedStreak = 0;
 
+      // Walk a few result pages, not just the first. Stop early once a page adds nothing new —
+      // that means we've reached the end of the genuinely distinct results for this search.
       const keys = await collectJobKeys(page);
+      for (let pg = 1; pg < PAGES_PER_SEARCH; pg++) {
+        if (state.stopped || state.paused || Date.now() > deadline) break;
+        const before = keys.length;
+        await page.goto(searchUrl(keyword, location, profile, pg * 10), { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await humanDelay(2200, 4000);
+        if (await looksBlocked(page)) break;
+        for (const k of await collectJobKeys(page)) if (!keys.includes(k)) keys.push(k);
+        if (keys.length === before) break;   // nothing new on that page — stop paging
+      }
       totalResults += keys.length;
-      console.log(`  🔎 ${keyword} · ${location} → ${keys.length} result(s)${keys.length === 0 && loggedOut ? '  ⚠ looks signed-out' : ''}`);
+      // "16 result(s)" on every line told us nothing — Indeed pages at ~15, so the count is
+      // always about the same, and after the first search they are mostly jobs we already
+      // handled. What matters is how many are NEW, because that is what the run can act on.
+      const fresh = keys.filter((k) => !doneJobs.has(k));
+      const dupeNote = keys.length && !fresh.length ? '  (all already seen this run)'
+        : fresh.length < keys.length ? `  · ${fresh.length} new` : '';
+      console.log(`  🔎 ${keyword} · ${location} → ${keys.length} result(s)${dupeNote}${keys.length === 0 && loggedOut ? '  ⚠ looks signed-out' : ''}`);
+      sawAnyFresh ||= fresh.length > 0;
       if (keys.length === 0 && !diagShown) { diagShown = true; await describeSearch(page).catch(() => {}); }
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
         detail: `${keys.length} results for ${keyword} @ ${location}` });
@@ -167,6 +193,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
         if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
         if (doneJobs.has(jk)) continue;   // already handled this run (another city's search)
         doneJobs.add(jk);
+        opened++;
         const jobPage = await ctx.newPage();
         try {
           await jobPage.goto(`https://${host}/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -247,6 +274,18 @@ export async function runIndeed(page, api, plan, state, ctx) {
         }
       }
     }
+  }
+  // A run that searched a lot and opened nothing is the failure mode that looked like a hang.
+  // Say which of the two it was — no new jobs, or jobs found but never opened.
+  if (totalResults > 0 && opened === 0) {
+    console.log(`\n  ✋ ${totalResults} listing(s) matched, but none were opened.`);
+    console.log(sawAnyFresh
+      ? '     Jobs were available — the run ended (time, quota or stop) before reaching them.'
+      : '     Every search returned the same postings, all already handled earlier in this run.');
+    await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+      detail: `${totalResults} listings matched but none were opened${sawAnyFresh ? '' : ' — all were duplicates of earlier searches'}` });
+  } else if (opened > 0) {
+    console.log(`\n  Indeed: opened ${opened} job(s), applied to ${applied}.`);
   }
   // If EVERY search returned zero, say why in plain terms rather than a silent 0/0/0/0/0.
   if (totalResults === 0) {

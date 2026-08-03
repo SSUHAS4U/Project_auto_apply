@@ -64,6 +64,20 @@ jobs:
           fi
 
       # 4) Build the installer.
+      # Stamp the tag into desktop/package.json first, so the worker can print which build it
+      # is on its first log line. Guessing whether an installer predates a fix wastes a whole
+      # debugging round-trip on both sides.
+      - name: Stamp the build version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs'), f = 'desktop/package.json';
+            const p = JSON.parse(fs.readFileSync(f, 'utf8'));
+            p.build = process.argv[1];
+            fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
+            console.log('stamped build =', p.build);
+          " '${{ github.ref_name }}'
       - name: Install desktop deps
         working-directory: desktop
         run: npm install

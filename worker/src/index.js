@@ -104,10 +104,19 @@ async function runAll(page, api, plan, state, ctx) {
 
 const ADAPTERS = { linkedin: runLinkedIn, indeed: runIndeed, all: runAll };
 
+/** A Playwright fault that means the browser is gone — recoverable by relaunching it. */
+function isDeadBrowser(e) {
+  return /target page, context or browser has been closed|browser has been closed|target closed|browser\.newcontext|browsercontext\.newpage/i
+    .test(String((e && e.message) || e));
+}
+
 async function main() {
   const { backendUrl, token } = await loadConfig();
   const api = new Api(backendUrl, token);
 
+  // First line of every session: which build this is. When a log shows a bug that was already
+  // fixed, this is what tells us the installer is simply older than the fix.
+  console.log(`JobPilot worker · build ${process.env.JOBPILOT_BUILD || 'dev'}`);
   console.log('Connecting to backend…');
   const hello = await api.hello().catch((e) => { console.error('  Auth failed:', e.message); process.exit(1); });
   console.log(`  Connected as ${hello.name || hello.userId}.`);
@@ -194,13 +203,32 @@ async function main() {
         await ctx.close().catch(() => {});
         ({ ctx, page } = await launchBrowser({ headless: background }));
       }
-      const res = await adapter(page, api, order.plan, state, ctx);
+      let res;
+      try {
+        res = await adapter(page, api, order.plan, state, ctx);
+      } catch (e) {
+        // The browser can also die DURING a block — Chrome crashes, the machine sleeps, the
+        // window is closed. Every later ctx.newPage() then throws "Target page, context or
+        // browser has been closed" and the whole block was abandoned on the spot, an hour of
+        // work thrown away over a recoverable fault. Reopen and give the block one more go.
+        if (!isDeadBrowser(e)) throw e;
+        console.log('\n  ⟳ the automation browser closed mid-run — reopening and retrying this block…');
+        await api.event({ runId: order.runId, portal: order.portal, type: 'info',
+          detail: 'browser closed mid-run — reopened and retried' });
+        await ctx.close().catch(() => {});
+        ({ ctx, page } = await launchBrowser({ headless: background }));
+        res = await adapter(page, api, order.plan, state, ctx);
+      }
       await api.runStatus(order.runId, 'done', `Block complete — ${res.applied || 0} applied`);
       // Full breakdown, not just "applied": a 0 with no explanation is what made this feel
       // like nothing was happening. Every job lands in exactly one of these buckets.
       logSummary(order.portal.charAt(0).toUpperCase() + order.portal.slice(1), res || {});
     } catch (e) {
       console.error(`✗ ${order.portal} block failed:`, e.message);
+      if (isDeadBrowser(e)) {
+        console.error('  The automation browser kept closing. If this repeats, quit JobPilot from');
+        console.error('  the tray and reopen it — the browser profile may be locked by a stale process.');
+      }
       await api.event({ runId: order.runId, portal: order.portal, type: 'error', detail: String(e).slice(0, 200) });
       await api.runStatus(order.runId, 'failed', e.message.slice(0, 120));
     }
