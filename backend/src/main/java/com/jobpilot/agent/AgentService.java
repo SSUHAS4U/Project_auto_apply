@@ -732,8 +732,7 @@ public class AgentService {
         PortalContact c = contactId == null ? null : contacts.findById(contactId).orElse(null);
         Profile p = profiles.get();
         String template = messageTemplate();
-        String first = c == null || c.getName() == null || c.getName().isBlank()
-                ? "there" : c.getName().trim().split("\\s+")[0];
+        String first = firstNameOf(c);
         String base = !template.isBlank() ? renderTemplate(template, c, p)
                 : "Hi " + first + ", I'm " + nz(p.getFullName()) + ", a " + nz(p.getCurrentTitle())
                   + ". I'd love to connect regarding relevant openings"
@@ -749,6 +748,8 @@ public class AgentService {
             String opt = nz(ai.complete(sys, user, true, false)).trim();
             if (!opt.isBlank() && opt.length() <= 300) base = opt;
         }
+        // Scrub again: the model can echo a placeholder from the draft it was given.
+        base = cleanOutbound(base);
         return base.length() > 300 ? base.substring(0, 297) + "…" : base;
     }
 
@@ -854,14 +855,54 @@ public class AgentService {
 
     /** Render the owner's template for a contact — [Name], [Role], [Company], [MyName], [MyRole]. */
     private String renderTemplate(String template, PortalContact c, Profile p) {
-        String firstName = c == null || c.getName() == null || c.getName().isBlank()
-                ? "there" : c.getName().trim().split("\\s+")[0];
-        return template
+        String firstName = firstNameOf(c);
+        return cleanOutbound(template
                 .replace("[Name]", firstName)
                 .replace("[Role]", c == null ? "your team's roles" : nz(c.getRole(), "your team's roles"))
                 .replace("[Company]", c == null ? "your company" : nz(c.getCompany(), "your company"))
                 .replace("[MyName]", nz(p.getFullName(), ""))
-                .replace("[MyRole]", nz(p.getCurrentTitle(), nz(p.getHeadline(), "")));
+                .replace("[MyRole]", nz(p.getCurrentTitle(), nz(p.getHeadline(), ""))));
+    }
+
+    /**
+     * A usable first name for a greeting, or "there".
+     * recordHrLead stores the EMAIL as the name when a post gave no name, so "hr@acme.com" must
+     * not become "Hi hr@acme.com," — anything that looks like an address falls back to "there".
+     */
+    private static String firstNameOf(PortalContact c) {
+        String n = c == null ? null : c.getName();
+        if (n == null || n.isBlank() || n.contains("@") || n.matches(".*\\d{3,}.*")) return "there";
+        String first = n.trim().split("\\s+")[0];
+        return first.length() < 2 ? "there" : first;
+    }
+
+    /**
+     * Last line of defence before anything is SENT: no message may go out containing an
+     * unfilled placeholder. A template with a token we don't know ("Hi [hiring manager name],",
+     * "{{FirstName}}") used to be delivered verbatim — the reader sees the scaffolding and the
+     * message is worse than useless. Name-ish placeholders become "there"; every other leftover
+     * is removed, and the surrounding punctuation/whitespace is tidied so the sentence still reads.
+     */
+    static String cleanOutbound(String text) {
+        if (text == null || text.isBlank()) return text;
+        String s = text
+                // greeting placeholders → a neutral, human greeting
+                .replaceAll("(?i)[\\[{]{1,2}\\s*(hiring\\s*manager|recruiter|first\\s*name|firstname|name|contact)\\s*(name)?\\s*[\\]}]{1,2}", "there")
+                // any other leftover token → drop it
+                .replaceAll("[\\[{]{1,2}[^\\]}\\n]{0,40}[\\]}]{1,2}", "");
+        // Tidy the damage so the sentence still reads.
+        s = s.replaceAll("(?im)^(hi|hello|hey|dear)\\s*([,!.])", "$1 there$2")
+             // "Dear there," is not English — a nameless greeting becomes "Hello there,".
+             .replaceAll("(?i)\\bdear there\\b", "Hello there")
+             .replaceAll("[ \\t]{2,}", " ");
+        // Removing a token can strand its preposition ("connect about at."). Drop dangling
+        // prepositions before punctuation, twice, so chains like "about at." fully collapse.
+        for (int i = 0; i < 2; i++) {
+            s = s.replaceAll("(?i)\\s*\\b(about|at|for|with|in|on|to|of|from|regarding)\\b\\s*(?=[.,!?])", "");
+        }
+        s = s.replaceAll("\\s+([,.!?])", "$1")
+             .replaceAll("\\n{3,}", "\n\n");
+        return s.trim();
     }
 
     /**

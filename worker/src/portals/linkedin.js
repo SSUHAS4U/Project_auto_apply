@@ -179,6 +179,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         if (doneJobs.has(id) || (roleKey !== '|' && doneJobs.has(roleKey))) continue;
         doneJobs.add(id);
         if (roleKey !== '|') doneJobs.add(roleKey);
+        // Declared HERE, not inside the try: the catch below reports on them, and if the job
+        // failed before they were assigned the catch itself threw "title is not defined" and
+        // took the whole run down with it.
+        let title = cardInfo.title || '';
+        let company = cardInfo.company || '';
         try {
           // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
           // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
@@ -206,8 +211,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           const post = await readPosting(page);
           // Fall back to the card's title/company if the detail pane didn't render — never log a
           // "Role"/"Company" blank.
-          const title = post.title || cardInfo.title || '';
-          const company = post.company || cardInfo.company || '';
+          title = post.title || cardInfo.title || '';
+          company = post.company || cardInfo.company || '';
           state.action = `Reviewing: ${title}`;
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'job_identified',
             title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
