@@ -46,7 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Scan the repo for vulnerable dependencies and secrets
-        uses: aquasecurity/trivy-action@0.28.0
+        # Tags on this action carry a leading `v`. A bare `0.28.0` doesn't resolve, and an
+        # unresolvable action fails the job at "Set up job" before a single step runs.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
