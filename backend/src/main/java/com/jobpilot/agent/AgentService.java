@@ -526,8 +526,11 @@ public class AgentService {
         boolean indeed = portal.equalsIgnoreCase("indeed");
         Map<String, Object> plan = new LinkedHashMap<>();
         plan.put("portal", portal);
-        int maxKw = intSetting(cfgFor("maxKeywords"), 12);
-        int maxLoc = intSetting(cfgFor("maxLocations"), 6);
+        // Read the settings ONCE for the whole plan. This used to call limits() three times —
+        // via cfgFor() twice and again below — tripling an already expensive read.
+        Map<String, Object> cfg = limits();
+        int maxKw = intSetting(cfg.get("maxKeywords"), 12);
+        int maxLoc = intSetting(cfg.get("maxLocations"), 6);
         plan.put("keywords", expandQueries(keywords, p, maxKw));
         plan.put("locations", locations.stream().distinct().limit(maxLoc).toList());
         // DAILY QUOTA, not a per-run number. The gear sets how many applications you want on
@@ -546,7 +549,6 @@ public class AgentService {
         // Durations come from the cadence settings (Automation → Schedule), not from a start-time
         // schedule row: LinkedIn runs applyMins of Easy Apply then outreachMins of outreach;
         // Indeed runs indeedMins. restMins is how long the app waits between blocks.
-        Map<String, Object> cfg = limits();
         // ONE source of truth for LinkedIn timings: the four flow budgets. There used to be a
         // second pair — "Easy Apply time" and "Outreach time" — describing the same durations,
         // and the flow settings lost: Phase 1 read linkedinApplyMins while easyApplyOn/Mins were
@@ -720,36 +722,45 @@ public class AgentService {
     };
 
     public Map<String, Object> limits() {
+        // ONE query, not 23. Every value below used to be its own settings.get() → findById(),
+        // and searchPlan called this three times — so rendering the Schedule tab cost ~100
+        // round-trips to a database in another region. That is the whole reason it felt slow.
+        Map<String, String> raw = settings.getAll();
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20));
-        m.put("indeedApplyCap", settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20));
-        m.put("indeedMins", settings.get(IN_MINS).map(Integer::parseInt).orElse(120));
-        m.put("restMins", settings.get(REST_MINS).map(Integer::parseInt).orElse(30));
-        // Tunable without a rebuild: the gates that decide what gets applied to and who gets
-        // contacted. 75 / 80 are the spec's thresholds.
-        m.put("fitMin", settings.get(FIT_MIN).map(Integer::parseInt).orElse(75));
-        m.put("personConfMin", settings.get(PERSON_CONF_MIN).map(Integer::parseInt).orElse(80));
-        m.put("maxAgeDays", settings.get(MAX_AGE_DAYS).map(Integer::parseInt).orElse(30));
-        // Volume + breadth. These were constants in the worker and the services, so changing
-        // them meant a new desktop build — the slowest possible way to tune an automation.
-        m.put("postScanTarget", settings.get(POST_SCAN_TARGET).map(Integer::parseInt).orElse(150));
-        m.put("pagesPerSearch", settings.get(PAGES_PER_SEARCH).map(Integer::parseInt).orElse(3));
-        m.put("maxKeywords", settings.get(MAX_KEYWORDS).map(Integer::parseInt).orElse(12));
-        m.put("maxLocations", settings.get(MAX_LOCATIONS).map(Integer::parseInt).orElse(6));
-        m.put("outreachBlocksPerDay", settings.get(OUTREACH_BLOCKS).map(Integer::parseInt).orElse(3));
+        m.put("linkedinApplyCap", intOr(raw, LI_CAP_KEY, 20));
+        m.put("indeedApplyCap", intOr(raw, IN_CAP_KEY, 20));
+        m.put("indeedMins", intOr(raw, IN_MINS, 120));
+        m.put("restMins", intOr(raw, REST_MINS, 30));
+        // The gates that decide what gets applied to and who gets contacted.
+        m.put("fitMin", intOr(raw, FIT_MIN, 75));
+        m.put("personConfMin", intOr(raw, PERSON_CONF_MIN, 80));
+        m.put("maxAgeDays", intOr(raw, MAX_AGE_DAYS, 30));
+        // Volume + breadth. These were constants in the worker, so changing them used to mean a
+        // new desktop build — the slowest possible way to tune an automation.
+        m.put("postScanTarget", intOr(raw, POST_SCAN_TARGET, 150));
+        m.put("pagesPerSearch", intOr(raw, PAGES_PER_SEARCH, 3));
+        m.put("maxKeywords", intOr(raw, MAX_KEYWORDS, 12));
+        m.put("maxLocations", intOr(raw, MAX_LOCATIONS, 6));
+        m.put("outreachBlocksPerDay", intOr(raw, OUTREACH_BLOCKS, 3));
         // The follow-up sequence, in days after the previous touch.
-        m.put("followUp1", settings.get(FU1).map(Integer::parseInt).orElse(1));
-        m.put("followUp2", settings.get(FU2).map(Integer::parseInt).orElse(2));
-        m.put("followUp3", settings.get(FU3).map(Integer::parseInt).orElse(5));
-        m.put("followUp4", settings.get(FU4).map(Integer::parseInt).orElse(10));
+        m.put("followUp1", intOr(raw, FU1, 1));
+        m.put("followUp2", intOr(raw, FU2, 2));
+        m.put("followUp3", intOr(raw, FU3, 5));
+        m.put("followUp4", intOr(raw, FU4, 10));
         // Per-flow switches and budgets.
         for (String[] f : FLOWS) {
-            m.put(f[0] + "On", settings.get("agent_flow_" + f[0] + "_on")
-                    .map(Boolean::parseBoolean).orElse(Boolean.parseBoolean(f[2])));
-            m.put(f[0] + "Mins", settings.get("agent_flow_" + f[0] + "_mins")
-                    .map(Integer::parseInt).orElse(Integer.parseInt(f[3])));
+            String on = raw.get("agent_flow_" + f[0] + "_on");
+            m.put(f[0] + "On", on == null ? Boolean.parseBoolean(f[2]) : Boolean.parseBoolean(on));
+            m.put(f[0] + "Mins", intOr(raw, "agent_flow_" + f[0] + "_mins", Integer.parseInt(f[3])));
         }
         return m;
+    }
+
+    /** A setting as an int, tolerating a missing or unparseable value. */
+    private static int intOr(Map<String, String> raw, String key, int fallback) {
+        String v = raw.get(key);
+        if (v == null || v.isBlank()) return fallback;
+        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException e) { return fallback; }
     }
 
     /** Save any subset of the cadence settings; each is clamped to something sane. */
@@ -1006,9 +1017,6 @@ public class AgentService {
                 .max(Instant::compareTo)
                 .orElse(null);
     }
-
-    /** One value out of the settings map. */
-    private Object cfgFor(String key) { return limits().get(key); }
 
     private static int intSetting(Object v, int fallback) {
         if (v instanceof Number n) return n.intValue();
