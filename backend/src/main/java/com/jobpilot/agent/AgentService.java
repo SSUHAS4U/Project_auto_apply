@@ -1158,14 +1158,20 @@ public class AgentService {
                 : "Hi " + first + ", I'm " + nz(p.getFullName()) + ", a " + nz(p.getCurrentTitle())
                   + ". I'd love to connect regarding relevant openings"
                   + (c != null && c.getCompany() != null && !c.getCompany().isBlank() ? " at " + c.getCompany() : "") + ".";
-        if (ai.isEnabled()) {
+        // YOUR TEMPLATE IS THE MESSAGE. The AI is only asked to adapt it when there is something
+        // real to adapt it TO — a post the person actually wrote. Previously it rewrote every
+        // note unconditionally, so a template you had chosen your words for was paraphrased away
+        // on every send, and no two recruiters got the wording you actually approved.
+        boolean hasTopic = topic != null && !topic.isBlank();
+        boolean adapt = ai.isEnabled() && (hasTopic || template.isBlank());
+        if (adapt) {
             String sys = """
-                    Rewrite this LinkedIn connection note for a higher acceptance rate: warm, specific,
-                    human, first person, UNDER 280 characters, no clichés, no fabricated facts. Keep any
-                    real name/role/company. If a POST TOPIC is given, open by referring to it
-                    specifically — that is the whole reason this person is being contacted — then state
-                    in one clause why the candidate's actual skills fit. Never invent a post that isn't
-                    given. Output ONLY the note text.""";
+                    Adapt this LinkedIn connection note. Keep the author's voice, structure and any
+                    real name/role/company — you are personalising THEIR note, not writing your own.
+                    Warm, first person, UNDER 280 characters, no clichés, no fabricated facts.
+                    If a POST TOPIC is given, open by referring to it specifically — that is the whole
+                    reason this person is being contacted — then keep the rest of the draft's substance.
+                    Never invent a post that isn't given. Output ONLY the note text.""";
             String user = "CANDIDATE: " + nz(p.getFullName()) + " — " + nz(p.getCurrentTitle())
                     + (p.getSkills() == null || p.getSkills().isEmpty() ? ""
                         : "\nCANDIDATE SKILLS: " + String.join(", ", p.getSkills().stream().limit(10).toList()))

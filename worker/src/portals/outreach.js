@@ -175,10 +175,36 @@ async function dismissDialog(page) {
  * reach them WITHOUT a connection request.
  */
 async function composeMessage(page, resume, body) {
+  // A message with no words is worse than no message at all — a bare résumé landing in a
+  // recruiter's inbox reads as a bot. Every path below refuses to press Send unless the text
+  // is actually IN the box.
+  const text = (body || '').trim();
+  if (!text) {
+    console.log('     ⚠ no message text — refusing to send a résumé on its own');
+    return false;
+  }
+
   const msgBtn = await page.$('button[aria-label*="Message"], a[aria-label*="Message"]');
   if (!msgBtn) return false;
   await msgBtn.click({ timeout: 3000 }).catch(() => {});
   await humanDelay(1400, 2400);
+
+  // Type FIRST, attach after. The attachment upload re-renders the compose form on LinkedIn,
+  // which can blur the box and swallow everything typed afterwards.
+  const box = await page.$('.msg-form__contenteditable, div[role="textbox"][contenteditable="true"]');
+  if (!box) return false;
+  await box.click({ timeout: 2000 }).catch(() => {});
+  await page.keyboard.type(text, { delay: 15 }).catch(() => {});
+  await humanDelay(400, 800);
+
+  // Read it back. A click that missed, a lost focus, or a swallowed keystroke all look
+  // identical from here otherwise — and previously Send fired regardless.
+  const typed = await box.evaluate((el) => (el.innerText || el.textContent || '').trim()).catch(() => '');
+  if (!typed || typed.length < Math.min(12, text.length)) {
+    console.log(`     ⚠ the message did not land in the box (got ${typed.length} of ${text.length} chars) — not sending`);
+    return false;
+  }
+
   if (resume && resume.hasResume) {
     const fileInput = await page.$('.msg-form__attachment-container input[type="file"], form.msg-form input[type="file"], input[type="file"]');
     if (fileInput) {
@@ -187,13 +213,21 @@ async function composeMessage(page, resume, body) {
         buffer: Buffer.from(resume.contentBase64, 'base64'),
       }).catch(() => {});
       await humanDelay(1200, 2200);
+      // The upload can wipe the draft. If it did, the résumé would go out alone — put the
+      // text back, and if that fails, send nothing.
+      const still = await box.evaluate((el) => (el.innerText || el.textContent || '').trim()).catch(() => '');
+      if (!still) {
+        await box.click({ timeout: 2000 }).catch(() => {});
+        await page.keyboard.type(text, { delay: 15 }).catch(() => {});
+        const again = await box.evaluate((el) => (el.innerText || el.textContent || '').trim()).catch(() => '');
+        if (!again) {
+          console.log('     ⚠ attaching the résumé cleared the message — not sending');
+          return false;
+        }
+      }
     }
   }
-  const box = await page.$('.msg-form__contenteditable, div[role="textbox"][contenteditable="true"]');
-  if (!box) return false;
-  await box.click({ timeout: 2000 }).catch(() => {});
-  await page.keyboard.type(body || '', { delay: 15 }).catch(() => {});
-  await humanDelay(800, 1500);
+
   const send = await page.$('button.msg-form__send-button, button[type="submit"]:has-text("Send")');
   if (!send) return false;
   await send.click({ timeout: 3000 }).catch(() => {});
@@ -279,6 +313,13 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
         // The note references what they posted about, when we know it — the difference between
         // "I am interested" and a message that proves we read their post.
         const { note } = await api.connectionNote(id, verdict.topic || '').catch(() => ({ note: '' }));
+        // No note means the message generator failed. Sending anyway would put a bare résumé
+        // in front of a recruiter, so skip this person and try again next run.
+        if (!note || !note.trim()) {
+          skipped++;
+          console.log(`     ⚠ ${person.name} — could not build a message, skipping (not sending an empty one)`);
+          continue;
+        }
 
         const result = await inviteWithNote(page, null, note || '');
         if (result === 'limit') {
