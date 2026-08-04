@@ -261,8 +261,14 @@ class AutoStartTest {
     // "running" and tickRotationForUser refuses to start ANYTHING — including the other
     // portal. This is the silent failure that made Indeed look like it never worked.
 
-    /** A run from an old session, with the worker long gone. */
+    /**
+     * A run from an old session with the worker long gone — INCLUDING the heartbeat history a
+     * real one would have left. Without that the scenario is "a backend that has never heard
+     * from this worker", which must NOT reap (a deploy looks exactly like that).
+     */
     private void abandonedRun(String portal) {
+        agent.markWorkerSeen(USER);
+        setLastSeen(USER, Instant.now().minusSeconds(30 * 60));
         when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
                 .thenReturn(Optional.of(run(portal, "running", Instant.now().minusSeconds(6 * 3600), null)));
     }
@@ -275,9 +281,12 @@ class AutoStartTest {
     }
 
     @Test
-    void aLiveRunWithAWorKerBehindItIsNeverReaped() {
+    void aLiveRunWithAWorkerBehindItIsNeverReaped() {
+        // Set the run up first, THEN mark the worker live — abandonedRun() backdates the
+        // heartbeat, which is the opposite of what this case is about.
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("linkedin", "running", Instant.now().minusSeconds(6 * 3600), null)));
         desktopOnline();                       // worker pinged just now
-        abandonedRun("linkedin");
         assertEquals(0, agent.reapStaleRuns(USER), "a run with a live worker must be left alone");
         verify(runs, never()).save(any());
     }
@@ -310,5 +319,54 @@ class AutoStartTest {
         desktopOnline();
         String result = agent.tickRotationForUser(USER);
         assertTrue(result.startsWith("started "), "expected a run to start, got: " + result);
+    }
+
+    // ---- the reaper must not kill a HEALTHY run -------------------------------
+    // lastWorkerSeen is in-memory, so a backend deploy empties it. Treating "no heartbeat
+    // recorded" as "the worker is gone" marked a live run failed; /next then returned idle,
+    // the worker's poller saw its run vanish and silently broke every loop in the block.
+    // That is the bug that made BOTH portals produce a header, a summary, and nothing between.
+
+    @Test
+    void aFreshBackendDoesNotReapARunItHasNeverHeardAbout() {
+        // No markWorkerSeen at all — exactly the state after a deploy. The run is 6 hours old,
+        // which the old guard treated as reapable.
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("linkedin", "running", Instant.now().minusSeconds(6 * 3600), null)));
+        assertEquals(0, agent.reapStaleRuns(USER),
+                "a just-started backend must not judge a run by a heartbeat map it hasn't filled yet");
+        verify(runs, never()).save(any());
+    }
+
+    @Test
+    void aRunIsStillReapedOnceWeHaveHeardFromTheWorkerAndThenLostIt() {
+        // The legitimate case: the worker checked in, then went away for longer than the cutoff.
+        agent.markWorkerSeen(USER);
+        setLastSeen(USER, Instant.now().minusSeconds(30 * 60));
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("linkedin", "running", Instant.now().minusSeconds(6 * 3600), null)));
+        assertEquals(1, agent.reapStaleRuns(USER), "a genuinely abandoned run must still be ended");
+    }
+
+    @Test
+    void aLiveWorkerIsNeverReapedWhateverTheRunAge() {
+        desktopOnline();
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("linkedin", "running", Instant.now().minusSeconds(24 * 3600), null)));
+        assertEquals(0, agent.reapStaleRuns(USER));
+        verify(runs, never()).save(any());
+    }
+
+    /** Backdate the in-memory heartbeat, the way real time passing would. */
+    private void setLastSeen(UUID user, Instant when) {
+        try {
+            java.lang.reflect.Field f = AgentService.class.getDeclaredField("lastWorkerSeen");
+            f.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<UUID, Instant> m = (java.util.Map<UUID, Instant>) f.get(agent);
+            m.put(user, when);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

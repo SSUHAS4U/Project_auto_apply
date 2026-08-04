@@ -114,6 +114,7 @@ export function humanDelay(min = 700, max = 1800) {
  */
 export function startPausePoller(api, state) {
   let stopped = false;
+  let missedRun = 0;   // consecutive polls where our run was not the active one
   const tick = async () => {
     while (!stopped) {
       try {
@@ -128,7 +129,19 @@ export function startPausePoller(api, state) {
         // from /next (idle, or a different run), abort it now.
         if (state.runId && !state.paused) {
           const activeId = r && r.runId ? String(r.runId) : null;
-          if (activeId !== String(state.runId)) state.stopped = true;
+          if (activeId !== String(state.runId)) {
+            // TWO consecutive observations, not one. A single divergence happens whenever the
+            // backend blips — and this flag silently breaks every loop in the running block, so
+            // acting on one reading turned a two-second hiccup into a dead hour that printed
+            // nothing at all. Say it out loud too: this was invisible before.
+            missedRun++;
+            if (missedRun >= 2) {
+              console.log(`\n  ■ The current run is no longer active on the server (${activeId ? 'a different run started' : 'it was stopped or ended'}) — finishing this block.`);
+              state.stopped = true;
+            }
+          } else {
+            missedRun = 0;
+          }
         }
       } catch (_) { /* transient network — try again next tick */ }
       await sleep(3000);

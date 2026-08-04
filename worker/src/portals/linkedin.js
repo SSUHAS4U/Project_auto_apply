@@ -43,12 +43,30 @@ async function collectJobCards(page) {
   // never want to log a job with no role. LinkedIn changes these classes often, so cast wide.
   const cards = await page.$$eval(CARD_SELECTOR, (nodes) => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    /**
+     * Collapse a string that is exactly itself twice, and strip LinkedIn's badge suffixes.
+     * "Software EngineerSoftware Engineer" → "Software Engineer".
+     * "Staff Engineer ( Backend ) Staff Engineer ( Backend ) with verification" → "Staff Engineer ( Backend )".
+     */
+    const dedupe = (s) => {
+      let v = (s || '').replace(/\s*with verification\s*$/i, '').trim();
+      const half = v.length / 2;
+      if (v.length % 2 === 0 && v.slice(0, half) === v.slice(half)) return v.slice(0, half).trim();
+      // The two halves may be separated by a space: "Foo Foo".
+      const m = v.match(/^(.{4,}?)\s+\1$/);
+      return m ? m[1].trim() : v;
+    };
     return nodes.map((n) => {
       const id = n.getAttribute('data-occludable-job-id') || n.getAttribute('data-job-id')
         || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'));
       const t = n.querySelector('.job-card-list__title, .job-card-list__title--link, .artdeco-entity-lockup__title, a.job-card-container__link');
       const c = n.querySelector('.job-card-container__primary-description, .artdeco-entity-lockup__subtitle, .job-card-container__company-name');
-      return { id, title: clean(t && (t.getAttribute('aria-label') || t.textContent)), company: clean(c && c.textContent) };
+      // LinkedIn renders the title TWICE — a visible span plus a visually-hidden copy for
+      // screen readers — so textContent returned "Software EngineerSoftware Engineer". Prefer
+      // the aria-hidden (visible) span; `dedupe` catches the cases where neither is marked.
+      const vis = t && t.querySelector('[aria-hidden="true"]');
+      const rawTitle = t && (vis ? vis.textContent : (t.getAttribute('aria-label') || t.textContent));
+      return { id, title: dedupe(clean(rawTitle)), company: dedupe(clean(c && c.textContent)) };
     }).filter((x) => x.id);
   }).catch(() => []);
   // Dedup by id AND by title+company. LinkedIn lists the same role many times under different
@@ -81,11 +99,33 @@ async function readPosting(page) {
       }
       return '';
     }).catch(() => '');
+  // The description is what the compatibility gate judges on, so an empty one means the job is
+  // skipped as "no description to judge" — which is exactly what happened to a whole run when
+  // these class names went stale. Try the known containers, then fall back to the LARGEST text
+  // block in the details pane, which survives any rename.
+  let description = await text('#job-details, .jobs-description__content, .jobs-box__html-content, '
+    + '[class*="jobs-description"], .jobs-details__main-content [class*="description"]');
+  if (description.replace(/\s+/g, ' ').trim().length < 80) {
+    description = await page.evaluate(() => {
+      const pane = document.querySelector(
+        '.jobs-details, .jobs-search__job-details, [class*="jobs-details"], main');
+      if (!pane) return '';
+      // The biggest block of prose under the pane is the description, whatever it is called.
+      let best = '';
+      for (const el of pane.querySelectorAll('div, section, article')) {
+        if (el.querySelector('div, section, article')) continue;   // leaves only
+        const t = (el.innerText || '').trim();
+        if (t.length > best.length) best = t;
+      }
+      return best;
+    }).catch(() => '');
+  }
+
   return {
     title: await text('.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1'),
     company: await text('.job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name'),
     location: await text('.job-details-jobs-unified-top-card__primary-description-container, .jobs-unified-top-card__bullet'),
-    description: await text('#job-details, .jobs-description__content, .jobs-box__html-content'),
+    description,
     salary,
   };
 }

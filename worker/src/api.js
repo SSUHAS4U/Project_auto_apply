@@ -33,10 +33,30 @@ export class Api {
 
   hello() { return this.#req('/api/worker/hello'); }
   next() { return this.#req('/api/worker/next'); }
-  event(e) {
-    return this.#req('/api/worker/event', {
-      method: 'POST', body: { flow: this.flow || null, ...e },
-    });
+  /**
+   * Record something that happened. NEVER throws.
+   *
+   * Events are telemetry — they feed the dashboard, they don't drive the run. A single failed
+   * POST used to reject out of an un-awaited-catch call site and abort the whole block: one
+   * 502 while the backend container restarted threw away an hour of applying. Retried once for
+   * a transient blip, then given up on silently; the run continues either way.
+   */
+  async event(e) {
+    const body = { flow: this.flow || null, ...e };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await this.#req('/api/worker/event', { method: 'POST', body });
+      } catch (err) {
+        if (attempt === 0) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+        this.eventFailures = (this.eventFailures || 0) + 1;
+        // Say it once, not 23 times — a backend that is down will fail every event.
+        if (this.eventFailures === 1) {
+          console.log(`     ⚠ could not record activity (${String(err.message || err).slice(0, 80)}) — the run continues`);
+        }
+        return {};
+      }
+    }
+    return {};
   }
   runStatus(runId, status, currentAction) {
     return this.#req(`/api/worker/run/${runId}/status`, { method: 'POST', body: { status, currentAction } });

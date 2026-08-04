@@ -966,6 +966,12 @@ public class AgentService {
     private static final long STALE_RUN_MINUTES = 10;
 
     /**
+     * When this backend process started. The heartbeat map is in-memory, so a restart makes
+     * every worker look absent — this is what stops the reaper acting on that illusion.
+     */
+    private static final Instant STARTED_AT = Instant.now();
+
+    /**
      * End runs whose worker has vanished.
      *
      * Only the worker moves a run forward, so a live run with no worker behind it is finished
@@ -983,8 +989,23 @@ public class AgentService {
         if (isWorkerOnline(userId)) return 0;
         Instant seen = lastWorkerSeen.get(userId);
         Instant cutoff = Instant.now().minusSeconds(STALE_RUN_MINUTES * 60);
-        // Never seen this worker at all (fresh backend) → only reap clearly old runs.
-        if (seen != null && seen.isAfter(cutoff)) return 0;
+
+        // NEVER reap on the word of a heartbeat map we only just built.
+        //
+        // lastWorkerSeen is in-memory, so every backend deploy empties it. The previous version
+        // treated "no heartbeat recorded" as "the worker is gone" and marked a perfectly healthy
+        // live run as failed. /next then returned idle, the worker's poller saw its run vanish,
+        // set state.stopped, and every loop in the portal adapter broke on its first check — a
+        // block that printed its header, then its summary, with nothing in between. Both portals,
+        // every time the backend restarted mid-run.
+        //
+        // If we have never heard from this worker, wait until the process has been up long
+        // enough that a live worker would certainly have checked in (it polls every ~4s).
+        if (seen == null) {
+            if (STARTED_AT.isAfter(cutoff)) return 0;      // backend too young to judge
+        } else if (seen.isAfter(cutoff)) {
+            return 0;                                       // heard from it recently
+        }
 
         int reaped = 0;
         for (String status : LIVE) {
