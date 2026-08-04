@@ -265,6 +265,8 @@ export interface AgentEvent {
   id: string;
   type: string;
   portal?: string;
+  /** Which LinkedIn automation produced this: easyApply | postApply | emailOutreach | connections. */
+  flow?: string | null;
   title?: string;
   company?: string;
   url?: string;

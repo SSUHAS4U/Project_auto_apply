@@ -318,6 +318,7 @@ export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
     // min-content width (~930px) pushes the whole page sideways on a narrow screen.
     <div className="portal-panel">
       <PortalMetrics only={portal} />
+      {portal === 'linkedin' && <FlowBreakdownLive />}
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>
       {/* Activity says WHAT happened; the Runs card beside it says WHEN — is it running right
           now, when did the last run finish, when does the next one start. */}
@@ -329,6 +330,98 @@ export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
       </div>
     </div>
   );
+}
+
+// ---- The four LinkedIn automations, counted separately ----------------------
+
+/** key → label + what it does, in the order they run. */
+const FLOWS: [string, string, string][] = [
+  ['easyApply', 'Easy Apply', 'Searches jobs and applies where LinkedIn allows one-click'],
+  ['postApply', 'Post scan & apply', 'Reads hiring posts → apply link, message the author, or email'],
+  ['emailOutreach', 'Recruiter emails', 'Harvests addresses from posts and sends a tailored application'],
+  ['connections', 'Connections', 'Invites verified recruiters, then the staged follow-ups'],
+];
+
+/** Which event types each flow is judged by — what it produced, not merely that it ran. */
+const FLOW_RESULT: Record<string, { types: string[]; noun: string }> = {
+  easyApply: { types: ['easy_apply', 'applied'], noun: 'applied' },
+  postApply: { types: ['post_analysed'], noun: 'posts read' },
+  emailOutreach: { types: ['email_sent'], noun: 'emailed' },
+  connections: { types: ['connection_sent', 'message_sent'], noun: 'contacted' },
+};
+
+/**
+ * Per-flow results for LinkedIn. The four automations used to be one "Phase 2", so a quiet run
+ * could mean any of four different things — this says which one produced what.
+ */
+export function FlowBreakdown({ events }: { events: AgentEvent[] }) {
+  const li = events.filter((e) => e.portal === 'linkedin');
+  return (
+    <div className="card card-pad">
+      <div className="section-title" style={{ marginBottom: 4 }}>
+        <Icon name="bolt" size={15} /> The four LinkedIn automations
+      </div>
+      <div className="faint" style={{ fontSize: 12.5, marginBottom: 14 }}>
+        Each runs on its own budget and can be switched off in Schedule.
+      </div>
+      <div className="flow-grid">
+        {FLOWS.map(([key, label, what]) => {
+          const r = FLOW_RESULT[key];
+          const produced = li.filter((e) => e.flow === key && r.types.includes(e.type)).length;
+          // Events recorded before flows existed have no `flow`, so "ran" counts anything tagged.
+          const ran = li.some((e) => e.flow === key);
+          return (
+            <div key={key} className={`flow-cell ${produced > 0 ? 'has' : ''}`}>
+              <div className="flow-n">{produced}</div>
+              <div className="flow-l">{r.noun}</div>
+              <div className="flow-t">{label}</div>
+              <div className="flow-w">{what}</div>
+              {!ran && <div className="flow-idle">hasn’t run yet</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One automation's switch + time budget. The switch is the point: turning a flow off must leave
+ * the other three running, so a problem in one doesn't cost you the whole block.
+ */
+function FlowRow({ k, label, hint, cfg, set }: {
+  k: string; label: string; hint: string;
+  cfg: Record<string, number | boolean>; set: (key: string, v: number | boolean) => void;
+}) {
+  const on = cfg[`${k}On`] !== false;
+  return (
+    <label className="pf-f">
+      <span className="pf-f-l">{label}<span className="pf-f-hint">{hint}</span></span>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <button type="button" className={`btn btn-sm ${on ? 'btn-primary' : ''}`}
+          onClick={() => set(`${k}On`, !on)} style={{ minWidth: 62 }}>
+          {on ? 'On' : 'Off'}
+        </button>
+        <input className="input" type="number" min={0} style={{ width: 88 }}
+          disabled={!on}
+          value={Number(cfg[`${k}Mins`] ?? 0)}
+          onChange={(e) => set(`${k}Mins`, Number(e.target.value))} />
+        <span className="faint" style={{ fontSize: 12.5 }}>minutes</span>
+      </div>
+    </label>
+  );
+}
+
+/** Self-fetching wrapper so PortalPanel doesn't have to thread events down. */
+function FlowBreakdownLive() {
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  useEffect(() => {
+    const pull = () => api.agentEvents(1000).then(setEvents).catch(() => {});
+    pull();
+    const t = setInterval(pull, 15000);
+    return () => clearInterval(t);
+  }, []);
+  return <FlowBreakdown events={events} />;
 }
 
 // ---- Runs card: is it running, when was the last one, when is the next ------
@@ -532,18 +625,21 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
  * long to rest in between. The daily counts carry over: whatever a run doesn't finish is left
  * for the next one.
  */
+/** A settings value as a number — the map also carries the flow on/off booleans. */
+const num = (v: number | boolean | undefined) => (typeof v === 'number' ? v : 0);
+
 export function ScheduleEditor() {
   const toast = useToast();
-  const [cfg, setCfg] = useState<Record<string, number> | null>(null);
+  const [cfg, setCfg] = useState<Record<string, number | boolean> | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { api.agentLimits().then((l) => setCfg(l as unknown as Record<string, number>)).catch(() => {}); }, []);
+  useEffect(() => { api.agentLimits().then((l) => setCfg(l as unknown as Record<string, number | boolean>)).catch(() => {}); }, []);
 
-  const set = (k: string, v: number) => setCfg((c) => ({ ...(c || {}), [k]: v }));
+  const set = (k: string, v: number | boolean) => setCfg((c) => ({ ...(c || {}), [k]: v }));
   const save = async () => {
     if (!cfg) return;
     setSaving(true);
-    try { setCfg(await api.agentSetLimits(cfg) as unknown as Record<string, number>); toast('Automation settings saved', 'success'); }
+    try { setCfg(await api.agentSetLimits(cfg) as unknown as Record<string, number | boolean>); toast('Automation settings saved', 'success'); }
     catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(false); }
   };
 
@@ -554,14 +650,15 @@ export function ScheduleEditor() {
       <span className="pf-f-l">{label}<span className="pf-f-hint">{hint}</span></span>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         <input className="input" type="number" min={0} style={{ width: 110 }}
-          value={cfg[k] ?? 0} onChange={(e) => set(k, Number(e.target.value))} />
+          value={num(cfg[k])} onChange={(e) => set(k, Number(e.target.value))} />
         <span className="faint" style={{ fontSize: 12.5 }}>{unit}</span>
       </div>
     </label>
   );
 
-  const cycle = (cfg.linkedinApplyMins || 0) + (cfg.linkedinOutreachMins || 0)
-    + (cfg.indeedMins || 0) + 2 * (cfg.restMins || 0);
+  // The settings map holds numbers AND the flow switches, so read numerics through `num`.
+  const cycle = num(cfg.linkedinApplyMins) + num(cfg.linkedinOutreachMins)
+    + num(cfg.indeedMins) + 2 * num(cfg.restMins);
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -600,6 +697,20 @@ export function ScheduleEditor() {
 
         {/* These were enforced but invisible — outreach could be throttled with no way to see
             by what, or to change it. */}
+        <div className="section-title" style={{ margin: '22px 0 4px' }}>
+          <Icon name="bolt" size={15} /> LinkedIn automations
+        </div>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 14 }}>
+          Four independent automations. Each gets its own slice of the LinkedIn block, and
+          switching one off leaves the others running — so you can tune or pause exactly one.
+        </div>
+        <div className="pf-grid">
+          <FlowRow k="easyApply" label="Easy Apply" hint="search and one-click apply" cfg={cfg} set={set} />
+          <FlowRow k="postApply" label="Post scan & apply" hint="hiring posts → link / message / email" cfg={cfg} set={set} />
+          <FlowRow k="emailOutreach" label="Recruiter emails" hint="addresses found in posts" cfg={cfg} set={set} />
+          <FlowRow k="connections" label="Connections" hint="invites + staged follow-ups" cfg={cfg} set={set} />
+        </div>
+
         <div className="section-title" style={{ margin: '22px 0 4px' }}>
           <Icon name="link" size={15} /> Outreach limits
         </div>

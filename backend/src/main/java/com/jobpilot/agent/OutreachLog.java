@@ -32,6 +32,12 @@ public class OutreachLog {
     @Column(name = "recruiter_name")
     private String recruiterName;
 
+    /** Recruiter's email when we have it — the other half of "is this the same person?". */
+    private String email;
+
+    /** How we reached them: "email" or "message". */
+    private String channel;
+
     @Column(name = "outreach_hash", nullable = false)
     private String outreachHash;
 
@@ -56,4 +62,8 @@ public class OutreachLog {
     public void setOutreachHash(String outreachHash) { this.outreachHash = outreachHash; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
 }

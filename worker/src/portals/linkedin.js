@@ -8,7 +8,7 @@ import { humanDelay, sleep } from '../browser.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
-import { shouldApply } from '../gate.js';
+import { shouldApply, claimOutreach } from '../gate.js';
 
 // Seniority is filtered here because LinkedIn's own filters don't reliably exclude it. The
 // COMPATIBILITY decision does not live in this file — `gate.js → shouldApply` owns it, so
@@ -382,22 +382,59 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // résumé) and send/di follow-up LinkedIn connections + messages.
   if (!state.stopped && !state.paused && Date.now() < deadline) {
     if (applyCap === 0) console.log(`\n  ✓ Today's ${dailyTarget} LinkedIn applications are already done — all remaining time goes to outreach.`);
-    console.log(`\n  ══ Phase 2: Outreach (${doneToday + applied}/${dailyTarget} applied today) — connections, messages, HR emails ══`);
-    try { await scanHiringPosts(page, api, plan, state, true); }  // dedicated = true → the big scan
-    catch (e) { await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `post scan ended: ${String(e).slice(0, 120)}` }); }
-    if (plan.autoMessage !== false) {
+    // The remaining three flows, each with its OWN time budget and switch. They used to be one
+    // undifferentiated "Phase 2", so "outreach isn't working" could mean any of three things and
+    // there was no way to run only the one you cared about.
+    const flows = plan.flowConfig || {};
+    const remaining = () => Math.max(0, deadline - Date.now());
+
+    /** Run one flow inside its own budget, tagging everything it emits. */
+    const runFlow = async (key, fn) => {
+      const cfg = flows[key] || {};
+      const label = cfg.label || key;
+      if (cfg.on === false) { console.log(`\n  ⏭  ${label} — switched off in Schedule`); return; }
+      if (state.stopped || state.paused || remaining() <= 0) return;
+      // Never let one flow eat the whole block: its budget, capped by what's left overall.
+      const budgetMs = Math.min((cfg.mins ?? 30) * 60_000, remaining());
+      if (budgetMs <= 0) { console.log(`\n  ⏭  ${label} — no time left in this block`); return; }
+
+      const flowPlan = { ...plan, flow: key, blockMinutes: Math.ceil(budgetMs / 60_000) };
+      const started = Date.now();
+      console.log(`\n  ══ ${label} — up to ${Math.round(budgetMs / 60_000)}m ══`);
+      api.flow = key;                                  // tags every event this flow emits
       try {
-        await sendConnectionRequests(page, api, plan, state, resume);
+        await fn(flowPlan);
+      } catch (e) {
+        console.log(`     ${label} ended: ${String(e).slice(0, 140)}`);
+        await api.event({ runId: state.runId, portal: 'linkedin', flow: key, type: 'info',
+          detail: `${label} ended early: ${String(e).slice(0, 140)}` });
+      } finally {
+        api.flow = null;
+        console.log(`     ${label} took ${Math.round((Date.now() - started) / 60000)}m`);
+      }
+    };
+
+    // 2. Post scan → apply. Reads hiring posts and routes each to a manual link, a message, or
+    //    an email (see scanHiringPosts). This is where new leads come from.
+    await runFlow('postApply', (p) => scanHiringPosts(page, api, p, state, true, resume));
+
+    if (plan.autoMessage === false) {
+      console.log('\n  ⏭  Auto-message is OFF — enable it on the Connections page to send invites + messages');
+    } else {
+      // 3. Email-only: harvest recruiter addresses and send. scanHiringPosts already emails any
+      //    address it meets; this pass exists so email outreach can be run (or switched off) on
+      //    its own, independently of messaging.
+      await runFlow('emailOutreach', (p) => scanHiringPosts(page, api, { ...p, emailOnly: true }, state, true, resume));
+
+      // 4. Connections: grow reach — invite or message verified recruiters, pick up acceptances,
+      //    then the staged follow-ups. Follow-ups run last so a fresh invite from this same block
+      //    isn't followed up an hour later.
+      await runFlow('connections', async (p) => {
+        await sendConnectionRequests(page, api, p, state, resume);
         await checkAcceptances(page, api, state);
         await sendApprovedMessages(page, api, resume, state);
-        // The staged sequence for people who accepted earlier — Day 1 → 2 → 5 → 10, then
-        // archived. Runs last so a fresh invite this block isn't followed up in the same hour.
-        await sendFollowUps(page, api, resume, state, plan);
-      } catch (e) {
-        await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: `outreach ended: ${String(e).slice(0, 120)}` });
-      }
-    } else {
-      console.log('     (Auto-message is OFF — enable it on the Connections page to send invites + messages)');
+        await sendFollowUps(page, api, resume, state, p);
+      });
     }
   }
   return { applied, ...tally };
@@ -441,7 +478,7 @@ function findApplyLink(text) {
  * the post text, so the engine can tailor + auto-email an application. Time-boxed and
  * capped so it never eats the Easy Apply phase.
  */
-async function scanHiringPosts(page, api, plan, state, dedicated = false) {
+async function scanHiringPosts(page, api, plan, state, dedicated = false, resume = null) {
   // Dedicated outreach phase (after the apply quota) is UNCAPPED on leads — it scans every
   // keyword, scrolls deep, and keeps harvesting until the block's time runs out.
   const cap = dedicated ? Infinity : 8;
@@ -456,7 +493,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
   const seen = new Set();
   // Every analysed post lands in exactly ONE of these. Reporting them together is the
   // difference between "scanned 150 → 0 emails" and knowing what actually happened.
-  const routed = { email: 0, message: 0, manual: 0, notHiring: 0 };
+  const routed = { email: 0, message: 0, manual: 0, notHiring: 0, skipped: 0 };
   console.log(`\n  🔎 Scanning hiring posts — target ${target} post(s) this block…`);
 
   for (const keyword of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
@@ -513,6 +550,10 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
         //   · otherwise the author's profile          → MESSAGE (outreach contacts them)
         // Most recruiters never put an address in the text, which is why an email-only scan
         // read 150 posts and produced nothing.
+        // In email-only mode a post without an address is simply not this flow's business —
+        // the post-scan flow already routed it to a message or a manual link.
+        if (emails.length === 0 && plan.emailOnly) { routed.notHiring++; continue; }
+
         if (emails.length === 0 && found < cap) {
           const key = post.authorUrl || post.link;
           if (!key || seen.has(key)) continue;
@@ -554,6 +595,21 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
         for (const email of emails) {
           if (seen.has(email.toLowerCase()) || found >= cap) continue;
           seen.add(email.toLowerCase());
+
+          // Claim the PERSON before mailing them, passing both identifiers. This is what stops
+          // the same recruiter being emailed from one post and messaged from another: the claim
+          // records the address, so the messaging flow's later check finds them.
+          const claim = await claimOutreach(api, {
+            portal: 'linkedin', company: '', role: post.name || 'hiring post',
+            recruiterUrl: post.authorUrl || '', recruiterName: post.name || '',
+            email, channel: 'email', resumeVersion: resume?.filename || '',
+          });
+          if (!claim.ok) {
+            routed.skipped++;
+            console.log(`     ⊘ ${email} — ${claim.reason}`);
+            continue;
+          }
+
           state.action = `HR email found: ${email}`;
           const r = await api.hrLead({
             portal: 'linkedin', email, name: post.name,
@@ -587,6 +643,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
   console.log(`        💬 ${routed.message} queued to message (author is hiring)`);
   console.log(`        🔗 ${routed.manual} apply links → manual list`);
   console.log(`        ·  ${routed.notHiring} not actually hiring`);
+  if (routed.skipped) console.log(`        ⊘  ${routed.skipped} already contacted (limit or duplicate)`);
   if (analysed < target && !state.stopped && !state.paused) {
     console.log(`        (short of target — the block ran out of time or LinkedIn ran out of posts)`);
   }

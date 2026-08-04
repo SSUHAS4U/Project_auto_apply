@@ -19,6 +19,9 @@ public interface OutreachLogRepository extends JpaRepository<OutreachLog, UUID> 
     /** Per-recruiter throttle — same person, any role. */
     long countByUserIdAndRecruiterUrlAndCreatedAtGreaterThanEqual(UUID userId, String recruiterUrl, Instant since);
 
+    /** Have we reached this person by EMAIL recently — whatever channel we're about to use? */
+    long countByUserIdAndEmailAndCreatedAtGreaterThanEqual(UUID userId, String email, Instant since);
+
     /** Overall daily volume. */
     long countByUserIdAndCreatedAtGreaterThanEqual(UUID userId, Instant since);
 

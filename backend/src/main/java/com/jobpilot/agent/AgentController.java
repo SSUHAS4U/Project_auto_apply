@@ -205,6 +205,7 @@ public class AgentController {
             m.put("id", e.getId().toString());
             m.put("type", e.getType());
             m.put("portal", e.getPortal());
+            m.put("flow", e.getFlow());
             m.put("title", e.getTitle());
             m.put("company", e.getCompany());
             m.put("url", e.getUrl());

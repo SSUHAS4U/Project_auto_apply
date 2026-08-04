@@ -329,7 +329,16 @@ public class AgentService {
     public AgentEvent recordEvent(UUID userId, UUID runId, UUID taskId, String portal, String type,
                                   String title, String company, String url, String detail,
                                   String salary, String description) {
+        return recordEvent(userId, runId, taskId, portal, type, title, company, url, detail,
+                salary, description, null);
+    }
+
+    /** @param flow which of the four automations produced this, for per-flow counting. */
+    public AgentEvent recordEvent(UUID userId, UUID runId, UUID taskId, String portal, String type,
+                                  String title, String company, String url, String detail,
+                                  String salary, String description, String flow) {
         AgentEvent e = new AgentEvent();
+        e.setFlow(flow);
         e.setUserId(userId);
         e.setRunId(runId);
         e.setTaskId(taskId);
@@ -551,6 +560,16 @@ public class AgentService {
         plan.put("personConfMin", cfg.get("personConfMin"));
         plan.put("maxAgeDays", cfg.get("maxAgeDays"));
         plan.put("postScanTarget", cfg.get("postScanTarget"));
+        // Each flow's on/off + minutes, as one object the worker can iterate.
+        Map<String, Object> flowCfg = new LinkedHashMap<>();
+        for (String[] f : FLOWS) {
+            Map<String, Object> one = new LinkedHashMap<>();
+            one.put("on", cfg.get(f[0] + "On"));
+            one.put("mins", cfg.get(f[0] + "Mins"));
+            one.put("label", f[1]);
+            flowCfg.put(f[0], one);
+        }
+        plan.put("flowConfig", flowCfg);
         plan.put("pagesPerSearch", cfg.get("pagesPerSearch"));
         // Titles the worker must never apply to. Sent as data so the rule is visible and
         // tunable, instead of being a regex frozen inside two separate portal adapters.
@@ -677,6 +696,19 @@ public class AgentService {
     private static final String FU3 = "agent_followup_3";
     private static final String FU4 = "agent_followup_4";
 
+    /**
+     * The four LinkedIn automations, each independently switchable with its own time budget.
+     * They were one monolithic block, so "outreach didn't work" could mean any of four different
+     * things and there was no way to run just the one you cared about.
+     */
+    static final String[][] FLOWS = {
+            // key,           label,                     default on, default minutes
+            { "easyApply",    "Easy Apply",              "true",  "90"  },
+            { "postApply",    "Post scan & apply",       "true",  "60"  },
+            { "emailOutreach","Recruiter emails",        "true",  "30"  },
+            { "connections",  "Connections & messages",  "true",  "45"  },
+    };
+
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20));
@@ -702,6 +734,13 @@ public class AgentService {
         m.put("followUp2", settings.get(FU2).map(Integer::parseInt).orElse(2));
         m.put("followUp3", settings.get(FU3).map(Integer::parseInt).orElse(5));
         m.put("followUp4", settings.get(FU4).map(Integer::parseInt).orElse(10));
+        // Per-flow switches and budgets.
+        for (String[] f : FLOWS) {
+            m.put(f[0] + "On", settings.get("agent_flow_" + f[0] + "_on")
+                    .map(Boolean::parseBoolean).orElse(Boolean.parseBoolean(f[2])));
+            m.put(f[0] + "Mins", settings.get("agent_flow_" + f[0] + "_mins")
+                    .map(Integer::parseInt).orElse(Integer.parseInt(f[3])));
+        }
         return m;
     }
 
@@ -725,6 +764,11 @@ public class AgentService {
         putInt(body, "followUp2", FU2, 0, 60);
         putInt(body, "followUp3", FU3, 0, 60);
         putInt(body, "followUp4", FU4, 0, 60);
+        for (String[] f : FLOWS) {
+            Object on = body == null ? null : body.get(f[0] + "On");
+            if (on instanceof Boolean bo) settings.put("agent_flow_" + f[0] + "_on", String.valueOf(bo));
+            putInt(body, f[0] + "Mins", "agent_flow_" + f[0] + "_mins", 0, 480);
+        }
         return limits();
     }
 

@@ -92,10 +92,16 @@ export async function shouldContact(api, person, plan = {}, posts = []) {
  * person" and costs a model call; this answers "have we already, or too often" and also RECORDS
  * the attempt. Doing both in one server call is what makes it safe against a retry sending twice.
  */
-export async function claimOutreach(api, { portal = 'linkedin', company, role, recruiterUrl, recruiterName, resumeVersion }) {
+export async function claimOutreach(api, { portal = 'linkedin', company, role, recruiterUrl,
+                                          recruiterName, resumeVersion, email, channel = 'message' }) {
   try {
     const r = await api.outreachClaim({ portal, company: company || '', role: role || '',
-      recruiterUrl: recruiterUrl || '', recruiterName: recruiterName || '', resumeVersion: resumeVersion || '' });
+      recruiterUrl: recruiterUrl || '', recruiterName: recruiterName || '',
+      resumeVersion: resumeVersion || '',
+      // Passing the address too is what lets ONE check answer "have we contacted this person by
+      // ANY channel?" — the same recruiter appears in several posts, one with an email and one
+      // with only a profile, and they must not get both.
+      email: email || '', channel });
     // `=== true`, not truthy: only an explicit boolean is permission to contact someone.
     // A stray string or a malformed reply must never read as a yes.
     return r && r.ok === true ? { ok: true } : { ok: false, reason: (r && r.reason) || 'blocked' };

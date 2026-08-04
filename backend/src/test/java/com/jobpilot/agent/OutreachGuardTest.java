@@ -178,4 +178,54 @@ class OutreachGuardTest {
                 .atStartOfDay(java.time.ZoneId.of("Asia/Kolkata")).toInstant();
         assertEquals(midnightIst, since.getValue(), "a daily cap should reset at midnight, not roll");
     }
+
+    // ---- one person, one channel ---------------------------------------------
+    // The same recruiter turns up in several hiring posts: one carries their email, the next
+    // only their profile. Checking a single identifier made those look like two people, so they
+    // got an email AND a message.
+
+    @Test
+    void emailingSomeoneBlocksMessagingThemLater() {
+        // Recorded earlier via their address; now we meet them again with only a profile URL.
+        when(logs.countByUserIdAndEmailAndCreatedAtGreaterThanEqual(any(), eq("jo@acme.com"), any()))
+                .thenReturn(1L);
+        Map<String, Object> r = guard.claim(USER, "linkedin", "Acme", "Backend Engineer",
+                "https://www.linkedin.com/in/jo", "Jo", "cv1", "jo@acme.com", "message");
+        assertEquals(false, r.get("ok"));
+        assertTrue(String.valueOf(r.get("reason")).contains("email"), String.valueOf(r.get("reason")));
+    }
+
+    @Test
+    void messagingSomeoneBlocksEmailingThemLater() {
+        when(logs.countByUserIdAndRecruiterUrlAndCreatedAtGreaterThanEqual(any(), anyString(), any()))
+                .thenReturn(1L);
+        Map<String, Object> r = guard.claim(USER, "linkedin", "Acme", "Backend Engineer",
+                "https://www.linkedin.com/in/jo", "Jo", "cv1", "jo@acme.com", "email");
+        assertEquals(false, r.get("ok"));
+    }
+
+    @Test
+    void anEmailOnlyLeadCanStillBeClaimed() {
+        // Post carried an address but no profile link. One identifier is enough.
+        Map<String, Object> r = guard.claim(USER, "linkedin", "Acme", "Backend Engineer",
+                "", "Jo", "cv1", "jo@acme.com", "email");
+        assertEquals(true, r.get("ok"), String.valueOf(r.get("reason")));
+        verify(logs).saveAndFlush(argThat(row ->
+                "jo@acme.com".equals(row.getEmail()) && "email".equals(row.getChannel())));
+    }
+
+    @Test
+    void neitherIdentifierIsRefused() {
+        // With no way to name the person we cannot promise not to repeat ourselves.
+        Map<String, Object> r = guard.claim(USER, "linkedin", "Acme", "Role", "", "Jo", "cv1", "", "email");
+        assertEquals(false, r.get("ok"));
+    }
+
+    @Test
+    void theEmailIsStoredSoTheNextCheckCanSeeIt() {
+        guard.claim(USER, "linkedin", "Acme", "Role",
+                "https://www.linkedin.com/in/jo", "Jo", "cv1", "JO@Acme.com ", "message");
+        // Normalised, or a case difference would read as a different person.
+        verify(logs).saveAndFlush(argThat(row -> "jo@acme.com".equals(row.getEmail())));
+    }
 }

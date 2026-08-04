@@ -142,7 +142,7 @@ public class WorkerController {
         AgentEvent e = agent.recordEvent(u, uuid(b.get("runId")), uuid(b.get("taskId")),
                 b.get("portal"), b.getOrDefault("type", "info"),
                 b.get("title"), b.get("company"), b.get("url"), b.get("detail"),
-                b.get("salary"), b.get("description"));
+                b.get("salary"), b.get("description"), b.get("flow"));
         return Map.of("id", e.getId().toString());
     }
 
@@ -246,7 +246,8 @@ public class WorkerController {
     public Map<String, Object> outreachClaim(@RequestBody Map<String, String> b) {
         UUID u = UserContext.require();
         return guard.claim(u, b.get("portal"), b.get("company"), b.get("role"),
-                b.get("recruiterUrl"), b.get("recruiterName"), nz(b.get("resumeVersion")));
+                b.get("recruiterUrl"), b.get("recruiterName"), nz(b.get("resumeVersion")),
+                b.get("email"), b.get("channel"));
     }
 
     /** The flattened profile answers the worker fills portal forms with. */

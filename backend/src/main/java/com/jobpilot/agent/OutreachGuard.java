@@ -72,11 +72,26 @@ public class OutreachGuard {
     @Transactional
     public Map<String, Object> claim(UUID userId, String portal, String company, String role,
                                      String recruiterUrl, String recruiterName, String resumeVersion) {
+        return claim(userId, portal, company, role, recruiterUrl, recruiterName, resumeVersion, null, "message");
+    }
+
+    /**
+     * @param email   the person's address when we have it. Recording it is what makes
+     *                "have we contacted this person at all?" answerable across channels.
+     * @param channel "email" or "message" — what we are about to do.
+     */
+    @Transactional
+    public Map<String, Object> claim(UUID userId, String portal, String company, String role,
+                                     String recruiterUrl, String recruiterName, String resumeVersion,
+                                     String email, String channel) {
         String url = norm(recruiterUrl);
-        if (url.isBlank()) return deny("no profile URL to identify this person by");
+        String mail = norm(email);
+        // One identifier is enough — an emailed lead often has no profile, and a messaged one
+        // often has no address. With neither, we cannot promise not to repeat ourselves.
+        if (url.isBlank() && mail.isBlank()) return deny("no profile URL or email to identify this person by");
 
         String co = norm(company);
-        String hash = hash(co, norm(role), url, norm(resumeVersion));
+        String hash = hash(co, norm(role), url.isBlank() ? mail : url, norm(resumeVersion));
         Map<String, Object> lim = limits();
 
         // 1. Idempotency — this exact outreach has already gone out.
@@ -84,11 +99,21 @@ public class OutreachGuard {
             return deny("already contacted about this role");
         }
 
-        // 2. This person, recently — regardless of role.
+        // 2. This person, recently — regardless of role AND regardless of channel.
+        //    The same recruiter appears in several hiring posts: one carries their email, the
+        //    next only their profile. Checking a single identifier made those look like two
+        //    different people, so they got an email AND a message. Both are checked.
         int cooldown = (int) lim.get("recruiterCooldownDays");
-        if (cooldown > 0 && logs.countByUserIdAndRecruiterUrlAndCreatedAtGreaterThanEqual(
-                userId, url, Instant.now().minusSeconds(cooldown * 86400L)) > 0) {
-            return deny("contacted within the last " + cooldown + " days");
+        if (cooldown > 0) {
+            Instant since = Instant.now().minusSeconds(cooldown * 86400L);
+            boolean byUrl = !url.isBlank()
+                    && logs.countByUserIdAndRecruiterUrlAndCreatedAtGreaterThanEqual(userId, url, since) > 0;
+            boolean byEmail = !mail.isBlank()
+                    && logs.countByUserIdAndEmailAndCreatedAtGreaterThanEqual(userId, mail, since) > 0;
+            if (byUrl || byEmail) {
+                return deny("already contacted in the last " + cooldown + " days"
+                        + (byEmail && !byUrl ? " (by email)" : byUrl && !byEmail ? " (by message)" : ""));
+            }
         }
 
         Instant dayStart = LocalDate.now(ZONE).atStartOfDay(ZONE).toInstant();
@@ -112,6 +137,8 @@ public class OutreachGuard {
         row.setRoleTitle(role);
         row.setRecruiterUrl(url);
         row.setRecruiterName(recruiterName);
+        row.setEmail(mail.isBlank() ? null : mail);
+        row.setChannel(channel == null || channel.isBlank() ? "message" : channel);
         row.setOutreachHash(hash);
         try {
             logs.saveAndFlush(row);

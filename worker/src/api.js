@@ -9,6 +9,9 @@ export class Api {
     // The portal of the block currently running. Set once per block in index.js so calls that
     // need it (recordQuestion) don't have to be threaded through every form-filling helper.
     this.portal = null;
+    // Which of the four LinkedIn automations is running. Set by runFlow so every event it
+    // emits is attributable, without threading a parameter through every helper.
+    this.flow = null;
   }
 
   async #req(path, { method = 'GET', body } = {}) {
@@ -30,7 +33,11 @@ export class Api {
 
   hello() { return this.#req('/api/worker/hello'); }
   next() { return this.#req('/api/worker/next'); }
-  event(e) { return this.#req('/api/worker/event', { method: 'POST', body: e }); }
+  event(e) {
+    return this.#req('/api/worker/event', {
+      method: 'POST', body: { flow: this.flow || null, ...e },
+    });
+  }
   runStatus(runId, status, currentAction) {
     return this.#req(`/api/worker/run/${runId}/status`, { method: 'POST', body: { status, currentAction } });
   }

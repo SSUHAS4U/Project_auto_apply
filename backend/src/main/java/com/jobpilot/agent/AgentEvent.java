@@ -29,6 +29,9 @@ public class AgentEvent {
 
     private String portal;
 
+    /** Which automation produced this — easyApply | postApply | emailOutreach | connections. */
+    private String flow;
+
     /**
      * post_analysed | job_identified | relevant | applied | connection_sent |
      * message_sent | email_sent | reply_received | easy_apply | error | info
@@ -51,4 +54,6 @@ public class AgentEvent {
 
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
+    public String getFlow() { return flow; }
+    public void setFlow(String flow) { this.flow = flow; }
 }
