@@ -32,7 +32,6 @@ function hostFor(location, profile) {
 // Indeed pages at ~15 results. Reading only page 1 is why every search reported "16 result(s)"
 // and why the same handful of postings came back for every city — there was never a second page
 // to find anything new on. `start` is Indeed's offset parameter (0, 10, 20 …).
-const PAGES_PER_SEARCH = 3;
 
 function searchUrl(keyword, location, profile, start = 0, maxAgeDays = 0) {
   const p = new URLSearchParams({ q: keyword, sort: 'date' });
@@ -128,6 +127,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
+  const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
   let sawAnyFresh = false; // did ANY search yield a job we hadn't already handled?
   let opened = 0;          // job pages actually opened — the number that was invisible before
   // Indeed returns the same postings for every city (16 each time in the last run), so without
@@ -169,7 +169,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
       // Walk a few result pages, not just the first. Stop early once a page adds nothing new —
       // that means we've reached the end of the genuinely distinct results for this search.
       const keys = await collectJobKeys(page);
-      for (let pg = 1; pg < PAGES_PER_SEARCH; pg++) {
+      for (let pg = 1; pg < pagesPerSearch; pg++) {
         if (state.stopped || state.paused || Date.now() > deadline) break;
         const before = keys.length;
         await page.goto(searchUrl(keyword, location, profile, pg * 10, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});

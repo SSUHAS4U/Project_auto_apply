@@ -23,10 +23,10 @@ import java.util.*;
 @Service
 public class FollowUpService {
 
-    /** Days to wait after touch N before sending touch N+1. Index = current stage. */
-    static final int[] GAP_DAYS = { 1, 2, 5, 10 };
-    /** Stage at which the sequence is finished. */
-    static final int ARCHIVED_STAGE = GAP_DAYS.length + 1;
+    /** Fallback spacing when no settings are saved: days to wait before touch N+1. */
+    static final int[] DEFAULT_GAP_DAYS = { 1, 2, 5, 10 };
+    /** How many touches the sequence has, ever. */
+    static final int TOUCHES = DEFAULT_GAP_DAYS.length;
 
     /** What each touch is FOR. A follow-up that just says "checking in" is why people mute you. */
     private static final String[] ANGLE = {
@@ -45,9 +45,30 @@ public class FollowUpService {
     };
 
     private final PortalContactRepository contacts;
+    private final AgentService agent;
 
-    public FollowUpService(PortalContactRepository contacts) {
+    public FollowUpService(PortalContactRepository contacts,
+                           @org.springframework.context.annotation.Lazy AgentService agent) {
         this.contacts = contacts;
+        this.agent = agent;
+    }
+
+    /**
+     * The spacing, read from settings so it can be retuned without a rebuild. Falls back to
+     * 1/2/5/10 if anything is missing or unreadable — the sequence must always have a shape.
+     */
+    int[] gapDays() {
+        try {
+            Map<String, Object> cfg = agent.limits();
+            int[] g = new int[TOUCHES];
+            for (int i = 0; i < TOUCHES; i++) {
+                Object v = cfg.get("followUp" + (i + 1));
+                g[i] = v instanceof Number n ? Math.max(0, n.intValue()) : DEFAULT_GAP_DAYS[i];
+            }
+            return g;
+        } catch (Exception e) {
+            return DEFAULT_GAP_DAYS.clone();
+        }
     }
 
     /**
@@ -68,17 +89,17 @@ public class FollowUpService {
     boolean isDue(PortalContact c, Instant now) {
         if (c == null || c.getArchivedAt() != null) return false;
         int stage = c.getFollowUpStage();
-        if (stage >= GAP_DAYS.length) return false;          // sequence exhausted
+        if (stage >= TOUCHES) return false;                   // sequence exhausted
         Instant last = c.getLastContactAt();
         if (last == null) return true;                        // never touched → due immediately
-        return !now.isBefore(last.plus(Duration.ofDays(GAP_DAYS[stage])));
+        return !now.isBefore(last.plus(Duration.ofDays(gapDays()[stage])));
     }
 
     /** When this contact's next touch falls due, or null once the sequence is over. */
     public Instant nextDueAt(PortalContact c) {
-        if (c == null || c.getArchivedAt() != null || c.getFollowUpStage() >= GAP_DAYS.length) return null;
+        if (c == null || c.getArchivedAt() != null || c.getFollowUpStage() >= TOUCHES) return null;
         Instant last = c.getLastContactAt();
-        return last == null ? Instant.now() : last.plus(Duration.ofDays(GAP_DAYS[c.getFollowUpStage()]));
+        return last == null ? Instant.now() : last.plus(Duration.ofDays(gapDays()[c.getFollowUpStage()]));
     }
 
     /** The instruction that shapes touch N — passed to the message generator. */
@@ -88,8 +109,8 @@ public class FollowUpService {
 
     /** Human label for logs and the dashboard: "follow-up 2 of 4". */
     public String labelFor(int stage) {
-        return stage >= GAP_DAYS.length ? "final follow-up sent"
-                : "follow-up " + (stage + 1) + " of " + GAP_DAYS.length;
+        return stage >= TOUCHES ? "final follow-up sent"
+                : "follow-up " + (stage + 1) + " of " + TOUCHES;
     }
 
     /**
@@ -104,7 +125,7 @@ public class FollowUpService {
         c.setLastContactAt(now);
         c.setLastMessageAt(now);
         c.setUpdatedAt(now);
-        if (c.getFollowUpStage() >= GAP_DAYS.length) c.setArchivedAt(now);
+        if (c.getFollowUpStage() >= TOUCHES) c.setArchivedAt(now);
         return contacts.save(c);
     }
 }

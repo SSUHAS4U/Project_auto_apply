@@ -587,9 +587,39 @@ export function ScheduleEditor() {
           person is never contacted twice about the same role, whatever these are set to.
         </div>
         <div className="pf-grid">
-          <F k="perDay" label="Total outreach" hint="per day, all companies" unit="people" />
-          <F k="perCompanyPerDay" label="Per company" hint="per day" unit="people" />
-          <F k="recruiterCooldownDays" label="Same person cooldown" hint="before contacting again" unit="days" />
+          <F k="perDay" label="Total outreach" hint="per day, all companies combined" unit="people" />
+          <F k="perCompanyPerDay" label="Per company" hint="e.g. 5 = at most 5 people at Infosys today" unit="people/day" />
+          <F k="recruiterCooldownDays" label="Same person cooldown" hint="before contacting them again" unit="days" />
+          <F k="postScanTarget" label="Hiring posts to read" hint="per day — where new leads come from" unit="posts" />
+        </div>
+
+        <div className="section-title" style={{ margin: '22px 0 4px' }}>
+          <Icon name="send" size={15} /> Follow-up sequence
+        </div>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 14 }}>
+          Days to wait after the previous message. Most replies come from the second or third
+          touch. After the fourth the contact is archived and never messaged again. Set any of
+          them to 0 to send that touch on the same day.
+        </div>
+        <div className="pf-grid">
+          <F k="followUp1" label="1st follow-up" hint="after they accept" unit="days later" />
+          <F k="followUp2" label="2nd follow-up" hint="after the 1st" unit="days later" />
+          <F k="followUp3" label="3rd follow-up" hint="after the 2nd" unit="days later" />
+          <F k="followUp4" label="4th (final)" hint="after the 3rd, then archived" unit="days later" />
+        </div>
+
+        <div className="section-title" style={{ margin: '22px 0 4px' }}>
+          <Icon name="search" size={15} /> Search breadth
+        </div>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 14 }}>
+          How wide each run casts. More pages and keywords find more jobs but take longer per
+          block — raise these together with the block minutes above.
+        </div>
+        <div className="pf-grid">
+          <F k="pagesPerSearch" label="Result pages per search" hint="LinkedIn 25/page, Indeed 15" unit="pages" />
+          <F k="maxKeywords" label="Keyword variants" hint="role × your skills" unit="queries" />
+          <F k="maxLocations" label="Locations" hint="cities searched" unit="places" />
+          <F k="outreachBlocksPerDay" label="Extra outreach blocks" hint="after the apply quota is met" unit="per day" />
         </div>
 
         <div className="row" style={{ gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>

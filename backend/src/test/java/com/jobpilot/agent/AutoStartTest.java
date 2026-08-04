@@ -135,10 +135,24 @@ class AutoStartTest {
 
     @Test
     void theOutreachAllowanceIsBounded() {
+        // Quota met, and the day's outreach-only blocks are spent. The ceiling comes from
+        // settings (default 3), so this asserts the BOUND exists rather than a magic number.
         when(events.countAppliedSince(any(), anyString(), any())).thenReturn(20L);
-        when(runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(any(), eq("linkedin"), any())).thenReturn(2L);
+        int ceiling = (int) agent.limits().get("outreachBlocksPerDay");
+        when(runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(any(), eq("linkedin"), any()))
+                .thenReturn((long) ceiling);
         assertFalse(agent.portalOwesWork(USER, "linkedin", Instant.now()),
                 "must not loop all day once there is nothing left to apply to");
+    }
+
+    @Test
+    void outreachBlocksAreStillAllowedBelowTheCeiling() {
+        // Apply quota met but outreach blocks remain — LinkedIn must STILL run, or connections
+        // and HR emails silently stop for the rest of the day.
+        when(events.countAppliedSince(any(), anyString(), any())).thenReturn(20L);
+        when(runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(any(), eq("linkedin"), any())).thenReturn(0L);
+        assertTrue(agent.portalOwesWork(USER, "linkedin", Instant.now()),
+                "outreach is the whole point of the extra blocks");
     }
 
     @Test

@@ -50,9 +50,9 @@ public class OutreachGuard {
     /** The limits, editable without a rebuild. Defaults are the spec's numbers. */
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("perCompanyPerDay", intOf(PER_COMPANY_DAY, 3));
+        m.put("perCompanyPerDay", intOf(PER_COMPANY_DAY, 5));
         m.put("recruiterCooldownDays", intOf(PER_RECRUITER_DAYS, 7));
-        m.put("perDay", intOf(PER_DAY, 20));
+        m.put("perDay", intOf(PER_DAY, 40));
         return m;
     }
 

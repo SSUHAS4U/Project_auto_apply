@@ -18,7 +18,6 @@ const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|direct
 
 // LinkedIn pages at 25 results and offsets with `start`. Reading only page 1 capped every
 // search at 25 regardless of how many matches existed.
-const PAGES_PER_SEARCH = 3;
 
 function searchUrl(keyword, location, start = 0, maxAgeDays = 0) {
   const p = new URLSearchParams({ keywords: keyword, f_AL: 'true', sortBy: 'DD' }); // f_AL = Easy Apply only
@@ -149,6 +148,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // so an unfinished quota automatically rolls into the next run.
   const applyCap = plan.applyCap ?? 15;
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
+  const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
   const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
@@ -175,7 +175,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       // Walk further result pages. collectJobCards already collapses reposts, so the stop
       // condition is "this page added nothing new", the same rule Indeed uses.
       const seenIds = new Set(cards.map((c) => c.id));
-      for (let pg = 1; pg < PAGES_PER_SEARCH; pg++) {
+      for (let pg = 1; pg < pagesPerSearch; pg++) {
         if (state.stopped || state.paused || Date.now() > phase1Deadline) break;
         await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
         await waitForResults(page);
@@ -345,6 +345,32 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Obvious non-recruiter addresses — never lead on these.
 const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|support@|help@|info@linkedin/i;
 
+// A URL in a hiring post that is an actual way to apply, rather than a company homepage or a
+// link back into LinkedIn. Matching the well-known ATS hosts is far more reliable than trying
+// to judge an arbitrary domain, and a false negative just means the post routes to a message
+// instead — which is still a valid outcome.
+const APPLY_HOSTS =
+  /(lever\.co|greenhouse\.io|workday(?:jobs)?\.com|myworkdayjobs\.com|smartrecruiters\.com|ashbyhq\.com|jobvite\.com|icims\.com|taleo\.net|successfactors\.com|bamboohr\.com|recruitee\.com|workable\.com|zohorecruit\.com|freshteam\.com|keka\.com|darwinbox\.com|naukri\.com|instahyre\.com|cutshort\.io|wellfound\.com|angel\.co|forms\.gle|docs\.google\.com\/forms|typeform\.com|airtable\.com)/i;
+const CAREERS_PATH = /\/(careers?|jobs?|apply|openings|vacanc)/i;
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+
+/** The application link in a post, or '' when there isn't a usable one. */
+function findApplyLink(text) {
+  const urls = (text || '').match(URL_RE) || [];
+  for (const raw of urls) {
+    const u = raw.replace(/[.,;:)]+$/, '');           // strip trailing sentence punctuation
+    if (/linkedin\.com/i.test(u)) continue;           // a link back into LinkedIn isn't an apply link
+    if (APPLY_HOSTS.test(u)) return u;
+  }
+  // Second pass: any non-LinkedIn URL whose PATH looks like a careers/apply page.
+  for (const raw of urls) {
+    const u = raw.replace(/[.,;:)]+$/, '');
+    if (/linkedin\.com/i.test(u)) continue;
+    try { if (CAREERS_PATH.test(new URL(u).pathname)) return u; } catch { /* not a URL */ }
+  }
+  return '';
+}
+
 /**
  * Search LinkedIn CONTENT (posts) for each keyword, scroll a few pages, and pull
  * recruiter emails out of hiring posts. Each email goes to the backend as a lead with
@@ -352,19 +378,26 @@ const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|sup
  * capped so it never eats the Easy Apply phase.
  */
 async function scanHiringPosts(page, api, plan, state, dedicated = false) {
-  // Dedicated outreach phase (after the apply quota) is UNCAPPED — it scans every keyword,
-  // scrolls deep, and keeps harvesting recruiter emails until the block's time runs out.
+  // Dedicated outreach phase (after the apply quota) is UNCAPPED on leads — it scans every
+  // keyword, scrolls deep, and keeps harvesting until the block's time runs out.
   const cap = dedicated ? Infinity : 8;
   const scrolls = dedicated ? 25 : 4;
+  // How many posts to READ. The old scan had no target at all, so "150 analysed" was whatever
+  // happened to fall out of the scroll loop rather than a goal it was working towards.
+  const target = dedicated ? (plan.postScanTarget || 150) : 40;
   const phaseDeadline = Date.now() + (dedicated ? (plan.blockMinutes || 120) * 60_000 : 8 * 60_000);
   let found = 0;
   let analysed = 0;
   let hiringPosts = 0;   // posts classified as real openings (no email needed)
   const seen = new Set();
-  console.log(`\n  🔎 Scanning hiring posts for recruiter emails (${cap === Infinity ? 'no cap' : 'up to ' + cap})…`);
+  // Every analysed post lands in exactly ONE of these. Reporting them together is the
+  // difference between "scanned 150 → 0 emails" and knowing what actually happened.
+  const routed = { email: 0, message: 0, manual: 0, notHiring: 0 };
+  console.log(`\n  🔎 Scanning hiring posts — target ${target} post(s) this block…`);
 
   for (const keyword of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
     if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;
+    if (analysed >= target) break;   // today's reading target is met
     state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
 
@@ -381,7 +414,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
     }
 
     let analysedHere = 0;   // posts read for THIS keyword (the cumulative one is `analysed`)
-    for (let scroll = 0; scroll < scrolls && found < cap && Date.now() < phaseDeadline; scroll++) {
+    for (let scroll = 0; scroll < scrolls && found < cap && analysed < target && Date.now() < phaseDeadline; scroll++) {
       // read every post currently rendered
       // Class-independent: try the known post containers, but if LinkedIn has renamed them
       // (which is why this reported "scanned 0 posts"), fall back to the WHOLE PAGE as one
@@ -410,29 +443,50 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
       for (const post of posts) {
         const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
 
-        // A post with no email address used to be worth nothing — which is why 150 posts
-        // yielded 0 leads. Most recruiters never put an address in the text; the opening is
-        // still real, and the author is still worth contacting. Classify the intent, and when
-        // it IS an opening, capture the author as a lead with the post as the opener.
-        if (emails.length === 0 && post.authorUrl && found < cap) {
-          if (seen.has(post.authorUrl)) continue;
+        // ROUTE 2 & 3 — no email in the post. Classify the intent once, then send it down the
+        // right path instead of discarding it:
+        //   · an application/careers link in the text → MANUAL (you click it; we can't fill it)
+        //   · otherwise the author's profile          → MESSAGE (outreach contacts them)
+        // Most recruiters never put an address in the text, which is why an email-only scan
+        // read 150 posts and produced nothing.
+        if (emails.length === 0 && found < cap) {
+          const key = post.authorUrl || post.link;
+          if (!key || seen.has(key)) continue;
           const intent = await api.postIntent(post.text).catch(() => ({ isHiring: false }));
-          if (intent.isHiring && (intent.confidence ?? 0) >= (plan.personConfMin ?? 80)) {
-            seen.add(post.authorUrl);
-            hiringPosts++;
+          if (!intent.isHiring || (intent.confidence ?? 0) < (plan.personConfMin ?? 80)) {
+            routed.notHiring++;
+            seen.add(key);
+            continue;
+          }
+          seen.add(key);
+          hiringPosts++;
+          const applyLink = findApplyLink(post.text);
+
+          if (applyLink) {
+            // A form or careers page. Nothing here can fill an arbitrary external form, so
+            // pretending otherwise would lose the opportunity silently — it becomes a manual
+            // lead with the link, and lands in the daily manual-apply digest.
+            routed.manual++;
+            console.log(`     🔗 ${post.name || 'someone'} — apply link: ${applyLink.slice(0, 60)}`);
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+              title: intent.role || 'Hiring post', company: '', url: applyLink,
+              detail: `${post.name || 'author'} posted an application link — apply manually` });
+          } else if (post.authorUrl) {
+            routed.message++;
             await api.upsertContact({
               portal: 'linkedin', name: post.name, profileUrl: post.authorUrl,
               company: '', role: intent.role || 'hiring post author',
               sourceJobUrl: post.link || undefined,
             }).catch(() => {});
             console.log(`     📣 ${post.name || 'someone'} is hiring — ${intent.topic || intent.role || 'an opening'}`);
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
-              title: intent.role || 'Hiring post', url: post.link || post.authorUrl,
-              detail: `${post.name || 'author'} — ${intent.topic || 'posted an opening'} (${intent.confidence}% sure)` });
           }
+          await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
+            title: intent.role || 'Hiring post', url: post.link || post.authorUrl,
+            detail: `${post.name || 'author'} — ${intent.topic || 'posted an opening'} (${intent.confidence}% sure)` });
           continue;
         }
 
+        // ROUTE 1 — an address is in the post: email it directly, no connection needed.
         for (const email of emails) {
           if (seen.has(email.toLowerCase()) || found >= cap) continue;
           seen.add(email.toLowerCase());
@@ -445,6 +499,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
           }).catch(() => ({ ok: false }));
           if (r.ok && !r.duplicate) {
             found++;
+            routed.email++;
             console.log(`     ✉ ${email}  →  ${r.applying ? 'mailing a tailored note + résumé' : 'saved (auto-email off / post too short)'}`);
             await api.event({ runId: state.runId, portal: 'linkedin', type: r.applying ? 'email_sent' : 'info',
               title: `HR lead: ${email}`, url: post.link || undefined,
@@ -460,11 +515,21 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
       detail: `scanned ${analysedHere} hiring post(s) for “${keyword}” — ${found} recruiter email(s) so far` });
   }
-  console.log(`     scanned ${analysed} post(s) → ${found} recruiter email(s) · ${hiringPosts} hiring author(s) captured`);
-  if (found > 0) {
-    await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
-      detail: `post scan done — ${found} HR lead(s) captured` });
+  // Grouped by what each post BECAME. "scanned 150 → 0 emails" told you nothing about whether
+  // the scan was working; this says exactly where every hiring post went.
+  const pct = target > 0 ? Math.min(100, Math.round((analysed / target) * 100)) : 100;
+  console.log(`\n     📊 Posts analysed: ${analysed}/${target} (${pct}% of today's target)`);
+  console.log(`        ✉  ${routed.email} emailed directly (address in the post)`);
+  console.log(`        💬 ${routed.message} queued to message (author is hiring)`);
+  console.log(`        🔗 ${routed.manual} apply links → manual list`);
+  console.log(`        ·  ${routed.notHiring} not actually hiring`);
+  if (analysed < target && !state.stopped && !state.paused) {
+    console.log(`        (short of target — the block ran out of time or LinkedIn ran out of posts)`);
   }
+  await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+    detail: `post scan: ${analysed}/${target} analysed — ${routed.email} emailed, `
+      + `${routed.message} to message, ${routed.manual} manual link(s), ${routed.notHiring} not hiring` });
+  return routed;
 }
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */

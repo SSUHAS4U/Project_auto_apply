@@ -517,8 +517,10 @@ public class AgentService {
         boolean indeed = portal.equalsIgnoreCase("indeed");
         Map<String, Object> plan = new LinkedHashMap<>();
         plan.put("portal", portal);
-        plan.put("keywords", expandQueries(keywords, p));
-        plan.put("locations", locations.stream().distinct().limit(6).toList());
+        int maxKw = intSetting(cfgFor("maxKeywords"), 12);
+        int maxLoc = intSetting(cfgFor("maxLocations"), 6);
+        plan.put("keywords", expandQueries(keywords, p, maxKw));
+        plan.put("locations", locations.stream().distinct().limit(maxLoc).toList());
         // DAILY QUOTA, not a per-run number. The gear sets how many applications you want on
         // this portal PER DAY; each run is allowed however many of those are still outstanding.
         // So a run that only manages 6 of 20 leaves 14 for the next run — the shortfall carries
@@ -548,6 +550,8 @@ public class AgentService {
         plan.put("fitMin", cfg.get("fitMin"));
         plan.put("personConfMin", cfg.get("personConfMin"));
         plan.put("maxAgeDays", cfg.get("maxAgeDays"));
+        plan.put("postScanTarget", cfg.get("postScanTarget"));
+        plan.put("pagesPerSearch", cfg.get("pagesPerSearch"));
         // Titles the worker must never apply to. Sent as data so the rule is visible and
         // tunable, instead of being a regex frozen inside two separate portal adapters.
         plan.put("excludeTitles", EXCLUDE_TITLES);
@@ -565,6 +569,10 @@ public class AgentService {
      * and sorted, so the same profile always searches the same terms in the same order.
      */
     List<String> expandQueries(List<String> roles, Profile p) {
+        return expandQueries(roles, p, 12);
+    }
+
+    List<String> expandQueries(List<String> roles, Profile p, int max) {
         LinkedHashSet<String> base = new LinkedHashSet<>();
         roles.stream().map(String::trim).filter(s -> !s.isBlank()).forEach(base::add);
         if (base.isEmpty()) base.add("software engineer");
@@ -586,7 +594,7 @@ public class AgentService {
         // Stable order so two runs of the same profile search identically.
         List<String> sorted = new ArrayList<>(out);
         sorted.sort(String::compareToIgnoreCase);
-        return sorted.stream().limit(12).toList();
+        return sorted.stream().limit(Math.max(1, max)).toList();
     }
 
     /**
@@ -654,6 +662,20 @@ public class AgentService {
     private static final String PERSON_CONF_MIN = "agent_person_conf_min";
     /** Ignore postings older than this many days. */
     private static final String MAX_AGE_DAYS = "agent_max_age_days";
+    /** How many hiring posts to read per day. */
+    private static final String POST_SCAN_TARGET = "agent_post_scan_target";
+    /** Result pages to walk per search, per portal. */
+    private static final String PAGES_PER_SEARCH = "agent_pages_per_search";
+    /** How many keyword variants / locations a search plan may use. */
+    private static final String MAX_KEYWORDS = "agent_max_keywords";
+    private static final String MAX_LOCATIONS = "agent_max_locations";
+    /** LinkedIn blocks/day that may run purely for outreach once the apply quota is met. */
+    private static final String OUTREACH_BLOCKS = "agent_outreach_blocks_day";
+    /** Days between follow-up touches 1..4. */
+    private static final String FU1 = "agent_followup_1";
+    private static final String FU2 = "agent_followup_2";
+    private static final String FU3 = "agent_followup_3";
+    private static final String FU4 = "agent_followup_4";
 
     public Map<String, Object> limits() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -668,6 +690,18 @@ public class AgentService {
         m.put("fitMin", settings.get(FIT_MIN).map(Integer::parseInt).orElse(75));
         m.put("personConfMin", settings.get(PERSON_CONF_MIN).map(Integer::parseInt).orElse(80));
         m.put("maxAgeDays", settings.get(MAX_AGE_DAYS).map(Integer::parseInt).orElse(30));
+        // Volume + breadth. These were constants in the worker and the services, so changing
+        // them meant a new desktop build — the slowest possible way to tune an automation.
+        m.put("postScanTarget", settings.get(POST_SCAN_TARGET).map(Integer::parseInt).orElse(150));
+        m.put("pagesPerSearch", settings.get(PAGES_PER_SEARCH).map(Integer::parseInt).orElse(3));
+        m.put("maxKeywords", settings.get(MAX_KEYWORDS).map(Integer::parseInt).orElse(12));
+        m.put("maxLocations", settings.get(MAX_LOCATIONS).map(Integer::parseInt).orElse(6));
+        m.put("outreachBlocksPerDay", settings.get(OUTREACH_BLOCKS).map(Integer::parseInt).orElse(3));
+        // The follow-up sequence, in days after the previous touch.
+        m.put("followUp1", settings.get(FU1).map(Integer::parseInt).orElse(1));
+        m.put("followUp2", settings.get(FU2).map(Integer::parseInt).orElse(2));
+        m.put("followUp3", settings.get(FU3).map(Integer::parseInt).orElse(5));
+        m.put("followUp4", settings.get(FU4).map(Integer::parseInt).orElse(10));
         return m;
     }
 
@@ -682,6 +716,15 @@ public class AgentService {
         putInt(body, "fitMin", FIT_MIN, 0, 100);
         putInt(body, "personConfMin", PERSON_CONF_MIN, 0, 100);
         putInt(body, "maxAgeDays", MAX_AGE_DAYS, 1, 365);
+        putInt(body, "postScanTarget", POST_SCAN_TARGET, 0, 1000);
+        putInt(body, "pagesPerSearch", PAGES_PER_SEARCH, 1, 10);
+        putInt(body, "maxKeywords", MAX_KEYWORDS, 1, 40);
+        putInt(body, "maxLocations", MAX_LOCATIONS, 1, 20);
+        putInt(body, "outreachBlocksPerDay", OUTREACH_BLOCKS, 0, 12);
+        putInt(body, "followUp1", FU1, 0, 60);
+        putInt(body, "followUp2", FU2, 0, 60);
+        putInt(body, "followUp3", FU3, 0, 60);
+        putInt(body, "followUp4", FU4, 0, 60);
         return limits();
     }
 
@@ -717,8 +760,7 @@ public class AgentService {
 
     private static final java.time.ZoneId ZONE = java.time.ZoneId.of("Asia/Kolkata");
 
-    /** How many LinkedIn blocks a day may run purely for outreach once its apply quota is met. */
-    private static final int OUTREACH_BLOCKS_PER_DAY = 2;
+
 
     /**
      * Start whatever work is still owed today, if nothing is already running.
@@ -836,7 +878,7 @@ public class AgentService {
         // loop all day once there is nothing left to apply to.
         return "linkedin".equalsIgnoreCase(portal)
                 && runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(userId, portal, dayStart)
-                   < OUTREACH_BLOCKS_PER_DAY;
+                   < intSetting(limits().get("outreachBlocksPerDay"), 3);
     }
 
     /** When the most recent run for this user ended (either portal), or null if none has. */
@@ -847,6 +889,9 @@ public class AgentService {
                 .max(Instant::compareTo)
                 .orElse(null);
     }
+
+    /** One value out of the settings map. */
+    private Object cfgFor(String key) { return limits().get(key); }
 
     private static int intSetting(Object v, int fallback) {
         return v instanceof Number n ? n.intValue() : fallback;

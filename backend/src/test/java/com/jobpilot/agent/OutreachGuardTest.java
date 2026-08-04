@@ -68,8 +68,11 @@ class OutreachGuardTest {
     }
 
     @Test
-    void blocksAFourthContactAtTheSameCompanyToday() {
-        when(logs.countByUserIdAndCompanyAndCreatedAtGreaterThanEqual(any(), any(), any())).thenReturn(3L);
+    void blocksOnceTheCompanyLimitIsReachedToday() {
+        // Read the limit rather than hard-coding it: the default has been raised once already,
+        // and a test that has to change with every tuning tests the config, not the behaviour.
+        long perCompany = ((Number) guard.limits().get("perCompanyPerDay")).longValue();
+        when(logs.countByUserIdAndCompanyAndCreatedAtGreaterThanEqual(any(), any(), any())).thenReturn(perCompany);
         Map<String, Object> r = claim();
         assertEquals(false, r.get("ok"));
         assertTrue(String.valueOf(r.get("reason")).contains("company"), String.valueOf(r.get("reason")));
@@ -77,7 +80,8 @@ class OutreachGuardTest {
 
     @Test
     void blocksOnceTheDailyTotalIsReached() {
-        when(logs.countByUserIdAndCreatedAtGreaterThanEqual(any(), any())).thenReturn(20L);
+        long perDay = ((Number) guard.limits().get("perDay")).longValue();
+        when(logs.countByUserIdAndCreatedAtGreaterThanEqual(any(), any())).thenReturn(perDay);
         Map<String, Object> r = claim();
         assertEquals(false, r.get("ok"));
         assertTrue(String.valueOf(r.get("reason")).contains("daily"), String.valueOf(r.get("reason")));

@@ -28,8 +28,33 @@ class FollowUpServiceTest {
     @BeforeEach
     void setUp() {
         contacts = Mockito.mock(PortalContactRepository.class);
-        svc = new FollowUpService(contacts);
+        // The cadence now reads its spacing from settings, so the service needs the agent.
+        // Returning the shipped defaults keeps these tests about the CADENCE, not the config.
+        AgentService agent = Mockito.mock(AgentService.class);
+        when(agent.limits()).thenReturn(java.util.Map.of(
+                "followUp1", 1, "followUp2", 2, "followUp3", 5, "followUp4", 10));
+        svc = new FollowUpService(contacts, agent);
         when(contacts.save(any())).thenAnswer(i -> i.getArgument(0));
+    }
+
+    /** Spacing comes from settings; a missing or unreadable value must fall back, never crash. */
+    @Test
+    void spacingFallsBackWhenSettingsAreMissing() {
+        AgentService broken = Mockito.mock(AgentService.class);
+        when(broken.limits()).thenThrow(new IllegalStateException("settings unavailable"));
+        FollowUpService s2 = new FollowUpService(contacts, broken);
+        assertArrayEquals(FollowUpService.DEFAULT_GAP_DAYS, s2.gapDays());
+    }
+
+    /** A custom cadence is actually honoured, not just stored. */
+    @Test
+    void customSpacingIsUsed() {
+        AgentService custom = Mockito.mock(AgentService.class);
+        when(custom.limits()).thenReturn(java.util.Map.of(
+                "followUp1", 3, "followUp2", 3, "followUp3", 3, "followUp4", 3));
+        FollowUpService s2 = new FollowUpService(contacts, custom);
+        assertFalse(s2.isDue(contact(0, daysAgo(2), null), Instant.now()), "2 days < the 3 configured");
+        assertTrue(s2.isDue(contact(0, daysAgo(4), null), Instant.now()), "4 days > the 3 configured");
     }
 
     private PortalContact contact(int stage, Instant lastContact, Instant archived) {
@@ -49,8 +74,9 @@ class FollowUpServiceTest {
     }
 
     @Test
-    void theScheduleIsDayOneTwoFiveTen() {
-        assertArrayEquals(new int[] { 1, 2, 5, 10 }, FollowUpService.GAP_DAYS);
+    void theDefaultScheduleIsDayOneTwoFiveTen() {
+        assertArrayEquals(new int[] { 1, 2, 5, 10 }, FollowUpService.DEFAULT_GAP_DAYS);
+        assertEquals(4, FollowUpService.TOUCHES, "four touches, then archived");
     }
 
     @Test
