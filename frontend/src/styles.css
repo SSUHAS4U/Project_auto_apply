@@ -1670,10 +1670,13 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .set-group { padding: 20px 0; border-top: 1px solid var(--border); }
 .set-group:first-child { padding-top: 4px; border-top: 0; }
 .set-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px; }
-.set-ico {
-  flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+.set-ico, .set-n {
+  flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
   background: var(--accent-soft); color: var(--accent-hi);
 }
+/* A number, not an icon: the sections run in the order a block executes, and saying so is
+   more useful than decorating each one. */
+.set-n { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .set-title { font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
 .set-blurb { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; margin-top: 3px; max-width: 76ch; }
 
@@ -1734,4 +1737,37 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .sp-x { padding: 0 8px; color: var(--text-faint); }
 @media (max-width: 620px) {
   .sp-x { display: block; height: 0; overflow: hidden; }   /* stack the two halves */
+}
+
+/* ---- The automation pipeline ---------------------------------------------
+   Four rows in run order, each with its own switch and budget. A grid of equal
+   cards hid the fact that they run in SEQUENCE; a numbered list says it. */
+.flow-pipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.flow-step {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
+  position: relative;
+}
+/* The connecting line — makes "then this" visible without saying it. */
+.flow-step:not(:last-child)::after {
+  content: ""; position: absolute; left: 27px; bottom: -8px; height: 8px;
+  border-left: 2px dotted var(--border);
+}
+.flow-step.off { opacity: .55; }
+.flow-step.off .flow-step-n { background: var(--bg-elev); color: var(--text-faint); }
+.flow-step-n {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-hi);
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.flow-step-body { flex: 1; min-width: 0; }
+.flow-step-t { font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
+.flow-step-w { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; }
+.flow-step-ctl { display: flex; align-items: center; gap: 7px; flex: none; }
+
+@media (max-width: 620px) {
+  .flow-step { flex-wrap: wrap; }
+  .flow-step-ctl { width: 100%; padding-left: 38px; }
+  .flow-step:not(:last-child)::after { display: none; }
 }

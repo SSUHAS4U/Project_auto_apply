@@ -385,34 +385,6 @@ export function FlowBreakdown({ events }: { events: AgentEvent[] }) {
   );
 }
 
-/**
- * One automation's switch + time budget. The switch is the point: turning a flow off must leave
- * the other three running, so a problem in one doesn't cost you the whole block.
- */
-function FlowRow({ k, label, hint, cfg, set }: {
-  k: string; label: string; hint: string;
-  cfg: Record<string, number | boolean>; set: (key: string, v: number | boolean) => void;
-}) {
-  const on = cfg[`${k}On`] !== false;
-  return (
-    <label className="set-f">
-      <span className="set-l">{label}</span>
-      <span className="set-h">{hint}</span>
-      <div className="set-in">
-        <button type="button" className={`btn btn-sm ${on ? 'btn-primary' : ''}`}
-          onClick={() => set(`${k}On`, !on)} style={{ minWidth: 62 }}>
-          {on ? 'On' : 'Off'}
-        </button>
-        <input className="input" type="number" min={0} style={{ width: 78 }}
-          disabled={!on}
-          value={num(cfg[`${k}Mins`])}
-          onChange={(e) => set(`${k}Mins`, Number(e.target.value))} />
-        <span className="set-u">minutes</span>
-      </div>
-    </label>
-  );
-}
-
 /** Self-fetching wrapper so PortalPanel doesn't have to thread events down. */
 function FlowBreakdownLive() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -719,6 +691,14 @@ function SearchPreview({ portal, maxKeywords, maxLocations, pages }: {
  * LinkedIn's page showed Indeed's caps and vice versa — the same screen twice, with half of it
  * irrelevant wherever you were standing.
  */
+/**
+ * Settings for ONE portal, ordered the way a run actually happens.
+ *
+ * The previous layout opened with "How much LinkedIn does" and buried the four automations in
+ * the middle, so there was no thread to follow: the thing that IS the block appeared after two
+ * sections describing it. Now the pipeline comes first and everything below narrows it —
+ * numbered, so the order is the sequence a run executes in.
+ */
 export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = {}) {
   const toast = useToast();
   const [cfg, setCfg] = useState<Record<string, number | boolean> | null>(null);
@@ -742,14 +722,11 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
 
   const isLi = portal !== 'indeed';
   const name = isLi ? 'LinkedIn' : 'Indeed';
-  // Derived, never asked for twice: a LinkedIn block is exactly the sum of its switched-on
-  // automations. Two separate "Easy Apply time" / "Outreach time" fields described the same
-  // durations and disagreed with these.
   const FLOW_KEYS = ['easyApply', 'postApply', 'emailOutreach', 'connections'];
   const liBlockMins = FLOW_KEYS.reduce(
     (t, k) => t + (cfg[`${k}On`] === false ? 0 : num(cfg[`${k}Mins`])), 0);
+  const blockMins = isLi ? liBlockMins : num(cfg.indeedMins);
 
-  /** One numeric setting. Label, hint and field stack — nothing truncates at any width. */
   const F = ({ k, label, hint, unit }: { k: string; label: string; hint: string; unit: string }) => (
     <label className="set-f">
       <span className="set-l">{label}</span>
@@ -762,12 +739,13 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
     </label>
   );
 
-  const Group = ({ icon, title, blurb, children }: {
-    icon: string; title: string; blurb: string; children: ReactNode;
+  /** A numbered section. The number IS the sequence — step 1 runs before step 2. */
+  const Step = ({ n, title, blurb, children }: {
+    n: number; title: string; blurb: string; children: ReactNode;
   }) => (
     <section className="set-group">
       <div className="set-head">
-        <span className="set-ico"><Icon name={icon} size={15} /></span>
+        <span className="set-n">{n}</span>
         <div style={{ minWidth: 0 }}>
           <div className="set-title">{title}</div>
           <div className="set-blurb">{blurb}</div>
@@ -780,81 +758,91 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div className="card card-pad">
-        <Group icon="clock" title={'How much ' + name + ' does'}
-          blurb={"Runs whenever JobPilot Desktop is open — there are no start times to set. Anything a run doesn't finish carries over to the next one."}>
-          {isLi ? (
-            <>
-              <F k="linkedinApplyCap" label="Applications" hint="the daily target" unit="per day" />
-            </>
-          ) : (
-            <>
-              <F k="indeedApplyCap" label="Applications" hint="the daily target" unit="per day" />
-              <F k="indeedMins" label="Block length" hint="Indeed only applies" unit="minutes" />
-            </>
-          )}
+        {isLi ? (
+          <section className="set-group">
+            <div className="set-head">
+              <span className="set-n">1</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="set-title">What runs, and in what order</div>
+                <div className="set-blurb">
+                  These four <b>are</b> the LinkedIn block — they run top to bottom, and the block
+                  lasts as long as their total: <b>{liBlockMins} minutes</b>. Switch one off and the
+                  rest carry on without it.
+                </div>
+              </div>
+            </div>
+            <ol className="flow-pipe">
+              <FlowStep n={1} k="easyApply" label="Easy Apply"
+                what="Searches jobs and applies where LinkedIn allows one click" cfg={cfg} set={set} />
+              <FlowStep n={2} k="postApply" label="Post scan & apply"
+                what="Reads hiring posts → apply link, message the author, or email them" cfg={cfg} set={set} />
+              <FlowStep n={3} k="emailOutreach" label="Recruiter emails"
+                what="Addresses found in posts → a tailored application with your résumé" cfg={cfg} set={set} />
+              <FlowStep n={4} k="connections" label="Connections"
+                what="Invites verified recruiters, then the staged follow-ups" cfg={cfg} set={set} />
+            </ol>
+          </section>
+        ) : (
+          <section className="set-group">
+            <div className="set-head">
+              <span className="set-n">1</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="set-title">What runs</div>
+                <div className="set-blurb">
+                  Indeed only applies — there is no outreach phase. A block lasts {num(cfg.indeedMins)} minutes.
+                </div>
+              </div>
+            </div>
+            <div className="set-grid">
+              <F k="indeedMins" label="Block length" hint="how long one Indeed run lasts" unit="minutes" />
+            </div>
+          </section>
+        )}
+
+        <Step n={2} title="How much it does a day"
+          blurb={`The daily target. Anything a run doesn't finish carries over to the next one, and once the target is met ${name} stops until tomorrow.`}>
+          <F k={isLi ? 'linkedinApplyCap' : 'indeedApplyCap'} label="Applications" hint="the daily target" unit="per day" />
           <F k="restMins" label="Rest between blocks" hint="shared by both portals" unit="minutes" />
-        </Group>
+          {isLi && <F k="outreachBlocksPerDay" label="Extra outreach blocks"
+            hint="after the applications are done" unit="per day" />}
+        </Step>
 
-        <Group icon="target" title="What it applies to"
-          blurb="Nothing is applied to unless your résumé matches its stack. Raise these to apply less and better; lower them to cast wider.">
-          <F k="fitMin" label="Minimum résumé fit" hint="a job scoring below this is skipped" unit="out of 100" />
-          <F k="maxAgeDays" label="Skip jobs older than" hint="stale postings are usually filled" unit="days" />
-        </Group>
-
-        {/* These are CEILINGS, not counts. Stating "that is 72 searches" here contradicted the
-            preview below, which showed 36 — the real number, because you only have 6 search
-            terms. The preview is the truth; this just explains the mechanic. */}
-        <Group icon="search" title="How wide it searches"
-          blurb={`Upper limits: every search term is searched in every city, and each search reads several result pages. The real numbers are below — raising these only helps if you have the terms and cities to fill them.`}>
+        <Step n={3} title="Where it looks"
+          blurb="Every search term is searched in every city, and each search reads several result pages. These are upper limits — the real numbers are below.">
           <F k="maxKeywords" label="Search terms" hint="max — built from your roles + skills" unit="at most" />
           <F k="maxLocations" label="Cities" hint="max — from your Setup locations" unit="at most" />
           <F k="pagesPerSearch" label="Pages per search"
             hint={isLi ? 'LinkedIn shows 25 jobs a page' : 'Indeed shows ~15 jobs a page'} unit="pages" />
-        </Group>
+        </Step>
 
-        {/* Live values, not saved ones: the totals recalculate as you type. */}
         <SearchPreview portal={isLi ? 'linkedin' : 'indeed'}
           maxKeywords={num(cfg.maxKeywords)} maxLocations={num(cfg.maxLocations)}
           pages={num(cfg.pagesPerSearch)} />
 
+        <Step n={4} title="What it applies to"
+          blurb="Of everything found, only jobs your résumé actually matches. Raise these to apply less and better; lower them to cast wider.">
+          <F k="fitMin" label="Minimum résumé fit" hint="a job scoring below this is skipped" unit="out of 100" />
+          <F k="maxAgeDays" label="Skip jobs older than" hint="stale postings are usually filled" unit="days" />
+        </Step>
+
         {isLi && (
           <>
-            <section className="set-group">
-              <div className="set-head">
-                <span className="set-ico"><Icon name="bolt" size={15} /></span>
-                <div style={{ minWidth: 0 }}>
-                  <div className="set-title">The four LinkedIn automations</div>
-                  <div className="set-blurb">
-                    These four ARE the LinkedIn block — its length is their total, {liBlockMins} minutes.
-                    Switching one off leaves the others running and shortens the block.
-                  </div>
-                </div>
-              </div>
-              <div className="set-grid">
-                <FlowRow k="easyApply" label="Easy Apply" hint="search and one-click apply" cfg={cfg} set={set} />
-                <FlowRow k="postApply" label="Post scan & apply" hint="posts → link, message or email" cfg={cfg} set={set} />
-                <FlowRow k="emailOutreach" label="Recruiter emails" hint="addresses found in posts" cfg={cfg} set={set} />
-                <FlowRow k="connections" label="Connections" hint="invites and follow-ups" cfg={cfg} set={set} />
-              </div>
-            </section>
-
-            <Group icon="link" title="Outreach limits"
-              blurb="What stops outreach looking like spam — and protects your account. The same person is never contacted twice about the same role, whatever these say.">
-              <F k="perDay" label="Total outreach" hint="per day, all companies" unit="people" />
-              <F k="perCompanyPerDay" label="Per company" hint="at most this many people at one employer" unit="per day" />
-              <F k="recruiterCooldownDays" label="Same person cooldown" hint="before contacting them again" unit="days" />
-              <F k="personConfMin" label="Minimum certainty they hire" hint="to contact them at all" unit="out of 100" />
+            <Step n={5} title="Who it contacts"
+              blurb="Nobody is contacted unless they recruit or posted about hiring. These limits are what keep outreach from looking like spam — and protect your account.">
+              <F k="personConfMin" label="Minimum certainty they hire" hint="below this, they're left alone" unit="out of 100" />
               <F k="postScanTarget" label="Hiring posts to read" hint="per day — where new leads come from" unit="posts" />
-              <F k="outreachBlocksPerDay" label="Extra outreach blocks" hint="after the apply quota is met" unit="per day" />
-            </Group>
+              <F k="perDay" label="Total outreach" hint="per day, all companies" unit="people" />
+              <F k="perCompanyPerDay" label="Per company" hint="at most this many at one employer" unit="per day" />
+              <F k="recruiterCooldownDays" label="Same person cooldown" hint="before contacting them again" unit="days" />
+            </Step>
 
-            <Group icon="send" title="Follow-up sequence"
+            <Step n={6} title="Then the follow-ups"
               blurb="Days to wait after the previous message. Most replies come from the second or third touch; after the fourth the contact is archived and never messaged again.">
               <F k="followUp1" label="1st follow-up" hint="after they accept" unit="days later" />
               <F k="followUp2" label="2nd follow-up" hint="after the 1st" unit="days later" />
               <F k="followUp3" label="3rd follow-up" hint="after the 2nd" unit="days later" />
               <F k="followUp4" label="4th and final" hint="then archived" unit="days later" />
-            </Group>
+            </Step>
           </>
         )}
 
@@ -863,35 +851,37 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
             {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save settings
           </button>
           <span className="faint" style={{ fontSize: 12.5 }}>
-            {isLi
-              ? 'A LinkedIn block runs ' + liBlockMins + 'm (the switched-on automations above), '
-                + 'then rests ' + num(cfg.restMins) + 'm.'
-              : 'An Indeed block runs ' + num(cfg.indeedMins) + 'm, then rests ' + num(cfg.restMins) + 'm.'}
+            {'A ' + name + ' block runs ' + blockMins + 'm, then rests ' + num(cfg.restMins)
+              + 'm before whichever portal ran longest ago goes next.'}
           </span>
         </div>
       </div>
-
-      <div className="card card-pad set-cycle">
-        <b>What a {name} block does</b>
-        <div className="faint" style={{ marginTop: 8, lineHeight: 1.85 }}>
-          {isLi ? (
-            <>
-              1. <b>Easy Apply</b> — until {num(cfg.linkedinApplyCap)} applications or {num(cfg.easyApplyMins)}m<br />
-              2. <b>Post scan &amp; apply</b> — hiring posts → apply link, message the author, or email<br />
-              3. <b>Recruiter emails</b> — addresses found in posts<br />
-              4. <b>Connections</b> — invite verified recruiters, then the staged follow-ups<br />
-              5. <b>Rest</b> {num(cfg.restMins)}m, then whichever portal ran longest ago goes next.
-            </>
-          ) : (
-            <>
-              1. <b>Search &amp; apply</b> — until {num(cfg.indeedApplyCap)} applications or {num(cfg.indeedMins)}m.
-              Indeed has no outreach phase; it only applies.<br />
-              2. <b>Rest</b> {num(cfg.restMins)}m, then whichever portal ran longest ago goes next.
-            </>
-          )}
-          <br />Once both portals meet their daily quota, nothing runs until tomorrow.
-        </div>
-      </div>
     </div>
+  );
+}
+
+/** One automation in the pipeline: its place in the order, its switch, and its budget. */
+function FlowStep({ n, k, label, what, cfg, set }: {
+  n: number; k: string; label: string; what: string;
+  cfg: Record<string, number | boolean>; set: (key: string, v: number | boolean) => void;
+}) {
+  const on = cfg[`${k}On`] !== false;
+  return (
+    <li className={`flow-step ${on ? '' : 'off'}`}>
+      <span className="flow-step-n">{n}</span>
+      <div className="flow-step-body">
+        <div className="flow-step-t">{label}</div>
+        <div className="flow-step-w">{what}</div>
+      </div>
+      <div className="flow-step-ctl">
+        <button type="button" className={`btn btn-sm ${on ? 'btn-primary' : ''}`}
+          onClick={() => set(`${k}On`, !on)} style={{ minWidth: 58 }}>
+          {on ? 'On' : 'Off'}
+        </button>
+        <input className="input" type="number" min={0} style={{ width: 74 }} disabled={!on}
+          value={num(cfg[`${k}Mins`])} onChange={(e) => set(`${k}Mins`, Number(e.target.value))} />
+        <span className="set-u">min</span>
+      </div>
+    </li>
   );
 }
