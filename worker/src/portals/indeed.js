@@ -130,6 +130,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
   let sawAnyFresh = false; // did ANY search yield a job we hadn't already handled?
   let opened = 0;          // job pages actually opened — the number that was invisible before
+  let externals = 0;       // jobs with no Indeed Apply button (all of them = a selector fault)
   // Indeed returns the same postings for every city (16 each time in the last run), so without
   // this the worker re-opened and re-processed the identical 16 jobs six times over.
   const doneJobs = new Set();
@@ -255,6 +256,14 @@ export async function runIndeed(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
               title: post.title, company: post.company, url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score}` });
           } else if (result === 'external') {
+            externals++;
+            // A genuinely external job is normal. EVERY job being external is a selector fault
+            // wearing the same clothes — that is what made Indeed look like it had no Easy
+            // Apply jobs at all. Dump the page once so the next run carries the evidence.
+            if (externals === 1) {
+              console.log('     ⓘ no Indeed Apply button on this job — what the page offers:');
+              await describeApplyArea(jobPage).catch(() => {});
+            }
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
               url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
@@ -287,7 +296,16 @@ export async function runIndeed(page, api, plan, state, ctx) {
     await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
       detail: `${totalResults} listings matched but none were opened${sawAnyFresh ? '' : ' — all were duplicates of earlier searches'}` });
   } else if (opened > 0) {
-    console.log(`\n  Indeed: opened ${opened} job(s), applied to ${applied}.`);
+    console.log(`\n  Indeed: opened ${opened} job(s), applied to ${applied}, ${externals} employer-site.`);
+    // Every single job being "external" is the signature of a broken apply-button selector, not
+    // of Indeed genuinely having no in-site applications. Those two look identical in the logs,
+    // which is exactly how Indeed came to look like it had never worked.
+    if (applied === 0 && externals === opened && opened >= 5) {
+      console.log('     ⚠ EVERY job reported no Indeed Apply button. That is usually a selector');
+      console.log('       change on Indeed rather than reality — see the [diag] dump above.');
+      await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+        detail: `all ${opened} jobs reported no Indeed Apply button — likely an Indeed layout change rather than genuinely external listings` });
+    }
   }
   // If EVERY search returned zero, say why in plain terms rather than a silent 0/0/0/0/0.
   if (totalResults === 0) {
@@ -302,8 +320,55 @@ export async function runIndeed(page, api, plan, state, ctx) {
 }
 
 /** Indeed Apply is a multi-step flow that often opens on smartapply.indeed.com. */
+/**
+ * Find Indeed's OWN apply button — the one that opens the in-site flow — as opposed to an
+ * "Apply on company site" link, which we never drive.
+ *
+ * Matched by what the control SAYS, across the page and any embedded frames. The previous
+ * version used four fixed selectors (`#indeedApplyButton`, `.ia-IndeedApplyButton`, …); when
+ * none matched, the job was reported as an employer-site listing. That is indistinguishable in
+ * the logs from a genuinely external job, so a selector change looked exactly like "Indeed has
+ * no Easy Apply jobs" — which is why it appeared never to work.
+ */
+async function findIndeedApplyButton(page) {
+  // Indeed renders the Apply widget in an iframe on many layouts, so search frames too.
+  const roots = [page, ...page.frames().filter((f) => f !== page.mainFrame())];
+  for (const root of roots) {
+    const fast = await root.$('#indeedApplyButton, .ia-IndeedApplyButton, [data-testid*="indeedApply"], button[aria-label*="Apply now" i]').catch(() => null);
+    if (fast && await fast.isVisible().catch(() => false)) return fast;
+
+    const handles = await root.$$('button, a[role="button"], div[role="button"]').catch(() => []);
+    for (const h of handles) {
+      const label = await h.evaluate((n) => (
+        (n.getAttribute('aria-label') || '') + ' ' + (n.innerText || '')
+      ).replace(/\s+/g, ' ').trim().toLowerCase()).catch(() => '');
+      if (!label) continue;
+      // "Apply on company site" / "Apply on employer site" are the ones to leave alone.
+      if (/company site|employer site|company website/.test(label)) continue;
+      if (/^apply now$|^apply$|easily apply|indeed apply/.test(label)) {
+        if (await h.isVisible().catch(() => false)) return h;
+      }
+    }
+  }
+  return null;
+}
+
+/** What buttons a job page actually offers — printed once when no apply button is found. */
+async function describeApplyArea(page) {
+  const info = await page.evaluate(() => ({
+    url: location.href,
+    frames: document.querySelectorAll('iframe').length,
+    buttons: [...document.querySelectorAll('button, a[role="button"]')].slice(0, 12)
+      .map((b) => (b.innerText || b.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+  })).catch(() => null);
+  if (!info) { console.log('     [diag] could not read the apply area'); return; }
+  console.log(`     [diag] ${info.url}`);
+  console.log(`     [diag] iframes: ${info.frames} · buttons: ${info.buttons.join(' | ') || '(none)'}`);
+}
+
 async function indeedApply(page, api, profile, resume, state, ctx) {
-  const btn = await page.$('#indeedApplyButton, button[aria-label*="Apply now"], .ia-IndeedApplyButton, button:has-text("Apply now")');
+  const btn = await findIndeedApplyButton(page);
   if (!btn) return 'external';
 
   state.action = 'Indeed Apply…';

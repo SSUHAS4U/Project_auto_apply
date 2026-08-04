@@ -777,8 +777,17 @@ public class AgentService {
     @Transactional
     public String tickRotationForUser(UUID userId) {
         if (isPaused()) return "paused";
-        // No worker, no run. Queueing a run nothing can pick up just leaves a phantom "queued"
-        // on the dashboard and burns the once-per-day slot.
+
+        // BEFORE the online check, because "the worker is gone" is exactly when this matters.
+        // A run only advances while a worker drives it, so a live run with no worker behind it
+        // is finished whether the database says so or not. Left alone it blocks the rotation
+        // permanently — and silently: the dashboard reads "running" and nothing ever happens
+        // again. That is almost certainly why Indeed appeared never to work, since one
+        // abandoned LinkedIn run is enough to stop the whole queue.
+        reapStaleRuns(userId);
+
+        // No worker, no new run. Queueing something nothing can pick up just leaves a phantom
+        // "queued" on the dashboard.
         if (!isWorkerOnline(userId)) return "JobPilot Desktop isn't running";
 
         AgentRun live = activeRun(userId);
@@ -887,6 +896,56 @@ public class AgentService {
         return "linkedin".equalsIgnoreCase(portal)
                 && runs.countByUserIdAndPortalAndCreatedAtGreaterThanEqual(userId, portal, dayStart)
                    < intSetting(limits().get("outreachBlocksPerDay"), 3);
+    }
+
+    /**
+     * How long a live run may go untouched by its worker before we declare it abandoned.
+     * The worker polls {@code /next} every ~4s, so anything approaching this means it is gone.
+     */
+    private static final long STALE_RUN_MINUTES = 10;
+
+    /**
+     * End runs whose worker has vanished.
+     *
+     * Only the worker moves a run forward, so a live run with no worker behind it is finished
+     * whether the database says so or not. Left alone it blocks {@link #tickRotationForUser}
+     * permanently — the single most damaging failure in the whole rotation, because it is
+     * silent: the dashboard shows "running" and nothing ever happens again.
+     *
+     * Deliberately conservative: it only acts when the worker has been unseen for
+     * {@link #STALE_RUN_MINUTES} AND the run is older than that, so a backend restart (which
+     * clears the in-memory heartbeat) cannot reap a run that is genuinely in progress — the
+     * worker re-registers within seconds.
+     */
+    @Transactional
+    public int reapStaleRuns(UUID userId) {
+        if (isWorkerOnline(userId)) return 0;
+        Instant seen = lastWorkerSeen.get(userId);
+        Instant cutoff = Instant.now().minusSeconds(STALE_RUN_MINUTES * 60);
+        // Never seen this worker at all (fresh backend) → only reap clearly old runs.
+        if (seen != null && seen.isAfter(cutoff)) return 0;
+
+        int reaped = 0;
+        for (String status : LIVE) {
+            Optional<AgentRun> found = runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(userId, status);
+            if (found.isEmpty()) continue;
+            AgentRun r = found.get();
+            Instant started = r.getStartedAt() != null ? r.getStartedAt() : r.getCreatedAt();
+            if (started == null || started.isAfter(cutoff)) continue;   // too recent to judge
+            r.setStatus("failed");
+            r.setEndedAt(Instant.now());
+            r.setCurrentAction("Ended — JobPilot Desktop stopped while this run was active");
+            runs.save(r);
+            reaped++;
+            log.info("Reaped abandoned {} run {} for user {}", r.getPortal(), r.getId(), userId);
+            try {
+                recordEvent(userId, r.getId(), null, r.getPortal(), "info", null, null, null,
+                        "Run ended automatically — the desktop app stopped while it was running.");
+            } catch (Exception e) {
+                log.debug("reap event failed: {}", e.getMessage());
+            }
+        }
+        return reaped;
     }
 
     /** When the most recent run for this user ended (either portal), or null if none has. */

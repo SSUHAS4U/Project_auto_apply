@@ -37,7 +37,6 @@ let win = null;
 let worker = null;
 let tray = null;
 let quitting = false;   // true only when the user picks Quit — otherwise close just hides
-let hintShown = false;  // "still running in the tray" balloon, shown once per session
 
 function savedToken() {
   try { return fs.readFileSync(TOKEN_FILE, 'utf8').trim(); } catch { return ''; }
@@ -109,21 +108,17 @@ async function createWindow() {
     try { worker.start({ backendUrl: BACKEND_URL, token: t }); } catch { /* surfaced in the log */ }
   });
 
-  // Closing the window HIDES it instead of quitting, so the automation keeps running in the
-  // background (scheduled blocks still fire). Quit deliberately from the tray menu.
-  win.on('close', (e) => {
+  // Closing the window STOPS the automation and quits.
+  //
+  // This used to hide to the tray and keep working, which meant the automation could be driving
+  // a logged-in browser with nothing on screen to show it — and a machine that slept or was shut
+  // down left a run marked "running" server-side, blocking every later run. Owner's decision:
+  // closing the app stops the automation. `before-quit` handles the actual shutdown, so all this
+  // has to do is let the quit proceed.
+  win.on('close', () => {
     if (quitting) return;
-    e.preventDefault();
-    win.hide();
-    if (!hintShown) {
-      hintShown = true;
-      try {
-        tray && tray.displayBalloon && tray.displayBalloon({
-          title: 'JobPilot is still running',
-          content: 'The automation keeps working in the background. Quit from the tray icon to stop it.',
-        });
-      } catch { /* balloons are Windows-only */ }
-    }
+    quitting = true;
+    app.quit();
   });
 }
 
@@ -152,7 +147,7 @@ function createTray() {
   const show = () => {
     if (win) { win.show(); win.focus(); } else { createWindow(); }
   };
-  tray.setToolTip('JobPilot — automation running');
+  tray.setToolTip('JobPilot');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open JobPilot', click: show },
     { type: 'separator' },
@@ -163,7 +158,7 @@ function createTray() {
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
     },
     { type: 'separator' },
-    { label: 'Quit (stops the automation)', click: () => { quitting = true; app.quit(); } },
+    { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on('double-click', show);
 }
@@ -197,10 +192,23 @@ if (!app.requestSingleInstanceLock()) {
     else await startWorkerHeadless();
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-  // Window closed != quit — the automation stays alive in the tray.
-  app.on('window-all-closed', () => { /* keep running; quit from the tray */ });
-  app.on('before-quit', () => {
+  // No window means no automation — closing the app stops the work it was doing.
+  app.on('window-all-closed', () => { quitting = true; app.quit(); });
+
+  // Hold the quit open just long enough for the worker to tell the backend its run is over.
+  // Without this the process dies mid-run and the row stays "running" server-side, blocking
+  // every later run until the stale-run reaper clears it ten minutes on.
+  let shuttingDown = false;
+  app.on('before-quit', async (e) => {
     quitting = true;
-    try { worker && worker.stop(); } catch { /* ignore */ }
+    if (!worker || !worker.running || shuttingDown) return;
+    shuttingDown = true;
+    e.preventDefault();
+    sendLog('\n■ Closing JobPilot — stopping the automation…\n');
+    try {
+      worker.stop();
+      await worker.waitForExit();
+    } catch { /* forced below regardless */ }
+    app.quit();
   });
 }

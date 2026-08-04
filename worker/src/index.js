@@ -143,7 +143,28 @@ async function main() {
 
   // graceful shutdown
   let running = true;
-  const shutdown = async () => { running = false; stopStream(); await ctx.close().catch(() => {}); process.exit(0); };
+  /**
+   * Close down cleanly when the desktop app quits.
+   *
+   * Telling the backend the run is over matters: only the worker advances a run, so a row left
+   * as "running" blocks the whole rotation until the stale-run reaper clears it ten minutes
+   * later. Reporting it here makes the dashboard correct immediately, and lets the next launch
+   * start work straight away instead of waiting out the reaper.
+   */
+  const shutdown = async () => {
+    running = false;
+    stopStream();
+    state.stopped = true;                      // any in-flight portal loop breaks at its next check
+    if (state.runId) {
+      console.log('\n■ Desktop app closing — ending the current run…');
+      await Promise.race([
+        api.runStatus(state.runId, 'done', 'Stopped — JobPilot Desktop was closed').catch(() => {}),
+        sleep(4000),                            // never hang the app's exit on a slow network
+      ]);
+    }
+    await ctx.close().catch(() => {});
+    process.exit(0);
+  };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 

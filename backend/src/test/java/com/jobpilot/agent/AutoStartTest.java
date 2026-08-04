@@ -255,4 +255,60 @@ class AutoStartTest {
         assertNull(agent.nextWindowStart(USER, "linkedin", Instant.now()));
         assertNull(agent.nextWindowStart(USER, "indeed", Instant.now()));
     }
+
+    // ---- abandoned runs must not block the rotation forever --------------------
+    // Only the worker advances a run. If the app is closed/killed/slept, the row stays
+    // "running" and tickRotationForUser refuses to start ANYTHING — including the other
+    // portal. This is the silent failure that made Indeed look like it never worked.
+
+    /** A run from an old session, with the worker long gone. */
+    private void abandonedRun(String portal) {
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run(portal, "running", Instant.now().minusSeconds(6 * 3600), null)));
+    }
+
+    @Test
+    void anAbandonedRunIsEndedSoTheRotationCanMoveOn() {
+        abandonedRun("linkedin");
+        assertEquals(1, agent.reapStaleRuns(USER), "the stuck run should be ended");
+        verify(runs).save(argThat(r -> "failed".equals(r.getStatus()) && r.getEndedAt() != null));
+    }
+
+    @Test
+    void aLiveRunWithAWorKerBehindItIsNeverReaped() {
+        desktopOnline();                       // worker pinged just now
+        abandonedRun("linkedin");
+        assertEquals(0, agent.reapStaleRuns(USER), "a run with a live worker must be left alone");
+        verify(runs, never()).save(any());
+    }
+
+    @Test
+    void aRecentRunIsNotReapedEvenWhenTheWorkerIsQuiet() {
+        // Started 30s ago. Too soon to call it abandoned — the worker may be mid-navigation.
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("indeed", "running", Instant.now().minusSeconds(30), null)));
+        assertEquals(0, agent.reapStaleRuns(USER));
+        verify(runs, never()).save(any());
+    }
+
+    @Test
+    void aBackendRestartDoesNotReapARunItHasSimplyNotSeenYet() {
+        // lastWorkerSeen is in-memory and empty after a restart. A run that started seconds ago
+        // must survive; the worker re-registers within a few seconds.
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(USER, "running"))
+                .thenReturn(Optional.of(run("linkedin", "running", Instant.now().minusSeconds(5), null)));
+        assertEquals(0, agent.reapStaleRuns(USER));
+    }
+
+    @Test
+    void reapingUnblocksTheOtherPortal() {
+        // The whole point: after an abandoned LinkedIn run is cleared, Indeed can finally run.
+        abandonedRun("linkedin");
+        agent.reapStaleRuns(USER);
+        // The stuck row is gone from the live set now.
+        when(runs.findFirstByUserIdAndStatusOrderByCreatedAtDesc(any(), anyString())).thenReturn(Optional.empty());
+        desktopOnline();
+        String result = agent.tickRotationForUser(USER);
+        assertTrue(result.startsWith("started "), "expected a run to start, got: " + result);
+    }
 }

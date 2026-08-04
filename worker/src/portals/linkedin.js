@@ -90,9 +90,54 @@ async function readPosting(page) {
   };
 }
 
-// The job detail pane — used both to confirm a job actually loaded and to scroll the top
-// card (where the Easy Apply button lives) into view.
-const PANE_SEL = '.job-details-jobs-unified-top-card, .jobs-unified-top-card, .jobs-details, .jobs-search__job-details';
+// The job detail pane — used both to confirm a job actually loaded and to scroll the top card
+// (where the Easy Apply button lives) into view.
+//
+// The exact-class list below is LinkedIn's naming as we last saw it, and they rename these
+// regularly — when they did, EVERY job reported "job page would not load" and the whole block
+// produced nothing. The `[class*=...]` entries survive a rename because LinkedIn keeps the stem
+// ("jobs-unified-top-card-v2" still contains "jobs-unified-top-card"), and `jobLoaded()` below
+// is the real authority: it judges by CONTENT, which no rename can take away.
+const PANE_SEL = [
+  '.job-details-jobs-unified-top-card', '.jobs-unified-top-card', '.jobs-details',
+  '.jobs-search__job-details', '.jobs-details__main-content', '#job-details',
+  '[class*="jobs-unified-top-card"]', '[class*="job-details"]', '[class*="jobs-search__job-details"]',
+].join(', ');
+
+/**
+ * Did a job page actually load? Judged by what's on it, not by class names: a real job page has
+ * a heading and a body of text, or an Apply button. This is what stops a LinkedIn redesign from
+ * silently turning every job into a skip.
+ */
+async function jobLoaded(page) {
+  return page.evaluate(() => {
+    const txt = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+    if (/sign in|join now to see/i.test(txt.slice(0, 400))) return false;   // authwall
+    const heading = [...document.querySelectorAll('h1, h2')]
+      .some((h) => (h.innerText || '').trim().length > 3);
+    const applyish = [...document.querySelectorAll('button, a')]
+      .some((b) => /easy apply|apply now|^apply$/i.test((b.innerText || '').trim()));
+    return (heading && txt.length > 400) || applyish;
+  }).catch(() => false);
+}
+
+/** Print what a job page really is when it won't load — once, not 57 times. */
+async function describeJobPage(page) {
+  const info = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title.slice(0, 90),
+    h1: (document.querySelector('h1')?.innerText || '').trim().slice(0, 80),
+    topCards: document.querySelectorAll('[class*="jobs-unified-top-card"], [class*="job-details"]').length,
+    buttons: [...document.querySelectorAll('button')].slice(0, 8)
+      .map((b) => (b.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+    text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+  })).catch(() => null);
+  if (!info) { console.log('     [diag] could not read the job page'); return; }
+  console.log(`     [diag] ${info.url}`);
+  console.log(`     [diag] title: ${info.title} · h1: "${info.h1}"`);
+  console.log(`     [diag] job-detail containers: ${info.topCards} · buttons: ${info.buttons.join(' | ')}`);
+  console.log(`     [diag] text: ${info.text}`);
+}
 
 /**
  * Are we actually signed in? This matters more than it looks: LinkedIn's GUEST job search
@@ -148,6 +193,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // so an unfinished quota automatically rolls into the next run.
   const applyCap = plan.applyCap ?? 15;
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
+  let paneFailures = 0;                      // consecutive job pages that would not render
   const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
@@ -223,12 +269,30 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {});
             pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
           }
+          // The selectors are a hint; the CONTENT decides. A renamed container must not turn a
+          // perfectly good job page into a skip.
+          if (!pane) pane = await jobLoaded(page);
           if (!pane) {
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
-              url: `https://www.linkedin.com/jobs/view/${id}/`,
-              detail: 'job page would not load (LinkedIn layout change or logged out) — skipped' });
+            paneFailures++;
+            // Diagnose once with evidence, instead of repeating the same guess 57 times.
+            if (paneFailures === 1) {
+              console.log('     ⚠ the job page did not render as expected — dumping what is actually there:');
+              await describeJobPage(page).catch(() => {});
+              await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+                url: `https://www.linkedin.com/jobs/view/${id}/`,
+                detail: 'job pages are not rendering — LinkedIn layout change or a signed-out session. See the terminal for the page dump.' });
+            }
+            // Every job failing the same way is one fault, not 57. Stop and say so.
+            if (paneFailures >= 5) {
+              console.log(`\n  ✋ ${paneFailures} job pages in a row would not load — ending Phase 1.`);
+              console.log('     Usually: the LinkedIn session expired, or LinkedIn changed the job page.');
+              await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+                detail: `${paneFailures} job pages in a row failed to load — stopping Easy Apply. Check you are signed into linkedin.com in the automation browser.` });
+              break outer;
+            }
             continue;
           }
+          paneFailures = 0;   // a page loaded — the streak is broken
           await humanDelay(1200, 2400);
 
           const post = await readPosting(page);

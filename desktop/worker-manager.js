@@ -80,11 +80,34 @@ class WorkerManager {
     return this.status();
   }
 
-  stop() {
+  /**
+   * Stop the worker, giving it a moment to tell the backend its run is over.
+   *
+   * SIGTERM (not an immediate kill) runs the worker's shutdown handler, which marks the active
+   * run finished. Without that grace period the run stays "running" server-side and blocks the
+   * next launch until the stale-run reaper clears it.
+   *
+   * @param graceMs how long to wait for a clean exit before forcing it.
+   */
+  stop(graceMs = 6000) {
     if (!this.proc) return this.status();
     this.onLog('\n■ Stopping worker…\n');
-    try { this.proc.kill(); } catch { /* already gone */ }
+    const proc = this.proc;
+    try { proc.kill('SIGTERM'); } catch { /* already gone */ }
+    // Force it if the clean path stalls — quitting must never hang on a wedged worker.
+    const force = setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* gone */ } }, graceMs);
+    proc.once('exit', () => clearTimeout(force));
     return this.status();
+  }
+
+  /** Resolves once the worker process is really gone (or immediately if it already is). */
+  waitForExit(timeoutMs = 7000) {
+    const proc = this.proc;
+    if (!proc) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = setTimeout(resolve, timeoutMs);
+      proc.once('exit', () => { clearTimeout(done); resolve(); });
+    });
   }
 }
 

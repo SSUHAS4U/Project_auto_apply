@@ -371,8 +371,14 @@ export function RunStatusCard({ portal }: { portal: 'linkedin' | 'indeed' }) {
 
   useEffect(() => {
     let alive = true;
+    // Drop the previous portal's data the instant we switch. Without this the Indeed page keeps
+    // showing LinkedIn's last run until the new fetch lands — which reads as "the history takes
+    // ages to change", when in fact it was showing the wrong portal the whole time.
+    setInfo(null);
+    setFailed(false);
     const pull = () => api.agentRunInfo(portal)
-      .then((r) => { if (alive) { setInfo(r); setFailed(false); } })
+      // Ignore a late reply for the portal we just navigated away from.
+      .then((r) => { if (alive && r.portal === portal) { setInfo(r); setFailed(false); } })
       .catch(() => { if (alive) setFailed(true); });
     pull();
     const t = setInterval(pull, 5000);
