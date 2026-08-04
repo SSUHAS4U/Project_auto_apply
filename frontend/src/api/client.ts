@@ -1,10 +1,9 @@
 import type {
-  AgentEvent, AgentFrame, AgentMessage, AgentRun, AgentRunInfo, AgentSchedule, AgentStatus,
+  AgentEvent, AgentRun, AgentRunInfo, AgentStatus,
   Application, ApplicationEvent, AssistantJob,
-  EngineApplication, EngineApplicationSummary, EngineDoc, EngineInterview, EngineJob,
-  EnginePrefill, EngineProfile, EngineStatus, EngineUpskill,
+  EnginePrefill, EngineProfile, EngineStatus,
   Job, Notification, Page,
-  PilotConfig, PilotCycle, PilotJobDetail, PilotJobSummary, PilotStatus, PortalConnection, PortalContact, Profile, SavedJob,
+  PortalConnection, Profile, SavedJob,
 } from '../types';
 
 // Inside the desktop app the backend URL is injected at runtime (window.jobpilot.backendUrl)
@@ -113,8 +112,6 @@ export const api = {
 
   applications: (status?: string) =>
     req<Application[]>(`/api/applications${status ? `?status=${status}` : ''}`),
-  createApplication: (body: { jobId?: string; status?: string; notes?: string }) =>
-    req<Application>('/api/applications', { method: 'POST', body: JSON.stringify(body) }),
   updateApplication: (id: string, body: { status?: string; notes?: string }) =>
     req<Application>(`/api/applications/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   timeline: (id: string) => req<ApplicationEvent[]>(`/api/applications/${id}/timeline`),
@@ -228,51 +225,17 @@ export const api = {
   qaDelete: (id: string) => req<{ deleted: boolean }>(`/api/assist/qa/${id}`, { method: 'DELETE' }),
 
   // Pilot (Auto Apply): the observed evaluate→draft→review→verify→apply pipeline.
-  pilotStatus: () => req<PilotStatus>('/api/pilot/status'),
-  pilotToggle: (enabled: boolean) =>
-    req<{ enabled: boolean }>('/api/pilot/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
-  pilotConfig: (config: PilotConfig) =>
-    req<PilotConfig>('/api/pilot/config', { method: 'PUT', body: JSON.stringify(config) }),
-  pilotRun: () => req<{ status: string; message?: string }>('/api/pilot/run', { method: 'POST' }),
-  pilotCycles: (limit = 20) => req<PilotCycle[]>(`/api/pilot/cycles?limit=${limit}`),
-  pilotCycleJobs: (cycleId: string) => req<PilotJobSummary[]>(`/api/pilot/cycles/${cycleId}/jobs`),
-  pilotJobs: (stage?: string, limit = 100) =>
-    req<PilotJobSummary[]>(`/api/pilot/jobs?limit=${limit}${stage ? `&stage=${stage}` : ''}`),
-  pilotJob: (id: string) => req<PilotJobDetail>(`/api/pilot/jobs/${id}`),
-  pilotQueue: (limit = 100) => req<PilotJobSummary[]>(`/api/pilot/queue?limit=${limit}`),
-  pilotQueueStatus: (id: string, status: 'opened' | 'applied' | 'dismissed' | 'pending') =>
-    req<{ id: string; queueStatus: string }>(`/api/pilot/queue/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
-  pilotPdf: async (id: string, kind: 'cv' | 'cover'): Promise<Blob> => {
-    const res = await fetch(`${BASE}/api/pilot/jobs/${id}/${kind}.pdf`, {
-      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return res.blob();
-  },
 
   // Agent — the local Playwright worker (HireDue portal automation) + Watch Live.
   agentStatus: () => req<AgentStatus>('/api/agent/status'),
-  agentMetrics: (period = 'total') => req<Record<string, number>>(`/api/agent/metrics?period=${period}`),
   agentReset: () => req<{ ok: boolean }>('/api/agent/reset', { method: 'POST' }),
   agentStartRun: (portal: string) =>
     req<AgentRun>('/api/agent/run', { method: 'POST', body: JSON.stringify({ portal }) }),
   agentStopRun: (id: string) => req<AgentRun>(`/api/agent/run/${id}/stop`, { method: 'POST' }),
   agentPause: (paused: boolean) =>
     req<{ paused: boolean }>('/api/agent/pause', { method: 'POST', body: JSON.stringify({ paused }) }),
-  agentRuns: (limit = 20) => req<AgentRun[]>(`/api/agent/runs?limit=${limit}`),
   agentRunInfo: (portal: string) => req<AgentRunInfo>(`/api/agent/run-info?portal=${portal}`),
-  agentFrame: () => req<AgentFrame>('/api/agent/frame'),
   agentEvents: (limit = 60) => req<AgentEvent[]>(`/api/agent/events?limit=${limit}`),
-  agentSchedule: () => req<AgentSchedule[]>('/api/agent/schedule'),
-  agentSaveSchedule: (blocks: AgentSchedule[]) =>
-    req<AgentSchedule[]>('/api/agent/schedule', { method: 'PUT', body: JSON.stringify(blocks) }),
-  agentContacts: (limit = 100) => req<PortalContact[]>(`/api/agent/contacts?limit=${limit}`),
-  agentMessages: (status?: string, limit = 100) =>
-    req<AgentMessage[]>(`/api/agent/messages?limit=${limit}${status ? `&status=${status}` : ''}`),
-  agentApproveMessage: (id: string, body?: string) =>
-    req<AgentMessage>(`/api/agent/messages/${id}/approve`, { method: 'POST', body: JSON.stringify({ body: body ?? '' }) }),
-  agentRejectMessage: (id: string) =>
-    req<AgentMessage>(`/api/agent/messages/${id}/reject`, { method: 'POST' }),
   agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
   agentFlows: () => req<Record<string, boolean>>('/api/agent/flows'),
   agentLimits: () => req<{ linkedinApplyCap: number; indeedApplyCap: number }>('/api/agent/limits'),
@@ -281,7 +244,6 @@ export const api = {
   agentMessageTemplate: () => req<{ template: string }>('/api/agent/message-template'),
   agentSetMessageTemplate: (template: string) =>
     req<{ template: string }>('/api/agent/message-template', { method: 'PUT', body: JSON.stringify({ template }) }),
-  agentSchedulePreset: () => req<AgentSchedule[]>('/api/agent/schedule/preset', { method: 'POST' }),
   agentSetFlows: (flows: Record<string, boolean>) =>
     req<Record<string, boolean>>('/api/agent/flows', { method: 'PUT', body: JSON.stringify(flows) }),
   agentConnections: () => req<PortalConnection[]>('/api/agent/connections'),
@@ -294,42 +256,6 @@ export const api = {
   enginePrefill: () => req<EnginePrefill>('/api/engine/prefill'),
   engineGuided: (body: { roles: string[]; locations: string[]; careerGoal?: string; dealBreakers?: string[]; wins?: string }) =>
     req<EngineProfile>('/api/engine/guided', { method: 'POST', body: JSON.stringify(body) }),
-  engineSetup: (body: { pastedCv?: string; interviewAnswers?: string; useStoredResume?: boolean }) =>
-    req<EngineProfile>('/api/engine/setup', { method: 'POST', body: JSON.stringify(body) }),
-  engineSaveDoc: (doc: EngineDoc, content: string) =>
-    req<EngineProfile>(`/api/engine/profile/${doc}`, { method: 'PUT', body: JSON.stringify({ content }) }),
-  engineAutopilotToggle: (enabled: boolean) =>
-    req<{ enabled: boolean }>('/api/engine/autopilot/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
-  engineAutopilotConfig: (dailyCap: number, minFit: number) =>
-    req<{ dailyCap: number; minFit: number }>('/api/engine/autopilot/config', { method: 'PUT', body: JSON.stringify({ dailyCap, minFit }) }),
-  engineAutopilotRun: () => req<{ status: string }>('/api/engine/autopilot/run', { method: 'POST' }),
-  engineScrape: () => req<{ status: string }>('/api/engine/scrape', { method: 'POST' }),
-  engineRank: () => req<{ status: string }>('/api/engine/rank', { method: 'POST' }),
-  engineJobs: (status?: string, limit = 150) =>
-    req<EngineJob[]>(`/api/engine/jobs?limit=${limit}${status ? `&status=${status}` : ''}`),
-  engineDismissJob: (id: string) =>
-    req<{ id: string; status: string }>(`/api/engine/jobs/${id}/dismiss`, { method: 'POST' }),
-  engineApply: (body: { jobId?: string; url?: string; pastedText?: string }) =>
-    req<EngineApplication>('/api/engine/apply', { method: 'POST', body: JSON.stringify(body) }),
-  engineApplications: (stage?: string, limit = 100) =>
-    req<EngineApplicationSummary[]>(`/api/engine/applications?limit=${limit}${stage ? `&stage=${stage}` : ''}`),
-  engineApplication: (id: string) => req<EngineApplication>(`/api/engine/applications/${id}`),
-  engineSubmit: (id: string, to: string) =>
-    req<EngineApplication>(`/api/engine/applications/${id}/submit`, { method: 'POST', body: JSON.stringify({ to }) }),
-  engineOutcome: (id: string, outcome: string, notes: string) =>
-    req<EngineApplication>(`/api/engine/applications/${id}/outcome`, { method: 'POST', body: JSON.stringify({ outcome, notes }) }),
-  engineInterview: (applicationId: string, stageLabel: string) =>
-    req<EngineInterview>('/api/engine/interview', { method: 'POST', body: JSON.stringify({ applicationId, stageLabel }) }),
-  engineInterviews: () => req<EngineInterview[]>('/api/engine/interview'),
-  engineUpskillRun: () => req<EngineUpskill>('/api/engine/upskill', { method: 'POST' }),
-  engineUpskills: () => req<EngineUpskill[]>('/api/engine/upskill'),
-  enginePdf: async (id: string, kind: 'cv' | 'cover'): Promise<Blob> => {
-    const res = await fetch(`${BASE}/api/engine/applications/${id}/${kind}.pdf`, {
-      headers: { ...(getJwt() ? { Authorization: `Bearer ${getJwt()}` } : {}) },
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return res.blob();
-  },
 
   // Job Scout — automated resume-keyword search across LinkedIn/Naukri/Indeed/Google.
   scoutJobs: (limit = 200) => req<ScoutedJob[]>(`/api/scout/jobs?limit=${limit}`),
@@ -338,7 +264,6 @@ export const api = {
 
   // LaTeX resume builder (Overleaf-style).
   resumeList: () => req<ResumeDoc[]>('/api/resumes'),
-  resumeGet: (id: string) => req<ResumeDoc>(`/api/resumes/${id}`),
   resumeCreate: (body: { name?: string; latex?: string; fromId?: string; blank?: string }) =>
     req<ResumeDoc>('/api/resumes', { method: 'POST', body: JSON.stringify(body) }),
   resumeUpdate: (id: string, body: { name?: string; latex?: string }) =>

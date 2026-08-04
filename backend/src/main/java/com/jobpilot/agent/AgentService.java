@@ -47,7 +47,10 @@ public class AgentService {
     private final com.jobpilot.repository.ProfileRepository profileRepo;
     private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private static final List<String> PORTALS = List.of("linkedin", "naukri", "indeed");
+    // The portals the automation actually drives. Naukri was removed 2026-08-04: its adapter
+    // was never wired into the worker, the API rejected naukri runs, and the Connections page
+    // never offered it — so seeding a row here only created a connection nobody could use.
+    private static final List<String> PORTALS = List.of("linkedin", "indeed");
 
     /** Titles the automation must never apply to, whatever the search returns. */
     private static final List<String> EXCLUDE_TITLES = List.of(
@@ -432,7 +435,7 @@ public class AgentService {
     public List<AgentSchedule> schedule(UUID userId) {
         List<AgentSchedule> list = schedules.findByUserIdOrderByOrdAsc(userId);
         if (!list.isEmpty()) return list;
-        String[][] seed = {{"naukri", "09:00"}, {"linkedin", "11:00"}, {"indeed", "13:00"}};
+        String[][] seed = {{"linkedin", "11:00"}, {"indeed", "13:00"}};
         int ord = 0;
         for (String[] s : seed) {
             AgentSchedule a = new AgentSchedule();
@@ -813,7 +816,7 @@ public class AgentService {
         Instant dayStart = startOfTodayUtc();
         String best = null;
         Instant bestLastRun = null;
-        for (String portal : List.of("linkedin", "indeed")) {   // naukri is parked
+        for (String portal : List.of("linkedin", "indeed")) {
             if (!portalOwesWork(userId, portal, dayStart)) continue;
             Instant last = runs.findFirstByUserIdAndPortalOrderByCreatedAtDesc(userId, portal)
                     .map(AgentRun::getCreatedAt).orElse(null);

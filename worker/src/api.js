@@ -28,7 +28,6 @@ export class Api {
   hello() { return this.#req('/api/worker/hello'); }
   next() { return this.#req('/api/worker/next'); }
   event(e) { return this.#req('/api/worker/event', { method: 'POST', body: e }); }
-  frame(f) { return this.#req('/api/worker/frame', { method: 'POST', body: f }); }
   runStatus(runId, status, currentAction) {
     return this.#req(`/api/worker/run/${runId}/status`, { method: 'POST', body: { status, currentAction } });
   }
@@ -61,7 +60,6 @@ export class Api {
   // is on) tailors + emails an application automatically.
   hrLead(lead) { return this.#req('/api/worker/hr-lead', { method: 'POST', body: lead }); }
   upsertContact(c) { return this.#req('/api/worker/contact', { method: 'POST', body: c }); }
-  draftMessage(m) { return this.#req('/api/worker/message/draft', { method: 'POST', body: m }); }
   approvedMessages() { return this.#req('/api/worker/messages/approved'); }
   markSent(id) { return this.#req(`/api/worker/messages/${id}/sent`, { method: 'POST' }); }
   // Connection outreach: invites we're waiting on, the short note to attach, and lifecycle.

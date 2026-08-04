@@ -242,11 +242,9 @@ export function ConnectionsPage() {
         </button>
       </div>
 
-      {/* One explanation, in the right place: the web already has the "Connecting happens in the
-          desktop app" card at the top (download + steps), so the old DesktopSetup block and the
-          "What happens when you click Connect" note were saying the same thing twice — and both
-          still described clicking Connect in the terminal, which no longer exists. In the app,
-          this short note is the only guidance needed. */}
+      {/* One explanation, in the right place. The web already carries the "Connecting happens in
+          the desktop app" card at the top (download + steps); duplicating it here said the same
+          thing twice. In the app, this short note is the only guidance needed. */}
       {inApp && (
         <div className="card card-pad" style={{ marginTop: 16, fontSize: 13 }}>
           <b>What happens when you click Connect</b>

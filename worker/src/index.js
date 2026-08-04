@@ -84,25 +84,9 @@ async function loadConfig() {
   return { backendUrl: backendUrl || DEFAULT_BACKEND, token };
 }
 
-/** Run every portal one after another in a single block (LinkedIn → Indeed). */
-async function runAll(page, api, plan, state, ctx) {
-  let total = 0;
-  for (const [name, fn] of [['linkedin', runLinkedIn], ['indeed', runIndeed]]) {
-    if (state.paused) break;
-    state.portal = name;
-    await api.runStatus(state.runId, 'running', `Working ${name}`);
-    await api.event({ runId: state.runId, portal: name, type: 'info', detail: `Starting ${name}` });
-    try {
-      const r = await fn(page, api, plan, state, ctx);
-      total += r.applied || 0;
-    } catch (e) {
-      await api.event({ runId: state.runId, portal: name, type: 'error', detail: String(e).slice(0, 160) });
-    }
-  }
-  return { applied: total };
-}
-
-const ADAPTERS = { linkedin: runLinkedIn, indeed: runIndeed, all: runAll };
+// Only the portals the backend can actually hand out. `nextPortalWithWork` returns linkedin or
+// indeed, and startRun rejects anything else — an 'all' adapter had no way to be requested.
+const ADAPTERS = { linkedin: runLinkedIn, indeed: runIndeed };
 
 /** A Playwright fault that means the browser is gone — recoverable by relaunching it. */
 function isDeadBrowser(e) {
