@@ -20,10 +20,12 @@ public class AgentController {
 
     private final AgentService agent;
     private final WorkerTokenService workerTokens;
+    private final OutreachGuard guard;
 
-    public AgentController(AgentService agent, WorkerTokenService workerTokens) {
+    public AgentController(AgentService agent, WorkerTokenService workerTokens, OutreachGuard guard) {
         this.agent = agent;
         this.workerTokens = workerTokens;
+        this.guard = guard;
     }
 
     // ---- status + metrics -----------------------------------------------------
@@ -119,17 +121,26 @@ public class AgentController {
         return agent.flows();
     }
 
-    /** Per-run Easy-Apply caps (the gear on the LinkedIn / Indeed pages). */
+    /**
+     * Everything the Schedule tab edits: cadence, daily caps, the fit/confidence gates AND the
+     * anti-spam limits. The outreach limits were previously enforced but unreachable — no
+     * endpoint returned them, so the owner had no way to see or change what was throttling
+     * their outreach. One payload keeps them editable in the same place as everything else.
+     */
     @GetMapping("/limits")
     public Map<String, Object> limits() {
         UserContext.require();
-        return agent.limits();
+        Map<String, Object> all = new LinkedHashMap<>(agent.limits());
+        all.putAll(guard.limits());
+        return all;
     }
 
     @PutMapping("/limits")
     public Map<String, Object> setLimits(@RequestBody Map<String, Object> b) {
         UserContext.require();
-        return agent.setLimits(b);
+        Map<String, Object> all = new LinkedHashMap<>(agent.setLimits(b));
+        all.putAll(guard.setLimits(b));
+        return all;
     }
 
     @PutMapping("/flows")

@@ -4,9 +4,9 @@
 // engine's tailored-email path. Conservative by design: caps, human delays, and it
 // stops the instant the owner hits Pause.
 import { humanDelay, sleep } from '../browser.js';
+import { shouldApply } from '../gate.js';
 import { fillForm, uploadResume } from '../fill.js';
 
-const FIT_THRESHOLD = 45; // below this we look but don't apply
 
 function slug(s) { return encodeURIComponent(s.trim().toLowerCase().replace(/\s+/g, '-')); }
 
@@ -104,14 +104,21 @@ export async function runNaukri(page, api, plan, state, ctx) {
           await api.event({ runId: state.runId, portal: 'naukri', type: 'job_identified',
             title: post.title, company: post.company, url: link.url });
 
-          const { score } = await api.evaluate(post).catch(() => ({ score: 0 }));
-          if (score < FIT_THRESHOLD) {
-            await api.event({ runId: state.runId, portal: 'naukri', type: 'info',
-              title: post.title, company: post.company, url: link.url, detail: `skip — fit ${score}` });
+          // The SHARED gate, same as LinkedIn and Indeed. This file used to apply on raw
+          // keyword score >= 45 with no stack check — the exact behaviour that submitted a
+          // Python role against a Java/MERN résumé. Naukri is parked and this adapter is not
+          // wired into ADAPTERS, but a parked file that would misbehave the moment someone
+          // revives it is a trap, so it goes through the same decision as everything else.
+          const gate = await shouldApply(api, post, plan);
+          if (!gate.ok) {
+            await api.event({ runId: state.runId, portal: 'naukri',
+              type: gate.manual ? 'manual_apply' : 'info',
+              title: post.title, company: post.company, url: link.url, detail: `skip — ${gate.label}` });
             continue;
           }
+          const score = gate.score;
           await api.event({ runId: state.runId, portal: 'naukri', type: 'relevant',
-            title: post.title, company: post.company, url: link.url, detail: `fit ${score}` });
+            title: post.title, company: post.company, url: link.url, detail: gate.label });
 
           const result = await applyOnNaukri(jobPage, api, profile, resume, state);
           if (result === 'applied') {

@@ -341,8 +341,14 @@ export async function checkAcceptances(page, api, state) {
       if (!canMessage) continue;
 
       await api.setConnectionStatus(c.id, { status: 'connected' }).catch(() => {});
-      // Draft the follow-up — auto-approved when the template + Auto-message are on.
-      await api.draftMessage({ contactId: c.id, kind: 'connection_followup' }).catch(() => {});
+      // NOTE: deliberately no draftMessage here any more.
+      //
+      // This used to draft a 'connection_followup', which sendApprovedMessages then sent — and
+      // sendFollowUps ALSO saw the contact as due for touch 1, because accepting leaves
+      // followUpStage=0 with no lastContactAt. The person got two messages minutes apart in the
+      // same block, and the cadence's stage never advanced because the approved-message path
+      // didn't report a touch. The staged cadence is now the single owner of post-acceptance
+      // messaging: sendFollowUps sends touch 1 and records it.
       accepted++;
     } catch { /* skip this one */ }
     await humanDelay(1500, 3000);
@@ -414,6 +420,10 @@ export async function sendApprovedMessages(page, api, resume, state) {
 
       if (!(await composeMessage(page, resume, m.body || ''))) continue;
       await api.markSent(m.id).catch(() => {});
+      // Count this as a touch on the cadence too. A message you approved by hand is still a
+      // message they received — without this the cadence would send its own touch on top,
+      // and keep counting from a stage that no longer reflects reality.
+      if (m.contactId) await api.followUpSent(m.contactId).catch(() => {});
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
         title: `Messaged ${m.name || 'a connection'}`, url: m.profileUrl, detail: 'sent with résumé attached' });
       done++;

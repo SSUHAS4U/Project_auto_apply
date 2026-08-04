@@ -10,12 +10,10 @@ import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } 
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
 import { shouldApply } from '../gate.js';
 
-// You already searched YOUR keywords with the Easy-Apply filter on, so a listing here is
-// something you asked for. We don't re-gate it hard on a keyword-overlap number (that
-// silently skipped everything). We only skip the two clear cases: an obviously senior role,
-// or a posting we could read well AND that scored genuinely poor. Anything else we apply to
-// — trusting your own search, the way a person would.
-const FIT_THRESHOLD = 25;
+// Seniority is filtered here because LinkedIn's own filters don't reliably exclude it. The
+// COMPATIBILITY decision does not live in this file — `gate.js → shouldApply` owns it, so
+// LinkedIn and Indeed cannot drift apart. (This used to carry a FIT_THRESHOLD of 25 on keyword
+// overlap; that is what let a Python role through to a Java résumé.)
 const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
 // LinkedIn pages at 25 results and offsets with `start`. Reading only page 1 capped every

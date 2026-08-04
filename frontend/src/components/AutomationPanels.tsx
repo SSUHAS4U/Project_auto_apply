@@ -577,6 +577,21 @@ export function ScheduleEditor() {
           <F k="maxAgeDays" label="Ignore postings older than" hint="stale jobs are usually filled" unit="days" />
         </div>
 
+        {/* These were enforced but invisible — outreach could be throttled with no way to see
+            by what, or to change it. */}
+        <div className="section-title" style={{ margin: '22px 0 4px' }}>
+          <Icon name="link" size={15} /> Outreach limits
+        </div>
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 14 }}>
+          What stops outreach looking like spam — and protects your LinkedIn account. The same
+          person is never contacted twice about the same role, whatever these are set to.
+        </div>
+        <div className="pf-grid">
+          <F k="perDay" label="Total outreach" hint="per day, all companies" unit="people" />
+          <F k="perCompanyPerDay" label="Per company" hint="per day" unit="people" />
+          <F k="recruiterCooldownDays" label="Same person cooldown" hint="before contacting again" unit="days" />
+        </div>
+
         <div className="row" style={{ gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save settings

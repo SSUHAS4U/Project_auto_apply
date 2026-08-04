@@ -705,40 +705,14 @@ public class AgentService {
         if (key != null) settings.put(key, String.valueOf(value));
     }
 
-    // ---- time-based rotation (Naukri 09:00 → LinkedIn → Indeed, unattended) ---
+    // ---- quota-driven rotation (starts on app-open, not on a clock) -----------
+    //
+    // `activeBlock`, `parseHhmm` and `blockStartInstant` lived here to decide which clock-time
+    // AgentSchedule window was open. v86 replaced that trigger with quota + rest, so they had
+    // no callers left — removed rather than kept as a second, contradictory answer to "when
+    // does a run start". Schedule rows still exist for per-portal keyword/location overrides.
 
     private static final java.time.ZoneId ZONE = java.time.ZoneId.of("Asia/Kolkata");
-
-    /** Which enabled schedule block covers "now", if any. */
-    private AgentSchedule activeBlock(List<AgentSchedule> blocks, int nowMin) {
-        for (AgentSchedule b : blocks) {
-            if (!b.isEnabled() || b.getStartTime() == null) continue;
-            Integer start = parseHhmm(b.getStartTime());
-            if (start == null) continue;
-            int end = start + Math.max(1, b.getDurationMins());
-            if (nowMin >= start && nowMin < end) return b;
-        }
-        return null;
-    }
-
-    private static Integer parseHhmm(String s) {
-        try {
-            String[] p = s.trim().split(":");
-            return Integer.parseInt(p[0]) * 60 + (p.length > 1 ? Integer.parseInt(p[1]) : 0);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** Today's start-of-window instant for a block (its start time, IST), or null if unparseable. */
-    private static Instant blockStartInstant(AgentSchedule block) {
-        Integer start = parseHhmm(block.getStartTime());
-        if (start == null) return null;
-        return java.time.LocalDate.now(ZONE)
-                .atTime(start / 60, start % 60)
-                .atZone(ZONE)
-                .toInstant();
-    }
 
     /** How many LinkedIn blocks a day may run purely for outreach once its apply quota is met. */
     private static final int OUTREACH_BLOCKS_PER_DAY = 2;

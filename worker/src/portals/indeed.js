@@ -8,10 +8,8 @@ import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { shouldApply } from '../gate.js';
 
-// See linkedin.js: the search already used YOUR keywords, so we don't hard-gate on a
-// keyword-overlap number. Skip only clearly senior roles or postings we read well that
-// scored genuinely poor; apply to the rest.
-const FIT_THRESHOLD = 25;
+// Seniority filter only. The compatibility decision lives in `gate.js → shouldApply`, shared
+// with LinkedIn, so the two portals cannot disagree about what is worth applying to.
 const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
 
 // Indeed is COUNTRY-SPECIFIC: www.indeed.com is the US site and returns nothing for an Indian
