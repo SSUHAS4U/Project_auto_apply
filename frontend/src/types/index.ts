@@ -255,6 +255,10 @@ export interface AgentRunInfo {
   busyWith: string | null;
   previous: RunSummary | null;
   nextAt: string | null;
+  /** Which portal the rotation starts next. When it isn't this one, this portal follows it. */
+  nextPortal: string | null;
+  /** True once this portal has nothing left owed today. */
+  quotaMet: boolean;
 }
 
 export interface AgentEvent {

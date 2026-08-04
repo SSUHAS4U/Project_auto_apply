@@ -205,4 +205,54 @@ class AutoStartTest {
         assertNotNull(next);
         assertTrue(next.isAfter(Instant.now()), "tomorrow's reset must be in the future");
     }
+
+    // ---- "next run" must differ per portal -----------------------------------
+    // The card showed an IDENTICAL next-run time for LinkedIn and Indeed, because the rest
+    // window is global. Only one portal actually starts next; the other has no honest time.
+
+    @Test
+    void onlyThePortalThatIsActuallyNextGetsATime() {
+        desktopOnline();
+        // LinkedIn ran an hour ago, Indeed two hours ago → Indeed goes first.
+        when(runs.findFirstByUserIdAndPortalOrderByCreatedAtDesc(USER, "linkedin"))
+                .thenReturn(Optional.of(run("linkedin", "done", Instant.now().minusSeconds(3600), null)));
+        when(runs.findFirstByUserIdAndPortalOrderByCreatedAtDesc(USER, "indeed"))
+                .thenReturn(Optional.of(run("indeed", "done", Instant.now().minusSeconds(7200), null)));
+
+        Instant now = Instant.now();
+        Instant indeed = agent.nextWindowStart(USER, "indeed", now);
+        Instant linkedin = agent.nextWindowStart(USER, "linkedin", now);
+
+        assertNotNull(indeed, "the portal that runs next must give a time");
+        assertNull(linkedin, "the portal that follows cannot know when — it must not invent one");
+        assertNotEquals(indeed, linkedin, "the two portals must never show the same next-run time");
+    }
+
+    @Test
+    void theRestWindowStillDelaysThePortalThatIsNext() {
+        desktopOnline();
+        Instant endedAt = Instant.now().minusSeconds(300);          // 5 min ago; rest is 30
+        when(runs.findByUserIdOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(List.of(run("indeed", "done", Instant.now().minusSeconds(600), endedAt)));
+        Instant next = agent.nextWindowStart(USER, agent.nextPortalWithWork(USER), Instant.now());
+        assertNotNull(next);
+        assertTrue(next.isAfter(Instant.now()), "must wait out the rest window");
+        assertTrue(next.isBefore(endedAt.plusSeconds(31 * 60)), "and not longer than the rest window");
+    }
+
+    @Test
+    void aMetQuotaReportsTomorrowNotAClockTime() {
+        desktopOnline();
+        when(events.countAppliedSince(any(), eq("indeed"), any())).thenReturn(20L);
+        Instant next = agent.nextWindowStart(USER, "indeed", Instant.now());
+        assertNotNull(next, "a met quota still resets tomorrow");
+        assertTrue(next.isAfter(Instant.now().plusSeconds(60)), "tomorrow, not now");
+    }
+
+    @Test
+    void nothingIsPromisedWhileTheDesktopIsOffline() {
+        // No markWorkerSeen. A time here would be a promise nothing can keep.
+        assertNull(agent.nextWindowStart(USER, "linkedin", Instant.now()));
+        assertNull(agent.nextWindowStart(USER, "indeed", Instant.now()));
+    }
 }

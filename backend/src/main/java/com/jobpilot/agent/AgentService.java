@@ -826,6 +826,10 @@ public class AgentService {
 
         // Paused means nothing is coming until it's resumed — don't promise a time.
         m.put("nextAt", isPaused() ? null : nextWindowStart(userId, portal, Instant.now()));
+        // Which portal the rotation would actually start next. When it isn't this one, the card
+        // says "after the <other> run" instead of inventing a clock time it cannot know.
+        m.put("nextPortal", isPaused() || !isWorkerOnline(userId) ? null : nextPortalWithWork(userId));
+        m.put("quotaMet", !portalOwesWork(userId, portal, startOfTodayUtc()));
         return m;
     }
 
@@ -860,10 +864,14 @@ public class AgentService {
         Instant bestLastRun = null;
         for (String portal : List.of("linkedin", "indeed")) {
             if (!portalOwesWork(userId, portal, dayStart)) continue;
+            // Never run = maximally starved. EPOCH rather than null keeps this to one
+            // comparison; the previous version let a LATER never-run portal overwrite an
+            // earlier one, so with no history at all the winner was simply whichever came
+            // last in the list — and the two portals' "next run" answers flipped arbitrarily.
             Instant last = runs.findFirstByUserIdAndPortalOrderByCreatedAtDesc(userId, portal)
-                    .map(AgentRun::getCreatedAt).orElse(null);
-            // A portal that has never run goes first; otherwise the older last-run wins.
-            if (best == null || last == null || (bestLastRun != null && last.isBefore(bestLastRun))) {
+                    .map(AgentRun::getCreatedAt).orElse(Instant.EPOCH);
+            // Strictly earlier only, so a tie deterministically keeps the first in the list.
+            if (best == null || last.isBefore(bestLastRun)) {
                 best = portal;
                 bestLastRun = last;
             }
@@ -912,11 +920,18 @@ public class AgentService {
             // Quota met — the next opportunity is when the daily counters reset.
             return java.time.LocalDate.now(ZONE).plusDays(1).atStartOfDay(ZONE).toInstant();
         }
+        // Only ONE portal starts next, and the rest window is global (one run at a time). This
+        // used to compute the same clock time for BOTH portals, so LinkedIn and Indeed showed an
+        // identical "next run" when only one of them was actually going to start. A portal that
+        // isn't first has no honest time to give — how long it waits depends on how long the
+        // other one's block runs — so it returns null and the card says "after <portal>".
+        if (!portal.equalsIgnoreCase(nextPortalWithWork(userId))) return null;
+
         int restMins = intSetting(limits().get("restMins"), 30);
         Instant lastEnd = lastFinishedAt(userId);
         Instant restUntil = lastEnd == null ? null : lastEnd.plusSeconds(restMins * 60L);
         if (restUntil != null && restUntil.isAfter(now)) return restUntil;
-        return now;   // owed work and not resting: the next tick starts it
+        return now;   // owed work, first in line, not resting: the next tick starts it
     }
 
     /**

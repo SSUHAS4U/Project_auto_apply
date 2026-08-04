@@ -342,6 +342,10 @@ function fmtDuration(ms: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+/** Display name for a portal key. */
+const portalName = (p: string) =>
+  p === 'linkedin' ? 'LinkedIn' : p === 'indeed' ? 'Indeed' : p.charAt(0).toUpperCase() + p.slice(1);
+
 /** "today 20:00" / "tomorrow 09:30" / "12 Aug, 09:30" — a clock time you can act on. */
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
@@ -442,14 +446,25 @@ export function RunStatusCard({ portal }: { portal: 'linkedin' | 'indeed' }) {
       <Line label="Next run">
         {info.paused ? <span className="faint">Paused — nothing scheduled</span>
           : live ? <span className="faint">After this one finishes</span>
-          : info.nextAt ? (
+          : !info.workerOnline ? <span className="faint">Waiting for JobPilot Desktop</span>
+          : info.quotaMet ? (
+            // Nothing owed today — say so plainly rather than showing tomorrow's midnight as
+            // if it were a scheduled start.
+            <><b>Tomorrow</b><div className="faint" style={{ fontSize: 12 }}>
+              today’s {name} quota is done</div></>
+          ) : info.nextAt ? (
             // A next time in the past means the window is open and it is due right now.
             new Date(info.nextAt).getTime() <= Date.now() + 60000
               ? <><b>Due now</b><div className="faint" style={{ fontSize: 12 }}>
-                  {info.workerOnline ? 'Starting within a few minutes' : 'Waiting for JobPilot Desktop'}</div></>
+                  Starting within a few minutes</div></>
               : <><b>{fmtWhen(info.nextAt)}</b><div className="faint" style={{ fontSize: 12 }}>
                   in {fmtDuration(new Date(info.nextAt).getTime() - Date.now())}</div></>
-          ) : <span className="faint">No {name} block scheduled</span>}
+          ) : info.nextPortal ? (
+            // Work IS owed, but the other portal goes first. How long that takes depends on how
+            // long its block runs, so a clock time here would be invented.
+            <><b>After {portalName(info.nextPortal)}</b><div className="faint" style={{ fontSize: 12 }}>
+              {portalName(info.nextPortal)} runs first — this follows it</div></>
+          ) : <span className="faint">Nothing owed right now</span>}
       </Line>
     </div>
   );
