@@ -8,7 +8,7 @@ import { JobProfileEditor } from '../components/JobProfileEditor';
 import { TagInput } from '../components/TagInput';
 import { ROLE_SUGGESTIONS } from '../lib/roles';
 import { LOCATION_SUGGESTIONS } from '../lib/locations';
-import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../components/AutomationPanels';
+import { RunControls, PortalPanel, ScheduleEditor } from '../components/AutomationPanels';
 
 /**
  * Auto Apply — the automation's home. Setup (what you're looking for + your profile), the live
@@ -17,7 +17,7 @@ import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../compo
  */
 
 /** Tabs on a PORTAL page (LinkedIn / Indeed). Automation itself is setup-only now. */
-type PortalTab = 'overview' | 'activity' | 'questions' | 'schedule';
+type PortalTab = 'activity' | 'questions' | 'schedule';
 
 function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
   return <span className={`tone tone-${tone}`}>{text}</span>;
@@ -33,10 +33,13 @@ function initialsOf(name?: string): string {
 export function EnginePage() {
   const toast = useToast();
   const [status, setStatus] = useState<EngineStatus | null>(null);
-  const [portalTab, setPortalTab] = useState<PortalTab>('overview');
+  const [portalTab, setPortalTab] = useState<PortalTab>('activity');
 
   const loadStatus = useCallback(() => {
-    api.engineStatus().then(setStatus).catch((e) => toast(e.message, 'error'));
+    // Deliberately silent on failure. This polls every 5s, so toasting each error buried the
+    // screen in "Failed to fetch" while the backend was simply unreachable. The page already
+    // shows what it knows; a transient poll failure is not something to interrupt anyone for.
+    api.engineStatus().then(setStatus).catch(() => {});
   }, [toast]);
 
   useEffect(() => {
@@ -53,8 +56,9 @@ export function EnginePage() {
   // concerns, so they live on the LinkedIn and Indeed pages where the numbers they describe are.
   // Keeping a second copy here meant two places showed "activity" and neither was obviously the
   // one to trust.
+  // No separate Overview: it showed the metrics AND the activity feed, so an Activity tab beside
+  // it was the same screen twice. Activity is the one view — stats on top, feed below.
   const portalTabs: [PortalTab, string, string][] = [
-    ['overview', 'target', 'Overview'],
     ['activity', 'live', 'Activity'],
     ['questions', 'clipboard', `${head.title} questions`],
     ['schedule', 'clock', 'Schedule'],
@@ -84,10 +88,9 @@ export function EnginePage() {
               </div>
             ))}
           </div>
-          {portalTab === 'overview' && <PortalPanel portal={section} />}
-          {portalTab === 'activity' && <ActivityFeed portal={section} />}
+          {portalTab === 'activity' && <PortalPanel portal={section} />}
           {portalTab === 'questions' && <ScreeningQuestions portal={section} />}
-          {portalTab === 'schedule' && <ScheduleEditor />}
+          {portalTab === 'schedule' && <ScheduleEditor portal={section} />}
         </>
       )}
     </>
