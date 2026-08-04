@@ -44,7 +44,7 @@ const TONE_COLOR: Record<string, string> = {
  * run automatically, but this lets you kick off a run immediately once JobPilot Desktop is
  * connected — which is what you need when it says "waiting for a run".
  */
-export function RunControls() {
+export function RunControls({ portal }: { portal?: 'linkedin' | 'indeed' } = {}) {
   const toast = useToast();
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,7 +55,12 @@ export function RunControls() {
   const online = status?.workerOnline ?? false;
   const inApp = isDesktopApp();   // starting a run needs the local worker
   const run = status?.activeRun ?? null;
-  const live = !!run && ['running', 'queued', 'needs_attention'].includes(run.status);
+  const anyLive = !!run && ['running', 'queued', 'needs_attention'].includes(run.status);
+  // On a portal page, only THIS portal's run counts as live. Showing Pause/Stop for the other
+  // portal's run meant the LinkedIn page offered to stop an Indeed block, with nothing on the
+  // page saying that was what you'd be stopping.
+  const live = anyLive && (!portal || run?.portal === portal);
+  const otherLive = anyLive && !!portal && run?.portal !== portal;
 
   const start = async (portal: string) => {
     setBusy(true);
@@ -76,8 +81,12 @@ export function RunControls() {
 
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span className={`tone ${live ? 'tone-green live-pulse' : online ? 'tone-blue' : 'tone-slate'}`} style={{ padding: '5px 11px' }}>
-        <span className="live-dot" /> {live ? `running · ${run?.portal}` : online ? 'desktop ready' : 'desktop offline'}
+      <span className={`tone ${live ? 'tone-green live-pulse' : otherLive ? 'tone-amber' : online ? 'tone-blue' : 'tone-slate'}`}
+        style={{ padding: '5px 11px' }}>
+        <span className="live-dot" />
+        {live ? 'running now'
+          : otherLive ? `${run?.portal} is running`
+          : online ? 'desktop ready' : 'desktop offline'}
       </span>
       {/* EVERY run control is desktop-only. The automation is driven by the local worker, so
           Run / Pause / Stop belong where that worker lives; the web is a read-only view of what
@@ -91,6 +100,15 @@ export function RunControls() {
           </button>
           <button className="btn btn-sm btn-danger-solid" onClick={stop} disabled={busy}><Icon name="x" size={13} /> Stop</button>
         </>
+      ) : portal ? (
+        // A portal page controls ITS portal only.
+        <button className="btn btn-primary btn-sm" onClick={() => start(portal)}
+          disabled={busy || !online || otherLive}
+          title={otherLive ? `Wait for the ${run?.portal} run to finish`
+            : online ? `Run a ${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} block now`
+            : 'The automation is still starting'}>
+          <Icon name="play" size={13} /> Run {portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}
+        </button>
       ) : (
         <>
           <button className="btn btn-primary btn-sm" onClick={() => start('linkedin')} disabled={busy || !online}
@@ -104,22 +122,32 @@ export function RunControls() {
         </>
       )}
       {/* Terminal stays right here in the Auto Apply header (it's ALSO in the floating hub). */}
-      <TerminalButton />
+      <TerminalButton portal={portal} />
     </div>
   );
 }
 
 /** "Terminal" button for the Auto Apply header (desktop app only) — opens the console. */
-function TerminalButton() {
+function TerminalButton({ portal }: { portal?: 'linkedin' | 'indeed' } = {}) {
   const [open, setOpen] = useState(false);
   if (!isDesktopApp()) return null;
+  const name = portal === 'linkedin' ? 'LinkedIn' : portal === 'indeed' ? 'Indeed' : '';
   return (
     <>
       <button className="btn btn-sm" onClick={() => setOpen(true)}>
         <Icon name="terminal" size={14} /> Terminal
       </button>
       {open && (
-        <Modal title="Automation terminal" onClose={() => setOpen(false)} wide>
+        <Modal title={name ? `Automation terminal · ${name}` : 'Automation terminal'}
+          onClose={() => setOpen(false)} wide>
+          {/* One worker process, one log. Splitting it per portal would mean parsing the stream
+              and risking dropped lines — so it shows everything, and says so. */}
+          {name && (
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>
+              One automation drives both portals, so this is the whole log — look for the
+              <b> ▶ {name.toUpperCase()}</b> section.
+            </div>
+          )}
           <div style={{ height: '62vh' }}><TerminalConsole /></div>
         </Modal>
       )}

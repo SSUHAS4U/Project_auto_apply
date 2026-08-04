@@ -213,6 +213,14 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   if (!easyApplyOff && mode !== 'outreach' && applyCap > 0) {
     api.flow = 'easyApply';                     // tags this phase's events
     console.log(`\n  ══ Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max ${plan.phase1Minutes || 90}m) ══`);
+    // An empty plan makes the loops below no-ops, so the phase prints its header and then
+    // nothing at all — indistinguishable from a broken search. Say which side is empty.
+    if ((plan.keywords || []).length === 0 || (plan.locations || []).length === 0) {
+      console.log(`  ✋ Nothing to search: ${(plan.keywords || []).length} term(s), ${(plan.locations || []).length} location(s).`);
+      console.log('     Add target roles and locations in Automation → Setup, then run again.');
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+        detail: `LinkedIn had nothing to search — ${(plan.keywords || []).length} keyword(s) and ${(plan.locations || []).length} location(s). Set target roles and locations in Setup.` });
+    }
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {

@@ -68,8 +68,13 @@ jobpilot:
     discovery-cron: ${JOBPILOT_DISCOVERY_CRON:0 30 6 * * *}
     # Automated job scout (LinkedIn/Naukri/Indeed via free keyless APIs) — hourly, on the hour.
     scout-cron: ${JOBPILOT_SCOUT_CRON:0 0 * * * *}
-    # Daily Auto Apply run (also gated on the dashboard pause toggle); "-" disables.
-    auto-apply-cron: ${JOBPILOT_AUTO_APPLY_CRON:0 30 9 * * *}
+    # Engine autopilot — DISABLED. It scraped, ranked and tailored CVs every morning, then
+    # raised "Application ready — <job>. Open Auto Apply → Applications to send" notifications
+    # pointing at a screen that was removed. Nothing in the dashboard reads its output any more,
+    # so it was doing invisible work and producing a daily stream of dead-end alerts.
+    # The DailyScheduler comment already said "disabled by default (-)"; this line was silently
+    # overriding it. Set JOBPILOT_AUTO_APPLY_CRON to re-enable if the engine UI ever returns.
+    auto-apply-cron: ${JOBPILOT_AUTO_APPLY_CRON:-}
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:

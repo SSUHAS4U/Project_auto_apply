@@ -60,7 +60,7 @@ export function EnginePage() {
   // it was the same screen twice. Activity is the one view — stats on top, feed below.
   const portalTabs: [PortalTab, string, string][] = [
     ['activity', 'live', 'Activity'],
-    ['questions', 'clipboard', `${head.title} questions`],
+    ['questions', 'clipboard', 'Screening questions'],
     ['schedule', 'clock', 'Schedule'],
   ];
 
@@ -75,7 +75,7 @@ export function EnginePage() {
           <div className="page-sub">{head.sub}</div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <RunControls />
+          <RunControls portal={section || undefined} />
         </div>
       </div>
 
@@ -110,21 +110,26 @@ const HEAD: Record<string, { title: string; sub: string }> = {
 // answers you Save from the extension live in Profile → Autofill answers, not here.)
 
 function ScreeningQuestions({ portal }: { portal: 'linkedin' | 'indeed' }) {
-  const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   const toast = useToast();
   const [items, setItems] = useState<QaPair[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
 
+  // EVERY question, on both pages — deliberately.
+  //
+  // The answer bank is keyed on (user, question), one row per question for the whole account,
+  // so an answer given here is reused on Indeed too. Splitting the list per portal would imply
+  // two independent sets and hide half your answers behind the wrong tab. The `portal` field
+  // only records where a question was FIRST met, and is shown as a badge.
   const load = () => api.qaList()
     .then((list) => setItems(list
       .filter((q) => q.source === 'pending' || q.source === 'auto')
-      // Questions recorded before portals were tracked have no portal — show them on both
-      // pages rather than hiding them, since we genuinely don't know where they came from.
-      .filter((q) => !q.portal || q.portal === portal)
-      // Unanswered first — those are the ones actually waiting on you.
-      .sort((a, b) => Number(!!(a.answer && a.answer.trim())) - Number(!!(b.answer && b.answer.trim())))))
+      // Unanswered first — those are the ones actually waiting on you. Then this portal's own
+      // questions, so the page you're on leads with what it met.
+      .sort((a, b) =>
+        Number(!!(a.answer && a.answer.trim())) - Number(!!(b.answer && b.answer.trim()))
+        || Number(b.portal === portal) - Number(a.portal === portal))))
     .catch(() => setItems([]));
   useEffect(() => { load(); }, [portal]);
 
@@ -151,16 +156,17 @@ function ScreeningQuestions({ portal }: { portal: 'linkedin' | 'indeed' }) {
 
   return (
     <div className="card card-pad">
-      <div className="section-title" style={{ marginBottom: 4 }}>{name} questions</div>
-      <div className="faint" style={{ fontSize: 13, marginBottom: 16 }}>
-        Screening questions the automation hit on {name} that your profile couldn’t answer. Give
-        an answer once and it’s reused on every future application with the same question — on
-        either portal.
+      <div className="section-title" style={{ marginBottom: 4 }}>Screening questions</div>
+      <div className="faint" style={{ fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+        Questions the automation met that your profile couldn’t answer. <b>One answer works
+        everywhere</b> — the bank holds a single row per question, so answering here also answers
+        it on the other portal. That is why this list is the same on both pages; the badge shows
+        where each was first asked.
       </div>
       {items.length === 0 ? (
         <div className="faint" style={{ fontSize: 13 }}>
-          Nothing yet. When the automation meets a question on {name} that it can’t answer from
-          your profile, it lands here for you to answer.
+          Nothing yet. When the automation meets a question it can’t answer from your profile,
+          it lands here for you to answer.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
@@ -169,7 +175,14 @@ function ScreeningQuestions({ portal }: { portal: 'linkedin' | 'indeed' }) {
             return (
               <div key={it.id} className="lq-row">
                 <div className="lq-body">
-                  <div className="lq-label">Question</div>
+                  <div className="lq-label">
+                    Question
+                    {it.portal
+                      ? <span className={`tone tone-${it.portal === 'linkedin' ? 'blue' : 'indigo'}`}
+                          style={{ marginLeft: 8, fontSize: 10.5 }}>first asked on {it.portal}</span>
+                      : <span className="tone tone-slate" style={{ marginLeft: 8, fontSize: 10.5 }}>
+                          portal not recorded</span>}
+                  </div>
                   <div className="lq-question">{it.question}</div>
                   <div className="lq-label" style={{ marginTop: 10 }}>
                     Answer {!answered && <span className="tone tone-amber">needs your answer</span>}

@@ -123,6 +123,21 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const host = hostFor((plan.locations || [])[0], profile);
   console.log(`\n  Indeed — ${doneToday}/${dailyTarget} done today, ${applyCap} to go · ${blockMin}min block · ${host}`);
   if (applyCap === 0) { console.log("  ✓ Today's Indeed quota is already met — nothing to do."); return { applied: 0 }; }
+
+  // Nothing to search with. Without this the loops below simply never execute and the block
+  // prints its header, then its summary, with NOTHING in between — a completely silent no-op
+  // that looks identical to "Indeed is broken". Say which side is empty and where to fix it.
+  const kws = plan.keywords || [];
+  const locs = plan.locations || [];
+  if (kws.length === 0 || locs.length === 0) {
+    console.log(`\n  ✋ Nothing to search: ${kws.length} search term(s), ${locs.length} location(s).`);
+    console.log('     Add target roles and locations in Automation → Setup, then run again.');
+    await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+      detail: `Indeed had nothing to search — ${kws.length} keyword(s) and ${locs.length} location(s) in the plan. Set target roles and locations in Setup.` });
+    return { applied: 0 };
+  }
+  console.log(`  Searching ${kws.length} term(s) × ${locs.length} location(s) = ${kws.length * locs.length} searches`);
+
   let totalResults = 0;
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
