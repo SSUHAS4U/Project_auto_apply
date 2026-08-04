@@ -547,8 +547,17 @@ public class AgentService {
         // schedule row: LinkedIn runs applyMins of Easy Apply then outreachMins of outreach;
         // Indeed runs indeedMins. restMins is how long the app waits between blocks.
         Map<String, Object> cfg = limits();
-        int liApply = (int) cfg.get("linkedinApplyMins");
-        int liOutreach = (int) cfg.get("linkedinOutreachMins");
+        // ONE source of truth for LinkedIn timings: the four flow budgets. There used to be a
+        // second pair — "Easy Apply time" and "Outreach time" — describing the same durations,
+        // and the flow settings lost: Phase 1 read linkedinApplyMins while easyApplyOn/Mins were
+        // never read at all, so switching Easy Apply off in the UI did nothing.
+        int liApply = intSetting(cfg.get("easyApplyOn"), 1) == 0 ? 0 : intSetting(cfg.get("easyApplyMins"), 90);
+        int liOutreach = 0;
+        for (String[] f : FLOWS) {
+            if ("easyApply".equals(f[0])) continue;
+            if (Boolean.FALSE.equals(cfg.get(f[0] + "On"))) continue;
+            liOutreach += intSetting(cfg.get(f[0] + "Mins"), 30);
+        }
         plan.put("phase1Minutes", liApply);
         plan.put("restMinutes", cfg.get("restMins"));
         plan.put("blockMinutes", indeed ? (int) cfg.get("indeedMins") : liApply + liOutreach);
@@ -671,8 +680,9 @@ public class AgentService {
     // How long each phase runs and how long the automation rests between blocks. These replace
     // the old start-time schedule: you no longer say WHEN it runs (it runs whenever the app is
     // open) — you say HOW MUCH of each thing it does.
-    private static final String LI_APPLY_MINS = "agent_linkedin_apply_mins";
-    private static final String LI_OUTREACH_MINS = "agent_linkedin_outreach_mins";
+    // agent_linkedin_apply_mins / agent_linkedin_outreach_mins were removed: they described the
+    // same durations as the per-flow budgets and disagreed with them. Old rows are simply
+    // ignored; the flow settings are the only source of LinkedIn timings now.
     private static final String IN_MINS = "agent_indeed_mins";
     private static final String REST_MINS = "agent_rest_mins";
     /** Minimum résumé-compatibility score before the worker may apply. */
@@ -713,8 +723,6 @@ public class AgentService {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("linkedinApplyCap", settings.get(LI_CAP_KEY).map(Integer::parseInt).orElse(20));
         m.put("indeedApplyCap", settings.get(IN_CAP_KEY).map(Integer::parseInt).orElse(20));
-        m.put("linkedinApplyMins", settings.get(LI_APPLY_MINS).map(Integer::parseInt).orElse(90));
-        m.put("linkedinOutreachMins", settings.get(LI_OUTREACH_MINS).map(Integer::parseInt).orElse(120));
         m.put("indeedMins", settings.get(IN_MINS).map(Integer::parseInt).orElse(120));
         m.put("restMins", settings.get(REST_MINS).map(Integer::parseInt).orElse(30));
         // Tunable without a rebuild: the gates that decide what gets applied to and who gets
@@ -748,8 +756,6 @@ public class AgentService {
     public Map<String, Object> setLimits(Map<String, Object> body) {
         putInt(body, "linkedinApplyCap", LI_CAP_KEY, 1, 200);
         putInt(body, "indeedApplyCap", IN_CAP_KEY, 1, 200);
-        putInt(body, "linkedinApplyMins", LI_APPLY_MINS, 10, 480);
-        putInt(body, "linkedinOutreachMins", LI_OUTREACH_MINS, 10, 480);
         putInt(body, "indeedMins", IN_MINS, 10, 480);
         putInt(body, "restMins", REST_MINS, 0, 240);
         putInt(body, "fitMin", FIT_MIN, 0, 100);
@@ -1005,7 +1011,9 @@ public class AgentService {
     private Object cfgFor(String key) { return limits().get(key); }
 
     private static int intSetting(Object v, int fallback) {
-        return v instanceof Number n ? n.intValue() : fallback;
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof Boolean b) return b ? 1 : 0;   // flow switches read as 1/0
+        return fallback;
     }
 
     /**

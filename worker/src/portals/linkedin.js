@@ -204,9 +204,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // duplicates instead of reaching new jobs.
   const doneJobs = new Set();
 
-  // ── PHASE 1 — Easy Apply (skipped entirely by a strict 'outreach' block). ──
-  if (mode !== 'outreach' && applyCap > 0) {
-    console.log(`\n  ══ Phase 1: Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max ${plan.phase1Minutes || 90}m) ══`);
+  // ── Easy Apply — the first of the four flows. ──
+  // `easyApplyOn` is honoured HERE. It used to be read nowhere at all: Phase 1 ran off
+  // linkedinApplyMins while the switch and budget in the flow settings were dead, so turning
+  // Easy Apply off changed nothing. The flow settings are now the only source.
+  const easyApplyOff = (plan.flowConfig || {}).easyApply?.on === false;
+  if (easyApplyOff) console.log('\n  ⏭  Easy Apply — switched off in Schedule');
+  if (!easyApplyOff && mode !== 'outreach' && applyCap > 0) {
+    api.flow = 'easyApply';                     // tags this phase's events
+    console.log(`\n  ══ Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max ${plan.phase1Minutes || 90}m) ══`);
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {
@@ -377,14 +383,14 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     }
   }
 
-  // ── PHASE 2 — apply quota met (or no more jobs): spend the rest of the block on OUTREACH. ──
-  // Scan hiring posts for recruiter emails (the backend then mails them a tailored note + your
-  // résumé) and send/di follow-up LinkedIn connections + messages.
+  api.flow = null;   // Easy Apply is done; the next three tag themselves.
+
+  // ── The remaining three flows. ──
   if (!state.stopped && !state.paused && Date.now() < deadline) {
     if (applyCap === 0) console.log(`\n  ✓ Today's ${dailyTarget} LinkedIn applications are already done — all remaining time goes to outreach.`);
-    // The remaining three flows, each with its OWN time budget and switch. They used to be one
-    // undifferentiated "Phase 2", so "outreach isn't working" could mean any of three things and
-    // there was no way to run only the one you cared about.
+    // Each has its OWN time budget and switch. They used to be one undifferentiated "Phase 2",
+    // so "outreach isn't working" could mean any of three things and there was no way to run
+    // only the one you cared about.
     const flows = plan.flowConfig || {};
     const remaining = () => Math.max(0, deadline - Date.now());
 

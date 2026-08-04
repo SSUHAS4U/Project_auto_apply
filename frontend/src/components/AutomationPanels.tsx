@@ -742,6 +742,12 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
 
   const isLi = portal !== 'indeed';
   const name = isLi ? 'LinkedIn' : 'Indeed';
+  // Derived, never asked for twice: a LinkedIn block is exactly the sum of its switched-on
+  // automations. Two separate "Easy Apply time" / "Outreach time" fields described the same
+  // durations and disagreed with these.
+  const FLOW_KEYS = ['easyApply', 'postApply', 'emailOutreach', 'connections'];
+  const liBlockMins = FLOW_KEYS.reduce(
+    (t, k) => t + (cfg[`${k}On`] === false ? 0 : num(cfg[`${k}Mins`])), 0);
 
   /** One numeric setting. Label, hint and field stack — nothing truncates at any width. */
   const F = ({ k, label, hint, unit }: { k: string; label: string; hint: string; unit: string }) => (
@@ -779,8 +785,6 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
           {isLi ? (
             <>
               <F k="linkedinApplyCap" label="Applications" hint="the daily target" unit="per day" />
-              <F k="linkedinApplyMins" label="Easy Apply time" hint="searching and applying" unit="minutes" />
-              <F k="linkedinOutreachMins" label="Outreach time" hint="posts, emails, connections" unit="minutes" />
             </>
           ) : (
             <>
@@ -821,7 +825,8 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
                 <div style={{ minWidth: 0 }}>
                   <div className="set-title">The four LinkedIn automations</div>
                   <div className="set-blurb">
-                    Each gets its own slice of the block. Switching one off leaves the others running.
+                    These four ARE the LinkedIn block — its length is their total, {liBlockMins} minutes.
+                    Switching one off leaves the others running and shortens the block.
                   </div>
                 </div>
               </div>
@@ -859,8 +864,8 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
           </button>
           <span className="faint" style={{ fontSize: 12.5 }}>
             {isLi
-              ? 'A LinkedIn block runs ' + (num(cfg.linkedinApplyMins) + num(cfg.linkedinOutreachMins))
-                + 'm, then rests ' + num(cfg.restMins) + 'm.'
+              ? 'A LinkedIn block runs ' + liBlockMins + 'm (the switched-on automations above), '
+                + 'then rests ' + num(cfg.restMins) + 'm.'
               : 'An Indeed block runs ' + num(cfg.indeedMins) + 'm, then rests ' + num(cfg.restMins) + 'm.'}
           </span>
         </div>
@@ -871,7 +876,7 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
         <div className="faint" style={{ marginTop: 8, lineHeight: 1.85 }}>
           {isLi ? (
             <>
-              1. <b>Easy Apply</b> — until {num(cfg.linkedinApplyCap)} applications or {num(cfg.linkedinApplyMins)}m<br />
+              1. <b>Easy Apply</b> — until {num(cfg.linkedinApplyCap)} applications or {num(cfg.easyApplyMins)}m<br />
               2. <b>Post scan &amp; apply</b> — hiring posts → apply link, message the author, or email<br />
               3. <b>Recruiter emails</b> — addresses found in posts<br />
               4. <b>Connections</b> — invite verified recruiters, then the staged follow-ups<br />
