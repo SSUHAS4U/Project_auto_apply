@@ -636,9 +636,15 @@ const num = (v: number | boolean | undefined) => (typeof v === 'number' ? v : 0)
  * whether 12 is sensible without seeing what it produces. This shows the real terms and cities,
  * so the settings above explain themselves.
  */
-function SearchPreview({ portal }: { portal: 'linkedin' | 'indeed' }) {
-  const [p, setP] = useState<{ keywords: string[]; locations: string[]; pagesPerSearch: number } | null>(null);
+function SearchPreview({ portal, maxKeywords, maxLocations, pages }: {
+  portal: 'linkedin' | 'indeed'; maxKeywords: number; maxLocations: number; pages: number;
+}) {
+  const [p, setP] = useState<{ keywords: string[]; locations: string[] } | null>(null);
   const [failed, setFailed] = useState(false);
+
+  // The terms and cities come from the server ONCE — they're derived from your profile and
+  // can't be computed here. Everything else is arithmetic on the live inputs, so dragging a
+  // number updates the totals as you type instead of waiting for a save and a round-trip.
   useEffect(() => {
     let alive = true;
     setP(null); setFailed(false);
@@ -651,19 +657,33 @@ function SearchPreview({ portal }: { portal: 'linkedin' | 'indeed' }) {
   if (failed) return null;                       // never replace a setting with an error
   if (!p) return <div className="sp-wrap"><span className="spinner" /></div>;
 
-  const terms = p.keywords || [];
-  const cities = p.locations || [];
+  const allTerms = p.keywords || [];
+  const allCities = p.locations || [];
+  // The settings are ceilings. What actually runs is whichever is smaller: the ceiling, or how
+  // many terms/cities your profile really produces.
+  const terms = allTerms.slice(0, Math.max(0, maxKeywords));
+  const cities = allCities.slice(0, Math.max(0, maxLocations));
   const perPage = portal === 'linkedin' ? 25 : 15;
-  const reach = terms.length * cities.length * (p.pagesPerSearch || 1) * perPage;
+  const pg = Math.max(1, pages);
+  const searches = terms.length * cities.length;
+  const reach = searches * pg * perPage;
+  const capped = allTerms.length > terms.length || allCities.length > cities.length;
+  const short = maxKeywords > allTerms.length || maxLocations > allCities.length;
 
   return (
     <div className="sp-wrap">
-      <div className="sp-head">
-        What that means right now — <b>{terms.length * cities.length}</b> searches,
-        up to <b>~{reach.toLocaleString()}</b> job listings seen per run
+      <div className="sp-calc">
+        <div className="sp-sum">
+          <b>{searches}</b> searches → up to <b>~{reach.toLocaleString()}</b> listings per run
+        </div>
+        <div className="sp-math">
+          {terms.length} term{terms.length === 1 ? '' : 's'} × {cities.length} cit{cities.length === 1 ? 'y' : 'ies'} = <b>{searches}</b> searches
+          <span className="sp-x">·</span>
+          {searches} × {pg} page{pg === 1 ? '' : 's'} × {perPage} per page = <b>~{reach.toLocaleString()}</b>
+        </div>
       </div>
       <div className="sp-row">
-        <span className="sp-k">Search terms</span>
+        <span className="sp-k">Terms</span>
         <span className="sp-v">
           {terms.length === 0
             ? <em className="faint">none yet — add target roles in Setup</em>
@@ -678,10 +698,16 @@ function SearchPreview({ portal }: { portal: 'linkedin' | 'indeed' }) {
             : cities.map((c) => <span key={c} className="chip">{c}</span>)}
         </span>
       </div>
-      {terms.length > 0 && terms.every((t) => !t.includes(' ') || terms.length <= cities.length) && (
+      {capped && (
         <div className="sp-note">
-          Terms are built from your target roles paired with your Profile skills. If you only see
-          plain role names, add skills in Profile and more variants appear here.
+          Your limits are cutting the list short — {allTerms.length} terms and {allCities.length} cities
+          are available. Raise them above to use all of them.
+        </div>
+      )}
+      {short && !capped && (
+        <div className="sp-note">
+          You have fewer terms/cities than your limits allow, so raising them changes nothing.
+          More terms come from adding skills in Profile; more cities from Setup.
         </div>
       )}
     </div>
@@ -782,7 +808,10 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
             hint={isLi ? 'LinkedIn shows 25 jobs a page' : 'Indeed shows ~15 jobs a page'} unit="pages" />
         </Group>
 
-        <SearchPreview portal={isLi ? 'linkedin' : 'indeed'} />
+        {/* Live values, not saved ones: the totals recalculate as you type. */}
+        <SearchPreview portal={isLi ? 'linkedin' : 'indeed'}
+          maxKeywords={num(cfg.maxKeywords)} maxLocations={num(cfg.maxLocations)}
+          pages={num(cfg.pagesPerSearch)} />
 
         {isLi && (
           <>

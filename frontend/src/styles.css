@@ -1721,3 +1721,17 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .sp-row { flex-direction: column; gap: 4px; }
   .sp-k { width: auto; }
 }
+
+/* The arithmetic, shown. A total with no working is just another number to distrust. */
+.sp-calc { margin-bottom: 11px; }
+.sp-sum { font-size: 13.5px; line-height: 1.45; }
+.sp-sum b { font-size: 15px; }
+.sp-math {
+  font-size: 11.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+.sp-math b { color: var(--text); font-weight: 650; }
+.sp-x { padding: 0 8px; color: var(--text-faint); }
+@media (max-width: 620px) {
+  .sp-x { display: block; height: 0; overflow: hidden; }   /* stack the two halves */
+}
