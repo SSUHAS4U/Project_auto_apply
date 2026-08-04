@@ -630,6 +630,65 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
 const num = (v: number | boolean | undefined) => (typeof v === 'number' ? v : 0);
 
 /**
+ * The actual searches the next run will perform.
+ *
+ * "12 keyword variants" and "6 locations" are meaningless as bare numbers — you cannot tell
+ * whether 12 is sensible without seeing what it produces. This shows the real terms and cities,
+ * so the settings above explain themselves.
+ */
+function SearchPreview({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const [p, setP] = useState<{ keywords: string[]; locations: string[]; pagesPerSearch: number } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setP(null); setFailed(false);
+    api.agentSearchPreview(portal)
+      .then((r) => { if (alive) setP(r); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [portal]);
+
+  if (failed) return null;                       // never replace a setting with an error
+  if (!p) return <div className="sp-wrap"><span className="spinner" /></div>;
+
+  const terms = p.keywords || [];
+  const cities = p.locations || [];
+  const perPage = portal === 'linkedin' ? 25 : 15;
+  const reach = terms.length * cities.length * (p.pagesPerSearch || 1) * perPage;
+
+  return (
+    <div className="sp-wrap">
+      <div className="sp-head">
+        What that means right now — <b>{terms.length * cities.length}</b> searches,
+        up to <b>~{reach.toLocaleString()}</b> job listings seen per run
+      </div>
+      <div className="sp-row">
+        <span className="sp-k">Search terms</span>
+        <span className="sp-v">
+          {terms.length === 0
+            ? <em className="faint">none yet — add target roles in Setup</em>
+            : terms.map((t) => <span key={t} className="chip">{t}</span>)}
+        </span>
+      </div>
+      <div className="sp-row">
+        <span className="sp-k">Cities</span>
+        <span className="sp-v">
+          {cities.length === 0
+            ? <em className="faint">none yet — add locations in Setup</em>
+            : cities.map((c) => <span key={c} className="chip">{c}</span>)}
+        </span>
+      </div>
+      {terms.length > 0 && terms.every((t) => !t.includes(' ') || terms.length <= cities.length) && (
+        <div className="sp-note">
+          Terms are built from your target roles paired with your Profile skills. If you only see
+          plain role names, add skills in Profile and more variants appear here.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Settings for ONE portal. The editor used to render every setting on both portal pages, so
  * LinkedIn's page showed Indeed's caps and vice versa — the same screen twice, with half of it
  * irrelevant wherever you were standing.
@@ -706,14 +765,24 @@ export function ScheduleEditor({ portal }: { portal?: 'linkedin' | 'indeed' } = 
           <F k="restMins" label="Rest between blocks" hint="shared by both portals" unit="minutes" />
         </Group>
 
-        <Group icon="target" title="How picky it is"
+        <Group icon="target" title="What it applies to"
           blurb="Nothing is applied to unless your résumé matches its stack. Raise these to apply less and better; lower them to cast wider.">
-          <F k="fitMin" label="Minimum résumé fit" hint="to apply at all" unit="out of 100" />
-          <F k="maxAgeDays" label="Ignore postings older than" hint="stale jobs are usually filled" unit="days" />
-          <F k="pagesPerSearch" label="Result pages per search" hint="more pages, more jobs" unit="pages" />
-          <F k="maxKeywords" label="Keyword variants" hint="role paired with your skills" unit="queries" />
-          <F k="maxLocations" label="Locations" hint="cities searched" unit="places" />
+          <F k="fitMin" label="Minimum résumé fit" hint="a job scoring below this is skipped" unit="out of 100" />
+          <F k="maxAgeDays" label="Skip jobs older than" hint="stale postings are usually filled" unit="days" />
         </Group>
+
+        {/* These are CEILINGS, not counts. Stating "that is 72 searches" here contradicted the
+            preview below, which showed 36 — the real number, because you only have 6 search
+            terms. The preview is the truth; this just explains the mechanic. */}
+        <Group icon="search" title="How wide it searches"
+          blurb={`Upper limits: every search term is searched in every city, and each search reads several result pages. The real numbers are below — raising these only helps if you have the terms and cities to fill them.`}>
+          <F k="maxKeywords" label="Search terms" hint="max — built from your roles + skills" unit="at most" />
+          <F k="maxLocations" label="Cities" hint="max — from your Setup locations" unit="at most" />
+          <F k="pagesPerSearch" label="Pages per search"
+            hint={isLi ? 'LinkedIn shows 25 jobs a page' : 'Indeed shows ~15 jobs a page'} unit="pages" />
+        </Group>
+
+        <SearchPreview portal={isLi ? 'linkedin' : 'indeed'} />
 
         {isLi && (
           <>

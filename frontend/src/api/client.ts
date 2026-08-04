@@ -235,6 +235,10 @@ export const api = {
   agentPause: (paused: boolean) =>
     req<{ paused: boolean }>('/api/agent/pause', { method: 'POST', body: JSON.stringify({ paused }) }),
   agentRunInfo: (portal: string) => req<AgentRunInfo>(`/api/agent/run-info?portal=${portal}`),
+  /** The exact searches the next run will do, so a setting can show its real effect. */
+  agentSearchPreview: (portal: string) =>
+    req<{ keywords: string[]; locations: string[]; pagesPerSearch: number }>(
+      `/api/agent/search-preview?portal=${portal}`),
   agentEvents: (limit = 60) => req<AgentEvent[]>(`/api/agent/events?limit=${limit}`),
   agentIssueToken: () => req<{ token: string }>('/api/agent/worker-token', { method: 'POST' }),
   agentFlows: () => req<Record<string, boolean>>('/api/agent/flows'),

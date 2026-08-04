@@ -1700,3 +1700,24 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 @media (max-width: 560px) {
   .set-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- Search preview -------------------------------------------------------
+   A number like "12 terms" says nothing about whether 12 is right. Showing the
+   terms themselves turns the setting above into something you can judge. */
+.sp-wrap {
+  border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; margin-bottom: 4px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.sp-head { font-size: 12.5px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
+.sp-head b { color: var(--text); }
+.sp-row { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; min-width: 0; }
+.sp-k {
+  flex: none; width: 92px; font-size: 11px; font-weight: 600; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.sp-v { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; font-size: 12.5px; }
+.sp-note { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; margin-top: 9px; }
+@media (max-width: 560px) {
+  .sp-row { flex-direction: column; gap: 4px; }
+  .sp-k { width: auto; }
+}

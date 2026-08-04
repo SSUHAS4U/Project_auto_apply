@@ -235,6 +235,24 @@ public class AgentController {
         return agent.saveSchedule(UserContext.require(), blocks);
     }
 
+    /**
+     * The exact searches the next run will perform, with the current settings applied.
+     *
+     * "12 keyword variants" and "6 locations" are meaningless numbers on their own — this lets
+     * the Schedule tab show the actual queries, so the setting explains itself instead of
+     * asking the owner to imagine what it produces.
+     */
+    @GetMapping("/search-preview")
+    public Map<String, Object> searchPreview(@RequestParam(defaultValue = "linkedin") String portal) {
+        UUID u = UserContext.require();
+        Map<String, Object> plan = agent.searchPlan(u, portal);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("keywords", plan.get("keywords"));
+        out.put("locations", plan.get("locations"));
+        out.put("pagesPerSearch", plan.get("pagesPerSearch"));
+        return out;
+    }
+
     /** Live/last/next run for ONE portal — powers the Runs card on the LinkedIn & Indeed pages. */
     @GetMapping("/run-info")
     public Map<String, Object> runInfo(@RequestParam String portal) {
