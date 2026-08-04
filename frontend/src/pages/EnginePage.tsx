@@ -16,7 +16,8 @@ import { RunControls, PortalPanel, ActivityFeed, ScheduleEditor } from '../compo
  * searches + Easy-Applies there). The old cross-source "engine/Sourcing" layer was removed.
  */
 
-type Tab = 'setup' | 'questions' | 'activity' | 'schedule';
+/** Tabs on a PORTAL page (LinkedIn / Indeed). Automation itself is setup-only now. */
+type PortalTab = 'overview' | 'activity' | 'questions' | 'schedule';
 
 function Chip({ text, tone = 'indigo' }: { text: string; tone?: string }) {
   return <span className={`tone tone-${tone}`}>{text}</span>;
@@ -32,7 +33,7 @@ function initialsOf(name?: string): string {
 export function EnginePage() {
   const toast = useToast();
   const [status, setStatus] = useState<EngineStatus | null>(null);
-  const [tab, setTab] = useState<Tab>('setup');
+  const [portalTab, setPortalTab] = useState<PortalTab>('overview');
 
   const loadStatus = useCallback(() => {
     api.engineStatus().then(setStatus).catch((e) => toast(e.message, 'error'));
@@ -47,11 +48,17 @@ export function EnginePage() {
   const location = useLocation();
   const section = (location.pathname.split('/')[2] || '') as '' | 'linkedin' | 'indeed';
   const head = HEAD[section] ?? HEAD[''];
-  const autoTabs: [Tab, string, string][] = [
-    ['setup', 'gear', 'Setup'], ['questions', 'clipboard', 'LinkedIn questions'],
-    ['activity', 'live', 'Activity'], ['schedule', 'clock', 'Schedule'],
+
+  // Automation is SETUP ONLY now. Activity, screening questions and the schedule are per-portal
+  // concerns, so they live on the LinkedIn and Indeed pages where the numbers they describe are.
+  // Keeping a second copy here meant two places showed "activity" and neither was obviously the
+  // one to trust.
+  const portalTabs: [PortalTab, string, string][] = [
+    ['overview', 'target', 'Overview'],
+    ['activity', 'live', 'Activity'],
+    ['questions', 'clipboard', `${head.title} questions`],
+    ['schedule', 'clock', 'Schedule'],
   ];
-  const activeTab: Tab = autoTabs.some(([t]) => t === tab) ? tab : 'setup';
 
   return (
     <>
@@ -68,23 +75,21 @@ export function EnginePage() {
         </div>
       </div>
 
-      {section === 'linkedin' ? <PortalPanel portal="linkedin" />
-        : section === 'indeed' ? <PortalPanel portal="indeed" />
-        : (
-          <>
-            <div className="tabs">
-              {autoTabs.map(([t, ico, label]) => (
-                <div key={t} className={`tab meta-item ${activeTab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-                  <Icon name={ico} size={14} /> {label}
-                </div>
-              ))}
-            </div>
-            {activeTab === 'setup' && <SetupTab status={status} onChange={loadStatus} />}
-            {activeTab === 'questions' && <LinkedInQuestions />}
-            {activeTab === 'activity' && <ActivityFeed />}
-            {activeTab === 'schedule' && <ScheduleEditor />}
-          </>
-        )}
+      {section === '' ? <SetupTab status={status} onChange={loadStatus} /> : (
+        <>
+          <div className="tabs">
+            {portalTabs.map(([t, ico, label]) => (
+              <div key={t} className={`tab meta-item ${portalTab === t ? 'active' : ''}`} onClick={() => setPortalTab(t)}>
+                <Icon name={ico} size={14} /> {label}
+              </div>
+            ))}
+          </div>
+          {portalTab === 'overview' && <PortalPanel portal={section} />}
+          {portalTab === 'activity' && <ActivityFeed portal={section} />}
+          {portalTab === 'questions' && <ScreeningQuestions portal={section} />}
+          {portalTab === 'schedule' && <ScheduleEditor />}
+        </>
+      )}
     </>
   );
 }
@@ -101,7 +106,8 @@ const HEAD: Record<string, { title: string; sub: string }> = {
 // once and every later application with the same question uses it. (source pending|auto; the
 // answers you Save from the extension live in Profile → Autofill answers, not here.)
 
-function LinkedInQuestions() {
+function ScreeningQuestions({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   const toast = useToast();
   const [items, setItems] = useState<QaPair[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -109,11 +115,15 @@ function LinkedInQuestions() {
   const [draft, setDraft] = useState('');
 
   const load = () => api.qaList()
-    .then((list) => setItems(list.filter((q) => q.source === 'pending' || q.source === 'auto')
+    .then((list) => setItems(list
+      .filter((q) => q.source === 'pending' || q.source === 'auto')
+      // Questions recorded before portals were tracked have no portal — show them on both
+      // pages rather than hiding them, since we genuinely don't know where they came from.
+      .filter((q) => !q.portal || q.portal === portal)
       // Unanswered first — those are the ones actually waiting on you.
       .sort((a, b) => Number(!!(a.answer && a.answer.trim())) - Number(!!(b.answer && b.answer.trim())))))
     .catch(() => setItems([]));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [portal]);
 
   const startEdit = (it: QaPair) => { setEditing(it.id); setDraft(it.answer || ''); };
   const saveEdit = async (it: QaPair) => {
@@ -138,15 +148,16 @@ function LinkedInQuestions() {
 
   return (
     <div className="card card-pad">
-      <div className="section-title" style={{ marginBottom: 4 }}>LinkedIn questions</div>
+      <div className="section-title" style={{ marginBottom: 4 }}>{name} questions</div>
       <div className="faint" style={{ fontSize: 13, marginBottom: 16 }}>
-        Questions the automation hit that your profile couldn’t answer. Give an answer once and
-        it’s reused on every future application with the same question.
+        Screening questions the automation hit on {name} that your profile couldn’t answer. Give
+        an answer once and it’s reused on every future application with the same question — on
+        either portal.
       </div>
       {items.length === 0 ? (
         <div className="faint" style={{ fontSize: 13 }}>
-          Nothing yet. When the automation meets a question it can’t answer from your profile,
-          it lands here for you to answer.
+          Nothing yet. When the automation meets a question on {name} that it can’t answer from
+          your profile, it lands here for you to answer.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>

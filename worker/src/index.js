@@ -194,6 +194,7 @@ async function main() {
     // execute the block
     state.runId = order.runId;
     state.portal = order.portal;
+    api.portal = order.portal;   // tags screening questions with the portal that asked them
     state.paused = false;
     state.stopped = false; // cleared per block; the pause poller sets it if Stop is clicked
     console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);

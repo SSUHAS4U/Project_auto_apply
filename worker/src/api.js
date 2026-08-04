@@ -6,6 +6,9 @@ export class Api {
   constructor(baseUrl, token) {
     this.base = baseUrl.replace(/\/$/, '');
     this.token = token;
+    // The portal of the block currently running. Set once per block in index.js so calls that
+    // need it (recordQuestion) don't have to be threaded through every form-filling helper.
+    this.portal = null;
   }
 
   async #req(path, { method = 'GET', body } = {}) {
@@ -55,7 +58,11 @@ export class Api {
   answer(question, options) { return this.#req('/api/worker/answer', { method: 'POST', body: { question, options } }); }
   // A screening question the automation hit → saved to Profile → Autofill answers so the
   // owner can keep/correct an answer. `answer` is what we used (blank if we couldn't).
-  recordQuestion(question, answer) { return this.#req('/api/worker/question', { method: 'POST', body: { question, answer } }); }
+  recordQuestion(question, answer, portal) {
+    return this.#req('/api/worker/question', {
+      method: 'POST', body: { question, answer, portal: portal || this.portal || null },
+    });
+  }
   // HR email harvested from a hiring post → backend stores the lead and (when Auto-email
   // is on) tailors + emails an application automatically.
   hrLead(lead) { return this.#req('/api/worker/hr-lead', { method: 'POST', body: lead }); }

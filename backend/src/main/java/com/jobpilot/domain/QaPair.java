@@ -32,9 +32,14 @@ public class QaPair {
 
     private String source = "manual";
 
+    /** Portal the question was met on ("linkedin"/"indeed"), or null for older/manual entries. */
+    private String portal;
+
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
+    public String getPortal() { return portal; }
+    public void setPortal(String portal) { this.portal = portal; }
 }

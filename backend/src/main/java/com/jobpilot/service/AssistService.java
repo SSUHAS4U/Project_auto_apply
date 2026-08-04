@@ -1132,7 +1132,11 @@ public class AssistService {
      */
     @Transactional
     public QaPair recordPending(UUID userId, String question) {
-        return recordPending(userId, question, null);
+        return recordPending(userId, question, null, null);
+    }
+
+    public QaPair recordPending(UUID userId, String question, String answer) {
+        return recordPending(userId, question, answer, null);
     }
 
     /**
@@ -1143,11 +1147,20 @@ public class AssistService {
      * Deduped by the normalised key and NEVER overwritten — once you edit an answer, it wins.
      */
     @Transactional
-    public QaPair recordPending(UUID userId, String question, String answer) {
+    public QaPair recordPending(UUID userId, String question, String answer, String portal) {
         if (question == null || question.isBlank()) throw new IllegalArgumentException("question required");
         String key = normalize(question);
         Optional<QaPair> existing = qaRepo.findByUserIdAndQuestionKey(userId, key);
-        if (existing.isPresent()) return existing.get();
+        if (existing.isPresent()) {
+            // The same question can be met on both portals. Record the first one that asked and
+            // leave it — re-tagging on every encounter would make the attribution meaningless.
+            QaPair q = existing.get();
+            if (q.getPortal() == null && portal != null && !portal.isBlank()) {
+                q.setPortal(portal.trim().toLowerCase());
+                return qaRepo.save(q);
+            }
+            return q;
+        }
         String a = answer == null ? "" : answer.trim();
         QaPair q = new QaPair();
         q.setUserId(userId);
@@ -1155,6 +1168,7 @@ public class AssistService {
         q.setQuestionKey(key);
         q.setAnswer(a);
         q.setSource(a.isBlank() ? "pending" : "auto");
+        if (portal != null && !portal.isBlank()) q.setPortal(portal.trim().toLowerCase());
         return qaRepo.save(q);
     }
 

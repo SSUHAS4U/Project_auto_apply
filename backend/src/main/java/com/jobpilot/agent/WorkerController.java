@@ -100,7 +100,7 @@ public class WorkerController {
         if (q.isBlank()) return Map.of("ok", false);
         // `answer` is what the automation used (may be blank). Stored so the owner can review
         // and correct it in Profile → Autofill answers; never overwrites an answer they set.
-        assist.recordPending(u, q, b.get("answer"));
+        assist.recordPending(u, q, b.get("answer"), b.get("portal"));
         return Map.of("ok", true);
     }
 

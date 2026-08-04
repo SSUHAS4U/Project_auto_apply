@@ -208,7 +208,9 @@ button:focus:not(:focus-visible) { outline: none; }
   animation: chatwIn .2s ease;
 }
 .hub-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
-.hub-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; }
+.hub-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; }
+.hub-tabs::-webkit-scrollbar { display: none; }
 .hub-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: none; background: transparent;
   color: var(--text-dim); font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 8px; white-space: nowrap;
   transition: background .15s, color .15s; }
@@ -383,7 +385,7 @@ label.field .input, label.field .select, label.field textarea { color: var(--tex
 textarea.input { width: 100%; resize: vertical; font-family: inherit; line-height: 1.5; }
 
 /* Table ------------------------------------------------------------------- */
-.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.table-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: var(--radius); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   text-align: left; padding: 12px 14px; color: var(--text-dim);
@@ -414,7 +416,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .score-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-hi)); }
 
 /* Status pills (kanban) --------------------------------------------------- */
-.board { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.board { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 14px; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
 .col { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; min-height: 120px; }
 .col-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin-bottom: 12px; }
 .col-count { margin-left: auto; background: var(--bg-card); border-radius: 999px; padding: 1px 8px; font-size: 11px; }
@@ -551,7 +553,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 @media (prefers-reduced-motion: reduce) { .pf-ring { transition: none; } }
 
 /* --- section nav: segmented pills, scrolls instead of wrapping raggedly --- */
-.pf-nav { display: flex; gap: 4px; padding: 5px; margin-bottom: 20px; overflow-x: auto;
+.pf-nav { display: flex; gap: 4px; padding: 5px; margin-bottom: 20px; overflow-x: auto; overflow-y: hidden;
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; }
 .pf-nav-item { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 9px 14px; min-height: 40px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
@@ -798,7 +800,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
    lights up in its tone; zero recedes to muted. Tap a cell → its job list opens below. Scrolls
    sideways on a narrow screen rather than wrapping into a ragged grid. */
 .pstat { display: flex; align-items: stretch; background: var(--bg-elev); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow-x: auto; }
+  border-radius: var(--radius); overflow-x: auto; overflow-y: hidden; }
 .pstat-cell { flex: 1 0 auto; min-width: 94px; padding: 13px 16px; border: 0; border-left: 1px solid var(--border);
   background: transparent; text-align: left; font: inherit; cursor: pointer; position: relative;
   display: flex; flex-direction: column; gap: 3px; transition: background .14s; }
@@ -1155,7 +1157,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .skill-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .pre { white-space: pre-wrap; line-height: 1.6; font-size: 13.5px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; }
 /* Theme-aware code block (was hardcoded dark → invisible text in light mode). */
-.code-block { background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: var(--radius-sm); overflow-x: auto; font-size: 12px; line-height: 1.6; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
+.code-block { background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font-size: 12px; line-height: 1.6; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
 code { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: .9em; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
 .tl { border-left: 2px solid var(--border-strong); margin-left: 6px; padding-left: 16px; }
 .tl-item { position: relative; padding: 6px 0; font-size: 13px; }
@@ -1293,7 +1295,19 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .pick-body { flex: 1; min-width: 0; }
 .pick-title { font-weight: 650; font-size: 15.5px; color: var(--text); cursor: pointer; line-height: 1.35; }
 .pick-title:hover { color: var(--accent-hi); }
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+/* A tab strip is ONE row. It may scroll sideways when the tabs don't fit; it must never
+   scroll vertically. overflow-y is explicit because leaving it `visible` makes CSS compute it
+   to `auto` the moment overflow-x isn't visible — the horizontal scrollbar then steals height
+   and a second, vertical scrollbar appears on a single-line strip. */
+.tabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px;
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  /* No visible scrollbar. A 6px bar inside a ~36px strip clips the active tab's underline,
+     and the tabs are self-evidently scrollable. Wheel/trackpad/touch still work. */
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab { white-space: nowrap; flex: 0 0 auto; }
 .tab { padding: 9px 14px; font-size: 13px; font-weight: 600; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
 .tab.active { color: var(--accent-hi); border-bottom-color: var(--accent); }
 .tab:hover:not(.active) { color: var(--text); border-bottom-color: var(--border-strong); }
@@ -1424,7 +1438,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .cell-actions { flex-wrap: wrap; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar .input, .toolbar .select { width: 100%; }
-  .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .tabs { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
   .tab { white-space: nowrap; }
   .chat-wrap { height: calc(100dvh - 200px); }
   .chat-row, .chat-jobs { max-width: 100%; }
@@ -1452,7 +1466,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   display: flex; align-items: center; gap: 8px;
   /* One steady row: overflow scrolls horizontally instead of wrapping into a
      multi-line toolbar that eats the editor's height. */
-  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
 }
 .ov-top::-webkit-scrollbar { display: none; }

@@ -340,7 +340,11 @@ export type ResumeDoc = {
   jobUrl?: string; tailorNotes?: string; createdAt?: string; updatedAt?: string;
 };
 
-export type QaPair = { id: string; question: string; answer: string; source: string; updatedAt?: string };
+export type QaPair = {
+  id: string; question: string; answer: string; source: string; updatedAt?: string;
+  /** Portal the question was met on. Absent on rows recorded before portals were tracked. */
+  portal?: string | null;
+};
 export type AdminUser = {
   id: string; email: string; fullName: string; role: string; isAdmin: boolean; owner?: boolean;
   createdAt?: string; applications: number; savedJobs: number;
