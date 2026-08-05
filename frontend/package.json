@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

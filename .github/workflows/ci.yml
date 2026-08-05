@@ -30,10 +30,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24, not 20: the unit tests import the TypeScript module directly and rely on Node's
+          # built-in type stripping (on by default from 23). Testing a hand-stripped COPY of a
+          # module is not testing the module. Node 20 is also past end-of-life.
+          # Deliberately scoped to this job — build-desktop packages Electron and is left alone.
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
