@@ -51,6 +51,11 @@ public class OpenAiCompatAiClient implements AiClient {
 
     @Override
     public String complete(String system, String user, boolean fast) {
+        return complete(system, user, fast, null);
+    }
+
+    @Override
+    public String complete(String system, String user, boolean fast, Integer maxTokens) {
         JobPilotProperties.Gateway g = props.getGateway();
         // Use the fast model only when it's a real id; otherwise fall back to the main model.
         // (Providers like OpenRouter need a concrete model id — a bare "auto" isn't valid there,
@@ -58,10 +63,16 @@ public class OpenAiCompatAiClient implements AiClient {
         String fastModel = g.getFastModel();
         boolean fastUsable = fastModel != null && !fastModel.isBlank() && !"auto".equalsIgnoreCase(fastModel);
         String model = (fast && fastUsable) ? fastModel : g.getModel();
+        // Honour the caller's ceiling. Without this the short-JSON verdict calls reserved the
+        // full configured budget through the gateway — the same reservation-vs-usage trap that
+        // capped Groq at ~3 job evaluations a minute, and it matters more here because the
+        // gateway fans out to free tiers whose quotas are the whole point of using it.
+        int budget = maxTokens != null && maxTokens > 0
+                ? Math.min(maxTokens, g.getMaxTokens()) : g.getMaxTokens();
         Map<String, Object> body = Map.of(
                 "model", model,
                 "temperature", 0.6,
-                "max_tokens", g.getMaxTokens(),
+                "max_tokens", budget,
                 "messages", List.of(
                         Map.of("role", "system", "content", system),
                         Map.of("role", "user", "content", user)));

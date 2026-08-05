@@ -240,6 +240,16 @@ public class AiService {
     private static final Pattern RATE_LIMITED = Pattern.compile(
             "429|rate.?limit|too many|tokens per minute|\\btpm\\b|\\brpm\\b|quota|resource.?exhausted",
             Pattern.CASE_INSENSITIVE);
+    /**
+     * Configured but not answering — a self-hosted gateway that isn't running, an Ollama behind
+     * a closed tunnel, a provider having an outage. Distinct from a rate limit: nothing said
+     * "come back later", it simply isn't there.
+     */
+    private static final Pattern UNREACHABLE = Pattern.compile(
+            "connection|connect timed out|refused|unknown host|no route|i/o error|timed? ?out|unavailable|503|502|504",
+            Pattern.CASE_INSENSITIVE);
+    /** Shorter than a rate-limit rest: an outage may clear at any moment, a quota will not. */
+    private static final long UNREACHABLE_REST_SECONDS = 60;
     /** Groq and Gemini both say when to come back: "Please try again in 8.365s". */
     private static final Pattern RETRY_AFTER = Pattern.compile(
             "try again in ([0-9]+(?:\\.[0-9]+)?)\\s*s", Pattern.CASE_INSENSITIVE);
@@ -313,15 +323,28 @@ public class AiService {
      */
     private void noteFailure(String name, Exception e) {
         String m = e.getMessage() == null ? e.toString() : e.getMessage();
-        if (!RATE_LIMITED.matcher(m).find()) return;
-        long secs = 30;
-        Matcher hint = RETRY_AFTER.matcher(m);
-        if (hint.find()) {
-            try { secs = (long) Math.ceil(Double.parseDouble(hint.group(1))) + 1; } catch (NumberFormatException ignored) { }
+        long secs;
+        String why;
+        if (RATE_LIMITED.matcher(m).find()) {
+            secs = 30;
+            Matcher hint = RETRY_AFTER.matcher(m);
+            if (hint.find()) {
+                try { secs = (long) Math.ceil(Double.parseDouble(hint.group(1))) + 1; } catch (NumberFormatException ignored) { }
+            }
+            secs = Math.max(5, Math.min(secs, 120));
+            why = "rate-limited";
+        } else if (UNREACHABLE.matcher(m).find()) {
+            // A configured-but-absent provider is the expensive case for a SELF-HOSTED gateway
+            // like OmniRoute: it leads the chain when configured, so if it isn't running every
+            // AI call would front a connection timeout before falling through to Groq/Gemini.
+            // Rest it briefly instead, and let a success bring it straight back.
+            secs = UNREACHABLE_REST_SECONDS;
+            why = "unreachable";
+        } else {
+            return;   // a real fault (401, 404, bad model) must surface, not hide behind a timer
         }
-        secs = Math.max(5, Math.min(secs, 120));
         coolUntil.put(name, Instant.now().plusSeconds(secs));
-        log.info("AI provider '{}' is rate-limited; resting it for {}s", name, secs);
+        log.info("AI provider '{}' is {}; resting it for {}s", name, why, secs);
     }
 
     /** Which providers are currently resting, and for how long — surfaced in Settings. */

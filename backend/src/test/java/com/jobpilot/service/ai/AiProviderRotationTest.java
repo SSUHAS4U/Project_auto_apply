@@ -104,6 +104,27 @@ class AiProviderRotationTest {
     }
 
     @Test
+    void anUnreachableProviderIsRestedToo() {
+        // The case that matters for a SELF-HOSTED gateway (OmniRoute): it leads the chain when
+        // configured, so if it isn't running, every AI call would front a connection timeout
+        // before falling through. Rest it briefly rather than re-dialling a dead port per call.
+        gemini.failWith = new IllegalStateException("401 invalid api key");
+        groq.failWith = new IllegalStateException("I/O error on POST request: Connection refused");
+        assertThrows(IllegalStateException.class, () -> call("q"));
+
+        long left = ai.coolingProviders().getOrDefault("groq", 0L);
+        assertTrue(left > 0 && left <= 60, "an unreachable provider should rest briefly, got " + left);
+    }
+
+    @Test
+    void anUnreachableProviderIsSkippedRatherThanReDialledEveryCall() {
+        groq.failWith = new IllegalStateException("Connection refused: connect");
+        for (int i = 0; i < 6; i++) call("q" + i);
+        assertEquals(1, groq.calls.size(), "a dead provider must not be dialled on every call");
+        assertEquals(6, gemini.calls.size());
+    }
+
+    @Test
     void aNonRateLimitErrorDoesNotRestTheProvider() {
         // A bad key or a 404 model is a real fault to surface, not something to hide behind a
         // timer — resting it would delay the error the owner actually needs to see.
