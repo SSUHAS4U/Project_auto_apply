@@ -159,6 +159,42 @@ class AiProviderRotationTest {
     }
 
     @Test
+    void readingTheStatusDoesNotAdvanceTheRotation() {
+        // Settings polls this to SHOW the order and to count a resting provider down. If a read
+        // spun the counter, the Groq/Gemini split would depend on whether someone had the
+        // Settings tab open — which is not a property anyone would ever debug successfully.
+        for (int i = 0; i < 20; i++) { ai.providerStatus(); ai.currentOrder(); }
+
+        for (int i = 0; i < 4; i++) call("q" + i);
+        assertEquals(2, groq.calls.size(), "the split must be unaffected by status polling");
+        assertEquals(2, gemini.calls.size());
+    }
+
+    @Test
+    void theStatusReportsTheRealModelAndRestingState() {
+        List<java.util.Map<String, Object>> st = ai.providerStatus();
+        var groqRow = st.stream().filter(m -> m.get("provider").equals("groq")).findFirst().orElseThrow();
+        assertEquals(true, groqRow.get("configured"));
+        assertEquals(true, groqRow.get("inRotation"));
+        assertEquals(0L, groqRow.get("restingSeconds"));
+
+        gemini.failWith = new IllegalStateException("401 invalid api key");
+        groq.failWith = new IllegalStateException("429 rate limit, try again in 20s");
+        assertThrows(IllegalStateException.class, () -> call("q"));
+
+        groqRow = ai.providerStatus().stream()
+                .filter(m -> m.get("provider").equals("groq")).findFirst().orElseThrow();
+        assertTrue((Long) groqRow.get("restingSeconds") > 0, "a resting provider must say so");
+    }
+
+    @Test
+    void currentOrderNamesWhatAutoWillActuallyTry() {
+        List<String> order = ai.currentOrder();
+        assertEquals(2, order.size());
+        assertTrue(order.containsAll(List.of("groq", "gemini")), order.toString());
+    }
+
+    @Test
     void noProviderConfiguredFailsLoudlyRatherThanSilently() {
         groq.configured = false;
         gemini.configured = false;

@@ -129,7 +129,20 @@ export const api = {
     return req<Profile>('/api/profile/resume/analyze', { method: 'POST', body: fd });
   },
 
-  aiStatus: () => req<{ enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] }>('/api/ai/status'),
+  aiStatus: () => req<{
+    enabled: boolean; provider: string; remainingToday: number;
+    /** The order Auto will try providers in right now. */
+    order: string[];
+    providers: {
+      provider: string; configured: boolean;
+      /** The model this provider will actually use — read from the backend, never hard-coded. */
+      model: string;
+      /** Currently part of the chain. */
+      inRotation: boolean;
+      /** Seconds left resting after a rate limit; 0 when healthy. */
+      restingSeconds: number;
+    }[];
+  }>('/api/ai/status'),
   aiSetProvider: (provider: string) => req<{ provider: string; enabled: boolean }>('/api/ai/provider', { method: 'POST', body: JSON.stringify({ provider }) }),
   aiTest: (provider: string) => req<{ provider: string; ok: boolean; ms?: number; sample?: string; error?: string }>('/api/ai/test', { method: 'POST', body: JSON.stringify({ provider }) }),
   aiSuggest: (field: string, text: string, context?: string) =>

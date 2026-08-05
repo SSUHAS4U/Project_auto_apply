@@ -8,6 +8,13 @@ public interface AiClient {
     boolean isConfigured();
 
     /**
+     * The model this provider will actually use, for display. The Settings UI used to hard-code
+     * these strings ("llama-3.3-70b", "gemini-2.5-flash"), so changing a model in configuration
+     * left the dashboard confidently naming the wrong one.
+     */
+    default String model() { return ""; }
+
+    /**
      * Single-turn completion.
      * @param fast prefer a smaller/cheaper/faster model when the provider has one.
      */

@@ -33,6 +33,9 @@ public class GroqAiClient implements AiClient {
     }
 
     @Override
+    public String model() { return props.getGroq().getModel(); }
+
+    @Override
     public String complete(String system, String user, boolean fast) {
         return complete(system, user, fast, null);
     }

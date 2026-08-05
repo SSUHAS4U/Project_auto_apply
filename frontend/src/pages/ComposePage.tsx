@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../lib/ui';
-import { ModelSwitcher } from '../components/ModelSwitcher';
 import { Icon } from '../components/Icon';
 
 export function ComposePage() {
@@ -117,7 +116,6 @@ export function ComposePage() {
           <h1 className="page-title">Compose &amp; send</h1>
           <div className="page-sub">Generate a tailored cold email + cover letter from any job, review, then send with your resume.</div>
         </div>
-        <ModelSwitcher />
       </div>
 
       <div style={{ maxWidth: 980, margin: '0 auto', marginBottom: 18 }}>

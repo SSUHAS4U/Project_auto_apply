@@ -28,7 +28,10 @@ public class AiController {
     @GetMapping("/ai/status")
     public Map<String, Object> status() {
         return Map.of("enabled", ai.isEnabled(), "provider", ai.provider(),
-                "remainingToday", ai.remainingToday(), "providers", ai.providerStatus());
+                "remainingToday", ai.remainingToday(), "providers", ai.providerStatus(),
+                // What "Auto" resolves to right now, so the rotation is visible rather than a
+                // claim the UI makes on the backend's behalf.
+                "order", ai.currentOrder());
     }
 
     /** Switch the active AI model: groq | gemini | ollama | auto. */

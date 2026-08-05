@@ -69,14 +69,45 @@ public class AiService {
         return c != null && c.isConfigured();
     }
 
-    /** Per-provider configured + reachable status (for the Settings test panel). */
+    /**
+     * Per-provider state for the Settings panel: configured, which model it will actually use,
+     * whether it is currently in the rotation, and how long it is resting after a rate limit.
+     *
+     * The model name is read from the client rather than hard-coded in the dashboard, which
+     * previously meant changing a model in configuration left the UI naming the old one.
+     */
     public List<Map<String, Object>> providerStatus() {
+        Instant now = Instant.now();
+        List<AiClient> chain = fallbackChain(false);   // read-only: must not spin the rotation
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (String name : List.of("gateway", "groq", "gemini", "ollama")) {
             AiClient c = clients.get(name);
-            out.add(Map.of("provider", name, "configured", c != null && c.isConfigured()));
+            boolean configured = c != null && c.isConfigured();
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("provider", name);
+            m.put("configured", configured);
+            m.put("model", configured ? nz(c.model()) : "");
+            m.put("inRotation", configured && chain.contains(c));
+            m.put("restingSeconds", configured ? restSeconds(name, now) : 0L);
+            out.add(m);
         }
         return out;
+    }
+
+    private long restSeconds(String name, Instant now) {
+        Instant until = coolUntil.get(name);
+        if (until == null) return 0L;
+        return Math.max(0L, java.time.Duration.between(now, until).toSeconds());
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    /**
+     * The order providers will be tried in right now — what "Auto" actually means at this
+     * moment. Shown in Settings so the rotation is visible rather than a claim.
+     */
+    public List<String> currentOrder() {
+        return fallbackChain(false).stream().map(AiClient::name).toList();
     }
 
     /** Live test: run a 1-token completion against a specific provider. */
@@ -228,7 +259,14 @@ public class AiService {
      *     own stated retry time passes. It is never removed — if everything is cooling we would
      *     rather ask and be refused than refuse on its behalf.
      */
-    private List<AiClient> fallbackChain() {
+    private List<AiClient> fallbackChain() { return fallbackChain(true); }
+
+    /**
+     * @param advance whether to move the rotation on. The Settings panel polls this to SHOW the
+     *        order; letting a read spin the counter would mean the split depended on how often
+     *        someone had the page open.
+     */
+    private List<AiClient> fallbackChain(boolean advance) {
         String p = provider();
         boolean auto = "auto".equals(p) || resolve() == null;
 
@@ -248,7 +286,8 @@ public class AiService {
             if (c != null && c.isConfigured() && !chain.contains(c)) pool.add(c);
         }
         if (pool.size() > 1) {
-            java.util.Collections.rotate(pool, -Math.floorMod(rotation.getAndIncrement(), pool.size()));
+            int turn = advance ? rotation.getAndIncrement() : rotation.get();
+            java.util.Collections.rotate(pool, -Math.floorMod(turn, pool.size()));
         }
         chain.addAll(pool);
 

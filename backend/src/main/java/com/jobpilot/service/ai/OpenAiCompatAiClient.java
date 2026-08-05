@@ -47,6 +47,9 @@ public class OpenAiCompatAiClient implements AiClient {
     }
 
     @Override
+    public String model() { return props.getGateway().getModel(); }
+
+    @Override
     public String complete(String system, String user, boolean fast) {
         JobPilotProperties.Gateway g = props.getGateway();
         // Use the fast model only when it's a real id; otherwise fall back to the main model.

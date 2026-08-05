@@ -2,7 +2,6 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { AssistantJob } from '../types';
 import { ApplyBadge, useToast } from '../lib/ui';
-import { ModelSwitcher } from '../components/ModelSwitcher';
 import { Icon } from '../components/Icon';
 
 interface Msg { role: 'user' | 'assistant'; content: string; jobs?: AssistantJob[]; }
@@ -55,7 +54,6 @@ export function AssistantPage({ embedded = false }: { embedded?: boolean }) {
             <h1 className="page-title">Assistant</h1>
             <div className="page-sub">Find jobs from your database · get profile help</div>
           </div>
-          <ModelSwitcher />
         </div>
       )}
 

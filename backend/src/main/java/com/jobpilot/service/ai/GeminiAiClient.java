@@ -33,6 +33,9 @@ public class GeminiAiClient implements AiClient {
     }
 
     @Override
+    public String model() { return props.getGemini().getModel(); }
+
+    @Override
     public String complete(String system, String user, boolean fast) {
         String key = props.getGemini().getApiKey();
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"

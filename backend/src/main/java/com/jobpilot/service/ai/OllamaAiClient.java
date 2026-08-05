@@ -34,6 +34,9 @@ public class OllamaAiClient implements AiClient {
     }
 
     @Override
+    public String model() { return props.getOllama().getModel(); }
+
+    @Override
     public String complete(String system, String user, boolean fast) {
         JobPilotProperties.Ollama o = props.getOllama();
         String url = o.getUrl() + "/api/chat";

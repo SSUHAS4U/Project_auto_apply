@@ -3,7 +3,9 @@ import { api, getAdminToken, setAdminToken, isAdminUI } from '../api/client';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
 
-type AiStatus = { enabled: boolean; provider: string; remainingToday: number; providers: { provider: string; configured: boolean }[] };
+// Derived from the client rather than restated here — a second hand-written copy of the shape
+// is exactly how this page came to render fields the endpoint had stopped sending.
+type AiStatus = Awaited<ReturnType<typeof api.aiStatus>>;
 
 export function SettingsPage() {
   const toast = useToast();
@@ -15,6 +17,14 @@ export function SettingsPage() {
 
   const loadAi = () => api.aiStatus().then(setAi).catch(() => {});
   useEffect(() => { loadAi(); }, []);
+  // A resting provider counts down, so refresh while any of them is. Polling only while
+  // something is actually happening keeps an idle Settings tab silent.
+  const anyResting = (ai?.providers ?? []).some((p) => p.restingSeconds > 0);
+  useEffect(() => {
+    if (!anyResting) return;
+    const t = setInterval(loadAi, 5000);
+    return () => clearInterval(t);
+  }, [anyResting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [emailTo, setEmailTo] = useState('');
   const [emailing, setEmailing] = useState(false);
@@ -51,12 +61,16 @@ export function SettingsPage() {
     finally { setTesting(null); }
   };
 
+  // Model names are NOT listed here — they come from the backend, which reads the real
+  // configuration. Hard-coding them meant changing a model left this panel naming the old one.
   const MODELS = [
-    { id: 'auto', label: 'Auto', desc: 'first configured (Groq → Gemini → Ollama)' },
-    { id: 'groq', label: 'Groq', desc: 'llama-3.3-70b · fast' },
-    { id: 'gemini', label: 'Gemini', desc: 'gemini-2.5-flash' },
-    { id: 'ollama', label: 'Ollama', desc: 'local, free' },
+    { id: 'groq', label: 'Groq', note: 'fast, generous free tier' },
+    { id: 'gemini', label: 'Gemini', note: 'large free quota' },
+    { id: 'ollama', label: 'Ollama', note: 'runs locally, no key' },
+    { id: 'gateway', label: 'Gateway', note: 'OpenAI-compatible endpoint' },
   ];
+  const byId = (id: string) => ai?.providers.find((p) => p.provider === id);
+  const isAuto = (ai?.provider ?? 'auto') === 'auto';
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -98,37 +112,78 @@ export function SettingsPage() {
 
       <div className="card card-pad section" style={{ maxWidth: 720 }}>
         <div className="section-title"><span className="si"><Icon name="bot" size={15} /></span>AI model
-          <span className="section-sub">{ai ? `active: ${ai.provider} · ${ai.remainingToday < 0 ? 'unlimited' : ai.remainingToday + ' calls left today'}` : ''}</span>
+          <span className="section-sub">
+            {ai ? `${ai.remainingToday < 0 ? 'unlimited' : ai.remainingToday + ' calls left today'}` : ''}
+          </span>
         </div>
-        <div className="grid2">
+
+        {/* ── The mode. Auto is the recommended path and explains what it actually does now:
+            it rotates across every configured provider and rests whichever one hits a rate
+            limit. It used to say "first configured", which stopped being true. ── */}
+        <div className={`ai-mode ${isAuto ? 'on' : ''}`}>
+          <label className="ai-mode-pick">
+            <input type="radio" name="aimode" checked={isAuto} onChange={() => switchModel('auto')} />
+            <span>
+              <b>Auto</b> <span className="tone tone-indigo">recommended</span>
+              <span className="ai-mode-desc">
+                Shares the work across every provider below and rests any that hits a rate limit,
+                so one free tier running out doesn’t stop the automation.
+              </span>
+              {isAuto && ai?.order?.length ? (
+                <span className="ai-order">
+                  next: {ai.order.map((o, i) => (
+                    <span key={o}>{i > 0 && <span className="ai-arrow"> → </span>}<code>{o}</code></span>
+                  ))}
+                </span>
+              ) : null}
+            </span>
+          </label>
+          {!isAuto && (
+            <div className="ai-pinned">
+              Pinned to <b>{ai?.provider}</b> — every request goes there and the others stay idle.
+            </div>
+          )}
+        </div>
+
+        <div className="ai-grid">
           {MODELS.map((m) => {
-            const cfg = m.id === 'auto' ? ai?.enabled : ai?.providers.find((p) => p.provider === m.id)?.configured;
-            const active = ai?.provider === m.id;
+            const p = byId(m.id);
+            const cfg = !!p?.configured;
+            const pinned = ai?.provider === m.id;
+            const resting = (p?.restingSeconds ?? 0) > 0;
             const res = results[m.id];
             return (
-              <div key={m.id} className={`opt-card ${active ? 'active' : ''}`}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="row" style={{ gap: 7 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.label}</span>
-                      {active && <span className="tone tone-indigo">active</span>}
-                    </div>
-                    <div className="faint" style={{ fontSize: 12, marginTop: 2 }}>{m.desc}</div>
-                  </div>
-                  <span className={`tone ${cfg ? 'tone-green' : 'tone-slate'}`}>{cfg ? 'configured' : 'no key'}</span>
+              <div key={m.id} className={`ai-card ${!cfg ? 'off' : ''} ${pinned ? 'pinned' : ''}`}>
+                <div className="ai-card-head">
+                  <span className={`ai-led ${!cfg ? 'grey' : resting ? 'amber' : 'green'}`} />
+                  <span className="ai-card-name">{m.label}</span>
+                  {pinned && <span className="tone tone-indigo">pinned</span>}
+                  {cfg && isAuto && !resting && <span className="tone tone-green">in rotation</span>}
+                  {resting && <span className="tone tone-amber">resting {p!.restingSeconds}s</span>}
+                  {!cfg && <span className="tone tone-slate">no key</span>}
                 </div>
-                <div className="row" style={{ marginTop: 12, gap: 6, alignItems: 'center' }}>
-                  <button className={`btn btn-sm ${active ? '' : 'btn-primary'}`} disabled={active} onClick={() => switchModel(m.id)}>{active ? 'In use' : 'Use this'}</button>
-                  {m.id !== 'auto' && <button className="btn btn-ghost btn-sm" disabled={testing === m.id} onClick={() => testModel(m.id)}>{testing === m.id ? <span className="spinner" /> : 'Test'}</button>}
-                  {res && <span className={`tone ${res.ok ? 'tone-green' : 'tone-red'}`}>{res.ok ? `${res.ms}ms` : `${(res.error || '').slice(0, 28)}`}</span>}
+                <div className="ai-card-model">{cfg && p?.model ? p.model : m.note}</div>
+                <div className="ai-card-actions">
+                  <button className="btn btn-ghost btn-sm" disabled={!cfg || testing === m.id}
+                    onClick={() => testModel(m.id)}>
+                    {testing === m.id ? <span className="spinner" /> : 'Test'}
+                  </button>
+                  {cfg && (pinned
+                    ? <button className="btn btn-sm" onClick={() => switchModel('auto')}>Unpin</button>
+                    : <button className="btn btn-sm" onClick={() => switchModel(m.id)}>Use only this</button>)}
+                  {res && <span className={`tone ${res.ok ? 'tone-green' : 'tone-red'}`}>
+                    {res.ok ? `${res.ms}ms` : (res.error || '').slice(0, 26)}</span>}
                 </div>
               </div>
             );
           })}
         </div>
-        <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
-          Switch affects cover letters, compose, daily picks & the assistant. Keys live in <code>backend/.env</code>.
-          AI usage is <b>unlimited</b> by default (Groq & Gemini free tiers self-rate-limit) — set
+
+        <div className="faint" style={{ fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
+          This is the only place the model is chosen — it applies to <b>everything that uses AI</b>:
+          the automation’s job-fit and outreach decisions, cover letters, compose, résumé analysis,
+          daily picks and the assistant. Keys live in <code>backend/.env</code>.
+          Usage is <b>unlimited</b> by default (the free tiers self-rate-limit) — set
           <code> JOBPILOT_AI_DAILY_LIMIT</code> only if you want a hard cap.
         </div>
       </div>
