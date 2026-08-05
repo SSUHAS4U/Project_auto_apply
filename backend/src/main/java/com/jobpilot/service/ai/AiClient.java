@@ -1,8 +1,8 @@
 package com.jobpilot.service.ai;
 
-/** A chat-completion backend (Groq, Ollama, Gemini). */
+/** A chat-completion backend (Groq, Gemini, or an OpenAI-compatible gateway). */
 public interface AiClient {
-    /** provider key: groq | ollama | gemini */
+    /** provider key: groq | gemini | gateway */
     String name();
 
     boolean isConfigured();

@@ -9,7 +9,7 @@ for the API see [docs/API.md](docs/API.md).)
 ## 1. What JobPilot is
 A personal, single-user job **aggregator + tracker + AI assistant + assisted-apply extension**.
 It pulls real jobs from free legal sources, scores them against *your* resume, lets you track
-applications, and uses AI (Groq / Gemini / Ollama) to write cover letters, cold emails, and a daily
+applications, and uses AI (Groq / Gemini) to write cover letters, cold emails, and a daily
 shortlist. Runs locally for ₹0.
 
 ## 2. Starting it
@@ -31,7 +31,7 @@ The backend uses an in-process Postgres (no Docker needed); data persists in `ba
 | **Saved** 🔖 | Listings captured by the browser extension from LinkedIn/Naukri/Indeed. Promote them to tracked jobs. |
 | **Notifications** | New-job alerts, daily-pick summaries, ingest/rescore completions. |
 | **Profile** | Tabbed: Personal / Professional / Experience / Education / Autofill answers / Resume. Drives matching, cover letters, and extension autofill. **Smart auto-fill**: upload a PDF/DOCX → AI extracts and fills the fields. |
-| **Settings** | API token; **AI model switch** (Auto / Groq / Gemini / Ollama) with per-model **Test connection**. |
+| **Settings** | API token; **AI model** — Auto (shares work across providers, rests rate-limited ones) or pin Groq/Gemini, with per-model **Test connection**. |
 
 ## 4. How job matching works (resume-aware)
 Each job gets a 0–100 `match_score` tuned for an **early-career candidate**:
@@ -46,8 +46,9 @@ favours roles you can actually get. After changing your profile, run **Settings 
 to re-score the whole DB. Jobs are tagged `region = india | remote | outside | unknown` for the tabs.
 
 ## 5. AI features & models
-- **Provider switch** in Settings: **Auto** (first configured: Groq→Gemini→Ollama), **Groq** (llama-3.3-70b,
-  fast), **Gemini** (gemini-2.5-flash), **Ollama** (local). Test each with one click.
+- **Provider** in Settings: **Auto** rotates across every configured provider and rests any that hits a
+  rate limit; or pin **Groq** / **Gemini**. Model names are read from the backend. Test each with one click.
+  An optional **Gateway** routes everything via your own OpenAI-compatible proxy.
 - **Cost guardrail**: hard cap `JOBPILOT_AI_DAILY_LIMIT` (default 80 AI calls/day). Email sends capped too.
 - Used for: cover letters, **Compose** (subject + cold email + cover letter from your templates),
   **Daily picks** briefing, **Assistant** chat, profile **AI-suggest**, and **resume auto-fill**.
@@ -94,7 +95,7 @@ purges jobs older than 7 days (untracked only) to keep the DB lean.
 - `/api/ingest` & `/api/daily/run` are async; `/sync` variants exist for cron/scripts.
 
 ## 10. What you provide (already wired in `backend/.env`, git-ignored)
-Gmail app password, Adzuna app_id/key, Jooble key, Groq key, Gemini key. Ollama optional (local).
+Gmail app password, Adzuna app_id/key, Jooble key, Groq key, Gemini key.
 See [README.md](README.md) for the credential list and [docs/SETUP.md](docs/SETUP.md) for how to get them.
 
 ## 11. Known limitations / honest notes

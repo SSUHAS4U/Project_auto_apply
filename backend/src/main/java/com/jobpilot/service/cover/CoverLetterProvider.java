@@ -5,7 +5,7 @@ import com.jobpilot.domain.Profile;
 
 /** Pluggable cover-letter generator. No paid lock-in. */
 public interface CoverLetterProvider {
-    /** Provider key: ollama | gemini | template. */
+    /** Provider key: gemini | template. */
     String name();
     String generate(Job job, Profile profile);
 }

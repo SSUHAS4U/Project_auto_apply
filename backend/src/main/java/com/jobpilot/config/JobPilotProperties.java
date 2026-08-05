@@ -55,14 +55,13 @@ public class JobPilotProperties {
     private Ai ai = new Ai();
     private Groq groq = new Groq();
     private Gateway gateway = new Gateway();
-    private Ollama ollama = new Ollama();
     private Gemini gemini = new Gemini();
     private Careerjet careerjet = new Careerjet();
     private IndianApi indianApi = new IndianApi();
 
     @Data
     public static class Ai {
-        /** groq | ollama | gemini | template */
+        /** groq | gemini | gateway | template */
         private String provider = "template";
         /** Optional cap on AI completions per rolling day. 0 (or less) = unlimited.
          *  Groq/Gemini free tiers already rate-limit, so this is off by default. */
@@ -109,18 +108,8 @@ public class JobPilotProperties {
 
     @Data
     public static class CoverLetter {
-        /** ollama | gemini | template */
+        /** gemini | template */
         private String provider = "template";
-    }
-
-    @Data
-    public static class Ollama {
-        private String url = "http://localhost:11434";
-        private String model = "llama3.1";
-        /** Optional header to authenticate against a secured tunnel (e.g. a Cloudflare
-         *  service token or a shared secret), so the public Ollama URL isn't open. */
-        private String authHeader = "";
-        private String authValue = "";
     }
 
     @Data

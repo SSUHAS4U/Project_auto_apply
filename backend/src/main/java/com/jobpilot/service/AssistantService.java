@@ -18,7 +18,7 @@ import java.util.*;
 /**
  * Provider-agnostic assistant agent. It can SEARCH the user's job database and UPDATE
  * their profile, then answer naturally — using WHICHEVER model is selected in Settings
- * (Gemini / Ollama / Groq). Tools are driven by a simple text protocol (the model emits
+ * (Gemini / Groq). Tools are driven by a simple text protocol (the model emits
  * a small JSON when it wants a tool), so every provider runs the whole thing on its own —
  * no single provider is hard-wired as the tool-runner.
  */

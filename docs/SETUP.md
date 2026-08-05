@@ -30,7 +30,6 @@ insert into ats_source (provider, board_token, company, active) values
 
 ## Cover-letter provider
 - `template` (default) — no dependencies, deterministic mail-merge.
-- `ollama` — run `ollama serve` locally, `ollama pull llama3.1`, set `JOBPILOT_COVERLETTER_PROVIDER=ollama`.
 - `gemini` — set `JOBPILOT_GEMINI_API_KEY` and `JOBPILOT_COVERLETTER_PROVIDER=gemini`.
 Any provider failure falls back to the template automatically.
 

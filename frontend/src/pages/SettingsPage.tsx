@@ -66,7 +66,6 @@ export function SettingsPage() {
   const MODELS = [
     { id: 'groq', label: 'Groq', note: 'fast, generous free tier' },
     { id: 'gemini', label: 'Gemini', note: 'large free quota' },
-    { id: 'ollama', label: 'Ollama', note: 'runs locally, no key' },
     // Not a model — a pass-through. Set JOBPILOT_GATEWAY_URL to an OpenAI-compatible endpoint
     // (OmniRoute, LiteLLM, OpenRouter, your own proxy) and everything routes there instead,
     // letting it do its own fan-out. Optional; most setups never need it, so the card has to
@@ -166,7 +165,9 @@ export function SettingsPage() {
                   {resting && <span className="tone tone-amber">resting {p!.restingSeconds}s</span>}
                   {!cfg && <span className="tone tone-slate">no key</span>}
                 </div>
-                <div className="ai-card-model">{cfg && p?.model ? p.model : m.note}</div>
+                <div className={cfg && p?.model ? 'ai-card-model' : 'ai-card-note'}>
+                  {cfg && p?.model ? p.model : m.note}
+                </div>
                 <div className="ai-card-actions">
                   <button className="btn btn-ghost btn-sm" disabled={!cfg || testing === m.id}
                     onClick={() => testModel(m.id)}>
@@ -190,38 +191,6 @@ export function SettingsPage() {
           Usage is <b>unlimited</b> by default (the free tiers self-rate-limit) — set
           <code> JOBPILOT_AI_DAILY_LIMIT</code> only if you want a hard cap.
         </div>
-      </div>
-
-      <div className="card card-pad section" style={{ maxWidth: 720 }}>
-        <div className="section-title"><span className="si"><Icon name="bot" size={15} /></span>Connect local Ollama to the cloud app
-          <span className="section-sub">run your own free model from the deployed backend</span>
-        </div>
-        <div className="faint" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
-          The deployed backend can't reach <code>localhost:11434</code> on your laptop. Expose Ollama
-          through a <b>secure tunnel</b> (locked to a secret header) and point the backend at it.
-          Don't need this? Just use <b>Groq</b> — free, fast, already cloud-ready.
-        </div>
-        <details>
-          <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: 8 }}>Step-by-step (Cloudflare Tunnel, free)</summary>
-          <ol style={{ lineHeight: 1.8, fontSize: 13.5, paddingLeft: 18, margin: '8px 0' }}>
-            <li><b>Run Ollama</b> on your laptop: <code>ollama serve</code> then <code>ollama pull llama3.1</code> (keep the laptop on).</li>
-            <li><b>Install cloudflared:</b> <code>winget install Cloudflare.cloudflared</code>.</li>
-            <li><b>Open a tunnel:</b> <code>cloudflared tunnel --url http://localhost:11434</code> — it prints a public <code>https://…trycloudflare.com</code> URL.</li>
-            <li><b>For real auth</b> (recommended): in Cloudflare Zero Trust → Access, add a self-hosted app for that host and create a <b>Service Token</b>.</li>
-            <li><b>Set these env vars on Render</b> (backend → Environment), then redeploy:
-              <pre className="code-block" style={{ marginTop: 6 }}>{`JOBPILOT_AI_PROVIDER=ollama
-JOBPILOT_OLLAMA_URL=https://your-host.trycloudflare.com
-JOBPILOT_OLLAMA_MODEL=llama3.1
-JOBPILOT_OLLAMA_AUTH_HEADER=CF-Access-Client-Id
-JOBPILOT_OLLAMA_AUTH_VALUE=<your-service-token>`}</pre>
-            </li>
-            <li>Come back here → <b>AI model → Ollama → Test</b>. If your laptop is off, the app auto-falls back to Groq/Gemini.</li>
-          </ol>
-          <div className="faint" style={{ fontSize: 12 }}>
-            Security: never expose port 11434 directly; the backend sends your secret header on every call.
-            Full guide: <code>docs/OLLAMA_TUNNEL.md</code>.
-          </div>
-        </details>
       </div>
 
       <ResetDataCard />

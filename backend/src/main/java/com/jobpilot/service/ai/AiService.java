@@ -38,11 +38,10 @@ public class AiService {
     }
 
     private static final String K_PROVIDER = "ai_provider";
-    // Gateway first: if an OmniRoute (or any OpenAI-compatible) gateway is configured, route
-    // everything through it — it fans out across many providers with its own smart fallback
-    // and token compression. It's skipped when unconfigured, so the effective default stays
-    // Gemini (huge free TPM/RPD) → Groq → Ollama (local only), exactly as before.
-    private static final List<String> AUTO_ORDER = List.of("gateway", "gemini", "groq", "ollama");
+    // Gateway first: if an OpenAI-compatible gateway is configured, route everything through
+    // it — it fans out across its own providers. Skipped when unconfigured, which is the normal
+    // case, leaving Gemini and Groq to share the load between them.
+    private static final List<String> AUTO_ORDER = List.of("gateway", "gemini", "groq");
 
     /** Configured provider — settings override the .env default; "auto" resolves at call time. */
     public String provider() {
@@ -80,7 +79,7 @@ public class AiService {
         Instant now = Instant.now();
         List<AiClient> chain = fallbackChain(false);   // read-only: must not spin the rotation
         List<Map<String, Object>> out = new java.util.ArrayList<>();
-        for (String name : List.of("gateway", "groq", "gemini", "ollama")) {
+        for (String name : List.of("gateway", "groq", "gemini")) {
             AiClient c = clients.get(name);
             boolean configured = c != null && c.isConfigured();
             Map<String, Object> m = new java.util.LinkedHashMap<>();
@@ -241,8 +240,8 @@ public class AiService {
             "429|rate.?limit|too many|tokens per minute|\\btpm\\b|\\brpm\\b|quota|resource.?exhausted",
             Pattern.CASE_INSENSITIVE);
     /**
-     * Configured but not answering — a self-hosted gateway that isn't running, an Ollama behind
-     * a closed tunnel, a provider having an outage. Distinct from a rate limit: nothing said
+     * Configured but not answering — a self-hosted gateway that isn't running, or a provider
+     * having an outage. Distinct from a rate limit: nothing said
      * "come back later", it simply isn't there.
      */
     private static final Pattern UNREACHABLE = Pattern.compile(
@@ -288,10 +287,6 @@ public class AiService {
 
         List<AiClient> pool = new java.util.ArrayList<>();
         for (String n : AUTO_ORDER) {
-            // A localhost Ollama is unreachable from a cloud host — including it in the
-            // fallback just turns every rate-limit into a confusing "I/O error on
-            // localhost:11434". Skip it unless it's the explicitly chosen provider.
-            if ("ollama".equals(n) && isLocalOllama()) continue;
             AiClient c = clients.get(n);
             if (c != null && c.isConfigured() && !chain.contains(c)) pool.add(c);
         }
@@ -356,11 +351,6 @@ public class AiService {
             if (left > 0) out.put(name, left);
         });
         return out;
-    }
-
-    private boolean isLocalOllama() {
-        String url = props.getOllama().getUrl();
-        return url == null || url.contains("localhost") || url.contains("127.0.0.1");
     }
 
     private String cacheKey(String system, String user, boolean fast) {

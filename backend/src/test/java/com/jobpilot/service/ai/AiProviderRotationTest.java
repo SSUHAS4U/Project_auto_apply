@@ -56,7 +56,6 @@ class AiProviderRotationTest {
 
         JobPilotProperties props = new JobPilotProperties();
         props.getAi().setProvider("auto");
-        // A localhost Ollama is deliberately excluded from the chain; keep the default.
         ai = new AiService(List.of(groq, gemini), props, settings);
     }
 

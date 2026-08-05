@@ -267,7 +267,7 @@ public class PilotOrchestrator {
         if (!ai.isEnabled()) {
             cycle.setStatus("completed");
             cycle.setSummary("Pipeline requires an AI provider (evaluate/draft/review are AI stages) — "
-                    + "configure Groq/Gemini/Ollama in Settings.");
+                    + "configure Groq or Gemini in Settings.");
             cycle.setFinishedAt(Instant.now());
             cycles.save(cycle);
             return Map.of("status", "completed", "summary", cycle.getSummary());
