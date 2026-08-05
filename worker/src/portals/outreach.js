@@ -117,6 +117,44 @@ async function describePeoplePage(page) {
  * On a person's card or profile, click Connect (revealing it via "More" if needed), then
  * "Add a note", fill the note, and send. Returns true only if the invite was sent.
  */
+/**
+ * Did the profile page actually render? Reproduced with the worker's OWN full profile copy:
+ * every LinkedIn profile came back with an EMPTY h1 and no action bar at all — no Connect, no
+ * Message — while the same browser and session read job search, job panes and post search
+ * perfectly. Six unrelated recruiters do not all block connections; the profile view was being
+ * served degraded to this browser.
+ *
+ * That could not be settled outside a real run, so it reports itself: if the action bar is
+ * missing this prints what IS on the page, once, so the next run says whether the flow is
+ * blocked by LinkedIn or merely by a stale selector. Those need opposite fixes.
+ */
+let profileDiagShown = false;
+async function reportProfileNotRendering(page) {
+  if (profileDiagShown) return;
+  profileDiagShown = true;
+  const info = await page.evaluate(() => {
+    const c = (x) => (x || '').replace(/\s+/g, ' ').trim();
+    const main = document.querySelector('main, [role="main"]') || document.body;
+    return {
+      url: location.href.slice(0, 90),
+      h1: c(main.querySelector('h1')?.innerText).slice(0, 60),
+      buttons: main.querySelectorAll('button, [role="button"]').length,
+      labels: [...main.querySelectorAll('button, [role="button"]')]
+        .map((b) => c(b.getAttribute('aria-label') || b.innerText)).filter(Boolean).slice(0, 8),
+      bodyLen: (document.body?.innerText || '').length,
+    };
+  }).catch(() => null);
+  if (!info) { console.log('     [diag] the profile page could not be read at all'); return; }
+  console.log('     ⚠ no Connect/Message control on this profile — what the page actually is:');
+  console.log(`     [diag] ${info.url}`);
+  console.log(`     [diag] h1: "${info.h1}"  ·  buttons: ${info.buttons}  ·  body: ${info.bodyLen} chars`);
+  console.log(`     [diag] controls: ${info.labels.join(' | ') || '(none)'}`);
+  if (!info.h1 && info.bodyLen < 4000) {
+    console.log('     [diag] an empty h1 with a thin body means LinkedIn served a degraded');
+    console.log('            profile view — the selectors are not the problem.');
+  }
+}
+
 async function inviteWithNote(page, scope, note) {
   const root = scope || page;
   // Find Connect by what the button SAYS, not by a class/aria pattern. On a real profile the
@@ -147,7 +185,12 @@ async function inviteWithNote(page, scope, note) {
       connect = await findConnect();
     }
   }
-  if (!connect) return false; // already connected / follow-only / can't invite → caller may DM
+  if (!connect) {
+    // "No Connect button" has two very different causes and the log used to show neither:
+    // the person genuinely can't be invited, or the profile never rendered. Say which.
+    await reportProfileNotRendering(root === page ? page : page).catch(() => {});
+    return false; // already connected / follow-only / can't invite → caller may DM
+  }
 
   await connect.click({ timeout: 3000 }).catch(() => {});
   await humanDelay(900, 1600);
