@@ -78,6 +78,36 @@ test('searches actually run, and each one is logged', async () => {
   assert.equal((log.match(/🔎/g) || []).length, 2, `expected 2 search lines:\n${log}`);
 });
 
+test("an invisible reCAPTCHA v3 badge is not a captcha wall", async () => {
+  // THE SECOND FALSE POSITIVE. Indeed runs reCAPTCHA v3 site-wide to score traffic silently;
+  // it embeds a 0x0 iframe whose src contains "recaptcha" on ORDINARY pages. Matching the
+  // selector alone made every healthy search read as a wall, so a run printed
+  //   "Backend Developer · Bengaluru -> Indeed is showing a checkpoint (1/3)"
+  // against a page that was serving results perfectly well. A challenge only counts if it is
+  // actually rendered in front of you.
+  const site = healthySite();
+  const { result, log, api } = await runOnce({ site });
+  assert.ok(!/checkpoint/i.test(log), `an invisible v3 badge was read as a wall:\n${log}`);
+  assert.equal(api.statuses.filter((s) => s.status === 'needs_attention').length, 0);
+  assert.ok(result.applied > 0, `the run should have proceeded normally:\n${log}`);
+});
+
+test('a page serving job results is never called a wall', async () => {
+  // Corroboration: whatever else a page contains, results mean it is not blocking us.
+  const site = new FakeSite()
+    .add(/\/viewjob\?jk=/, (url) => fx.indeedJob({ jk: url.match(/jk=([^&]+)/)[1] }))
+    .add(/\/smartapply/, (url) => fx.indeedApplyStep({
+      step: Number(url.match(/[?&]step=(\d+)/)?.[1] || 1),
+      jk: url.match(/jk=([^&]+)/)?.[1] || 'jk000000',
+    }))
+    // Results AND a full-size recaptcha box on the same page.
+    .add(/\/jobs\?/, () => fx.indeedSearch({ count: 3 }).replace(
+      '</body>', '<div class="g-recaptcha" style="width:300px;height:400px"></div></body>'));
+  const { log } = await runOnce({ site });
+  assert.ok(!/checkpoint/i.test(log), `a page with results must not be a wall:\n${log}`);
+  assert.ok(/🔎/.test(log), `the search should have been read:\n${log}`);
+});
+
 test('a real captcha wall is detected, reported out loud, and ends the block', async () => {
   const site = new FakeSite().add(/\/jobs\?|\/viewjob/, () => fx.cloudflareChallenge());
   const { result, log, api } = await runOnce({ site });

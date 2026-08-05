@@ -38,9 +38,18 @@ function searchUrl(keyword, location, profile, start = 0, maxAgeDays = 0) {
   if (location && location.toLowerCase() !== 'remote') p.set('l', location);
   else p.set('l', 'Remote');
   if (start > 0) p.set('start', String(start));
-  // `fromage` = max posting age in days. Without it the "sorted by date" pages still run out
-  // into months-old postings that are almost certainly filled.
-  if (maxAgeDays > 0) p.set('fromage', String(Math.min(maxAgeDays, 30)));
+  // `fromage` = max posting age in days, and Indeed accepts ONLY the values its own filter
+  // offers: 1, 3, 7, 14. Anything else is rejected as a malformed request and served a
+  // Cloudflare challenge instead of results. We were sending the setting straight through, so
+  // the default of 30 produced:
+  //     GET /jobs?...&fromage=30  ->  HTTP 403  "Just a moment... Additional Verification"
+  // on EVERY search. Verified against live in.indeed.com: 1/3/7/14 all return 200 with cards,
+  // 30 returns 403. So the "captcha" Indeed appeared to be showing was one we asked for.
+  // Round down to the nearest value Indeed will accept; below 1 day, drop the filter entirely.
+  if (maxAgeDays > 0) {
+    const allowed = [14, 7, 3, 1].find((d) => d <= maxAgeDays);
+    if (allowed) p.set('fromage', String(allowed));
+  }
   return `https://${hostFor(location, profile)}/jobs?${p.toString()}`;
 }
 
@@ -116,15 +125,31 @@ const CHALLENGE_RE = /verify (?:you are|that you are|you're) (?:a )?human|are yo
  * a false positive kills an entire run, a false negative costs one wasted search.
  */
 async function looksBlocked(page) {
-  const sig = await page.evaluate(() => ({
-    title: (document.title || '').toLowerCase(),
-    text: (document.body?.innerText || '').replace(/\s+/g, ' ').toLowerCase().slice(0, 4000),
-    widget: !!document.querySelector(
+  const sig = await page.evaluate(() => {
+    // A challenge widget only counts if it is actually PUT IN FRONT OF YOU. reCAPTCHA v3 is
+    // invisible by design: it embeds an iframe whose src contains "recaptcha" on ordinary
+    // pages to score traffic silently, and Indeed runs it site-wide. Matching the selector
+    // alone therefore reported every healthy search page as a captcha wall — the second time
+    // this detector has manufactured its own outage. Require a real, rendered box.
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width >= 120 && r.height >= 120 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const widget = [...document.querySelectorAll(
       'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[title*="captcha" i],'
       + ' iframe[title*="challenge" i], #challenge-form, #challenge-running, .g-recaptcha,'
-      + ' .h-captcha, [data-testid="captcha"], form[action*="challenge"]'),
-  })).catch(() => null);
+      + ' .h-captcha, [data-testid="captcha"], form[action*="challenge"]')].some(visible);
+    return {
+      title: (document.title || '').toLowerCase(),
+      text: (document.body?.innerText || '').replace(/\s+/g, ' ').toLowerCase().slice(0, 4000),
+      widget,
+      // Corroboration. A page that is serving job results is not a wall, whatever else it
+      // happens to contain — and this is the one signal that cannot be faked by a stray script.
+      hasResults: document.querySelectorAll('[data-jk], .job_seen_beacon, a[href*="/viewjob"]').length > 0,
+    };
+  }).catch(() => null);
   if (!sig) return false;
+  if (sig.hasResults) return false;
   if (sig.widget) return true;
   if (/^(blocked|just a moment|attention required|access denied|security check)/.test(sig.title)) return true;
   return CHALLENGE_RE.test(sig.text);

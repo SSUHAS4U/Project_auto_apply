@@ -6,7 +6,9 @@
 // decision is made, so LinkedIn and Indeed can't drift apart.
 
 /** Default when the backend didn't send one (older plan payloads). */
-const DEFAULT_FIT_MIN = 75;
+// Matches the backend default. Only used when an older plan payload omits fitMin — the
+// setting in Schedule is the real control.
+const DEFAULT_FIT_MIN = 50;
 const DEFAULT_PERSON_CONF = 80;
 
 /**

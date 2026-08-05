@@ -205,6 +205,26 @@ async function jobLoaded(page) {
   }).catch(() => false);
 }
 
+/**
+ * Is the pane on screen actually the job we asked for?
+ *
+ * A job page "loading" is not the same as the RIGHT job page loading. LinkedIn's SPA leaves the
+ * previous posting rendered when a navigation or card click doesn't take, so `jobLoaded()`
+ * happily returns true for a page describing a different role entirely — and every downstream
+ * step (title, description, fit verdict, Easy Apply) then refers to the wrong job while naming
+ * the right one. The id appears in the URL and in the apply control's tracking attributes, so
+ * check for it before believing anything on the page.
+ */
+async function paneShowsJob(page, id) {
+  return page.evaluate((jobId) => {
+    if (location.href.includes(jobId)) return true;
+    const inDom = document.querySelector(
+      `[data-job-id="${jobId}"], [data-occludable-job-id="${jobId}"], `
+      + `[data-jobid="${jobId}"], a[href*="${jobId}"]`);
+    return !!inDom;
+  }, String(id)).catch(() => false);
+}
+
 /** Print what a job page really is when it won't load — once, not 57 times. */
 async function describeJobPage(page) {
   const info = await page.evaluate(() => ({
@@ -352,24 +372,30 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         let title = cardInfo.title || '';
         let company = cardInfo.company || '';
         try {
-          // Load the job's detail pane. Clicking the card is the fast SPA path, but the click
-          // can silently do nothing — and then we'd read the PREVIOUS job's pane (or an empty
-          // one), which is what made every job log "matched your search" instead of a real fit
-          // and left Easy Apply undiscoverable. So wait for the pane, and fall back to the
-          // job's own URL when it doesn't appear.
-          const card = await page.$(`li[data-occludable-job-id="${id}"], div[data-job-id="${id}"]`);
-          let pane = false;
-          if (card) {
-            await card.click({ timeout: 3000 }).catch(() => {});
-            pane = await page.waitForSelector(PANE_SEL, { timeout: 6000 }).then(() => true).catch(() => false);
-          }
-          if (!pane) {
-            await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-            pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
-          }
+          // Open the job on ITS OWN URL, not by clicking the card.
+          //
+          // The results rail is virtualised — `data-occludable-job-id` is LinkedIn telling us
+          // it only renders cards that are on screen. We collect every id up front, so from
+          // roughly the fifteenth card onward the element is a hollow placeholder: clicking it
+          // does nothing, the SPA never swaps the pane, and the loop then reads whatever job
+          // was already displayed. That is where a run of blank titles carrying confident
+          // verdicts came from — "skipped: stack mismatch (fit 30) — missing Payment
+          // Processing" was a real judgement, just not about the job it was filed against.
+          // Navigating is slower than clicking and is worth it: a wrong verdict is worse than
+          // a slow one.
+          await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          let pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
           // The selectors are a hint; the CONTENT decides. A renamed container must not turn a
           // perfectly good job page into a skip.
           if (!pane) pane = await jobLoaded(page);
+          // …and the content must be THIS job. Without this check the pane simply has to look
+          // like a job page, which the previous job's pane also does.
+          if (pane && !(await paneShowsJob(page, id))) {
+            pane = false;
+            if (paneFailures === 0) {
+              console.log(`     ⚠ the page did not switch to job ${id} — not judging it on another job's text.`);
+            }
+          }
           if (!pane) {
             paneFailures++;
             // Diagnose once with evidence, instead of repeating the same guess 57 times.
@@ -398,6 +424,20 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           // "Role"/"Company" blank.
           title = post.title || cardInfo.title || '';
           company = post.company || cardInfo.company || '';
+
+          // A job with NO title read from either the pane or the card was not really open, and
+          // whatever description came back belongs to something else. The last run filed a
+          // whole column of blank-titled rows carrying verdicts like "missing Payment
+          // Processing, Clearing Systems" — each one a real judgement about a posting nobody
+          // could identify. Refuse to judge it; keep it as a lead so the job isn't lost.
+          if (!title.trim()) {
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+              company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+              detail: 'could not read this posting — open it by hand' });
+            tally.manual++;
+            logSkipped('(untitled posting)', 'could not read it — left for manual');
+            continue;
+          }
           state.action = `Reviewing: ${title}`;
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'job_identified',
             title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,

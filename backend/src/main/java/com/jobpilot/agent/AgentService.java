@@ -598,6 +598,22 @@ public class AgentService {
      * page runs dry. Deterministic throughout: the inputs are ordered, the output is de-duplicated
      * and sorted, so the same profile always searches the same terms in the same order.
      */
+    /**
+     * Tools so common they appear on most postings regardless of stack. Pairing one with a role
+     * shrinks the result set without improving relevance — see the measurements in
+     * {@link #expandQueries(List, Profile, int)}. Keeping this as a deny-list rather than an
+     * allow-list means a genuine stack term nobody thought to enumerate still gets through.
+     */
+    private static final Set<String> NON_DIFFERENTIATING = Set.of(
+            "git", "github", "gitlab", "bitbucket", "bootstrap", "html", "html5", "css", "css3",
+            "jquery", "json", "xml", "yaml", "rest", "restful", "api", "apis", "crud",
+            "agile", "scrum", "kanban", "jira", "confluence", "trello",
+            "linux", "unix", "windows", "macos", "bash", "shell",
+            "excel", "word", "powerpoint", "outlook",
+            "npm", "yarn", "maven", "gradle", "webpack", "babel", "eslint",
+            "vscode", "eclipse", "intellij", "postman", "swagger",
+            "oop", "oops", "dsa", "algorithms", "debugging", "testing");
+
     List<String> expandQueries(List<String> roles, Profile p) {
         return expandQueries(roles, p, 12);
     }
@@ -609,9 +625,21 @@ public class AgentService {
 
         // Only skills that name a technology are useful as query modifiers; "communication" or
         // "teamwork" would drag in noise, so anything long or multi-word is left out.
+        //
+        // …and being a technology is not enough: it has to NARROW THE FIELD USEFULLY. Measured
+        // against live in.indeed.com for Bengaluru:
+        //     "Backend Developer"            -> 300 postings
+        //     "Backend Developer Java"       -> 100
+        //     "Backend Developer Git"        -> 100
+        //     "Backend Developer Bootstrap"  ->  25
+        // Git and Bootstrap are on half the postings in the market; pairing them with a role
+        // doesn't find better-matched jobs, it just discards every posting that didn't happen
+        // to spell out a ubiquitous tool. A real run searched "Backend Developer Bootstrap"
+        // and that is not a search anybody would type.
         List<String> techSkills = (p.getSkills() == null ? List.<String>of() : p.getSkills()).stream()
                 .map(s -> s == null ? "" : s.trim())
                 .filter(s -> s.length() >= 2 && s.length() <= 18 && !s.contains(" "))
+                .filter(s -> !NON_DIFFERENTIATING.contains(s.toLowerCase()))
                 .distinct().limit(6).toList();
 
         LinkedHashSet<String> out = new LinkedHashSet<>(base);
@@ -732,7 +760,11 @@ public class AgentService {
         m.put("indeedMins", intOr(raw, IN_MINS, 120));
         m.put("restMins", intOr(raw, REST_MINS, 30));
         // The gates that decide what gets applied to and who gets contacted.
-        m.put("fitMin", intOr(raw, FIT_MIN, 75));
+        // 50, not 75. At 75 a real run skipped all 57 matches — including "fit 70 — skills
+        // match web development requirements", which is a job worth an application. The gate
+        // still requires techMatch, so the stack check does the protecting; the score only
+        // decides how strong a match has to be, and 75 was set without evidence.
+        m.put("fitMin", intOr(raw, FIT_MIN, 50));
         m.put("personConfMin", intOr(raw, PERSON_CONF_MIN, 80));
         m.put("maxAgeDays", intOr(raw, MAX_AGE_DAYS, 30));
         // Volume + breadth. These were constants in the worker, so changing them used to mean a

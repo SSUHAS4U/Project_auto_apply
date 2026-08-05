@@ -19,6 +19,16 @@ const page = (title, body, head = '') =>
   `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head>`
   + `<body>${body}${CLOUDFLARE_TELEMETRY}</body></html>`;
 
+/**
+ * reCAPTCHA v3's invisible iframe. Indeed runs v3 site-wide to score traffic silently, so this
+ * is present on ORDINARY pages — 0×0, no challenge, nothing for a human to solve. A detector
+ * that matches `iframe[src*="recaptcha"]` reports every healthy search page as a captcha wall.
+ */
+export const INVISIBLE_RECAPTCHA_V3 =
+  '<div class="grecaptcha-badge" style="width:0;height:0;overflow:hidden">'
+  + '<iframe src="https://www.google.com/recaptcha/api2/anchor?k=abc" width="0" height="0"'
+  + ' style="width:0;height:0;border:0" title="reCAPTCHA"></iframe></div>';
+
 /** An ordinary Indeed search-results page carrying `count` job cards. */
 export function indeedSearch({ count = 15, startKey = 0, query = 'java developer' } = {}) {
   const cards = Array.from({ length: count }, (_, i) => {
@@ -30,7 +40,9 @@ export function indeedSearch({ count = 15, startKey = 0, query = 'java developer
   }).join('\n');
   return page(
     `${query} Jobs (with Salaries) | Indeed.com`,
-    `<div id="mosaic-jobResults"><ul>${cards || '<li>No jobs found</li>'}</ul></div>`,
+    // The invisible v3 badge rides along on real pages, so it rides along here.
+    `<div id="mosaic-jobResults"><ul>${cards || '<li>No jobs found</li>'}</ul></div>`
+    + INVISIBLE_RECAPTCHA_V3,
   );
 }
 
@@ -57,7 +69,7 @@ export function indeedJob({ jk = 'jk000000', title = 'Java Developer', company =
     <div data-testid="inlineHeader-companyLocation">Bengaluru, Karnataka</div>
     <div id="salaryInfoAndJobType"><span class="attribute_snippet">₹8,00,000 - ₹12,00,000 a year</span></div>
     <div id="viewJobButtonLinkContainer">${button}</div>
-    <div id="jobDescriptionText">${desc}</div>`);
+    <div id="jobDescriptionText">${desc}</div>` + INVISIBLE_RECAPTCHA_V3);
 }
 
 /**

@@ -141,8 +141,16 @@ export function startPausePoller(api, state) {
             // acting on one reading turned a two-second hiccup into a dead hour that printed
             // nothing at all. Say it out loud too: this was invisible before.
             missedRun++;
-            if (missedRun >= 2) {
-              console.log(`\n  ■ The current run is no longer active on the server (${activeId ? 'a different run started' : 'it was stopped or ended'}) — finishing this block.`);
+            if (missedRun === 2) {
+              // Say it ONCE, and say enough to diagnose it. This printed on every subsequent
+              // tick, three times in one run, while explaining nothing about the cause — and
+              // "it was stopped or ended" covers a Stop click, a finished run, a backend
+              // redeploy that dropped the run, and a rotation starting a different portal.
+              // Those need different fixes, so name which one it was.
+              console.log(`\n  ■ Run ${state.runId} is no longer the active run on the server`
+                + ` — ${activeId ? `the server is now running ${activeId}` : 'the server reports nothing running'}.`);
+              console.log('     Finishing this block. If you did not press Stop, the backend most likely'
+                + ' restarted (a deploy) while this run was in progress.');
               state.stopped = true;
             }
           } else {

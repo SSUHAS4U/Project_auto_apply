@@ -98,6 +98,32 @@ class ExpandQueriesTest {
     }
 
     @Test
+    void ubiquitousToolsAreNeverPairedWithARole() {
+        // Measured on live in.indeed.com (Bengaluru): "Backend Developer" returns 300 postings,
+        // "Backend Developer Git" 100, "Backend Developer Bootstrap" 25. Those are the same
+        // roles minus every posting that didn't spell out a tool half the market uses, so the
+        // pairing costs reach and buys nothing. A real run searched "Backend Developer
+        // Bootstrap" and found almost nothing.
+        List<String> q = agent.expandQueries(List.of("Backend Developer"),
+                profileWith("Bootstrap", "Git", "HTML", "CSS", "Agile", "Jira"));
+
+        assertEquals(List.of("Backend Developer"), q,
+                "no ubiquitous tool should survive as a query modifier: " + q);
+    }
+
+    @Test
+    void realStackTermsAreStillPaired() {
+        List<String> q = agent.expandQueries(List.of("Backend Developer"),
+                profileWith("Java", "Spring", "Git", "Bootstrap"));
+
+        assertTrue(q.contains("Backend Developer Java"), q.toString());
+        assertTrue(q.contains("Backend Developer Spring"), q.toString());
+        assertFalse(q.contains("Backend Developer Git"), q.toString());
+        assertFalse(q.contains("Backend Developer Bootstrap"), q.toString());
+        assertTrue(q.contains("Backend Developer"), "the plain role has the widest reach: " + q);
+    }
+
+    @Test
     void ignoresBlankRoles() {
         List<String> q = agent.expandQueries(List.of("  ", "", "Developer"), profileWith("Java"));
         assertTrue(q.stream().allMatch((s) -> !s.isBlank()));
