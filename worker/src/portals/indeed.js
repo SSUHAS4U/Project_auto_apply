@@ -96,9 +96,38 @@ async function readPosting(page) {
   };
 }
 
+// Phrases that only appear on an actual challenge page, matched against VISIBLE text.
+const CHALLENGE_RE = /verify (?:you are|that you are|you're) (?:a )?human|are you a human|unusual traffic|security check|additional verification|checking your (?:browser|connection)|press and hold|solve the (?:captcha|puzzle)|enable javascript and cookies/i;
+
+/**
+ * Is this page a bot wall rather than the page we asked for?
+ *
+ * This used to be a substring test over `page.content()` — the raw HTML — for the word
+ * "captcha". Cloudflare injects a telemetry config object into every page it fronts, and that
+ * object contains `"captcha":{…}` as one of its event keys. So EVERY ordinary Indeed page
+ * matched, every search hit the `continue` above, three in a row ended the block, and because
+ * that path only emitted backend events the whole run printed its plan and then nothing at
+ * all. Indeed had not blocked anything; the detector had.
+ *
+ * Now: visible text only (script and JSON blobs are invisible and cannot vote), plus the page
+ * title and the presence of an actual challenge widget.
+ *
+ * Fails OPEN. If the page can't be read we carry on and let the search report what it finds —
+ * a false positive kills an entire run, a false negative costs one wasted search.
+ */
 async function looksBlocked(page) {
-  const html = (await page.content().catch(() => '')).toLowerCase();
-  return html.includes('verify you are human') || html.includes('captcha') || html.includes('unusual traffic');
+  const sig = await page.evaluate(() => ({
+    title: (document.title || '').toLowerCase(),
+    text: (document.body?.innerText || '').replace(/\s+/g, ' ').toLowerCase().slice(0, 4000),
+    widget: !!document.querySelector(
+      'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[title*="captcha" i],'
+      + ' iframe[title*="challenge" i], #challenge-form, #challenge-running, .g-recaptcha,'
+      + ' .h-captcha, [data-testid="captcha"], form[action*="challenge"]'),
+  })).catch(() => null);
+  if (!sig) return false;
+  if (sig.widget) return true;
+  if (/^(blocked|just a moment|attention required|access denied|security check)/.test(sig.title)) return true;
+  return CHALLENGE_RE.test(sig.text);
 }
 
 export async function runIndeed(page, api, plan, state, ctx) {
@@ -116,6 +145,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   const doneToday = plan.appliedToday || 0;
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
+  let blockedTotal = 0;  // walls hit at any point, so the summary can name the real cause
 
   // ONE country host for the whole run — used for the searches AND the job pages. The job page
   // used to be hardcoded to www.indeed.com while the search ran on in.indeed.com, so every job
@@ -165,15 +195,22 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
       if (await looksBlocked(page)) {
         blockedStreak++;
+        blockedTotal++;
         state.action = 'Indeed checkpoint — needs attention';
+        // SAY IT. Both branches below used to emit backend events only, so a walled run
+        // printed its plan and then went completely silent — indistinguishable from a hang,
+        // and the single most misleading thing this adapter did.
+        console.log(`  ⛔ ${keyword} · ${location} → Indeed is showing a checkpoint (${blockedStreak}/3)`);
         // Previously this looped per keyword×location and flooded the activity feed with
         // hundreds of identical errors. Three walls in a row = Indeed is not letting us in
         // this session: flag needs_attention (rings the bell) and END the block cleanly.
         if (blockedStreak >= 3) {
+          console.log('     ✋ three checkpoints in a row — ending the Indeed block.');
+          console.log('        Open Indeed in the automation browser, solve it once, then run again.');
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
             detail: 'checkpoint/captcha persists — pausing Indeed for this block. Solve it in the browser, then run again.' });
           await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha — solve it in the browser').catch(() => {});
-          return { applied };
+          return { applied, blocked: true };
         }
         await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
           detail: 'checkpoint/captcha — solve it in the browser, then it resumes' });
@@ -324,12 +361,22 @@ export async function runIndeed(page, api, plan, state, ctx) {
   }
   // If EVERY search returned zero, say why in plain terms rather than a silent 0/0/0/0/0.
   if (totalResults === 0) {
-    console.log('\n  ✋ Indeed returned no jobs for any search. Usual causes:');
-    console.log('     · not signed in to Indeed in the automation browser (log in once, then run again)');
-    console.log('     · a captcha / "verify you are human" wall');
-    console.log('     · Indeed changed its results markup');
-    await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
-      detail: 'Indeed returned no jobs — sign into indeed.com in the automation browser (or solve the captcha), then run again.' });
+    // A run walled fewer than three times never reached the bail-out above, so it used to
+    // finish with the generic "usual causes" list and no needs_attention — the owner was told
+    // to guess between three possibilities when the adapter already knew which one it was.
+    if (blockedTotal > 0) {
+      console.log(`\n  ✋ Indeed showed a checkpoint on ${blockedTotal} of ${kws.length * locs.length} searches — nothing could be read.`);
+      console.log('     Open Indeed in the automation browser, solve the check once, then run again.');
+      await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+        detail: `Indeed showed a captcha/checkpoint on ${blockedTotal} search(es) — solve it in the automation browser, then run again.` });
+      await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha — solve it in the browser').catch(() => {});
+    } else {
+      console.log('\n  ✋ Indeed returned no jobs for any search. Usual causes:');
+      console.log('     · not signed in to Indeed in the automation browser (log in once, then run again)');
+      console.log('     · Indeed changed its results markup');
+      await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+        detail: 'Indeed returned no jobs — sign into indeed.com in the automation browser, then run again.' });
+    }
   }
   return { applied };
 }

@@ -104,8 +104,23 @@ public class FitService {
         return out;
     }
 
+    /** Sentinel prefix used by {@link #candidateSummary()} when there is nothing to compare against. */
+    static final String NO_CANDIDATE = "(profile";
+
     private Map<String, Object> aiJobFit(String candidate, String title, String company,
                                          String location, String description, int keywordScore) {
+        // No candidate = no verdict. Without this the placeholder string "(profile is empty …)"
+        // was sent to the model AS the candidate; it then quite correctly scored every job 0
+        // with techMatch=false, and because the result was tagged source="ai" the worker
+        // reported each one as "stack mismatch (fit 0)". A whole run would skip every job for a
+        // reason that had nothing to do with the jobs, and nothing anywhere named the profile.
+        // Fail closed, and say exactly what to fix.
+        if (candidate == null || candidate.startsWith(NO_CANDIDATE)) {
+            return verdict(0, false, 0, List.of(), List.of(),
+                    "your JobPilot profile has no skills or experience saved, so no job can be "
+                    + "judged against it — fill in Profile, then run again",
+                    "no_profile");
+        }
         // Too little text to judge honestly — say so rather than inventing a verdict.
         String desc = nz(description);
         if (desc.length() < 80 || !ai.isEnabled()) {

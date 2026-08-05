@@ -89,6 +89,24 @@ async function collectJobCards(page) {
 
 async function readPosting(page) {
   const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => '');
+  // The TOP-CARD title has the same screen-reader duplication as the result cards: a visible
+  // span plus a visually-hidden copy. `text()` above concatenates both, which is where
+  // "Java Backend DeveloperJava Backend Developer" came from — and because the pane title
+  // overrides the (correctly de-duplicated) card title, the doubled one is what got logged,
+  // sent to the fit gate and written to the dashboard. Same rule as collectJobCards: prefer
+  // the visible span, then collapse an exact self-repeat.
+  const title = await page.$eval(
+    '.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1',
+    (e) => {
+      const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+      const vis = e.querySelector('[aria-hidden="true"]');
+      let v = clean(vis ? vis.textContent : e.textContent).replace(/\s*with verification\s*$/i, '');
+      const half = v.length / 2;
+      if (v.length % 2 === 0 && v.slice(0, half) === v.slice(half)) return v.slice(0, half).trim();
+      const m = v.match(/^(.{4,}?)\s+\1$/);
+      return m ? m[1].trim() : v;
+    },
+  ).catch(() => '');
   // Salary is sparse on LinkedIn — scan the top-card "insight" pills for a pay pattern.
   const salary = await page.$$eval(
     '.job-details-jobs-unified-top-card__job-insight, .jobs-unified-top-card__job-insight',
@@ -122,7 +140,7 @@ async function readPosting(page) {
   }
 
   return {
-    title: await text('.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1'),
+    title,
     company: await text('.job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name'),
     location: await text('.job-details-jobs-unified-top-card__primary-description-container, .jobs-unified-top-card__bullet'),
     description,

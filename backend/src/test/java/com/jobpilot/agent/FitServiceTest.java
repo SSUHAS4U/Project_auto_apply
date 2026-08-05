@@ -203,4 +203,43 @@ class FitServiceTest {
         assertDoesNotThrow(() -> fit.jobFit(null, null, null, null));
         assertDoesNotThrow(() -> fit.recruiterFit(null, null, null));
     }
+
+    /**
+     * An empty Profile must not be laundered into a verdict about the job.
+     *
+     * candidateSummary() returns a placeholder ("(profile is empty …)") when there is nothing
+     * saved. That placeholder used to be sent to the model AS the candidate, which scored every
+     * job 0 with techMatch=false and tagged it source="ai" — so the worker skipped a whole run
+     * as "stack mismatch (fit 0)" and never mentioned the profile. The AI must not even be asked.
+     */
+    @Test
+    void anEmptyProfileIsReportedAsSuchRatherThanAsAStackMismatch() {
+        when(profiles.get()).thenReturn(new Profile());     // nothing filled in
+
+        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+
+        assertEquals("no_profile", v.get("source"), "the cause must be identifiable by the caller");
+        assertEquals(false, v.get("techMatch"));
+        assertEquals(0, v.get("score"));
+        assertTrue(String.valueOf(v.get("reason")).toLowerCase().contains("profile"),
+                "the reason must name the profile: " + v.get("reason"));
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    void anUnreadableProfileIsTreatedTheSameWayAsAnEmptyOne() {
+        when(profiles.get()).thenThrow(new IllegalStateException("no user context"));
+        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+        assertEquals("no_profile", v.get("source"));
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    void aPopulatedProfileStillReachesTheAi() {
+        aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":90,\"matched\":[\"Java\"],"
+                + "\"missing\":[],\"reason\":\"strong match\"}");
+        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+        assertEquals("ai", v.get("source"), "the guard must not swallow real evaluations");
+        assertEquals(88, v.get("score"));
+    }
 }

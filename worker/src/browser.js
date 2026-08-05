@@ -103,6 +103,12 @@ export function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 /** Human-ish jitter so actions never fire at a robotic fixed cadence. */
 export function humanDelay(min = 700, max = 1800) {
+  // The adapter test harness sets JOBPILOT_TEST_NO_PACING so a suite that drives dozens of
+  // pages finishes in two minutes rather than twenty. Read at CALL time, not at import time:
+  // ES module imports are hoisted, so a harness that sets the variable in its own module body
+  // would lose the race against this module being evaluated. Nothing in the app ever sets it —
+  // the jitter is a large part of what keeps a run from reading as a script.
+  if (process.env.JOBPILOT_TEST_NO_PACING === '1') return sleep(0);
   return sleep(min + Math.floor(Math.random() * (max - min)));
 }
 
