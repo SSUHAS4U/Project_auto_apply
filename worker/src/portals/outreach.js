@@ -62,7 +62,15 @@ async function collectPeople(page) {
         box = box.parentElement;
         if (box.matches('li, [data-view-name], .artdeco-list__item, div[componentkey]')) break;
       }
-      const name = clean(a.getAttribute('aria-label') || a.innerText).split('\n')[0];
+      // Splitting on a newline is not enough: live LinkedIn renders the whole thing on ONE
+      // line — "Karthick M • 2nd Technical Recruiter at Acme" — so the connection degree and
+      // the headline came through as part of the name and the note opened "Hi Karthick M •
+      // 2nd,". Cut at the bullet, then drop any trailing degree marker.
+      const name = clean(a.getAttribute('aria-label') || a.innerText)
+        .split('\n')[0]
+        .split('•')[0]
+        .replace(/\s*\b\d(?:st|nd|rd|th)\+?\b\s*$/i, '')
+        .trim();
       if (!name || /LinkedIn Member/i.test(name) || name.length > 60) continue;
       const boxText = clean(box.innerText);
       // The headline is usually the line after the name inside the same card.
