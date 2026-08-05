@@ -7,6 +7,17 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     hikari:
       maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:4}
+      # The database is in another region, so a connection crosses the internet. Idle TCP
+      # connections get silently dropped by NAT/firewalls after a few minutes; the pool then
+      # hands out a dead one and the request pays a full reconnect — TCP + TLS + auth to a
+      # distant host — which is exactly what an intermittent multi-second stall looks like.
+      keepalive-time: ${SPRING_DATASOURCE_HIKARI_KEEPALIVE:120000}      # ping idle conns every 2m
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:600000}     # recycle before the network does
+      # Keep two connections warm so a burst doesn't start from a cold handshake.
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MIN_IDLE:2}
+      # Fail in 10s rather than hanging for 30 — a stuck request should surface, not stall.
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:10000}
+      validation-timeout: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:3000}
   jpa:
     hibernate:
       # Flyway owns the schema; Hibernate must not validate/alter it. Validation

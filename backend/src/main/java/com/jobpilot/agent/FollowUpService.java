@@ -77,9 +77,12 @@ public class FollowUpService {
      */
     public List<PortalContact> due(UUID userId, Instant now, int limit) {
         List<PortalContact> out = new ArrayList<>();
+        // Read the spacing ONCE. isDue() calls gapDays() internally, which rebuilds the whole
+        // settings map — doing that per contact meant up to 300 rebuilds for one request.
+        int[] gaps = gapDays();
         for (PortalContact c : contacts.findByUserIdAndConnectionStatusOrderByUpdatedAtDesc(
                 userId, "connected", PageRequest.of(0, 300))) {
-            if (isDue(c, now)) out.add(c);
+            if (isDue(c, now, gaps)) out.add(c);
         }
         out.sort(Comparator.comparing(c -> c.getLastContactAt() == null ? Instant.EPOCH : c.getLastContactAt()));
         return out.size() > limit ? out.subList(0, limit) : out;
@@ -87,12 +90,17 @@ public class FollowUpService {
 
     /** Is this contact's next touch due? */
     boolean isDue(PortalContact c, Instant now) {
+        return isDue(c, now, gapDays());
+    }
+
+    /** @param gaps the spacing, passed in so a loop reads settings once rather than per contact. */
+    boolean isDue(PortalContact c, Instant now, int[] gaps) {
         if (c == null || c.getArchivedAt() != null) return false;
         int stage = c.getFollowUpStage();
         if (stage >= TOUCHES) return false;                   // sequence exhausted
         Instant last = c.getLastContactAt();
         if (last == null) return true;                        // never touched → due immediately
-        return !now.isBefore(last.plus(Duration.ofDays(gapDays()[stage])));
+        return !now.isBefore(last.plus(Duration.ofDays(gaps[stage])));
     }
 
     /** When this contact's next touch falls due, or null once the sequence is over. */
