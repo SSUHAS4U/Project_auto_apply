@@ -91,6 +91,49 @@ test('a renamed description container still yields the job description, not a ne
     `the fallback picked the recruiter panel:\n${desc.slice(0, 300)}`);
 });
 
+test('a renamed container must not hand the About-the-company panel to the gate', async () => {
+  // THE "fit 0" REGRESSION, reproduced.
+  //
+  // The v103 fallback takes the LARGEST leaf text block in the details pane. On a staffing
+  // firm's posting the About-the-company panel is longer than the job description and is
+  // entirely recruitment/HR/onboarding prose. Feed that to the fit gate and the model
+  // correctly reports the job as needing recruitment, HR and onboarding — which the worker
+  // then prints as "stack mismatch (fit 0) — missing recruitment, HR, onboarding" against a
+  // Java role. Nothing in that chain is wrong except which block was picked.
+  const api = new FakeApi();
+  await runOnce({
+    s: site({ jobOpts: {
+      descriptionSelector: 'class="jd-v2-renamed"',
+      aboutPanel: fx.STAFFING_ABOUT,
+    } }),
+    api,
+  });
+  const desc = judgedDescription(api);
+  assert.ok(!/recruitment lifecycle|recruitment delivery|onboarding specialists/i.test(desc),
+    `the About-the-company panel was judged as the job:\n${desc.slice(0, 400)}`);
+  assert.ok(/Spring Boot|Java/.test(desc),
+    `the real job description was not what reached the gate:\n${desc.slice(0, 400)}`);
+});
+
+test('when no description can be read, the job becomes a manual lead — never a fit verdict', async () => {
+  // If every candidate block is a neighbour panel, the honest answer is "I could not read it",
+  // which gate.js turns into a manual lead. Inventing a score from whatever text was nearby is
+  // what made an extraction failure look like 57 unsuitable jobs.
+  const api = new FakeApi();
+  const { log } = await runOnce({
+    s: site({ jobOpts: {
+      descriptionSelector: 'class="jd-v2-renamed"',
+      description: 'Apply now.',                 // too thin to judge
+      aboutPanel: fx.STAFFING_ABOUT,
+    } }),
+    api,
+  });
+  assert.equal(api.calls.filter((c) => c.name === 'evaluate').length, 0,
+    'an unreadable description must not be sent for scoring at all');
+  assert.ok(/no description to judge/.test(log), `the log must say what went wrong:\n${log}`);
+  assert.ok(api.eventsOfType('manual_apply').length > 0, 'the job must survive as a manual lead');
+});
+
 test('a job title is never doubled by the screen-reader copy', async () => {
   const api = new FakeApi();
   await runOnce({ s: site(), api });

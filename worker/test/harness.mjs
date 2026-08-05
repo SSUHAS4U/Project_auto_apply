@@ -11,8 +11,10 @@
 //   · the backend  (a recording stub with the same method surface as src/api.js)
 // — so a selector change, a silent `continue`, or a loop that never runs shows up here exactly
 // as it would in production.
-import { chromium } from 'playwright-core';
-import { existsSync } from 'node:fs';
+import { chromium, firefox } from 'playwright-core';
+import fs, { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // Collapse the human pacing for the whole suite. `humanDelay` reads this at call time, so it
 // does not matter that module imports are hoisted above this line.
@@ -28,6 +30,25 @@ const CHROME_CANDIDATES = [
 
 export function findChrome() {
   return CHROME_CANDIDATES.find((p) => existsSync(p)) || null;
+}
+
+/**
+ * Camoufox — the browser the worker ACTUALLY uses.
+ *
+ * `launchBrowser()` prefers the bundled Camoufox (a hardened Firefox) and only falls back to
+ * Chrome/Edge if that fails, so Chrome is the exception, not the rule. Testing the adapters on
+ * Chrome tests an engine most runs never touch: Firefox differs on `innerText` whitespace, on
+ * how `:has-text()` and visibility resolve, and on iframe timing — all of which these adapters
+ * depend on. The harness therefore defaults to Camoufox and only uses Chrome when asked.
+ */
+const CAMOUFOX_CANDIDATES = [
+  path.join(os.homedir(), 'AppData', 'Local', 'camoufox', 'camoufox', 'Cache', 'camoufox.exe'),
+  path.join(os.homedir(), '.cache', 'camoufox', 'camoufox'),
+  path.join(os.homedir(), 'Library', 'Caches', 'camoufox', 'Camoufox.app', 'Contents', 'MacOS', 'camoufox'),
+];
+
+export function findCamoufox() {
+  return CAMOUFOX_CANDIDATES.find((p) => existsSync(p)) || null;
 }
 
 /**
@@ -166,12 +187,38 @@ export function captureLog(verbose = !!process.env.VERBOSE) {
  * signed-in run must say so, and tests of the signed-out path get it for free by omitting it.
  */
 export async function launch({ cookies = [] } = {}) {
-  const executablePath = findChrome();
-  if (!executablePath) throw new Error('No Chrome/Edge found for the harness');
-  const browser = await chromium.launch({ executablePath, headless: true });
-  const ctx = await browser.newContext();
+  // Camoufox first — it is what a real run uses. JOBPILOT_TEST_BROWSER=chrome forces the
+  // fallback engine, so the same suite can be run against both.
+  const wantChrome = process.env.JOBPILOT_TEST_BROWSER === 'chrome';
+  const camoufox = wantChrome ? null : findCamoufox();
+  const executablePath = camoufox || findChrome();
+  if (!executablePath) throw new Error('No Camoufox or Chrome found for the harness');
+
+  // MIRRORS src/browser.js → launchBrowser(). Both details matter and neither is cosmetic:
+  //   · launchPersistentContext, not launch()+newContext() — the real one persists logins;
+  //   · viewport: null — Camoufox's Juggler build rejects Browser.setDefaultViewport outright
+  //     ("property isMobile … not described in this scheme"), so a plain launch() cannot even
+  //     open a page. A harness that had to work around that would not be testing the real
+  //     launch path.
+  // Each run gets a throwaway profile directory so tests never inherit each other's state.
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobpilot-harness-'));
+  const engine = camoufox ? firefox : chromium;
+  const ctx = await engine.launchPersistentContext(profileDir, {
+    executablePath, headless: true, viewport: null,
+  });
   if (cookies.length) await ctx.addCookies(cookies);
-  return { browser, ctx };
+  // Persistent contexts have no separate browser handle; close the context to close the browser.
+  return {
+    browser: { close: () => ctx.close().finally(() => fs.rmSync(profileDir, { recursive: true, force: true })) },
+    ctx,
+    engine: camoufox ? 'camoufox' : 'chrome',
+  };
+}
+
+/** Printed once per suite so a run can never be mistaken for one on the other engine. */
+export function announceEngine() {
+  const e = process.env.JOBPILOT_TEST_BROWSER === 'chrome' ? null : findCamoufox();
+  process.stderr.write(`\n  harness engine: ${e ? `camoufox (firefox) — ${e}` : 'chrome'}\n\n`);
 }
 
 /** A signed-in LinkedIn session, as the adapter recognises one. */

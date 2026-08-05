@@ -116,6 +116,18 @@ public class AiService {
      * @param cacheable when true, identical inputs return a cached result for free.
      */
     public String complete(String system, String user, boolean fast, boolean cacheable) {
+        return complete(system, user, fast, cacheable, null);
+    }
+
+    /**
+     * As above, with an explicit output-token ceiling.
+     *
+     * Short-JSON callers (the fit/verdict gates) must not reserve a cover-letter-sized budget:
+     * free tiers count the reservation against the per-minute limit, so a 4,000-token
+     * reservation caps job evaluation at ~3 per minute and 429s the rest. See
+     * {@link AiClient#complete(String, String, boolean, Integer)}.
+     */
+    public String complete(String system, String user, boolean fast, boolean cacheable, Integer maxTokens) {
         String ck = cacheable ? cacheKey(system, user, fast) : null;
         if (ck != null) {
             String hit = cache.get(ck);
@@ -136,7 +148,7 @@ public class AiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             for (AiClient c : chain) {
                 try {
-                    String out = c.complete(system, user, fast);
+                    String out = c.complete(system, user, fast, maxTokens);
                     if (out == null || out.isBlank()) throw new IllegalStateException("empty response");
                     increment();
                     if (ck != null) cache.put(ck, out);

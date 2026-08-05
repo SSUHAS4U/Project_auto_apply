@@ -135,20 +135,21 @@ function TerminalButton({ portal }: { portal?: 'linkedin' | 'indeed' } = {}) {
   return (
     <>
       <button className="btn btn-sm" onClick={() => setOpen(true)}>
-        <Icon name="terminal" size={14} /> Terminal
+        <Icon name="terminal" size={14} /> {name ? `${name} terminal` : 'Terminal'}
       </button>
       {open && (
-        <Modal title={name ? `Automation terminal · ${name}` : 'Automation terminal'}
+        <Modal title={name ? `${name} terminal` : 'Automation terminal'}
           onClose={() => setOpen(false)} wide>
-          {/* One worker process, one log. Splitting it per portal would mean parsing the stream
-              and risking dropped lines — so it shows everything, and says so. */}
+          {/* Scoped to THIS portal. The worker emits one stream, but its blocks are delimited
+              and strictly serial, so it partitions cleanly — see lib/portalLog.ts. The other
+              portal's run does not belong on this page. */}
           {name && (
             <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>
-              One automation drives both portals, so this is the whole log — look for the
-              <b> ▶ {name.toUpperCase()}</b> section.
+              {name} only — {name === 'LinkedIn' ? 'Indeed' : 'LinkedIn'} runs are on its own page.
+              Startup and connection messages appear in both.
             </div>
           )}
-          <div style={{ height: '62vh' }}><TerminalConsole /></div>
+          <div style={{ height: '62vh' }}><TerminalConsole portal={portal} /></div>
         </Modal>
       )}
     </>

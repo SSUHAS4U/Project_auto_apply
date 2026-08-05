@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { desktop, isDesktopApp } from '../lib/desktop';
+import { filterPortalLog, hasPortalActivity, type PortalKey } from '../lib/portalLog';
 import { Icon } from './Icon';
 
 /**
@@ -8,8 +9,12 @@ import { Icon } from './Icon';
  * output. Lives inside the floating hub's "Terminal" tab (desktop app only; in a plain
  * browser isDesktopApp() is false and the hub hides the tab). It STARTS ITSELF when the app
  * opens — there is no Connect button here; portals are connected once on the Connections page.
+ *
+ * @param portal when set, show ONLY that portal's blocks (plus the shared startup output).
+ *        The LinkedIn page must not show Indeed's run and vice versa: one stream on two pages
+ *        meant reading past a hundred lines of the other portal to find your own.
  */
-export function TerminalConsole() {
+export function TerminalConsole({ portal }: { portal?: PortalKey } = {}) {
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState('');
@@ -31,10 +36,16 @@ export function TerminalConsole() {
     return () => { clearTimeout(t); offLog(); offStatus(); };
   }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // What this terminal actually shows. Filtering happens at render, not at capture, so the
+  // underlying buffer stays whole — switching pages never loses lines that were already
+  // streamed, and the unfiltered hub terminal keeps working from the same buffer.
+  const shown = useMemo(() => (portal ? filterPortalLog(log, portal) : log), [log, portal]);
+  const sawPortal = useMemo(() => (portal ? hasPortalActivity(log, portal) : true), [log, portal]);
+
   useEffect(() => {
     const el = bodyRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [log]);
+  }, [shown]);
 
   if (!isDesktopApp()) return null;
 
@@ -82,7 +93,11 @@ export function TerminalConsole() {
         </div>
       </div>
       <pre ref={bodyRef} className="term-body" onScroll={onScroll} style={{ flex: 1, minHeight: 200, margin: 0 }}>
-        {log || 'Starting the automation…\n\nIf this is your first run, connect LinkedIn / Indeed once on the Connections page. After that it starts automatically every time you open the app.'}
+        {shown || (portal && !sawPortal
+          ? `Waiting for the ${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'} block to start.\n\n`
+            + 'The two portals run one after the other, never at the same time — this view shows '
+            + `only ${portal === 'linkedin' ? 'LinkedIn' : 'Indeed'}, so it stays empty while the other one is working.`
+          : 'Starting the automation…\n\nIf this is your first run, connect LinkedIn / Indeed once on the Connections page. After that it starts automatically every time you open the app.')}
       </pre>
     </div>
   );

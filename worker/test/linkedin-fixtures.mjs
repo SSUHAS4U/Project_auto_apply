@@ -21,6 +21,30 @@ export const JOB_DESCRIPTION =
   + 'the ability to debug production issues. 2+ years of professional Java experience required. '
   + 'Nice to have: Kafka, AWS, and experience with event-driven architectures.';
 
+/**
+ * The About-the-company panel as a STAFFING FIRM writes it — long, and entirely about
+ * recruitment, HR and onboarding. This is the block that beats the real description on length
+ * when `#job-details` goes stale, and it is what a "largest text block" fallback will happily
+ * hand to the fit gate. The model then reports the job as needing recruitment/HR/onboarding
+ * skills, scores it 0, and the run skips every posting as "stack mismatch (fit 0)".
+ */
+export const STAFFING_ABOUT = `
+  <section class="jobs-company">
+    <h2>About the company</h2>
+    <p>TalentBridge is a specialist recruitment and staffing partner. Our HR and recruitment
+       teams manage the complete hiring lifecycle on behalf of our clients: workforce planning,
+       sourcing, screening, interview coordination, offer negotiation, background verification,
+       documentation, onboarding and post-joining engagement. We operate dedicated recruitment
+       delivery centres and our HR operations team handles payroll, compliance, statutory
+       filings, benefits administration and employee relations for the contractors we place.
+       Our onboarding specialists ensure every candidate completes induction, compliance
+       training and system provisioning before day one. We have been recognised for excellence
+       in recruitment process outsourcing, HR shared services and onboarding experience across
+       the region for several consecutive years, and our recruitment consultants maintain
+       long-term relationships with both candidates and hiring managers throughout the
+       recruitment and onboarding journey.</p>
+  </section>`;
+
 /** The recruiter panel. Its language is HR/recruitment — never the job's requirements. */
 const HIRING_TEAM = `
   <section class="job-details-people-who-can-help__section">
@@ -52,6 +76,7 @@ const ABOUT_COMPANY = `
 export function linkedinJob({
   id = '4001', title = 'Java Backend Developer', company = 'Acme Technologies',
   easyApply = true, description = JOB_DESCRIPTION, descriptionSelector = 'id="job-details"',
+  aboutPanel = ABOUT_COMPANY,
 } = {}) {
   const applyBtn = easyApply
     ? `<button class="jobs-apply-button" aria-label="Easy Apply to ${title} at ${company}"
@@ -72,7 +97,7 @@ export function linkedinJob({
         </div>
         <article ${descriptionSelector}><p>${description}</p></article>
         ${HIRING_TEAM}
-        ${ABOUT_COMPANY}
+        ${aboutPanel}
       </div>
     </main>
     ${easyApplyModal(title)}`);

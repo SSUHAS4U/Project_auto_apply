@@ -44,7 +44,7 @@ class FitServiceTest {
     }
 
     private void aiReplies(String body) {
-        when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean())).thenReturn(body);
+        when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any())).thenReturn(body);
     }
 
     private static String longJd() { return "Responsibilities. ".repeat(30); }
@@ -75,7 +75,7 @@ class FitServiceTest {
     void aThinDescriptionIsNotJudgedByTheModelAtAll() {
         Map<String, Object> v = fit.jobFit("Developer", "X", "Bengaluru", "short");
         assertEquals("keyword", v.get("source"));
-        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -88,7 +88,7 @@ class FitServiceTest {
 
     @Test
     void aiFailureFallsBackInsteadOfThrowing() {
-        when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean()))
+        when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any()))
                 .thenThrow(new RuntimeException("provider down"));
         Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
         assertEquals("keyword", v.get("source"));
@@ -108,7 +108,7 @@ class FitServiceTest {
         fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
         fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
         // Determinism AND cost: the same posting must not be re-judged.
-        verify(ai, times(1)).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, times(1)).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -136,7 +136,7 @@ class FitServiceTest {
             assertEquals(true, v.get("contact"), h);
             assertEquals("title", v.get("source"), h);
         }
-        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -180,7 +180,7 @@ class FitServiceTest {
     void noHeadlineSignalAndNoPostsMeansNoContact() {
         Map<String, Object> v = fit.recruiterFit("H", "Engineering Manager at Q", List.of());
         assertEquals(false, v.get("contact"), "no evidence must mean no message");
-        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -223,7 +223,7 @@ class FitServiceTest {
         assertEquals(0, v.get("score"));
         assertTrue(String.valueOf(v.get("reason")).toLowerCase().contains("profile"),
                 "the reason must name the profile: " + v.get("reason"));
-        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -231,7 +231,7 @@ class FitServiceTest {
         when(profiles.get()).thenThrow(new IllegalStateException("no user context"));
         Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
         assertEquals("no_profile", v.get("source"));
-        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test

@@ -128,14 +128,40 @@ async function readPosting(page) {
       const pane = document.querySelector(
         '.jobs-details, .jobs-search__job-details, [class*="jobs-details"], main');
       if (!pane) return '';
-      // The biggest block of prose under the pane is the description, whatever it is called.
+
+      // "The biggest block of prose" is NOT good enough on its own, and getting that wrong is
+      // expensive rather than merely untidy. A job pane also contains "About the company",
+      // "Meet the hiring team", "Similar jobs" and the premium insight panels. On a staffing
+      // or consultancy posting the About panel is LONGER than the job description and is
+      // entirely recruitment/HR/onboarding prose — so the largest block was handed to the fit
+      // gate, the model judged the job to require recruitment and HR skills, and every posting
+      // came back "stack mismatch (fit 0) — missing recruitment, HR, onboarding" against a
+      // backend role. Exclude the panels we know about, by container AND by heading.
+      const BAD_CONTAINER = /jobs-company|company-module|hirer-card|people-who-can-help|similar-job|jobs-similar|people-also-viewed|insight|premium|jobs-search-results|salary/i;
+      const BAD_HEADING = /^(about the company|meet the hiring team|similar jobs|people also viewed|more jobs|how your profile matches|salary)/i;
+
+      const excluded = (el) => {
+        for (let n = el; n && n !== pane; n = n.parentElement) {
+          const id = `${n.id || ''} ${n.className || ''}`;
+          if (typeof n.className === 'string' && BAD_CONTAINER.test(id)) return true;
+          // A <section> whose own heading names it as a neighbour panel.
+          const h = n.querySelector && n.querySelector(':scope > h1, :scope > h2, :scope > h3');
+          if (h && BAD_HEADING.test((h.innerText || '').trim())) return true;
+        }
+        return false;
+      };
+
       let best = '';
-      for (const el of pane.querySelectorAll('div, section, article')) {
-        if (el.querySelector('div, section, article')) continue;   // leaves only
+      for (const el of pane.querySelectorAll('div, section, article, p')) {
+        if (el.querySelector('div, section, article, p')) continue;   // leaves only
+        if (excluded(el)) continue;
         const t = (el.innerText || '').trim();
         if (t.length > best.length) best = t;
       }
-      return best;
+      // Below this it is not a job description, and an honest empty string is worth more than a
+      // confident wrong one: gate.js turns it into "no description to judge" → a manual lead,
+      // rather than a fabricated verdict about the job.
+      return best.replace(/\s+/g, ' ').trim().length >= 200 ? best : '';
     }).catch(() => '');
   }
 

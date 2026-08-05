@@ -34,15 +34,23 @@ public class GroqAiClient implements AiClient {
 
     @Override
     public String complete(String system, String user, boolean fast) {
+        return complete(system, user, fast, null);
+    }
+
+    @Override
+    public String complete(String system, String user, boolean fast, Integer maxTokens) {
         JobPilotProperties.Groq g = props.getGroq();
         String model = fast ? g.getFastModel() : g.getModel();
         // Groq's free tier counts reserved output tokens against the per-minute budget
-        // (6000 TPM on llama-3.1-8b), so a large max_tokens 413s every request regardless
-        // of input size. Keep this well under the limit; it's plenty for a CV/letter.
+        // (12000 TPM on llama-3.3-70b), so a large max_tokens 429s/413s every request
+        // regardless of input size. Callers that only need a short JSON verdict pass their own
+        // ceiling; the configured value is the default and is sized for a CV/cover letter.
+        int budget = maxTokens != null && maxTokens > 0
+                ? Math.min(maxTokens, g.getMaxTokens()) : g.getMaxTokens();
         Map<String, Object> body = Map.of(
                 "model", model,
                 "temperature", 0.6,
-                "max_tokens", g.getMaxTokens(),
+                "max_tokens", budget,
                 "messages", List.of(
                         Map.of("role", "system", "content", system),
                         Map.of("role", "user", "content", user)));

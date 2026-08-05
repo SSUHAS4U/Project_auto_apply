@@ -107,6 +107,20 @@ public class FitService {
     /** Sentinel prefix used by {@link #candidateSummary()} when there is nothing to compare against. */
     static final String NO_CANDIDATE = "(profile";
 
+    /**
+     * Output ceiling for the three verdict calls below. They all return one small JSON object —
+     * a couple of hundred tokens at most.
+     *
+     * This is not a micro-optimisation. Free tiers count the RESERVATION against the per-minute
+     * budget, not the tokens actually produced. Groq's on-demand tier allows 12,000 tokens/min
+     * and the configured default is 4,000 (sized for cover letters), so each verdict consumed a
+     * third of the minute's allowance and roughly the fourth job in any minute got:
+     *   429 "Limit 12000, Used 9139, Requested 4534"
+     * — which the caller turns into "not evaluated (AI unavailable) — left for manual review".
+     * A run would evaluate three jobs a minute and push the rest to the manual pile.
+     */
+    private static final int VERDICT_TOKENS = 400;
+
     private Map<String, Object> aiJobFit(String candidate, String title, String company,
                                          String location, String description, int keywordScore) {
         // No candidate = no verdict. Without this the placeholder string "(profile is empty …)"
@@ -134,7 +148,7 @@ public class FitService {
                 + "\nLocation: " + nz(location)
                 + "\nDescription:\n" + desc.substring(0, Math.min(desc.length(), 4000));
         try {
-            JsonNode n = parseJson(ai.complete(FIT_SYSTEM, user, false, true));
+            JsonNode n = parseJson(ai.complete(FIT_SYSTEM, user, false, true, VERDICT_TOKENS));
             if (n == null) return verdict(keywordScore, keywordScore >= 60, 40, List.of(), List.of(),
                     "AI reply unreadable — keyword score only", "keyword");
             int score = clamp(n.path("score").asInt(keywordScore));
@@ -216,7 +230,7 @@ public class FitService {
         String user = "NAME: " + nz(name) + "\nHEADLINE: " + nz(headline)
                 + "\n\nRECENT POSTS:\n" + posts.substring(0, Math.min(posts.length(), 3000));
         try {
-            JsonNode n = parseJson(ai.complete(POST_SYSTEM, user, true, true));
+            JsonNode n = parseJson(ai.complete(POST_SYSTEM, user, true, true, VERDICT_TOKENS));
             if (n == null) return person(false, false, 40, "", "AI reply unreadable", "ai");
             return person(n.path("isRecruiter").asBoolean(false), n.path("hiringNow").asBoolean(false),
                     clamp(n.path("confidence").asInt(60)), n.path("topic").asText(""),
@@ -261,7 +275,7 @@ public class FitService {
         Map<String, Object> out;
         try {
             JsonNode n = parseJson(ai.complete(POST_INTENT_SYSTEM,
-                    text.substring(0, Math.min(text.length(), 2500)), true, true));
+                    text.substring(0, Math.min(text.length(), 2500)), true, true, VERDICT_TOKENS));
             out = n == null ? post(false, 0, "", "", "unreadable")
                     : post(n.path("isHiring").asBoolean(false), clamp(n.path("confidence").asInt(0)),
                            n.path("role").asText(""), n.path("topic").asText(""), "ai");
