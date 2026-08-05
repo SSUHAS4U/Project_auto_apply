@@ -766,6 +766,11 @@ public class AgentService {
         // decides how strong a match has to be, and 75 was set without evidence.
         m.put("fitMin", intOr(raw, FIT_MIN, 50));
         m.put("personConfMin", intOr(raw, PERSON_CONF_MIN, 80));
+        // NOTE for anyone tuning this: LinkedIn honours any value (f_TPR takes raw seconds),
+        // but INDEED accepts only the four its own filter offers — 1, 3, 7, 14. Sending
+        // anything else, including this 30, made Indeed answer every search with
+        // HTTP 403 "Additional Verification Required" rather than results. The Indeed adapter
+        // therefore rounds this down to the nearest accepted value; see searchUrl() there.
         m.put("maxAgeDays", intOr(raw, MAX_AGE_DAYS, 30));
         // Volume + breadth. These were constants in the worker, so changing them used to mean a
         // new desktop build — the slowest possible way to tune an automation.
