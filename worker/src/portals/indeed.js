@@ -53,6 +53,12 @@ function searchUrl(keyword, location, profile, start = 0, maxAgeDays = 0) {
   return `https://${hostFor(location, profile)}/jobs?${p.toString()}`;
 }
 
+/** The results-page URL with a job opened in the right-hand pane. See the call site for why. */
+function jobPaneUrl(keyword, location, profile, jk, maxAgeDays = 0) {
+  const base = searchUrl(keyword, location, profile, 0, maxAgeDays);
+  return `${base}&vjk=${encodeURIComponent(jk)}`;
+}
+
 async function collectJobKeys(page) {
   // Indeed renames these constantly; cast wide and also mine any /viewjob?jk= or /rc/clk?jk=
   // link on the page so a class rename can't zero out the whole search.
@@ -96,7 +102,13 @@ async function describeSearch(page) {
 async function readPosting(page) {
   const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => '');
   return {
-    title: await text('h1.jobsearch-JobInfoHeader-title, h2.jobTitle, h1'),
+    // h2, not h1 — and NOT a bare `h1`, which on the results page is "Backend Developer jobs
+    // in Bengaluru, Karnataka" (the SERP heading) rather than the posting. Verified live: the
+    // pane title lives in h2.jobsearch-JobInfoHeader-title and always carries a " - job post"
+    // suffix, which would otherwise reach the fit gate and the dashboard as part of the role.
+    title: (await text('h2.jobsearch-JobInfoHeader-title, [data-testid="jobsearch-JobInfoHeader-title"], '
+      + '.jobsearch-JobInfoHeader-title, h1.jobsearch-JobInfoHeader-title'))
+      .replace(/\s*-\s*job post\s*$/i, '').trim(),
     company: await text('[data-testid="inlineHeader-companyName"], .jobsearch-CompanyInfoContainer a'),
     location: await text('[data-testid="inlineHeader-companyLocation"], [data-testid="job-location"]'),
     description: await text('#jobDescriptionText, .jobsearch-JobComponent-description'),
@@ -302,7 +314,17 @@ export async function runIndeed(page, api, plan, state, ctx) {
         opened++;
         const jobPage = await ctx.newPage();
         try {
-          await jobPage.goto(`https://${host}/viewjob?jk=${jk}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          // Open the job IN THE RESULTS PAGE via `vjk`, not as a bare /viewjob deep link.
+          //
+          // Verified live with the worker's own session: a search returns 16 job keys happily,
+          // but every `https://in.indeed.com/viewjob?jk=<key>` came back
+          // "Additional Verification Required" — 6 of 6, descriptions empty, no controls. The
+          // same six opened perfectly on `/jobs?...&vjk=<key>` (descriptions 1,311–7,160 chars,
+          // apply controls present). Indeed treats the deep link as a scrape and the SERP-with-
+          // vjk as a person clicking a result, which is also what its own UI does — the search
+          // itself redirects to `...&vjk=<key>` when you click a card.
+          await jobPage.goto(jobPaneUrl(keyword, location, profile, jk, maxAgeDays),
+            { waitUntil: 'domcontentloaded' }).catch(() => {});
           await humanDelay(1800, 3200);
           // A blocked job page used to `continue` in total silence — no log, no event, no
           // counter. With every viewjob behind a captcha the run printed its searches and then
@@ -447,7 +469,9 @@ async function findIndeedApplyButton(page) {
   // Indeed renders the Apply widget in an iframe on many layouts, so search frames too.
   const roots = [page, ...page.frames().filter((f) => f !== page.mainFrame())];
   for (const root of roots) {
-    const fast = await root.$('#indeedApplyButton, .ia-IndeedApplyButton, [data-testid*="indeedApply"], button[aria-label*="Apply now" i]').catch(() => null);
+    const fast = await root.$('#indeedApplyButton, .ia-IndeedApplyButton, [data-testid*="indeedApply"], '
+      + 'button[aria-label*="Apply now" i], button[aria-label*="Apply with Indeed" i], '
+      + '[aria-label*="Apply with Indeed" i]').catch(() => null);
     if (fast && await fast.isVisible().catch(() => false)) return fast;
 
     const handles = await root.$$('button, a[role="button"], div[role="button"]').catch(() => []);
@@ -458,7 +482,12 @@ async function findIndeedApplyButton(page) {
       if (!label) continue;
       // "Apply on company site" / "Apply on employer site" are the ones to leave alone.
       if (/company site|employer site|company website/.test(label)) continue;
-      if (/^apply now$|^apply$|easily apply|indeed apply/.test(label)) {
+      // "APPLY WITH INDEED" is the label Indeed actually uses, and it matched none of the
+      // previous alternatives — "indeed apply" is not "apply with indeed". Verified live: of
+      // six real job pages, two offered `Apply with Indeed opens in a new tab` and both were
+      // reported as employer-site listings and skipped. That single missing phrase is why
+      // Indeed submitted nothing while appearing to have no applyable jobs at all.
+      if (/^apply now$|^apply$|easily apply|indeed apply|apply with indeed/.test(label)) {
         if (await h.isVisible().catch(() => false)) return h;
       }
     }

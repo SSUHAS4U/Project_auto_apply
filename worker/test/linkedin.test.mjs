@@ -11,8 +11,11 @@ function site({ cards = 2, jobOpts = {}, searchOpts = {} } = {}) {
   return new FakeSite()
     // Job ids 9000+ are the reposted "Full-stack app developer @ Kefilo" role; every other id
     // is its own posting. Serving one page for every id would hide a de-duplication failure.
-    .add(/\/jobs\/view\/(\d+)/, (url) => {
-      const id = url.match(/view\/(\d+)/)[1];
+    // The adapter opens a job via /jobs/search/?...&currentJobId=<id>, NOT /jobs/view/<id>/.
+    // Verified live: the standalone view renders no h1, no #job-details and no Easy Apply
+    // button, so routing this fixture on /jobs/view/ would test a URL production never uses.
+    .add(/currentJobId=\d+/, (url) => {
+      const id = url.match(/currentJobId=(\d+)/)[1];
       const repost = Number(id) >= 9000;
       return fx.linkedinJob({
         id,
@@ -143,6 +146,19 @@ test('a job title is never doubled by the screen-reader copy', async () => {
     assert.ok(e.title && e.title.trim().length > 0, 'a job was reported with an empty title');
     assert.ok(!/(.{6,})\1/.test(e.title), `doubled title: "${e.title}"`);
     assert.ok(!/Backend DeveloperJava/.test(e.title), `doubled title: "${e.title}"`);
+  }
+});
+
+test('an empty h1 above the pane does not blank the title', async () => {
+  // Live LinkedIn renders an empty <h1> before the job pane. $eval takes the FIRST match and
+  // returned "" for it, so 4 of 6 real job panes reported no title — and a job with no title
+  // is refused by the gate. The fixture carries that empty h1; the title must still be read.
+  const api = new FakeApi();
+  await runOnce({ s: site(), api });
+  const ids = api.eventsOfType('job_identified');
+  assert.ok(ids.length > 0, 'no jobs identified');
+  for (const e of ids) {
+    assert.ok(e.title && e.title.trim(), `blank title despite a readable pane: ${JSON.stringify(e)}`);
   }
 });
 

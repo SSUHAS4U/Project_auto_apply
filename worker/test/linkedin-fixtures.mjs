@@ -85,6 +85,9 @@ export function linkedinJob({
          href="https://acme.example/careers">Apply</a>`;
   return page(`${title} | ${company} | LinkedIn`, `
     <main>
+      <!-- LinkedIn renders an EMPTY h1 above the pane. $eval takes the first match and returns
+           "", which is how 4 of 6 live job panes read a blank title. -->
+      <h1 class="search-results-heading"></h1>
       <div class="jobs-search__job-details">
         <div class="job-details-jobs-unified-top-card">
           <h1 class="job-details-jobs-unified-top-card__job-title">

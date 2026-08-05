@@ -29,6 +29,31 @@ function searchUrl(keyword, location, start = 0, maxAgeDays = 0) {
   return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
 }
 
+/**
+ * The URL that actually renders a job's detail pane.
+ *
+ * NOT `/jobs/view/<id>/`. Verified against live LinkedIn with a signed-in session: that page
+ * still returns 200 and still puts the role in `document.title`, but its body renders no <h1>,
+ * no top card, no `#job-details` and no Easy Apply button — every selector this adapter needs
+ * is absent. Reading it produced exactly the symptom a real run showed: a job "loaded", then a
+ * blank title, an empty description and "no Easy Apply button".
+ *
+ * The search route with `currentJobId` renders the full pane. Same live check, same job id:
+ *   /jobs/view/4440944244/            -> h1 [], top cards 0, #job-details false, no button
+ *   /jobs/search/?…&currentJobId=…    -> h1 ["Staff Software Engineer"], 10 top cards,
+ *                                        #job-details true, "Easy Apply" present
+ * Keeping the search context also means the pane opens the way it does for a person browsing
+ * results, rather than as a bare deep link.
+ */
+function jobPaneUrl(keyword, location, id, maxAgeDays = 0) {
+  const p = new URLSearchParams({ keywords: keyword, f_AL: 'true', sortBy: 'DD' });
+  if (location && location.toLowerCase() !== 'remote') p.set('location', location);
+  else p.set('f_WT', '2');
+  if (maxAgeDays > 0) p.set('f_TPR', `r${Math.round(maxAgeDays * 86400)}`);
+  p.set('currentJobId', String(id));
+  return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
+}
+
 const CARD_SELECTOR =
   'li[data-occludable-job-id], div.job-card-container[data-job-id], li.jobs-search-results__list-item, [data-job-id]';
 
@@ -95,16 +120,24 @@ async function readPosting(page) {
   // overrides the (correctly de-duplicated) card title, the doubled one is what got logged,
   // sent to the fit gate and written to the dashboard. Same rule as collectJobCards: prefer
   // the visible span, then collapse an exact self-repeat.
-  const title = await page.$eval(
+  // $$eval, not $eval: the FIRST element matching this list is often an empty <h1> LinkedIn
+  // renders above the pane, and $eval takes only that one and returns "". Verified live on a
+  // signed-in session — 4 of 6 job panes read a blank title this way while the role sat in a
+  // later h1. Walk the candidates and take the first that actually has text.
+  const title = await page.$$eval(
     '.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1',
-    (e) => {
+    (els) => {
       const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-      const vis = e.querySelector('[aria-hidden="true"]');
-      let v = clean(vis ? vis.textContent : e.textContent).replace(/\s*with verification\s*$/i, '');
-      const half = v.length / 2;
-      if (v.length % 2 === 0 && v.slice(0, half) === v.slice(half)) return v.slice(0, half).trim();
-      const m = v.match(/^(.{4,}?)\s+\1$/);
-      return m ? m[1].trim() : v;
+      for (const e of els) {
+        const vis = e.querySelector('[aria-hidden="true"]');
+        const v = clean(vis ? vis.textContent : e.textContent).replace(/\s*with verification\s*$/i, '');
+        if (!v) continue;
+        const half = v.length / 2;
+        if (v.length % 2 === 0 && v.slice(0, half) === v.slice(half)) return v.slice(0, half).trim();
+        const m = v.match(/^(.{4,}?)\s+\1$/);
+        return m ? m[1].trim() : v;
+      }
+      return '';
     },
   ).catch(() => '');
   // Salary is sparse on LinkedIn — scan the top-card "insight" pills for a pay pattern.
@@ -383,7 +416,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           // Processing" was a real judgement, just not about the job it was filed against.
           // Navigating is slower than clicking and is worth it: a wrong verdict is worse than
           // a slow one.
-          await page.goto(`https://www.linkedin.com/jobs/view/${id}/`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          await page.goto(jobPaneUrl(keyword, location, id, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
           let pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
           // The selectors are a hint; the CONTENT decides. A renamed container must not turn a
           // perfectly good job page into a skip.
