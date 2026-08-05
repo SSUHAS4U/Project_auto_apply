@@ -6,11 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -116,6 +121,18 @@ public class AiService {
      * @param cacheable when true, identical inputs return a cached result for free.
      */
     public String complete(String system, String user, boolean fast, boolean cacheable) {
+        return complete(system, user, fast, cacheable, null);
+    }
+
+    /**
+     * As above, with an explicit output-token ceiling.
+     *
+     * Short-JSON callers (the fit/verdict gates) must not reserve a cover-letter-sized budget:
+     * free tiers count the reservation against the per-minute limit, so a 4,000-token
+     * reservation caps job evaluation at ~3 per minute and 429s the rest. See
+     * {@link AiClient#complete(String, String, boolean, Integer)}.
+     */
+    public String complete(String system, String user, boolean fast, boolean cacheable, Integer maxTokens) {
         String ck = cacheable ? cacheKey(system, user, fast) : null;
         if (ck != null) {
             String hit = cache.get(ck);
@@ -136,13 +153,15 @@ public class AiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             for (AiClient c : chain) {
                 try {
-                    String out = c.complete(system, user, fast);
+                    String out = c.complete(system, user, fast, maxTokens);
                     if (out == null || out.isBlank()) throw new IllegalStateException("empty response");
+                    coolUntil.remove(c.name());   // it answered — it is healthy again
                     increment();
                     if (ck != null) cache.put(ck, out);
                     return out;
                 } catch (Exception e) {
                     last = e;
+                    noteFailure(c.name(), e);     // rest a rate-limited provider, don't re-hit it
                     String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                     failures.put(c.name(), msg.replaceAll("\\s+", " ").trim());
                     log.warn("AI provider '{}' failed ({}); trying next", c.name(), msg);
@@ -175,20 +194,106 @@ public class AiService {
                 java.util.regex.Pattern.CASE_INSENSITIVE).matcher(m).find();
     }
 
-    /** Active/resolved provider first, then the remaining configured ones (dedup). */
+    /**
+     * How long a provider sits out after telling us it is rate-limited.
+     *
+     * A saturated provider used to be re-tried as the FIRST choice on every single call: each
+     * one paid a full network round-trip to be told 429 before the chain moved on. With a job
+     * evaluation every few seconds that is most of the run's latency spent being refused by a
+     * provider that already said no.
+     */
+    private final Map<String, Instant> coolUntil = new ConcurrentHashMap<>();
+    /** Rotates the starting provider in "auto" so load is spread, not concentrated. */
+    private final AtomicInteger rotation = new AtomicInteger();
+
+    private static final Pattern RATE_LIMITED = Pattern.compile(
+            "429|rate.?limit|too many|tokens per minute|\\btpm\\b|\\brpm\\b|quota|resource.?exhausted",
+            Pattern.CASE_INSENSITIVE);
+    /** Groq and Gemini both say when to come back: "Please try again in 8.365s". */
+    private static final Pattern RETRY_AFTER = Pattern.compile(
+            "try again in ([0-9]+(?:\\.[0-9]+)?)\\s*s", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * The providers to try, best first.
+     *
+     * Two changes over "primary, then the rest":
+     *
+     *  1. **Rotation.** In "auto" every configured provider takes a turn at being first, so two
+     *     free tiers give roughly two free tiers of throughput. Fixed ordering meant Groq
+     *     absorbed 100% of the load until its 12,000 tokens/minute ran out while a perfectly
+     *     healthy Gemini key did nothing — the whole reason job evaluation stalled at a few
+     *     verdicts a minute. An explicitly pinned provider still leads; rotation applies to the
+     *     rest, because a pin is a deliberate choice and not ours to override.
+     *  2. **Cooldown.** A provider that reported a rate limit is moved to the BACK until its
+     *     own stated retry time passes. It is never removed — if everything is cooling we would
+     *     rather ask and be refused than refuse on its behalf.
+     */
     private List<AiClient> fallbackChain() {
-        java.util.LinkedHashSet<AiClient> chain = new java.util.LinkedHashSet<>();
-        AiClient primary = resolve();
-        if (primary != null && primary.isConfigured()) chain.add(primary);
+        String p = provider();
+        boolean auto = "auto".equals(p) || resolve() == null;
+
+        List<AiClient> chain = new java.util.ArrayList<>();
+        if (!auto) {
+            AiClient pinned = clients.get(p);
+            if (pinned != null && pinned.isConfigured()) chain.add(pinned);
+        }
+
+        List<AiClient> pool = new java.util.ArrayList<>();
         for (String n : AUTO_ORDER) {
-            // A localhost Ollama is unreachable from a cloud host (Render) — including it in
-            // the fallback just turns every rate-limit into a confusing "I/O error on
+            // A localhost Ollama is unreachable from a cloud host — including it in the
+            // fallback just turns every rate-limit into a confusing "I/O error on
             // localhost:11434". Skip it unless it's the explicitly chosen provider.
             if ("ollama".equals(n) && isLocalOllama()) continue;
             AiClient c = clients.get(n);
-            if (c != null && c.isConfigured()) chain.add(c);
+            if (c != null && c.isConfigured() && !chain.contains(c)) pool.add(c);
         }
-        return new java.util.ArrayList<>(chain);
+        if (pool.size() > 1) {
+            java.util.Collections.rotate(pool, -Math.floorMod(rotation.getAndIncrement(), pool.size()));
+        }
+        chain.addAll(pool);
+
+        // Stable sort: cooling providers go last, and the rotation order survives within each
+        // group. Boolean.compare puts false (healthy) before true (cooling).
+        Instant now = Instant.now();
+        chain.sort(java.util.Comparator.comparing(c -> isCooling(c.name(), now)));
+        return chain;
+    }
+
+    private boolean isCooling(String name, Instant now) {
+        Instant until = coolUntil.get(name);
+        if (until == null) return false;
+        if (now.isBefore(until)) return true;
+        coolUntil.remove(name);          // expired — healthy again
+        return false;
+    }
+
+    /**
+     * Record a rate-limit so this provider is skipped until it says it is ready. Anything that
+     * is not a rate limit is left alone: a 404 or a bad key is the chain's problem to surface,
+     * not something to paper over with a timer.
+     */
+    private void noteFailure(String name, Exception e) {
+        String m = e.getMessage() == null ? e.toString() : e.getMessage();
+        if (!RATE_LIMITED.matcher(m).find()) return;
+        long secs = 30;
+        Matcher hint = RETRY_AFTER.matcher(m);
+        if (hint.find()) {
+            try { secs = (long) Math.ceil(Double.parseDouble(hint.group(1))) + 1; } catch (NumberFormatException ignored) { }
+        }
+        secs = Math.max(5, Math.min(secs, 120));
+        coolUntil.put(name, Instant.now().plusSeconds(secs));
+        log.info("AI provider '{}' is rate-limited; resting it for {}s", name, secs);
+    }
+
+    /** Which providers are currently resting, and for how long — surfaced in Settings. */
+    public Map<String, Long> coolingProviders() {
+        Instant now = Instant.now();
+        Map<String, Long> out = new java.util.LinkedHashMap<>();
+        coolUntil.forEach((name, until) -> {
+            long left = java.time.Duration.between(now, until).toSeconds();
+            if (left > 0) out.put(name, left);
+        });
+        return out;
     }
 
     private boolean isLocalOllama() {

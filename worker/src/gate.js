@@ -39,6 +39,15 @@ export async function shouldApply(api, post, plan = {}) {
   const reason = (v.reason || '').trim();
   const missing = Array.isArray(v.missing) ? v.missing.filter(Boolean).slice(0, 3) : [];
 
+  // There is nothing to judge the job AGAINST. This is not a verdict about the job, and it must
+  // never be reported as one: presenting it as "stack mismatch (fit 0)" made an empty profile
+  // look like 57 unsuitable jobs, which is unfixable by anyone reading the log. Name the cause.
+  if (v.source === 'no_profile') {
+    return { ok: false, score: 0, techMatch: false, manual: true,
+      reason: reason || 'profile is empty',
+      label: 'cannot judge fit — your Profile has no skills saved (fill in Profile, then run again)' };
+  }
+
   // `source: "keyword"` means the AI could not render a verdict and this is keyword overlap —
   // the very signal that approved a Python role at 38 for a Java résumé. It is not a safe
   // substitute for the rubric, so an unevaluated job becomes a manual lead. A missed job costs

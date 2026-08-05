@@ -89,7 +89,11 @@ jobpilot:
   coverletter:
     provider: ${JOBPILOT_COVERLETTER_PROVIDER:template}
   ai:
-    provider: ${JOBPILOT_AI_PROVIDER:template}
+    # "auto" uses EVERY configured provider, taking turns at going first and resting whichever
+    # one reports a rate limit. Pinning a single name (groq / gemini) sends all traffic there
+    # and leaves the other key idle — with two free tiers that halves the throughput available
+    # and is what made job evaluation stall at a few verdicts a minute.
+    provider: ${JOBPILOT_AI_PROVIDER:auto}
     daily-limit: ${JOBPILOT_AI_DAILY_LIMIT:0}   # 0 = unlimited (free Groq/Gemini self-limit)
   # Optional OpenAI-compatible AI gateway. Set the URL to an OmniRoute instance
   # (http://host:20128/v1/chat/completions) to route through its many providers + compression,
