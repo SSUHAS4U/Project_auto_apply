@@ -118,15 +118,20 @@ async function describePeoplePage(page) {
  * "Add a note", fill the note, and send. Returns true only if the invite was sent.
  */
 /**
- * Did the profile page actually render? Reproduced with the worker's OWN full profile copy:
- * every LinkedIn profile came back with an EMPTY h1 and no action bar at all — no Connect, no
- * Message — while the same browser and session read job search, job panes and post search
- * perfectly. Six unrelated recruiters do not all block connections; the profile view was being
- * served degraded to this browser.
+ * Why is there no Connect button?
  *
- * That could not be settled outside a real run, so it reports itself: if the action bar is
- * missing this prints what IS on the page, once, so the next run says whether the flow is
- * blocked by LinkedIn or merely by a stale selector. Those need opposite fixes.
+ * Investigated live with the worker's own session: every profile showed Follow but no Connect
+ * and no Message. That looks like a broken selector and is not one — the Sent invitations page
+ * showed **155 invitations still pending**, far past the ~100/week LinkedIn allows. Once an
+ * account is over that line LinkedIn simply stops rendering the invite control, on every
+ * profile, and leaves Follow in its place.
+ *
+ * Which means the connections flow was not failing. It was working well enough to exhaust the
+ * account's invitation capacity, and then had no way to say so.
+ *
+ * Three causes look identical in a log — capped account, stale selector, degraded page — and
+ * they need three different fixes, so this prints the evidence once per run and names the
+ * capped case explicitly when it sees Follow-without-Connect.
  */
 let profileDiagShown = false;
 async function reportProfileNotRendering(page) {
@@ -149,7 +154,19 @@ async function reportProfileNotRendering(page) {
   console.log(`     [diag] ${info.url}`);
   console.log(`     [diag] h1: "${info.h1}"  ·  buttons: ${info.buttons}  ·  body: ${info.bodyLen} chars`);
   console.log(`     [diag] controls: ${info.labels.join(' | ') || '(none)'}`);
-  if (!info.h1 && info.bodyLen < 4000) {
+  // Follow present but Connect absent, on profile after profile, is not a selector fault and
+  // not a coincidence: it is LinkedIn withholding the invite control from a capped account.
+  // Confirmed on this account — the Sent invitations page showed 155 still pending, well past
+  // the ~100/week LinkedIn allows, and every profile had dropped to Follow-only.
+  const followOnly = info.labels.some((l) => /^follow/i.test(l))
+    && !info.labels.some((l) => /connect/i.test(l));
+  if (followOnly) {
+    console.log('     ✋ This profile offers Follow but no Connect — and that is usually YOUR');
+    console.log('        account, not this person. LinkedIn withdraws the invite control once');
+    console.log('        too many invitations are outstanding (~100/week, pending ones count).');
+    console.log('        Fix: linkedin.com/mynetwork/invitation-manager/sent/ → withdraw the old');
+    console.log('        ones, and lower the connections budget in Schedule so it rebuilds slowly.');
+  } else if (!info.h1 && info.bodyLen < 4000) {
     console.log('     [diag] an empty h1 with a thin body means LinkedIn served a degraded');
     console.log('            profile view — the selectors are not the problem.');
   }
