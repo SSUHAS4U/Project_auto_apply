@@ -34,7 +34,7 @@ public class AiController {
                 "order", ai.currentOrder());
     }
 
-    /** Switch the active AI model: groq | gemini | gateway | auto. */
+    /** Switch the active AI model: groq | gemini | auto. */
     @PostMapping("/ai/provider")
     public Map<String, Object> setProvider(@RequestBody Map<String, String> body) {
         ai.setProvider(body.get("provider"));

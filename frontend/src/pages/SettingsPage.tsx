@@ -66,11 +66,6 @@ export function SettingsPage() {
   const MODELS = [
     { id: 'groq', label: 'Groq', note: 'fast, generous free tier' },
     { id: 'gemini', label: 'Gemini', note: 'large free quota' },
-    // Not a model — a pass-through. Set JOBPILOT_GATEWAY_URL to an OpenAI-compatible endpoint
-    // (OmniRoute, LiteLLM, OpenRouter, your own proxy) and everything routes there instead,
-    // letting it do its own fan-out. Optional; most setups never need it, so the card has to
-    // say what it is rather than assume you already know.
-    { id: 'gateway', label: 'Gateway', note: 'optional — send everything via your own proxy' },
   ];
   const byId = (id: string) => ai?.providers.find((p) => p.provider === id);
   const isAuto = (ai?.provider ?? 'auto') === 'auto';

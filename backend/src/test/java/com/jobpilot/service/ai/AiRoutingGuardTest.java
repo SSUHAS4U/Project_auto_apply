@@ -28,7 +28,7 @@ class AiRoutingGuardTest {
     private static final Path AI_PACKAGE = SRC.resolve("service/ai");
 
     private static final List<String> CLIENTS = List.of(
-            "GroqAiClient", "GeminiAiClient", "OpenAiCompatAiClient");
+            "GroqAiClient", "GeminiAiClient");
 
     private List<Path> javaFilesOutsideAiPackage() throws IOException {
         try (Stream<Path> s = Files.walk(SRC)) {
@@ -63,7 +63,7 @@ class AiRoutingGuardTest {
         int start = svc.indexOf("AUTO_ORDER");
         assertTrue(start > 0, "AUTO_ORDER should exist");
         String autoOrder = svc.substring(start, svc.indexOf(';', start));
-        for (String name : List.of("gateway", "gemini", "groq")) {
+        for (String name : List.of("gemini", "groq")) {
             assertTrue(autoOrder.contains('"' + name + '"'),
                     name + " is not in AUTO_ORDER, so Auto can never select it: " + autoOrder);
         }

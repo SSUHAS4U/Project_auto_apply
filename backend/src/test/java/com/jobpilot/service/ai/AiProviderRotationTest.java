@@ -104,9 +104,8 @@ class AiProviderRotationTest {
 
     @Test
     void anUnreachableProviderIsRestedToo() {
-        // The case that matters for a SELF-HOSTED gateway (OmniRoute): it leads the chain when
-        // configured, so if it isn't running, every AI call would front a connection timeout
-        // before falling through. Rest it briefly rather than re-dialling a dead port per call.
+        // A provider that is down must not be re-dialled at the head of the chain on every
+        // call — that pays a connection timeout per request before falling through. Rest it.
         gemini.failWith = new IllegalStateException("401 invalid api key");
         groq.failWith = new IllegalStateException("I/O error on POST request: Connection refused");
         assertThrows(IllegalStateException.class, () -> call("q"));

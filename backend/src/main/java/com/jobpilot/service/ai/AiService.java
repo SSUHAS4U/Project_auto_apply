@@ -38,10 +38,9 @@ public class AiService {
     }
 
     private static final String K_PROVIDER = "ai_provider";
-    // Gateway first: if an OpenAI-compatible gateway is configured, route everything through
-    // it — it fans out across its own providers. Skipped when unconfigured, which is the normal
-    // case, leaving Gemini and Groq to share the load between them.
-    private static final List<String> AUTO_ORDER = List.of("gateway", "gemini", "groq");
+    // Gemini leads on a tie-break of free capacity (larger TPM/RPD than Groq's on-demand
+    // tier), but "auto" rotates, so both carry roughly half the load. See fallbackChain().
+    private static final List<String> AUTO_ORDER = List.of("gemini", "groq");
 
     /** Configured provider — settings override the .env default; "auto" resolves at call time. */
     public String provider() {
@@ -79,7 +78,7 @@ public class AiService {
         Instant now = Instant.now();
         List<AiClient> chain = fallbackChain(false);   // read-only: must not spin the rotation
         List<Map<String, Object>> out = new java.util.ArrayList<>();
-        for (String name : List.of("gateway", "groq", "gemini")) {
+        for (String name : List.of("groq", "gemini")) {
             AiClient c = clients.get(name);
             boolean configured = c != null && c.isConfigured();
             Map<String, Object> m = new java.util.LinkedHashMap<>();
@@ -240,8 +239,8 @@ public class AiService {
             "429|rate.?limit|too many|tokens per minute|\\btpm\\b|\\brpm\\b|quota|resource.?exhausted",
             Pattern.CASE_INSENSITIVE);
     /**
-     * Configured but not answering — a self-hosted gateway that isn't running, or a provider
-     * having an outage. Distinct from a rate limit: nothing said
+     * Configured but not answering — a provider having an outage or a network fault.
+     * Distinct from a rate limit: nothing said
      * "come back later", it simply isn't there.
      */
     private static final Pattern UNREACHABLE = Pattern.compile(
@@ -329,10 +328,9 @@ public class AiService {
             secs = Math.max(5, Math.min(secs, 120));
             why = "rate-limited";
         } else if (UNREACHABLE.matcher(m).find()) {
-            // A configured-but-absent provider is the expensive case for a SELF-HOSTED gateway
-            // like OmniRoute: it leads the chain when configured, so if it isn't running every
-            // AI call would front a connection timeout before falling through to Groq/Gemini.
-            // Rest it briefly instead, and let a success bring it straight back.
+            // A provider that is down would otherwise be re-dialled at the head of the chain
+            // on every single call, paying a connection timeout each time before falling
+            // through. Rest it briefly instead, and let a success bring it straight back.
             secs = UNREACHABLE_REST_SECONDS;
             why = "unreachable";
         } else {

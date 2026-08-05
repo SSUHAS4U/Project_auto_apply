@@ -48,7 +48,6 @@ to re-score the whole DB. Jobs are tagged `region = india | remote | outside | u
 ## 5. AI features & models
 - **Provider** in Settings: **Auto** rotates across every configured provider and rests any that hits a
   rate limit; or pin **Groq** / **Gemini**. Model names are read from the backend. Test each with one click.
-  An optional **Gateway** routes everything via your own OpenAI-compatible proxy.
 - **Cost guardrail**: hard cap `JOBPILOT_AI_DAILY_LIMIT` (default 80 AI calls/day). Email sends capped too.
 - Used for: cover letters, **Compose** (subject + cold email + cover letter from your templates),
   **Daily picks** briefing, **Assistant** chat, profile **AI-suggest**, and **resume auto-fill**.
