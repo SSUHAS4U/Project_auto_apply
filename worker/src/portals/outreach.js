@@ -172,6 +172,33 @@ async function reportProfileNotRendering(page) {
   }
 }
 
+/**
+ * Follow, when Connect is unavailable.
+ *
+ * A capped account still gets Follow on every profile, and following a recruiter puts you in
+ * their feed at zero cost to invitation capacity. It is strictly worse than connecting, and
+ * strictly better than the previous behaviour, which was to give up on that person entirely
+ * and move on with nothing recorded.
+ */
+async function followPerson(page, scope) {
+  const root = scope || page;
+  const handles = await root.$$('button, [role="button"], a[role="button"]').catch(() => []);
+  for (const h of handles) {
+    const label = await h.evaluate((n) => (
+      (n.getAttribute('aria-label') || '') + ' ' + (n.innerText || '')
+    ).replace(/\s+/g, ' ').trim().toLowerCase()).catch(() => '');
+    // "Follow" only — never "Following" (already done) or "Unfollow".
+    if (/^follow/.test(label) && !/unfollow|following/.test(label)) {
+      if (await h.isVisible().catch(() => false)) {
+        await h.click({ timeout: 3000 }).catch(() => {});
+        await humanDelay(700, 1300);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function inviteWithNote(page, scope, note) {
   const root = scope || page;
   // Find Connect by what the button SAYS, not by a class/aria pattern. On a real profile the
@@ -412,8 +439,22 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
               title: `Messaged ${person.name}`, url: person.profileUrl, detail: 'direct message with résumé' });
           } else {
-            skipped++;
-            console.log(`     · skipped ${person.name} (no Connect and no Message available)`);
+            // RUNG 3 — Follow. A capped account still gets Follow on every profile, and it
+            // costs no invitation capacity. Strictly worse than connecting, strictly better
+            // than dropping the person with nothing recorded, which is what used to happen to
+            // EVERY recruiter once the account went over its invite limit.
+            const followed = await followPerson(page, null).catch(() => false);
+            if (followed) {
+              console.log(`     ↳ followed ${person.name} (no Connect available — capacity or their settings)`);
+              await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+                title: `Followed ${person.name}`, url: person.profileUrl,
+                detail: 'no Connect available — followed instead, so they stay reachable' }).catch(() => {});
+              // Keep the contact so a later run can invite them once capacity returns.
+              await api.setConnectionStatus(id, { status: 'pending', runId: state.runId }).catch(() => {});
+            } else {
+              skipped++;
+              console.log(`     · skipped ${person.name} (no Connect, Message or Follow)`);
+            }
           }
         }
       } catch (e) {

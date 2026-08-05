@@ -571,6 +571,11 @@ public class AgentService {
         plan.put("personConfMin", cfg.get("personConfMin"));
         plan.put("maxAgeDays", cfg.get("maxAgeDays"));
         plan.put("postScanTarget", cfg.get("postScanTarget"));
+        // Invitation capacity. LinkedIn counts PENDING invitations against the weekly limit and
+        // stops offering Connect once you are over it, so the connections flow withdraws the
+        // oldest ones weekly. The worker enforces a hard 14-day floor on top of this.
+        plan.put("withdrawAfterDays", cfg.get("withdrawAfterDays"));
+        plan.put("withdrawMax", cfg.get("withdrawMax"));
         // Each flow's on/off + minutes, as one object the worker can iterate.
         Map<String, Object> flowCfg = new LinkedHashMap<>();
         for (String[] f : FLOWS) {
@@ -721,6 +726,8 @@ public class AgentService {
     private static final String PERSON_CONF_MIN = "agent_person_conf_min";
     /** Ignore postings older than this many days. */
     private static final String MAX_AGE_DAYS = "agent_max_age_days";
+    private static final String WITHDRAW_AFTER_DAYS = "agent_withdraw_after_days";
+    private static final String WITHDRAW_MAX = "agent_withdraw_max";
     /** How many hiring posts to read per day. */
     private static final String POST_SCAN_TARGET = "agent_post_scan_target";
     /** Result pages to walk per search, per portal. */
@@ -772,6 +779,10 @@ public class AgentService {
         // HTTP 403 "Additional Verification Required" rather than results. The Indeed adapter
         // therefore rounds this down to the nearest accepted value; see searchUrl() there.
         m.put("maxAgeDays", intOr(raw, MAX_AGE_DAYS, 30));
+        // Only invitations older than this are withdrawn; the worker refuses anything under 14
+        // days regardless, because withdrawing blocks re-inviting that person for ~3 weeks.
+        m.put("withdrawAfterDays", intOr(raw, WITHDRAW_AFTER_DAYS, 21));
+        m.put("withdrawMax", intOr(raw, WITHDRAW_MAX, 40));
         // Volume + breadth. These were constants in the worker, so changing them used to mean a
         // new desktop build — the slowest possible way to tune an automation.
         m.put("postScanTarget", intOr(raw, POST_SCAN_TARGET, 150));
@@ -809,6 +820,10 @@ public class AgentService {
         putInt(body, "fitMin", FIT_MIN, 0, 100);
         putInt(body, "personConfMin", PERSON_CONF_MIN, 0, 100);
         putInt(body, "maxAgeDays", MAX_AGE_DAYS, 1, 365);
+        // Floor of 14 mirrors the worker's own guard: two places must agree that a recent
+        // invitation is never withdrawn, because only one of them is easy to change.
+        putInt(body, "withdrawAfterDays", WITHDRAW_AFTER_DAYS, 14, 365);
+        putInt(body, "withdrawMax", WITHDRAW_MAX, 1, 200);
         putInt(body, "postScanTarget", POST_SCAN_TARGET, 0, 1000);
         putInt(body, "pagesPerSearch", PAGES_PER_SEARCH, 1, 10);
         putInt(body, "maxKeywords", MAX_KEYWORDS, 1, 40);

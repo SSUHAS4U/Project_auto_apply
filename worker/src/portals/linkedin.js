@@ -9,6 +9,7 @@ import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
 import { shouldApply, claimOutreach } from '../gate.js';
+import { cleanupDue, withdrawStaleInvites } from '../invites.js';
 
 // Seniority is filtered here because LinkedIn's own filters don't reliably exclude it. The
 // COMPATIBILITY decision does not live in this file — `gate.js → shouldApply` owns it, so
@@ -601,6 +602,16 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       //    then the staged follow-ups. Follow-ups run last so a fresh invite from this same block
       //    isn't followed up an hour later.
       await runFlow('connections', async (p) => {
+        // Free capacity BEFORE spending it. LinkedIn counts pending invitations against the
+        // weekly limit, so an account carrying months of unanswered requests simply stops
+        // being offered Connect — which is what happened here at 155 outstanding. Weekly, and
+        // only invitations old enough to be dead weight; see invites.js for how timid this is.
+        if (cleanupDue()) {
+          await withdrawStaleInvites(page, api, state, {
+            olderThanDays: p.withdrawAfterDays,
+            max: p.withdrawMax,
+          }).catch((e) => console.log(`     invitation cleanup skipped: ${String(e).slice(0, 90)}`));
+        }
         await sendConnectionRequests(page, api, p, state, resume);
         await checkAcceptances(page, api, state);
         await sendApprovedMessages(page, api, resume, state);
