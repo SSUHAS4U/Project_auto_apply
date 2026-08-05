@@ -24,10 +24,18 @@ faithful mock instead.
 
 ## Shipping
 
+**Desktop is not optional. Any change to `frontend/` or `worker/` ships a `desktop-v*` tag in
+the SAME pass — never "want me to cut one?".** The desktop app is the product; the web
+dashboard is the preview. Shipping to web only means the owner is still running the old build
+while being told the fix is out, which is how a "fixed" bug came back three versions running.
+Bump to the next `desktop-vN`, push the tag, then **verify the release carries all three
+installers** — a green run is not proof (see AUTOMATION.md §0).
+
 - The **web dashboard** deploys from `master` (Vercel) on push.
 - The **desktop app** bundles its own copy of the built dashboard + the worker, so frontend and
   worker changes only reach desktop users after a new `desktop-v*` tag builds an installer.
   A web refresh cannot update the desktop app.
-- The **backend** deploys on push to `master` (GHCR image → VM rollout).
+- The **backend** deploys on push to `master` (GHCR image → VM rollout). Backend-only changes
+  do **not** need a desktop tag.
 - The **Chrome extension** ships in the frontend build's zip; bump `extension/manifest.json`
   version and tell the user to reload it.
