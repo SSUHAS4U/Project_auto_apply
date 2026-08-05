@@ -109,22 +109,24 @@ async function readPosting(page) {
 const CHALLENGE_RE = /verify (?:you are|that you are|you're) (?:a )?human|are you a human|unusual traffic|security check|additional verification|checking your (?:browser|connection)|press and hold|solve the (?:captcha|puzzle)|enable javascript and cookies/i;
 
 /**
- * Is this page a bot wall rather than the page we asked for?
+ * What is on screen: 'ok' | 'blocked' | 'unreadable'.
  *
- * This used to be a substring test over `page.content()` — the raw HTML — for the word
- * "captcha". Cloudflare injects a telemetry config object into every page it fronts, and that
- * object contains `"captcha":{…}` as one of its event keys. So EVERY ordinary Indeed page
- * matched, every search hit the `continue` above, three in a row ended the block, and because
- * that path only emitted backend events the whole run printed its plan and then nothing at
- * all. Indeed had not blocked anything; the detector had.
+ * Three states, not two, because the three have different fixes and this function has now
+ * twice manufactured an outage by collapsing them:
  *
- * Now: visible text only (script and JSON blobs are invisible and cannot vote), plus the page
- * title and the presence of an actual challenge widget.
+ *  1. It matched "captcha" anywhere in the raw HTML. Cloudflare injects a telemetry config
+ *     containing `"captcha":{…}` into every page it fronts, so every healthy page read as a
+ *     wall and the block died in silence.
+ *  2. It then matched `iframe[src*="recaptcha"]`. Indeed runs reCAPTCHA v3 site-wide — a 0x0
+ *     invisible iframe on ORDINARY pages — so healthy pages read as walls again.
+ *  3. And when `evaluate` threw, it returned "not blocked". A challenge page reloads itself,
+ *     destroying the execution context, so the throw WAS the signal; calling it healthy turned
+ *     a wedged session into seventy consecutive "0 result(s)" lines.
  *
- * Fails OPEN. If the page can't be read we carry on and let the search report what it finds —
- * a false positive kills an entire run, a false negative costs one wasted search.
+ * So: visible text only (scripts cannot vote), a challenge widget only if actually rendered,
+ * job results always win, and an unreadable page says so instead of guessing.
  */
-async function looksBlocked(page) {
+async function pageState(page) {
   const sig = await page.evaluate(() => {
     // A challenge widget only counts if it is actually PUT IN FRONT OF YOU. reCAPTCHA v3 is
     // invisible by design: it embeds an iframe whose src contains "recaptcha" on ordinary
@@ -148,11 +150,16 @@ async function looksBlocked(page) {
       hasResults: document.querySelectorAll('[data-jk], .job_seen_beacon, a[href*="/viewjob"]').length > 0,
     };
   }).catch(() => null);
-  if (!sig) return false;
-  if (sig.hasResults) return false;
-  if (sig.widget) return true;
-  if (/^(blocked|just a moment|attention required|access denied|security check)/.test(sig.title)) return true;
-  return CHALLENGE_RE.test(sig.text);
+  // "Could not read it" is NOT "it looked fine". A challenge page reloads itself, which
+  // destroys the execution context mid-evaluate, so this throws — and returning false there
+  // reported the page as healthy. collectJobKeys then failed the same way and the search
+  // printed "0 result(s)". A real run did that seventy times in a row, in silence, with the
+  // diagnostic dump suppressed because it had already fired once. Say which it was.
+  if (!sig) return 'unreadable';
+  if (sig.hasResults) return 'ok';
+  if (sig.widget) return 'blocked';
+  if (/^(blocked|just a moment|attention required|access denied|security check)/.test(sig.title)) return 'blocked';
+  return CHALLENGE_RE.test(sig.text) ? 'blocked' : 'ok';
 }
 
 export async function runIndeed(page, api, plan, state, ctx) {
@@ -171,6 +178,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let applied = 0;
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
   let blockedTotal = 0;  // walls hit at any point, so the summary can name the real cause
+  let unreadable = 0;    // consecutive pages whose DOM could not be read at all
 
   // ONE country host for the whole run — used for the searches AND the job pages. The job page
   // used to be hardcoded to www.indeed.com while the search ran on in.indeed.com, so every job
@@ -218,7 +226,25 @@ export async function runIndeed(page, api, plan, state, ctx) {
       const url = page.url();
       const loggedOut = /\/account\/login|secure\.indeed\.com|\/hp\?/i.test(url);
 
-      if (await looksBlocked(page)) {
+      const pstate = await pageState(page);
+      // A page we cannot read at all is its own failure mode: the session is wedged, and
+      // pretending it returned no jobs produces a run of silent zeros.
+      if (pstate === 'unreadable') {
+        unreadable++;
+        console.log(`  ⚠ ${keyword} · ${location} → the page could not be read (attempt ${unreadable}/3)`);
+        if (unreadable >= 3) {
+          console.log('     ✋ three unreadable pages in a row — the browser session is wedged.');
+          console.log('        Close the automation browser, reopen JobPilot, and run again.');
+          await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+            detail: 'Indeed pages could not be read three times in a row — the browser session is wedged. Restart JobPilot Desktop and run again.' });
+          await api.runStatus(state.runId, 'needs_attention', 'Indeed session wedged — restart the app').catch(() => {});
+          return { applied, blocked: true };
+        }
+        await sleep(5000);
+        continue;
+      }
+      unreadable = 0;
+      if (pstate === 'blocked') {
         blockedStreak++;
         blockedTotal++;
         state.action = 'Indeed checkpoint — needs attention';
@@ -252,7 +278,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
         const before = keys.length;
         await page.goto(searchUrl(keyword, location, profile, pg * 10, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
         await humanDelay(2200, 4000);
-        if (await looksBlocked(page)) break;
+        if ((await pageState(page)) !== 'ok') break;
         for (const k of await collectJobKeys(page)) if (!keys.includes(k)) keys.push(k);
         if (keys.length === before) break;   // nothing new on that page — stop paging
       }
@@ -281,7 +307,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
           // A blocked job page used to `continue` in total silence — no log, no event, no
           // counter. With every viewjob behind a captcha the run printed its searches and then
           // appeared to hang forever, which is exactly the "16 results, then nothing" loop.
-          if (await looksBlocked(jobPage)) {
+          if ((await pageState(jobPage)) !== 'ok') {
             blockedJobs++;
             if (blockedJobs === 1) console.log('     ⚠ job pages are behind a checkpoint — solve it in the browser');
             await jobPage.close();
@@ -468,7 +494,7 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
 
   for (let step = 0; step < 12; step++) {
     if (state.paused) return 'attention';
-    if (await looksBlocked(applyPage)) return 'attention';
+    if ((await pageState(applyPage)) !== 'ok') return 'attention';
 
     await uploadResume(applyPage, resume).catch(() => {});
     const { attention } = await fillForm(applyPage, profile, api);
