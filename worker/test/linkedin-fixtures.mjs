@@ -155,3 +155,24 @@ export function authwall() {
   return page('Sign In | LinkedIn',
     '<main><h1>Sign in to LinkedIn</h1><p>Join now to see this job.</p></main>');
 }
+
+/**
+ * LinkedIn's REWRITTEN content-search page.
+ *
+ * Every semantic class the post collector used — `feed-shared-update-v2`, `artdeco-card`,
+ * `data-urn*="activity"` — is gone. The live page now carries hashed names that change on
+ * deploy, and the author's name is only reliably available in the card text as
+ * "Feed post <Name> • <degree> <headline>". Verified on a signed-in session: the old
+ * selectors matched 0 elements while recruiter posts were on screen.
+ */
+export function linkedinPostSearch({ posts = [] } = {}) {
+  const card = (p) => `
+    <div class="_6d0b28b9 _8342bca6 _9e24d14d c3e115b2 _68452ae9" componentkey="urn:li:activity:${p.id}">
+      <span>Feed post</span>
+      <a href="/in/${p.slug}/"><span>${p.name}</span></a>
+      <span> • 3rd+ ${p.headline || 'Recruiter'}</span>
+      <div>${p.text}</div>
+    </div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Posts | LinkedIn</title></head>`
+    + `<body><main>${posts.map(card).join('')}</main></body></html>`;
+}

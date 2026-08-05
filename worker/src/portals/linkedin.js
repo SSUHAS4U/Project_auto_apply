@@ -696,15 +696,43 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
         let els = [...document.querySelectorAll(
           'div.feed-shared-update-v2, li.artdeco-card, [data-urn*="activity"], [data-id*="activity"], div[data-view-name*="feed"]')];
         if (els.length === 0) {
-          const body = document.body;
-          return body ? [{ name: '', link: location.href, text: (body.innerText || '').slice(0, 60000) }] : [];
+          // LinkedIn has rewritten content search: every semantic class above is gone and the
+          // markup now carries hashed names ("_6d0b28b9 _8342bca6 …") that change on deploy.
+          // Verified live on a signed-in session — those selectors matched 0 elements while the
+          // page was showing recruiter posts perfectly well.
+          //
+          // The old fallback returned the WHOLE PAGE as a single post with no name and no
+          // author URL, so the message route (which needs post.authorUrl) could never fire and
+          // only a stray address anywhere in the body would route. That is why a scan could
+          // report posts analysed and produce nothing at all.
+          //
+          // Identify by CONTENT instead, which no rename can break: an element holding a
+          // profile link and a post-sized block of text. Keep only the innermost such elements
+          // so a card isn't counted again as part of its container.
+          const cands = [...document.querySelectorAll('[componentkey], div, li, article')]
+            .filter((e) => {
+              const t = e.innerText || '';
+              return t.length > 150 && t.length < 6000 && e.querySelector('a[href*="/in/"]');
+            });
+          els = cands.filter((e) => !cands.some((o) => o !== e && e.contains(o)));
         }
+        if (els.length === 0) return [];
         return els.slice(0, 40).map((el) => {
           const a = el.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
           const nameEl = el.querySelector('.update-components-actor__title span[aria-hidden], .update-components-actor__title, a[href*="/in/"]');
           const authorA = el.querySelector('a[href*="/in/"]');
           const authorUrl = authorA ? (authorA.href || '').split('?')[0] : '';
-          return { name: clean(nameEl?.textContent).slice(0, 60), link: a?.href || '',
+          let name = clean(nameEl?.textContent).slice(0, 60);
+          // The actor-title class is hashed on the rewritten page too, so on 3 of 5 live posts
+          // this came back empty — and an unnamed contact makes for a "Hi ," message. The card
+          // text opens with "Feed post <Name> • <degree> <headline>", so read it from there.
+          if (!name) {
+            const m = clean(el.innerText).match(/^(?:feed post\s+)?([^•|]{2,60}?)\s*•/i);
+            if (m) name = m[1].trim().slice(0, 60);
+          }
+          // "Amit Kuveskar • 3rd+" style leftovers — drop the degree marker if it survived.
+          name = name.replace(/\s*•.*$/, '').replace(/\s*\b\d(?:st|nd|rd|th)\+?\b\s*$/i, '').trim();
+          return { name, link: a?.href || '',
                    authorUrl: /\/in\//.test(authorUrl) ? authorUrl : '',
                    text: (el.innerText || '').slice(0, 4500) };
         });

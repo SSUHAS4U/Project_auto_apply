@@ -10,8 +10,10 @@ import * as fx from './fixtures.mjs';
 /** A site that behaves like Indeed on a good day: search pages, job pages, an apply flow. */
 function healthySite({ cards = 3, apply = 'indeed' } = {}) {
   return new FakeSite()
-    .add(/\/viewjob\?jk=/, (url) => {
-      const jk = url.match(/jk=([^&]+)/)[1];
+    // Jobs open on the RESULTS page via &vjk=<key>. Verified live: the /viewjob deep link
+    // returns "Additional Verification Required" while this route serves the pane fine.
+    .add(/[?&]vjk=/, (url) => {
+      const jk = url.match(/[?&]vjk=([^&]+)/)[1];
       return fx.indeedJob({ jk, title: `Java Developer ${jk.slice(-1)}`, apply });
     })
     .add(/\/smartapply/, (url) => fx.indeedApplyStep({
@@ -70,7 +72,8 @@ test('searches actually run, and each one is logged', async () => {
   const site = healthySite();
   const { log, site: s } = await runOnce({ site });
 
-  const searches = s.urls(/\/jobs\?/);
+  // Job panes are also /jobs?… URLs now (they carry &vjk=), so count only real searches.
+  const searches = s.urls(/\/jobs\?/).filter((u) => !/[?&]vjk=/.test(u));
   assert.equal(searches.length, 2, 'two keywords x one location = two searches');
   assert.ok(/in\.indeed\.com/.test(searches[0]), 'an Indian location must use in.indeed.com');
   assert.ok(/sort=date/.test(searches[0]), 'results must be sorted by date');
@@ -210,6 +213,6 @@ test('the same job is never processed twice across searches', async () => {
   // Both searches return the identical job keys — which is what Indeed actually does per city.
   const site = healthySite({ cards: 3 });
   const { site: s } = await runOnce({ site, planOver: { locations: ['Bengaluru', 'Hyderabad'] } });
-  const opened = s.urls(/\/viewjob\?jk=/);
+  const opened = s.urls(/[?&]vjk=/);
   assert.equal(new Set(opened).size, opened.length, 'no job page should be opened twice');
 });
