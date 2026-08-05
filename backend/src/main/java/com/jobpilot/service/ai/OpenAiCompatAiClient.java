@@ -73,6 +73,12 @@ public class OpenAiCompatAiClient implements AiClient {
                 "model", model,
                 "temperature", 0.6,
                 "max_tokens", budget,
+                // MUST be explicit. Verified against a live OmniRoute 3.8.49: omitting `stream`
+                // returns Server-Sent Events (`data: {...}` chunks carrying `delta.content`),
+                // not a single JSON document — so the `choices[0].message.content` read below
+                // finds nothing and every gateway call fails. OpenAI itself defaults to false,
+                // which is exactly why this was easy to miss.
+                "stream", false,
                 "messages", List.of(
                         Map.of("role", "system", "content", system),
                         Map.of("role", "user", "content", user)));
