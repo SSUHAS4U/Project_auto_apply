@@ -126,6 +126,25 @@ public class DiagnosticsController {
             today.put(type, events.countByUserIdAndTypeAndCreatedAtAfter(uid, type, startOfTodayUtc()));
         }
         out.put("todayByType", today);
+
+        // The CONFIGURED budgets. Four LinkedIn runs came in at exactly 15 minutes each and I
+        // read that as "it ran out of jobs" — an identical duration four times is a deadline,
+        // not exhaustion. Guessing at settings from the outside is how that happened, so the
+        // settings are reported here: easyApplyMins is what phase1Minutes is built from, and
+        // the flow minutes are what the block length is built from.
+        try {
+            Map<String, Object> cfg = agent.limits();
+            Map<String, Object> budget = new LinkedHashMap<>();
+            for (String k : List.of("easyApplyOn", "easyApplyMins", "postApplyOn", "postApplyMins",
+                    "emailOutreachOn", "emailOutreachMins", "connectionsOn", "connectionsMins",
+                    "indeedMins", "restMins", "fitMin", "linkedinApplyCap", "indeedApplyCap",
+                    "maxKeywords", "maxLocations", "pagesPerSearch", "maxAgeDays")) {
+                if (cfg.containsKey(k)) budget.put(k, cfg.get(k));
+            }
+            out.put("settings", budget);
+        } catch (Exception e) {
+            out.put("settings", Map.of("error", String.valueOf(e.getMessage())));
+        }
         return out;
     }
 
