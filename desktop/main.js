@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const { startStaticServer } = require('./static-server');
 const { WorkerManager } = require('./worker-manager');
 const { initAutoUpdate } = require('./auto-update');
+let updater = null;
 
 const PORT = 41720; // fixed → stable origin → persistent localStorage (the login)
 const TOKEN_FILE = path.join(app.getPath('userData'), 'worker-token');
@@ -199,7 +200,7 @@ if (!app.requestSingleInstanceLock()) {
     // only reaches this machine through a new installer — without this, every iteration cost
     // a manual download-uninstall-reinstall and the old build kept running in the meantime.
     // Never restarts mid-run; see auto-update.js.
-    initAutoUpdate({
+    updater = initAutoUpdate({
       log: (m) => sendLog(m),
       isBusy: () => !!(worker && worker.running),
     });
@@ -222,6 +223,9 @@ if (!app.requestSingleInstanceLock()) {
       worker.stop();
       await worker.waitForExit();
     } catch { /* forced below regardless */ }
+    // The worker is down, so this is the safe moment. If an update is waiting, install it
+    // instead of quitting — otherwise it waits for a quit that already happened.
+    if (updater && updater.installIfPending()) return;
     app.quit();
   });
 }

@@ -74,7 +74,23 @@ function initAutoUpdate({ log = () => {}, isBusy = () => false } = {}) {
   setTimeout(check, 8000);
   setInterval(check, RECHECK_MS);
 
-  return { check, hasPending: () => !!pending };
+  return {
+    check,
+    hasPending: () => !!pending,
+    /**
+     * Install now. Called from the shutdown path once the worker has stopped.
+     *
+     * autoInstallOnAppQuit alone was not enough: this app's before-quit handler calls
+     * preventDefault(), stops the worker, then quits again — and the worker AUTO-STARTS, so
+     * "busy" is the normal state and every downloaded update deferred to a quit sequence that
+     * electron-updater's own hook may never see. Doing it explicitly removes that dependency.
+     */
+    installIfPending: () => {
+      if (!pending) return false;
+      log(`\n  Installing JobPilot ${pending.version}…\n`);
+      try { updater.quitAndInstall(false, true); return true; } catch { return false; }
+    },
+  };
 }
 
 module.exports = { initAutoUpdate };
