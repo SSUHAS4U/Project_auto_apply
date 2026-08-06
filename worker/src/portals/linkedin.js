@@ -864,6 +864,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
 }
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */
+let easyApplyDiagShown = false;
 async function easyApply(page, api, profile, resume, state) {
   // The search is Easy-Apply-only (f_AL=true), so the detail pane WILL have an Easy Apply
   // button once it finishes loading. The pane loads async after the card click, so poll for
@@ -916,22 +917,75 @@ async function easyApply(page, api, profile, resume, state) {
       return 'attention';
     }
 
-    // Submit if we can; otherwise advance. Scoped to the modal so we click ITS buttons.
-    const submit = await modal.$('button[aria-label="Submit application"]');
-    if (submit) {
+    // Submit if we can; otherwise advance. Matched by what the control SAYS, not by an exact
+    // aria-label.
+    //
+    // These were `button[aria-label="Submit application"]` and
+    // `button[aria-label="Continue to next step"]` — exact string equality. LinkedIn ships
+    // "Submit", "Review", "Review your application" and "Next" depending on the step and the
+    // A/B bucket, so one different word meant neither matched, the loop fell through to the
+    // bail-out below, and the job was reported as "needs your answer" — with NO question,
+    // because none had blocked it. A real run filled every field on three good matches (fit 80,
+    // 70, 80), answered eight screening questions on one of them, and then reported all three
+    // as needing attention. Nothing was wrong with those applications except this selector.
+    // Match INSIDE the page in one pass, then click by index.
+    //
+    // The per-handle version of this (loop handles, evaluate a label, test a regex, check
+    // isVisible) failed to match a Submit button that the diagnostic printed as present and
+    // on-screen in the same breath — three good applications were reported as "needs your
+    // answer" because of it. Doing the whole match in one page-side evaluation removes the
+    // handle round-trips entirely, and the index it returns refers to the same NodeList the
+    // click uses.
+    const pickIndex = async (source) => modal.$$eval('button, [role="button"]', (ns, src) => {
+      const re = new RegExp(src);
+      for (let i = 0; i < ns.length; i++) {
+        const n = ns[i];
+        const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
+          .replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!label || !re.test(label)) continue;
+        // Only what a person could actually click: a real box, not a hidden step.
+        const r = n.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && getComputedStyle(n).visibility !== 'hidden') return i;
+      }
+      return -1;
+    }, source).catch(() => -1);
+
+    const clickIndex = async (i) => {
+      const handles = await modal.$$('button, [role="button"]').catch(() => []);
+      if (!handles[i]) return false;
+      await handles[i].click({ timeout: 4000 }).catch(() => {});
+      return true;
+    };
+
+    const submitAt = await pickIndex('^submit application|^submit\b|submit application');
+    if (submitAt >= 0 && await clickIndex(submitAt)) {
       state.action = 'Easy Apply — submitting';
-      await submit.click({ timeout: 4000 }).catch(() => {});
       await humanDelay(1500, 2600);
       await dismissPostSubmit(page);
       return 'applied';
     }
-    const next = await modal.$('button[aria-label="Continue to next step"], button[aria-label="Review your application"]');
-    if (next) {
+    // "Review" comes before Submit on the last step; treat it as another advance.
+    const nextAt = await pickIndex('continue to next step|review your application|^continue\b|^next\b|^review\b');
+    if (nextAt >= 0 && await clickIndex(nextAt)) {
       state.action = `Easy Apply — step ${step + 1} done, continuing`;
-      await next.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue;
+      await humanDelay(1200, 2200); continue;
     }
 
-    // no recognizable control — bail safely
+    // No recognisable control. Say what the modal actually offers — the previous silence here
+    // is what disguised a selector miss as an unanswerable question for three good matches.
+    if (!easyApplyDiagShown) {
+      easyApplyDiagShown = true;
+      const seen = await modal.$$eval('button, [role="button"]', (ns) => ns
+        .map((n) => {
+          const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || '')).replace(/\s+/g, ' ').trim();
+          const r = n.getBoundingClientRect();
+          const shown = r.width > 0 && r.height > 0 && getComputedStyle(n).visibility !== 'hidden';
+          return label ? `${label}${shown ? '' : ' [hidden]'}` : '';
+        })
+        .filter(Boolean).slice(0, 10)).catch(() => []);
+      console.log('     ⚠ the Easy Apply form has no Submit/Continue control we recognise.');
+      console.log(`     [diag] step ${step + 1}, buttons: ${seen.join(' | ') || '(none)'}`);
+    }
     await closeModal(page);
     return 'attention';
   }

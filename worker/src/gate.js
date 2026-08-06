@@ -28,10 +28,31 @@ export async function shouldApply(api, post, plan = {}) {
       reason: 'could not read the job description', label: 'no description to judge' };
   }
 
+  // Rate limits are TEMPORARY, and a job verdict is not urgent. Both free tiers refill on a
+  // per-minute window, so waiting beats giving up: a real run pushed 24 consecutive jobs to
+  // "not evaluated (AI unavailable) — left for manual review" inside one search, which is a
+  // whole page of results thrown onto a manual pile that nobody works through. Back off and
+  // ask again; only a persistent failure degrades to manual.
   let v;
-  try {
-    v = await api.evaluate(post);
-  } catch {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      v = await api.evaluate(post);
+      // A keyword-sourced verdict means the backend's chain failed too — same situation as a
+      // thrown error, and worth the same wait rather than being accepted as an answer.
+      if (v && v.source !== 'keyword') break;
+      if (attempt === 2) break;
+    } catch {
+      if (attempt === 2) {
+        return { ok: false, score: 0, techMatch: false, manual: true,
+          reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' };
+      }
+    }
+    // 8s, then 20s. Long enough for a per-minute window to move, short enough that a blocked
+    // run still makes progress through its list. The harness collapses it, like humanDelay.
+    const backoff = process.env.JOBPILOT_TEST_NO_PACING === '1' ? 0 : (attempt === 0 ? 8000 : 20000);
+    await new Promise((r) => setTimeout(r, backoff));
+  }
+  if (!v) {
     return { ok: false, score: 0, techMatch: false, manual: true,
       reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' };
   }
