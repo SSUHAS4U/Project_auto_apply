@@ -98,22 +98,28 @@ public class DiagnosticsController {
 
         // Errors from the most recent run: what actually went wrong, in the worker's own words.
         if (!runList.isEmpty()) {
-            UUID newest = UUID.fromString((String) runList.get(0).get("id"));
             List<Map<String, Object>> errs = new ArrayList<>();
             // There is no by-run finder, so take a recent slice for the user and keep the ones
             // belonging to this run. Cheap at these sizes and avoids adding a query for a
             // read-only diagnostic.
             events.findByUserIdOrderByCreatedAtDesc(uid,
                     PageRequest.of(0, Math.max(50, Math.min(errors * 8, 600)))).forEach((e) -> {
-                if (errs.size() >= Math.max(1, Math.min(errors, 200))) return;
-                if (e.getRunId() == null || !newest.equals(e.getRunId())) return;
-                if (!"error".equals(e.getType()) && !"info".equals(e.getType())) return;
+                if (errs.size() >= Math.max(1, Math.min(errors, 300))) return;
+                // NOT filtered to the newest run, and NOT filtered to error/info.
+                //
+                // Both filters hid the only thing worth seeing. The OUTCOME of a job that
+                // passed the gate is a manual_apply / easy_apply event, so excluding those
+                // types meant the endpoint could report "19 relevant, 2 applied" and give no
+                // way at all to see what became of the other 17 — which is exactly the
+                // question being asked of it.
+                if ("job_identified".equals(e.getType())) return;   // one per job, drowns the rest
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("at", String.valueOf(e.getCreatedAt()));
                 m.put("type", e.getType());
                 m.put("flow", e.getFlow());
                 m.put("title", e.getTitle());
                 m.put("detail", e.getDetail());
+                m.put("runId", String.valueOf(e.getRunId()).substring(0, 8));
                 errs.add(m);
             });
             out.put("latestRunEvents", errs);
