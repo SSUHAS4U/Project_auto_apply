@@ -1789,3 +1789,15 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .flow-step-ctl { width: 100%; padding-left: 38px; }
   .flow-step:not(:last-child)::after { display: none; }
 }
+
+/* Installed build, beside the tagline. Small and quiet — it is a fact you check, not a thing
+   you read every time. Only rendered in the desktop app; the web dashboard is always the last
+   deploy, so a version there would say nothing. */
+.brand-ver {
+  margin-left: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .01em;
+  color: var(--text-faint); opacity: .85;
+  /* It belongs BESIDE the tagline, not under it — the sidebar is narrow enough that the two
+     wrap onto separate lines without this, which reads as a stray line of text. */
+  white-space: nowrap;
+}
+.brand-sub { white-space: nowrap; }

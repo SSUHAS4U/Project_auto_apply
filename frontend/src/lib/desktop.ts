@@ -12,6 +12,8 @@ interface JobPilotBridge {
   stopWorker: () => Promise<WorkerStatus>;
   getWorkerStatus: () => Promise<WorkerStatus>;
   getSavedToken: () => Promise<string>;
+  /** The installed desktop build, e.g. "1.0.120". Optional: older installs don't expose it. */
+  getAppVersion?: () => Promise<string>;
   getRecentLog?: () => Promise<string>;
   clearLog?: () => Promise<boolean>;
   onWorkerLog: (cb: (line: string) => void) => () => void;

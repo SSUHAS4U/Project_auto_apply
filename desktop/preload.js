@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('jobpilot', {
   backendUrl: ipcRenderer.sendSync('app:backendUrl'),
 
   // ---- worker control ----
+  // The installed build's version, shown in the sidebar. Without it there is no way to tell a
+  // freshly auto-updated app from the one that has been running for three days, and a report
+  // like "still broken" is unanswerable — a whole afternoon went into diagnosing runs that
+  // turned out to predate the fixes entirely.
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
   startWorker: (token) => ipcRenderer.invoke('worker:start', token),
   stopWorker: () => ipcRenderer.invoke('worker:stop'),
   getWorkerStatus: () => ipcRenderer.invoke('worker:status'),

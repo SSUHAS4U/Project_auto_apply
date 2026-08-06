@@ -166,6 +166,10 @@ function createTray() {
 
 // ---- IPC --------------------------------------------------------------------
 ipcMain.on('app:backendUrl', (e) => { e.returnValue = BACKEND_URL; });
+// The installed build's version, for the sidebar badge. Without it there is no way to tell a
+// freshly auto-updated app from one that has been running for days — an afternoon went into
+// diagnosing runs that turned out to predate the fixes entirely.
+ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('worker:savedToken', () => savedToken());
 ipcMain.handle('worker:recentLog', () => logBuffer);
 // Delete really deletes: wipe the rolling buffer so the cleared log can't replay on remount.

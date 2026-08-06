@@ -5,6 +5,7 @@ import { getTheme, toggleTheme, type Theme } from '../lib/theme';
 import { Icon, Logo } from './Icon';
 import { AssistantWidget } from './AssistantWidget';
 import { useRunStartToast } from '../lib/useRunToast';
+import { desktop } from '../lib/desktop';
 
 /**
  * Sidebar navigation, grouped: top-level destinations with collapsible children so the
@@ -60,6 +61,10 @@ const NAV: NavEntry[] = [
 export function Layout() {
   const [unread, setUnread] = useState(0);
   const [drawer, setDrawer] = useState(false);
+  // Desktop only: the web dashboard is always whatever was last deployed, so a version there
+  // would say nothing. In the app it is the one fact that makes a bug report actionable.
+  const [appVersion, setAppVersion] = useState<string>('');
+  useEffect(() => { desktop()?.getAppVersion?.().then(setAppVersion).catch(() => {}); }, []);
   const [email, setEmail] = useState('');
   const [admin, setAdmin] = useState(isAdminUI());
   const [theme, setTheme] = useState<Theme>(getTheme());
@@ -98,7 +103,13 @@ export function Layout() {
         <Logo />
         <div>
           <div className="brand-name">JobPilot</div>
-          <div className="brand-sub">autonomous job agent</div>
+          <div className="brand-sub">
+            autonomous job agent
+            {/* The installed build. Auto-update makes the running version invisible otherwise,
+                and "still broken" against a build that predates the fix is unanswerable —
+                several rounds of debugging went into runs that turned out to be old builds. */}
+            {appVersion && <span className="brand-ver">v{appVersion}</span>}
+          </div>
         </div>
       </div>
 
