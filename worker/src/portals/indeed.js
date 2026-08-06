@@ -8,6 +8,10 @@ import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { shouldApply } from '../gate.js';
 
+// Indeed throttles job pages under sustained access. Rest up to 3 times (1m + 2m + 3m)
+// before treating the wall as real — see the blocked-jobs path for why quitting was wrong.
+const MAX_BACKOFFS = 3;
+
 // Seniority filter only. The compatibility decision lives in `gate.js → shouldApply`, shared
 // with LinkedIn, so the two portals cannot disagree about what is worth applying to.
 const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|director|head\s+of|vp|vice\s*president)\b/i;
@@ -191,6 +195,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let blockedStreak = 0; // consecutive captcha walls — bail out instead of looping forever
   let blockedTotal = 0;  // walls hit at any point, so the summary can name the real cause
   let unreadable = 0;    // consecutive pages whose DOM could not be read at all
+  let backoffs = 0;      // how many times we have rested through Indeed's throttling
 
   // ONE country host for the whole run — used for the searches AND the job pages. The job page
   // used to be hardcoded to www.indeed.com while the search ran on in.indeed.com, so every job
@@ -333,14 +338,31 @@ export async function runIndeed(page, api, plan, state, ctx) {
             blockedJobs++;
             if (blockedJobs === 1) console.log('     ⚠ job pages are behind a checkpoint — solve it in the browser');
             await jobPage.close();
-            // Three in a row means the session is walled, not a one-off: stop rather than
-            // grinding through hundreds of identical blocks.
+            // Three in a row used to END THE BLOCK. That is the wrong response to this
+            // particular signal: verified live, individual job pages open fine (6/6 readable)
+            // — Indeed challenges on sustained VOLUME, after a run has opened a dozen-plus
+            // pages back to back. It is a throttle, and throttles pass. Quitting threw away
+            // the remaining ~70 searches over a wall that clears in a minute, which is why a
+            // real run reported "0 applied" while its gate was working perfectly.
+            //
+            // So: rest, then carry on. Only a wall that survives several rests is a real one.
             if (blockedJobs >= 3) {
-              console.log(`     ✋ ${blockedJobs} job pages blocked in a row — ending the Indeed block.`);
-              await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
-                detail: `Indeed is showing a checkpoint on job pages (${blockedJobs} in a row). Open Indeed in the automation browser, solve it, then run again.` });
-              await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha on job pages').catch(() => {});
-              return { applied };
+              backoffs++;
+              if (backoffs > MAX_BACKOFFS) {
+                console.log(`     ✋ still blocked after ${MAX_BACKOFFS} pauses — ending the Indeed block.`);
+                await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+                  detail: `Indeed kept showing a checkpoint on job pages through ${MAX_BACKOFFS} pauses. Open Indeed in the automation browser, solve it, then run again.` });
+                await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha on job pages').catch(() => {});
+                return { applied };
+              }
+              // 1m, 2m, 3m — lengthening, like a person pausing. Collapsed under the test flag,
+              // the same way humanDelay is, so the suite does not sit through real minutes.
+              const restMs = process.env.JOBPILOT_TEST_NO_PACING === '1' ? 0 : 60_000 * backoffs;
+              console.log(`     ⏳ Indeed is throttling job pages — resting ${restMs / 60_000}m, then carrying on (pause ${backoffs}/${MAX_BACKOFFS}).`);
+              await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+                detail: `Indeed throttled job pages after ${opened} opened — pausing ${restMs / 60_000}m before continuing.` });
+              await sleep(restMs);
+              blockedJobs = 0;                    // give the session a clean slate after the rest
             }
             continue;
           }
@@ -394,7 +416,10 @@ export async function runIndeed(page, api, plan, state, ctx) {
               url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
           } else if (result === 'attention') {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
-              title: post.title, company: post.company, detail: 'needs attention — an unanswerable question' });
+              title: post.title, company: post.company,
+              detail: (state.blockedQuestions || [])[0]
+                ? `needs your answer: ${(state.blockedQuestions || [])[0]}`
+                : 'needs attention — an unanswerable question' });
           } else {
             // Same silent-drop bug as LinkedIn had: anything that wasn't applied/external
             // emitted NOTHING, so the job disappeared with no counter and no error.
@@ -532,7 +557,13 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
     // Custom dropdowns — pick the closest option from what the dropdown offers.
     const { attention: dropAttention } = await fillDropdowns(applyPage, profile, api);
     attention.push(...choiceAttention, ...dropAttention);
-    if (attention.length) return 'attention';
+    if (attention.length) {
+      // Name it. "needs attention — an unanswerable question" without the question is the same
+      // diagnostic gap that hid LinkedIn's real bug for three rounds: it reads as a screening
+      // question nobody can answer when it may be a control we simply failed to fill.
+      state.blockedQuestions = attention;
+      return 'attention';
+    }
 
     const submit = await applyPage.$('button:has-text("Submit application"), button[type="submit"]:has-text("Submit")');
     if (submit) {
