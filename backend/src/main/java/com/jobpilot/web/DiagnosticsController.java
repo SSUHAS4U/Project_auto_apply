@@ -46,8 +46,14 @@ public class DiagnosticsController {
 
     /** The owner — this is a single-operator deployment, so the first account is the subject. */
     private UUID ownerId() {
-        // Single-operator deployment: the first (lowest-id) account is the subject. Sorted so
-        // the answer is stable rather than dependent on findAll()'s unspecified order.
+        // Resolve from the DATA, not from account ordering. The first version picked the
+        // lowest UUID, which is arbitrary — it reported "runs: 0" on a deployment with a long
+        // run history, because it was answering about the wrong account. Whoever owns the most
+        // recent run is the operator; fall back to any account so a fresh install still answers.
+        List<AgentRun> latest = runs.findAll(
+                PageRequest.of(0, 1, org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))).getContent();
+        if (!latest.isEmpty() && latest.get(0).getUserId() != null) return latest.get(0).getUserId();
         return users.findAll().stream()
                 .map(AppUser::getId).filter(Objects::nonNull)
                 .min(Comparator.comparing(UUID::toString)).orElse(null);
