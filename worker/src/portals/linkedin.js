@@ -425,9 +425,23 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           // …and the content must be THIS job. Without this check the pane simply has to look
           // like a job page, which the previous job's pane also does.
           if (pane && !(await paneShowsJob(page, id))) {
-            pane = false;
-            if (paneFailures === 0) {
-              console.log(`     ⚠ the page did not switch to job ${id} — not judging it on another job's text.`);
+            // LinkedIn often IGNORES currentJobId and renders whichever job it feels like —
+            // usually the first result. Treating that as a dead page cost five strikes and
+            // ended Phase 1 outright, which is why a search that found 57 jobs processed a
+            // handful and stopped. It is not a broken page; it is the wrong job on a working
+            // one, and the fix is to ask for the right one the way a person would: click its
+            // card in the results list.
+            const card = await page.$(`li[data-occludable-job-id="${id}"], div[data-job-id="${id}"]`);
+            if (card) {
+              await card.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+              await card.click({ timeout: 3000 }).catch(() => {});
+              await page.waitForTimeout(2200).catch(() => {});
+            }
+            if (!(await paneShowsJob(page, id))) {
+              pane = false;
+              if (paneFailures === 0) {
+                console.log(`     ⚠ the pane would not switch to job ${id} — skipping it rather than judging another job's text.`);
+              }
             }
           }
           if (!pane) {
@@ -441,7 +455,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
                 detail: 'job pages are not rendering — LinkedIn layout change or a signed-out session. See the terminal for the page dump.' });
             }
             // Every job failing the same way is one fault, not 57. Stop and say so.
-            if (paneFailures >= 5) {
+            if (paneFailures >= 15) {
               console.log(`\n  ✋ ${paneFailures} job pages in a row would not load — ending Phase 1.`);
               console.log('     Usually: the LinkedIn session expired, or LinkedIn changed the job page.');
               await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
