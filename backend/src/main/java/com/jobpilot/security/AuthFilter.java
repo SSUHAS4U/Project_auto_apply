@@ -32,6 +32,9 @@ public class AuthFilter extends OncePerRequestFilter {
 
     // Cron endpoints: the GitHub Actions machine token OR an ADMIN JWT may call these.
     private static final List<String> CRON_PREFIXES = List.of(
+            // "/api/ingest" already covers "/api/ingest-diag" by prefix — the read-only run
+            // diagnostics live there deliberately, so the machine token can REPORT on runs
+            // without gaining any ability to change them.
             "/api/ingest", "/api/daily/run", "/api/digest", "/api/sources");
     // Sensitive admin surfaces: ADMIN JWT ONLY. The static token can never reach these,
     // so a leaked machine token cannot manage users or wipe/maintain data.
