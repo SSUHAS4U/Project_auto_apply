@@ -9,6 +9,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { startStaticServer } = require('./static-server');
 const { WorkerManager } = require('./worker-manager');
+const { initAutoUpdate } = require('./auto-update');
 
 const PORT = 41720; // fixed → stable origin → persistent localStorage (the login)
 const TOKEN_FILE = path.join(app.getPath('userData'), 'worker-token');
@@ -190,6 +191,14 @@ if (!app.requestSingleInstanceLock()) {
     // Launched by the login item (--hidden): start in the tray and run headlessly, no window.
     if (!process.argv.includes('--hidden')) await createWindow();
     else await startWorkerHeadless();
+    // Keep itself current. The app bundles the dashboard AND the worker, so an adapter fix
+    // only reaches this machine through a new installer — without this, every iteration cost
+    // a manual download-uninstall-reinstall and the old build kept running in the meantime.
+    // Never restarts mid-run; see auto-update.js.
+    initAutoUpdate({
+      log: (m) => sendLog(m),
+      isBusy: () => !!(worker && worker.running),
+    });
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // No window means no automation — closing the app stops the work it was doing.

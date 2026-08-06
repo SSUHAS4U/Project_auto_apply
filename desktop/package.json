@@ -27,17 +27,57 @@
       "preload.js",
       "static-server.js",
       "worker-manager.js",
+      "auto-update.js",
       "desktop.config.json",
       "desktop.config.example.json",
       "build/icon.png"
     ],
     "extraResources": [
-      { "from": "../frontend/dist", "to": "frontend" },
-      { "from": "../worker", "to": "worker", "filter": ["src/**", "package.json", "node_modules/**"] }
+      {
+        "from": "../frontend/dist",
+        "to": "frontend"
+      },
+      {
+        "from": "../worker",
+        "to": "worker",
+        "filter": [
+          "src/**",
+          "package.json",
+          "node_modules/**"
+        ]
+      }
     ],
-    "win": { "target": ["nsis"], "artifactName": "JobPilot-Windows-Setup.${ext}" },
-    "mac": { "target": ["dmg"], "artifactName": "JobPilot-macOS.${ext}" },
-    "linux": { "target": ["AppImage"], "artifactName": "JobPilot-Linux.${ext}" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "JobPilot-Windows-Setup.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "JobPilot-macOS.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "JobPilot-Linux.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "SSUHAS4U",
+        "repo": "Project_auto_apply"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

@@ -81,8 +81,15 @@ jobs:
             const p = JSON.parse(fs.readFileSync(f, 'utf8'));
             if (typeof p.build !== 'object') { console.error('refusing: package.json build config is missing'); process.exit(1); }
             p.jobpilotBuild = process.argv[1];
+            // electron-updater compares SEMVER, not our tag. package.json sat at 1.0.0 for
+            // every release, so an installed app could never tell that desktop-v117 was newer
+            // than the v103 it was running, and auto-update would be a permanent no-op.
+            // desktop-vN becomes 1.0.N, which rises monotonically with the tag.
+            const n = /desktop-v(\d+)/.exec(process.argv[1]);
+            if (!n) { console.error('refusing: tag is not desktop-vN, cannot derive a version'); process.exit(1); }
+            p.version = '1.0.' + n[1];
             fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
-            console.log('stamped jobpilotBuild =', p.jobpilotBuild, '| electron-builder config intact:', Object.keys(p.build).join(','));
+            console.log('stamped jobpilotBuild =', p.jobpilotBuild, '| version =', p.version, '| electron-builder config intact:', Object.keys(p.build).join(','));
           " '${{ github.ref_name }}'
       - name: Install desktop deps
         working-directory: desktop
@@ -128,4 +135,6 @@ jobs:
           files: |
             desktop/dist/${{ matrix.out }}
             desktop/dist/JobPilot-${{ github.ref_name }}-*
+            desktop/dist/latest*.yml
+            desktop/dist/*.blockmap
           make_latest: true
