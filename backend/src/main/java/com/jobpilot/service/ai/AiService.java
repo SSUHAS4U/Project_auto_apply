@@ -340,6 +340,21 @@ public class AiService {
         log.info("AI provider '{}' is {}; resting it for {}s", name, why, secs);
     }
 
+    /**
+     * How long until the FIRST provider is available again, in ms; 0 when one is ready now.
+     * Callers use it to wait out a rate limit rather than discard the work they were doing.
+     */
+    public long shortestCooldownMs() {
+        Instant now = Instant.now();
+        long best = Long.MAX_VALUE;
+        for (AiClient c : fallbackChain(false)) {
+            Instant until = coolUntil.get(c.name());
+            long ms = until == null ? 0 : Math.max(0, java.time.Duration.between(now, until).toMillis());
+            best = Math.min(best, ms);
+        }
+        return best == Long.MAX_VALUE ? 0 : best;
+    }
+
     /** Which providers are currently resting, and for how long — surfaced in Settings. */
     public Map<String, Long> coolingProviders() {
         Instant now = Instant.now();

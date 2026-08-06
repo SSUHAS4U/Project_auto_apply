@@ -160,6 +160,26 @@ public class FitService {
             return verdict(score, tech, conf, strings(n.path("matched")), strings(n.path("missing")),
                     n.path("reason").asText(""), "ai");
         } catch (Exception e) {
+            // Rate limits are the common case here, not real failures. Wait for the shortest
+            // provider cooldown and ask ONCE more before giving up: on a real day 95 of 108
+            // jobs left the gate as "AI unavailable", never judged at all, which is why 173
+            // jobs found produced 4 "relevant". A verdict is worth a few seconds of waiting.
+            long restMs = ai.shortestCooldownMs();
+            if (restMs > 0 && restMs <= 90_000) {
+                log.info("jobFit: providers resting {}s — waiting rather than discarding this job", restMs / 1000);
+                try { Thread.sleep(restMs + 1_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                try {
+                    JsonNode n2 = parseJson(ai.complete(FIT_SYSTEM, user, false, true, VERDICT_TOKENS));
+                    if (n2 != null) {
+                        int score2 = clamp(n2.path("score").asInt(keywordScore));
+                        boolean tech2 = n2.path("techMatch").asBoolean(false);
+                        if (!tech2) score2 = Math.min(score2, 55);
+                        return verdict(score2, tech2, clamp(n2.path("confidence").asInt(60)),
+                                strings(n2.path("matched")), strings(n2.path("missing")),
+                                n2.path("reason").asText(""), "ai");
+                    }
+                } catch (Exception ignored) { /* fall through to the keyword verdict */ }
+            }
             log.debug("jobFit AI failed: {}", e.getMessage());
             return verdict(keywordScore, keywordScore >= 60, 40, List.of(), List.of(),
                     "AI unavailable — keyword score only", "keyword");

@@ -34,22 +34,32 @@ export async function shouldApply(api, post, plan = {}) {
   // whole page of results thrown onto a manual pile that nobody works through. Back off and
   // ask again; only a persistent failure degrades to manual.
   let v;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // FIVE attempts, backing off to a minute — not three over 28 seconds.
+  //
+  // Measured on a real day: of 108 jobs pushed to the manual pile, 95 were "AI unavailable".
+  // They were never judged. 173 jobs found produced 4 "relevant" not because 169 were bad, but
+  // because the evaluator gave up on them. Both free tiers refill on a PER-MINUTE window, so
+  // 28 seconds of patience is the difference between a verdict and a discarded job — and a
+  // discarded job is worth far more than the minute it costs to wait for one.
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       v = await api.evaluate(post);
       // A keyword-sourced verdict means the backend's chain failed too — same situation as a
       // thrown error, and worth the same wait rather than being accepted as an answer.
       if (v && v.source !== 'keyword') break;
-      if (attempt === 2) break;
+      if (attempt === 4) break;
     } catch {
-      if (attempt === 2) {
+      if (attempt === 4) {
         return { ok: false, score: 0, techMatch: false, manual: true,
           reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' };
       }
     }
     // 8s, then 20s. Long enough for a per-minute window to move, short enough that a blocked
     // run still makes progress through its list. The harness collapses it, like humanDelay.
-    const backoff = process.env.JOBPILOT_TEST_NO_PACING === '1' ? 0 : (attempt === 0 ? 8000 : 20000);
+    // 8s, 20s, 40s, 60s — spanning more than one refill window, so a run that hits a limit
+    // waits it out instead of throwing the rest of the page away.
+    const waits = [8000, 20000, 40000, 60000];
+    const backoff = process.env.JOBPILOT_TEST_NO_PACING === '1' ? 0 : waits[attempt] || 60000;
     await new Promise((r) => setTimeout(r, backoff));
   }
   if (!v) {
