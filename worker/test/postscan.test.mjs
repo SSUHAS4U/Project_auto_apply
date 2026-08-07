@@ -49,7 +49,13 @@ async function collect(html) {
           if (m) name = m[1].trim().slice(0, 60);
         }
         name = name.replace(/\s*•.*$/, '').replace(/\s*\b\d(?:st|nd|rd|th)\+?\b\s*$/i, '').trim();
-        return { name, authorUrl: /\/in\//.test(authorUrl) ? authorUrl : '', text: (el.innerText || '').slice(0, 4500) };
+        let headline = '';
+        {
+          const flat = clean(el.innerText);
+          const m = flat.match(/•\s*(?:1st|2nd|3rd\+?)\s+(.{3,140})/i) || flat.match(/•\s+(.{3,140})/);
+          headline = (m ? m[1] : '').replace(/^(?:1st|2nd|3rd\+?)\s*/i, '').trim().slice(0, 140);
+        }
+        return { name, headline, authorUrl: /\/in\//.test(authorUrl) ? authorUrl : '', text: (el.innerText || '').slice(0, 4500) };
       });
     });
   } finally { await browser.close().catch(() => {}); }
@@ -96,4 +102,21 @@ test('the whole page is never returned as a single nameless post', async () => {
 test('a page with no posts yields nothing rather than a page-sized blob', async () => {
   const posts = await collect('<!doctype html><html><body><main><p>No results found.</p></main></body></html>');
   assert.deepEqual(posts, []);
+});
+
+test('the author headline is captured — without it every author is refused', () => {
+  // shouldContact() decides on the HEADLINE. An empty one finds no recruiter title, falls
+  // through to a model call for every post, and returns "no" whenever the quota is spent —
+  // turning a safety check into a blanket block with no reason given. This is the input that
+  // lets an obvious recruiter through for free.
+  return collect(fx.linkedinPostSearch({ posts: POSTS })).then((posts) => {
+    assert.ok(posts.length > 0);
+    const withHeadline = posts.filter((p) => p.headline && p.headline.length > 2);
+    assert.equal(withHeadline.length, posts.length,
+      `every post must carry a headline: ${JSON.stringify(posts.map((p) => [p.name, p.headline]))}`);
+    // And it must be the ROLE, not the degree marker or the post body.
+    const ganesh = posts.find((p) => /Ganesh/.test(p.name));
+    assert.ok(/Recruiter/i.test(ganesh.headline), `got: "${ganesh.headline}"`);
+    assert.ok(!/^\s*3rd/.test(ganesh.headline), `degree marker leaked: "${ganesh.headline}"`);
+  });
 });

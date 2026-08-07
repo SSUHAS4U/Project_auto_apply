@@ -787,7 +787,29 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
           }
           // "Amit Kuveskar • 3rd+" style leftovers — drop the degree marker if it survived.
           name = name.replace(/\s*•.*$/, '').replace(/\s*\b\d(?:st|nd|rd|th)\+?\b\s*$/i, '').trim();
-          return { name, link: a?.href || '',
+          // The AUTHOR'S HEADLINE, which is what decides whether they are worth contacting.
+          //
+          // Without it shouldContact() receives an empty string, finds no recruiter title, and
+          // falls through to a model call for EVERY post — returning "no" whenever the quota is
+          // spent. That turns a safety check into a blanket block: nobody contacted, no reason
+          // given. The card text reads "Feed post <Name> • <degree> <headline>", so it is right
+          // there; a headline saying "Talent Acquisition" or "Open to work" then settles the
+          // question for free.
+          let headline = '';
+          {
+            // "Feed post <Name> • 2nd Lead Bench Sales Recruiter at Interon…" — the headline is
+            // whatever follows the connection-degree marker. Verified against live cards.
+            // No trailing delimiter is required, deliberately. A headline runs straight into the
+            // post body once whitespace is collapsed, so demanding one matched nothing and left
+            // every headline empty — which makes shouldContact() fall through to a model call
+            // for every post and refuse whenever the quota is spent. A slightly over-long slice
+            // is harmless: this is read for the words "Recruiter" or "Open to work", and extra
+            // context can only help that.
+            const flat = clean(el.innerText);
+            const m = flat.match(/•\s*(?:1st|2nd|3rd\+?)\s+(.{3,140})/i) || flat.match(/•\s+(.{3,140})/);
+            headline = (m ? m[1] : '').replace(/^(?:1st|2nd|3rd\+?)\s*/i, '').trim().slice(0, 140);
+          }
+          return { name, headline, link: a?.href || '',
                    authorUrl: /\/in\//.test(authorUrl) ? authorUrl : '',
                    text: (el.innerText || '').slice(0, 4500) };
         });

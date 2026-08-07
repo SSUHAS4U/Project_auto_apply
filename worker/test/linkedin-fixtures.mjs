@@ -170,7 +170,7 @@ export function linkedinPostSearch({ posts = [] } = {}) {
     <div class="_6d0b28b9 _8342bca6 _9e24d14d c3e115b2 _68452ae9" componentkey="urn:li:activity:${p.id}">
       <span>Feed post</span>
       <a href="/in/${p.slug}/"><span>${p.name}</span></a>
-      <span> • 3rd+ ${p.headline || 'Recruiter'}</span>
+      <span> • 3rd+ ${p.headline || 'Recruiter'}  </span>
       <div>${p.text}</div>
     </div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>Posts | LinkedIn</title></head>`
