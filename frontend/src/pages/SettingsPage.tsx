@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, getAdminToken, setAdminToken, isAdminUI } from '../api/client';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { desktop, isDesktopApp } from '../lib/desktop';
 
 // Derived from the client rather than restated here — a second hand-written copy of the shape
 // is exactly how this page came to render fields the endpoint had stopped sending.
@@ -25,6 +26,22 @@ export function SettingsPage() {
     const t = setInterval(loadAi, 5000);
     return () => clearInterval(t);
   }, [anyResting]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [updating, setUpdating] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  useEffect(() => { desktop()?.getAppVersion?.().then(setAppVersion).catch(() => {}); }, []);
+  const updateNow = async () => {
+    setUpdating(true);
+    try {
+      const r = await desktop()?.updateNow?.();
+      if (!r) { toast('This build has no updater — reinstall once from GitHub', 'error'); return; }
+      if (r.state === 'current') toast(`Already on the latest version (v${r.version})`, 'success');
+      else if (r.state === 'installing') toast(`Installing v${r.version} — JobPilot will restart`, 'success');
+      else if (r.state === 'downloading') toast(`Downloading v${r.version} — it will install shortly`, 'success');
+      else toast(r.error || 'Update failed', 'error');
+    } catch (e) { toast((e as Error).message, 'error'); }
+    finally { setUpdating(false); }
+  };
 
   const [emailTo, setEmailTo] = useState('');
   const [emailing, setEmailing] = useState(false);
@@ -105,6 +122,22 @@ export function SettingsPage() {
             On Render set <code>JOBPILOT_BREVO_API_KEY</code> + <code>JOBPILOT_MAIL_FROM</code> to send over HTTPS
             (Render blocks SMTP). If it fails, check Brevo → Authorised IPs and that your sender is verified.
           </div>
+        </div>
+      )}
+
+      {isDesktopApp() && (
+        <div className="card card-pad section" style={{ maxWidth: 720 }}>
+          <div className="section-title"><span className="si"><Icon name="download" size={15} /></span>App version
+            <span className="section-sub">{appVersion ? `you are on v${appVersion}` : ''}</span>
+          </div>
+          <div className="faint" style={{ fontSize: 12.5, lineHeight: 1.55, marginBottom: 10 }}>
+            JobPilot updates itself in the background, but it will not restart while the
+            automation is running — so an update can sit waiting for a long time. This installs
+            it now and restarts the app.
+          </div>
+          <button className="btn btn-primary" onClick={updateNow} disabled={updating}>
+            {updating ? <span className="spinner" /> : <Icon name="download" size={14} />} Update now
+          </button>
         </div>
       )}
 

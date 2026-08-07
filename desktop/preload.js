@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('jobpilot', {
   // like "still broken" is unanswerable — a whole afternoon went into diagnosing runs that
   // turned out to predate the fixes entirely.
   getAppVersion: () => ipcRenderer.invoke('app:version'),
+  updateNow: () => ipcRenderer.invoke('app:update'),
   startWorker: (token) => ipcRenderer.invoke('worker:start', token),
   stopWorker: () => ipcRenderer.invoke('worker:stop'),
   getWorkerStatus: () => ipcRenderer.invoke('worker:status'),

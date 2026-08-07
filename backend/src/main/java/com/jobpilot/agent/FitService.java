@@ -98,8 +98,28 @@ public class FitService {
         Map<String, Object> hit = cache.get(key);
         if (hit != null) return hit;
 
-        int keywordScore = keywordScore(title, company, location, description);
-        Map<String, Object> out = aiJobFit(candidate, title, company, location, description, keywordScore);
+        // THE THREE-BAND GATE. Decide the clear-cut jobs here; spend the model only on the
+        // genuinely ambiguous ones.
+        //
+        // A real run found 173 jobs and returned 4 "relevant" — 95 of the rest were never judged
+        // because the free tier's per-minute quota ran out mid-run. The verdicts that did arrive
+        // were overwhelmingly "missing Python" / "senior role", which is set arithmetic and a
+        // regex. Answering those here removes the quota from the critical path entirely, and
+        // makes the answer the same every time instead of depending on how busy Groq was.
+        Profile p = null;
+        try { p = profiles.get(); } catch (Exception ignored) { /* handled as no-skills below */ }
+        List<String> skills = p == null || p.getSkills() == null ? List.of() : p.getSkills();
+        DeterministicFit.Verdict d = DeterministicFit.judge(skills, title, description);
+
+        Map<String, Object> out;
+        if (d.band() == DeterministicFit.Band.CLEAR_NO) {
+            out = verdict(d.score(), false, 95, d.matched(), d.missing(), d.reason(), "rules");
+        } else if (d.band() == DeterministicFit.Band.CLEAR_YES) {
+            out = verdict(d.score(), true, 90, d.matched(), d.missing(), d.reason(), "rules");
+        } else {
+            int keywordScore = keywordScore(title, company, location, description);
+            out = aiJobFit(candidate, title, company, location, description, keywordScore);
+        }
         cache.put(key, out);
         return out;
     }

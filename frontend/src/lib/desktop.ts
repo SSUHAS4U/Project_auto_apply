@@ -14,6 +14,8 @@ interface JobPilotBridge {
   getSavedToken: () => Promise<string>;
   /** The installed desktop build, e.g. "1.0.120". Optional: older installs don't expose it. */
   getAppVersion?: () => Promise<string>;
+  /** Check, download and install the newest build. Older installs lack this. */
+  updateNow?: () => Promise<{ state: string; version?: string; error?: string }>;
   getRecentLog?: () => Promise<string>;
   clearLog?: () => Promise<boolean>;
   onWorkerLog: (cb: (line: string) => void) => () => void;

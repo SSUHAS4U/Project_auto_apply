@@ -68,7 +68,41 @@ function initAutoUpdate({ log = () => {}, isBusy = () => false } = {}) {
 
   const check = () => updater.checkForUpdates().catch((e) => {
     log(`  Update check failed: ${String(e && e.message).slice(0, 120)}\n`);
+    return null;
   });
+
+  /**
+   * The "Update now" button: check, download, and install in one press.
+   *
+   * The automatic path has not been reaching this owner. It defers whenever the worker is
+   * running — which is always, because the worker auto-starts — and the install-on-quit hook
+   * never fired. A button removes every one of those conditions and, just as importantly,
+   * SAYS what happened, instead of being a background process you have to take on faith.
+   */
+  const checkAndInstall = async () => {
+    if (pending) {
+      log(`\n  Installing JobPilot ${pending.version}…\n`);
+      setTimeout(() => updater.quitAndInstall(false, true), 400);
+      return { state: 'installing', version: pending.version };
+    }
+    const r = await check();
+    const info = r && r.updateInfo;
+    if (!info || info.version === app.getVersion()) {
+      return { state: 'current', version: app.getVersion() };
+    }
+    // checkForUpdates already started the download (autoDownload). Wait for it to land so one
+    // press is enough; if it is still going after two minutes, say so rather than hanging.
+    const downloaded = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve(false), 120000);
+      updater.once('update-downloaded', () => { clearTimeout(t); resolve(true); });
+    });
+    if (downloaded && pending) {
+      log(`\n  Installing JobPilot ${pending.version}…\n`);
+      setTimeout(() => updater.quitAndInstall(false, true), 400);
+      return { state: 'installing', version: pending.version };
+    }
+    return { state: 'downloading', version: info.version };
+  };
 
   // A moment after launch, so it never competes with the window opening.
   setTimeout(check, 8000);
@@ -76,6 +110,7 @@ function initAutoUpdate({ log = () => {}, isBusy = () => false } = {}) {
 
   return {
     check,
+    checkAndInstall,
     hasPending: () => !!pending,
     /**
      * Install now. Called from the shutdown path once the worker has stopped.

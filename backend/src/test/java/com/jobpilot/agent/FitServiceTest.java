@@ -47,7 +47,22 @@ class FitServiceTest {
         when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any())).thenReturn(body);
     }
 
-    private static String longJd() { return "Responsibilities. ".repeat(30); }
+    /**
+     * A posting the RULES cannot settle, so these tests still exercise the AI path.
+     *
+     * The three-band gate now answers clear-cut jobs itself, which is the point of it — but it
+     * means a fixture like "Responsibilities." x30 under the title "Java Developer" never
+     * reaches the model at all. Partial overlap (React matches, Python/Django do not) is
+     * exactly the band the model exists for.
+     */
+    private static String longJd() {
+        return "You will build features with React on the front end and Python with Django on "
+             + "the back end, working across the stack. ".repeat(4)
+             + "Responsibilities include code review, testing and production support.";
+    }
+
+    /** Neutral title — a title naming a technology would let the rules decide on its own. */
+    private static final String NEUTRAL = "Software Engineer";
 
     // ---- job fit ----------------------------------------------------------------
 
@@ -64,7 +79,7 @@ class FitServiceTest {
     @Test
     void aGenuineMatchPassesThrough() {
         aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":85,\"matched\":[\"Java\",\"React\"],\"reason\":\"strong overlap\"}");
-        Map<String, Object> v = fit.jobFit("Java Full Stack Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals(88, v.get("score"));
         assertEquals(true, v.get("techMatch"));
         assertEquals("ai", v.get("source"));
@@ -81,7 +96,7 @@ class FitServiceTest {
     @Test
     void unreadableAiReplyFallsBackInsteadOfThrowing() {
         aiReplies("I'm sorry, I can't help with that.");
-        Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals("keyword", v.get("source"));
         assertNotNull(v.get("score"));
     }
@@ -90,14 +105,14 @@ class FitServiceTest {
     void aiFailureFallsBackInsteadOfThrowing() {
         when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any()))
                 .thenThrow(new RuntimeException("provider down"));
-        Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals("keyword", v.get("source"));
     }
 
     @Test
     void scoresAreClampedToTheValidRange() {
         aiReplies("{\"score\":999,\"techMatch\":true,\"confidence\":-40}");
-        Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals(100, v.get("score"));
         assertEquals(0, v.get("confidence"));
     }
@@ -105,8 +120,8 @@ class FitServiceTest {
     @Test
     void theSameJobIsJudgedOnceAndCached() {
         aiReplies("{\"score\":80,\"techMatch\":true,\"confidence\":80}");
-        fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
-        fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
+        fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         // Determinism AND cost: the same posting must not be re-judged.
         verify(ai, times(1)).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
@@ -114,7 +129,7 @@ class FitServiceTest {
     @Test
     void jsonWrappedInProseOrFencesIsStillParsed() {
         aiReplies("Sure!\n```json\n{\"score\":81,\"techMatch\":true,\"confidence\":70}\n```\nHope that helps.");
-        Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals(81, v.get("score"));
         assertEquals("ai", v.get("source"));
     }
@@ -193,7 +208,7 @@ class FitServiceTest {
     @Test
     void aiDisabledStillScoresJobsByKeyword() {
         when(ai.isEnabled()).thenReturn(false);
-        Map<String, Object> v = fit.jobFit("Java Developer", "X", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
         assertEquals("keyword", v.get("source"));
         assertNotNull(v.get("score"));
     }
@@ -216,7 +231,7 @@ class FitServiceTest {
     void anEmptyProfileIsReportedAsSuchRatherThanAsAStackMismatch() {
         when(profiles.get()).thenReturn(new Profile());     // nothing filled in
 
-        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "Acme", "Bengaluru", longJd());
 
         assertEquals("no_profile", v.get("source"), "the cause must be identifiable by the caller");
         assertEquals(false, v.get("techMatch"));
@@ -229,7 +244,7 @@ class FitServiceTest {
     @Test
     void anUnreadableProfileIsTreatedTheSameWayAsAnEmptyOne() {
         when(profiles.get()).thenThrow(new IllegalStateException("no user context"));
-        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "Acme", "Bengaluru", longJd());
         assertEquals("no_profile", v.get("source"));
         verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
@@ -238,7 +253,7 @@ class FitServiceTest {
     void aPopulatedProfileStillReachesTheAi() {
         aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":90,\"matched\":[\"Java\"],"
                 + "\"missing\":[],\"reason\":\"strong match\"}");
-        Map<String, Object> v = fit.jobFit("Java Developer", "Acme", "Bengaluru", longJd());
+        Map<String, Object> v = fit.jobFit(NEUTRAL, "Acme", "Bengaluru", longJd());
         assertEquals("ai", v.get("source"), "the guard must not swallow real evaluations");
         assertEquals(88, v.get("score"));
     }

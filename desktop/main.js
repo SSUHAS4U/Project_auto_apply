@@ -171,6 +171,13 @@ ipcMain.on('app:backendUrl', (e) => { e.returnValue = BACKEND_URL; });
 // freshly auto-updated app from one that has been running for days — an afternoon went into
 // diagnosing runs that turned out to predate the fixes entirely.
 ipcMain.handle('app:version', () => app.getVersion());
+// "Update now" — the automatic path defers while the worker runs, which is always, so there
+// has to be a way to say "do it now" without uninstalling and reinstalling.
+ipcMain.handle('app:update', async () => {
+  if (!updater) return { state: 'unavailable', version: app.getVersion() };
+  try { return await updater.checkAndInstall(); }
+  catch (e) { return { state: 'error', error: String(e && e.message).slice(0, 140) }; }
+});
 ipcMain.handle('worker:savedToken', () => savedToken());
 ipcMain.handle('worker:recentLog', () => logBuffer);
 // Delete really deletes: wipe the rolling buffer so the cleared log can't replay on remount.
