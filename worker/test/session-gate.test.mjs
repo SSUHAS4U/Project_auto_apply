@@ -334,3 +334,45 @@ test('a completed sign-in ends the request even if the ack was lost', async () =
   assert.deepEqual(api.acks.map((a) => [a.portal, a.ok]), [['linkedin', true]]);
   assert.deepEqual(api.sessions.map((s2) => [s2.portal, s2.loggedIn]), [['linkedin', true]]);
 });
+
+// ---- the hidden second threshold ---------------------------------------------
+//
+// A run with fitMin 50 skipped jobs scoring 57 as "stack mismatch (fit 57)". The backend
+// derives techMatch as `score >= 60` and gate.js checked it BEFORE the score, so a cutoff
+// the owner never set, cannot see and cannot change was silently overriding theirs. The
+// label was wrong as well: nothing about the stack mismatched.
+import { shouldApply } from '../src/gate.js';
+
+/** An api whose evaluator returns a fixed rules verdict. */
+const gateApi = (score) => ({
+  async evaluate() {
+    return { score, techMatch: score >= 60, confidence: 70, matched: [], missing: [], reason: '', source: 'rules' };
+  },
+  async event() {}, async session() {},
+});
+
+const JOB = {
+  title: 'Java Backend Developer',
+  company: 'Acme',
+  description: 'x'.repeat(400),
+};
+
+test('a rules verdict above fitMin is applied, not called a stack mismatch', async () => {
+  const v = await shouldApply(gateApi(57), JOB, { fitMin: 50 });
+  assert.equal(v.ok, true, `57 clears a fitMin of 50 — got: ${v.label}`);
+  assert.ok(!/stack mismatch/i.test(v.label || ''), `wrong reason given: ${v.label}`);
+});
+
+test('a rules verdict below fitMin is still refused, and says so honestly', async () => {
+  const v = await shouldApply(gateApi(43), JOB, { fitMin: 50 });
+  assert.equal(v.ok, false);
+  assert.match(v.label, /43/, `the label must name the score: ${v.label}`);
+  assert.ok(!/stack mismatch/i.test(v.label), `"stack mismatch" is not why it failed: ${v.label}`);
+});
+
+test('the owner-set threshold is the one that decides', async () => {
+  // Raising fitMin must tighten it; lowering must loosen it. Nothing else may intervene.
+  assert.equal((await shouldApply(gateApi(57), JOB, { fitMin: 60 })).ok, false);
+  assert.equal((await shouldApply(gateApi(57), JOB, { fitMin: 55 })).ok, true);
+  assert.equal((await shouldApply(gateApi(45), JOB, { fitMin: 40 })).ok, true);
+});

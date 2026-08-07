@@ -108,8 +108,19 @@ export async function shouldApply(api, post, plan = {}) {
       label: `not evaluated (AI unavailable) — left for manual review` });
   }
 
-  // BOTH conditions, per the spec: a high score with the wrong stack is still the wrong job.
-  if (!techMatch) {
+  // A RULES verdict has one threshold: the one the owner set.
+  //
+  // `techMatch` was a second, hidden gate. The backend derives it as `score >= 60`, and it is
+  // checked BEFORE the score, so with fitMin at 50 a job scoring 57 was refused as "stack
+  // mismatch (fit 57)" — by a cutoff the owner never chose, cannot see and cannot change. The
+  // message was wrong too: nothing about the stack mismatched, the score simply sat in the gap
+  // between the visible threshold and the invisible one.
+  //
+  // Both conditions still apply to an AI verdict, where techMatch is judged independently of
+  // the score and genuinely adds information. For a rules verdict the score IS the stack
+  // overlap — it is computed from nothing else — so testing it twice at two different levels
+  // is not a safety check, it is a bug.
+  if (!techMatch && v.source !== 'rules') {
     return _verdict({ ok: false, score, techMatch, reason,
       label: `stack mismatch (fit ${score})${missing.length ? ` — missing ${missing.join(', ')}` : ''}` });
   }
