@@ -506,7 +506,26 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
-      await page.goto(searchUrl(keyword, location, 0, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
+      // The PRIMARY search, and the one that was still swallowing its failure.
+      //
+      // The pagination goto below was fixed; this one was missed, and it is the one that runs
+      // for every keyword/location pair. So when the browser died mid-run, every remaining
+      // search quietly returned zero cards and printed "0 Easy-Apply jobs" — while the poller
+      // printed "the automation browser is not responding … the run will relaunch it" every few
+      // seconds, promising a recovery that could not happen because nothing ever threw.
+      //
+      // index.js already knows how to relaunch and retry a block; it just never heard about it.
+      const firstOk = await page.goto(searchUrl(keyword, location, 0, maxAgeDays),
+        { waitUntil: 'domcontentloaded' })
+        .then(() => true)
+        .catch((e) => {
+          logEvent('search', { outcome: 'goto-failed', keyword, location, page: 0,
+            error: String(e && e.message).slice(0, 200) });
+          return false;
+        });
+      if (!firstOk && !(await pageAlive(page))) {
+        throw new Error('Target page, context or browser has been closed');
+      }
       await waitForResults(page);
 
       const cards = await collectJobCards(page);

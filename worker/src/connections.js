@@ -85,6 +85,9 @@ function watchLogin(ctx, api, portal) {
 }
 
 /** Report all portal session states to the backend (best-effort). */
+/** True while the browser is unresponsive, so the warning is printed once, not every tick. */
+let warnedDeadBrowser = false;
+
 export async function reportSessions(ctx, api) {
   // "We could not read the cookies" is NOT "you are signed out".
   //
@@ -101,10 +104,21 @@ export async function reportSessions(ctx, api) {
   let contextAlive = true;
   try { await ctx.cookies('https://www.linkedin.com'); } catch { contextAlive = false; }
   if (!contextAlive) {
-    console.log('  ⚠ the automation browser is not responding — leaving the connection cards as they are');
-    console.log('    (this is a dead browser, not a lost sign-in; the run will relaunch it).');
+    // Say it ONCE per outage, and do not promise a relaunch this code cannot perform.
+    //
+    // This ran every few seconds through a whole block, telling the owner "the run will relaunch
+    // it" while nothing did — the recovery lives in index.js and only fires when a navigation
+    // throws. Repeating an inaccurate reassurance is worse than silence: it reads as the app
+    // handling something it is not.
+    if (!warnedDeadBrowser) {
+      warnedDeadBrowser = true;
+      console.log('\n  ⚠ the automation browser has stopped responding.');
+      console.log('     The connection cards keep their last known state — this is a dead');
+      console.log('     browser, not a lost sign-in. Recovering…\n');
+    }
     return;
   }
+  warnedDeadBrowser = false;   // it answered — the next outage is worth announcing again
   let anySignedIn = false;
   for (const portal of Object.keys(PORTALS)) {
     try {
