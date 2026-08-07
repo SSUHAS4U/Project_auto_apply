@@ -258,12 +258,38 @@ public class AgentService {
         for (PortalConnection c : connections.findByUserIdOrderByPortalAsc(userId)) {
             if (c.getRequestedAction() != null && !c.getRequestedAction().isBlank()) {
                 out.add(Map.of("portal", c.getPortal(), "action", c.getRequestedAction()));
-                c.setRequestedAction(null);
-                c.setUpdatedAt(Instant.now());
-                connections.save(c);
             }
         }
         return out;
+    }
+
+    /**
+     * The worker confirms it actually carried the action out. Only now is the request cleared.
+     *
+     * Delivery used to BE the acknowledgement: the row was cleared the instant the worker read
+     * it. Anything that went wrong afterwards — the browser failing to relaunch, a block still
+     * holding the context, the worker restarting between the read and the click — destroyed the
+     * request with nothing to show for it. The card sat on "Waiting for sign-in…" until it timed
+     * out, no window ever appeared, and pressing Connect again just repeated the loss. From the
+     * outside the button did nothing at all.
+     *
+     * Keeping the request until it is confirmed makes it a retry: a worker that could not open a
+     * window this tick sees the same action next tick, and the one press eventually lands.
+     */
+    @Transactional
+    public void ackConnectionAction(UUID userId, String portal, boolean ok, String detail) {
+        connections.findByUserIdAndPortal(userId, portal).ifPresent(c -> {
+            if (ok) {
+                c.setRequestedAction(null);
+            } else {
+                // Leave the action queued so the next tick retries, but say what went wrong —
+                // a silent retry loop is only marginally better than a silent failure.
+                c.setStatus("disconnected");
+            }
+            c.setDetail(detail);
+            c.setUpdatedAt(Instant.now());
+            connections.save(c);
+        });
     }
 
     /** Worker reports whether it has a logged-in session for a portal. */

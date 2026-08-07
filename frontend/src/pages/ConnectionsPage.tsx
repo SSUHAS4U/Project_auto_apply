@@ -64,12 +64,18 @@ export function ConnectionsPage() {
   const inApp = isDesktopApp();
 
   const connect = async (portal: string) => {
-    // In-app the worker auto-starts, but it takes a moment on a cold launch.
-    if (!online) { toast('The automation is still starting — try again in a few seconds.', 'error'); return; }
     setBusy(portal);
     try {
+      // Queue it even when the worker isn't up yet. This used to refuse with "the automation
+      // is still starting — try again in a few seconds", which put the owner in a loop of
+      // pressing a button that declined to do anything. The request now survives until the
+      // worker confirms it opened the window, so queuing early is safe: it is picked up the
+      // moment the worker is ready instead of being lost.
       await api.agentConnect(portal);
-      toast(`Opening ${PORTALS[portal].name} sign-in — log in there once.`, 'success');
+      toast(online
+        ? `Opening ${PORTALS[portal].name} sign-in — log in there once.`
+        : `Queued — ${PORTALS[portal].name} sign-in opens as soon as the automation is ready.`,
+        'success');
       load();
     } catch (e) { toast((e as Error).message, 'error'); } finally { setBusy(''); }
   };

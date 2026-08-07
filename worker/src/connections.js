@@ -130,13 +130,29 @@ export async function handleConnectionActions(ctx, page, api, showWindow) {
         if (showWindow) ctx = (await showWindow()) || ctx;
         const p = await ctx.newPage();
         await p.bringToFront().catch(() => {});
-        await p.goto(spec.login, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        // The navigation is NOT allowed to fail quietly. `.catch(() => {})` here meant a
+        // blank tab counted as a successful Connect.
+        await p.goto(spec.login, { waitUntil: 'domcontentloaded' });
         openedLogin = true;
         // Flip the card to "Active" the moment sign-in completes, without waiting for the
         // periodic sweep. Detached watcher (doesn't block the main loop or a running block).
         watchLogin(ctx, api, portal);
-        console.log(`\n  → Connect ${portal}: log in in the opened tab. It auto-detects when you're in.\n`);
-      } catch { /* ignore */ }
+        console.log(`\n  → Connect ${portal}: sign in in the window that just opened.`);
+        console.log('     It detects the sign-in by itself — nothing else to click.\n');
+        // Only NOW is the request finished. Until this lands the backend keeps it queued, so
+        // a failure below turns into a retry next tick rather than a click thrown away.
+        await api.connectionAck(portal, true, 'Login page opened — waiting for sign-in.').catch(() => {});
+      } catch (e) {
+        // Every failure here used to be swallowed whole by `catch { /* ignore */ }`, while the
+        // backend had already deleted the request. A browser that would not relaunch, a locked
+        // profile directory, a dead context — all of them looked identical from the dashboard:
+        // a card stuck on "Waiting for sign-in…" and a button that did nothing. Say it, and
+        // leave the request queued so the next tick tries again.
+        const why = String(e && e.message ? e.message : e).slice(0, 160);
+        console.log(`\n  ! Could not open the ${portal} login window: ${why}`);
+        console.log('     Retrying on the next tick — the request stays queued.\n');
+        await api.connectionAck(portal, false, `Could not open the login window: ${why}`).catch(() => {});
+      }
     } else if (action === 'disconnect') {
       try {
         const cookies = await ctx.cookies(spec.home);
@@ -147,7 +163,12 @@ export async function handleConnectionActions(ctx, page, api, showWindow) {
         await api.session(portal, false, 'disconnected by owner');
         console.log(`  → Disconnected ${portal} (cookies cleared).`);
         void cookies;
-      } catch { /* ignore */ }
+        await api.connectionAck(portal, true, 'Disconnected — cookies cleared.').catch(() => {});
+      } catch (e) {
+        const why = String(e && e.message ? e.message : e).slice(0, 160);
+        console.log(`  ! Could not disconnect ${portal}: ${why}`);
+        await api.connectionAck(portal, false, `Could not disconnect: ${why}`).catch(() => {});
+      }
     }
     await humanDelay(400, 900);
   }

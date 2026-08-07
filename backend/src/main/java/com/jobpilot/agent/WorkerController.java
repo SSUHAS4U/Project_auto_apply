@@ -163,10 +163,22 @@ public class WorkerController {
         return Map.of("ok", true);
     }
 
-    /** Worker pulls pending connect/disconnect actions (cleared once delivered). */
+    /**
+     * Worker pulls pending connect/disconnect actions. These are NOT cleared by reading them —
+     * see ackConnectionAction. Delivery is not proof the action happened, and treating it as
+     * proof is what made Connect a button that silently did nothing.
+     */
     @GetMapping("/connection-actions")
     public List<Map<String, String>> connectionActions() {
         return agent.pullConnectionActions(UserContext.require());
+    }
+
+    /** Worker confirms it carried an action out (or reports why it could not). */
+    @PostMapping("/connection-ack")
+    public Map<String, Object> connectionAck(@RequestBody Map<String, Object> b) {
+        boolean ok = b.get("ok") != null && Boolean.parseBoolean(b.get("ok").toString());
+        agent.ackConnectionAction(UserContext.require(), str(b.get("portal")), ok, str(b.get("detail")));
+        return Map.of("ok", true);
     }
 
     /** Update run status / the human-readable "what it's doing now" caption. */

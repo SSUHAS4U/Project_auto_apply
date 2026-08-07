@@ -108,3 +108,112 @@ test('every portal has a real login URL to send someone to', () => {
   // page.goto throw and leave a blank window with no explanation.
   assert.match(loginUrl('nope'), /^https:\/\//);
 });
+
+// ---- Connect must survive its own failures ------------------------------------
+//
+// Connect was a button that did nothing. The backend deleted the request the moment the
+// worker READ it, so anything failing afterwards — a browser that would not relaunch, a
+// locked profile directory, a dead context — threw the click away, while the worker's
+// `catch { /* ignore */ }` made sure nobody ever learned why. The card sat on "Waiting for
+// sign-in…" and pressing Connect again just repeated the loss.
+import { handleConnectionActions } from '../src/connections.js';
+
+/** Records acks the way the backend would, so "did it confirm?" is assertable. */
+function ackApi(actions) {
+  return {
+    acks: [],
+    sessions: [],
+    async connectionActions() { return actions; },
+    async connectionAck(portal, ok, detail) { this.acks.push({ portal, ok, detail }); },
+    async session(portal, loggedIn, detail) { this.sessions.push({ portal, loggedIn, detail }); },
+  };
+}
+
+const quiet = () => {
+  const orig = console.log;
+  const lines = [];
+  console.log = (...a) => lines.push(a.join(' '));
+  return { text: () => lines.join('\n'), restore: () => { console.log = orig; } };
+};
+
+test('a connect that cannot open a window is NOT acknowledged', async () => {
+  const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
+  const log = quiet();
+  try {
+    // The exact production failure: the relaunch throws (profile still locked).
+    await handleConnectionActions(null, null, api, async () => {
+      throw new Error('Failed to launch: profile is already in use');
+    });
+  } finally { log.restore(); }
+
+  assert.equal(api.acks.length, 1);
+  assert.equal(api.acks[0].ok, false,
+    'a failed connect must not be acknowledged — the backend keeps it queued and retries');
+  assert.match(api.acks[0].detail, /profile is already in use/,
+    'the reason must reach the card instead of vanishing');
+  assert.match(log.text(), /Could not open the linkedin login window/i,
+    'and it must be said out loud, not swallowed');
+});
+
+test('a connect that opens the login page IS acknowledged', async () => {
+  // The other direction: the walls must not be so tight that a working connect never clears,
+  // which would leave it retrying forever and reopening windows.
+  let navigated = '';
+  const ctx = {
+    async newPage() {
+      return {
+        bringToFront: async () => {},
+        goto: async (u) => { navigated = u; },
+      };
+    },
+    async cookies() { return []; },
+  };
+  const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
+  const log = quiet();
+  try { await handleConnectionActions(ctx, null, api, async () => ctx); } finally { log.restore(); }
+
+  assert.match(navigated, /linkedin\.com\/login/, 'it must land on the real login page');
+  assert.deepEqual(api.acks.map((a) => [a.portal, a.ok]), [['linkedin', true]]);
+});
+
+test('a blank login tab is a failure, not a success', async () => {
+  // goto() used to be wrapped in .catch(() => {}), so a navigation that never happened still
+  // counted as a successful Connect and cleared the request.
+  const ctx = {
+    async newPage() {
+      return {
+        bringToFront: async () => {},
+        goto: async () => { throw new Error('NS_ERROR_UNKNOWN_HOST'); },
+      };
+    },
+  };
+  const api = ackApi([{ portal: 'indeed', action: 'connect' }]);
+  const log = quiet();
+  try { await handleConnectionActions(ctx, null, api, async () => ctx); } finally { log.restore(); }
+  assert.equal(api.acks[0].ok, false, 'a tab that never loaded must not clear the request');
+});
+
+test('one failing portal does not stop the other from connecting', async () => {
+  let opened = 0;
+  const ctx = {
+    async newPage() {
+      opened++;
+      return { bringToFront: async () => {}, goto: async () => { if (opened === 1) throw new Error('boom'); } };
+    },
+  };
+  const api = ackApi([
+    { portal: 'linkedin', action: 'connect' },
+    { portal: 'indeed', action: 'connect' },
+  ]);
+  const log = quiet();
+  try { await handleConnectionActions(ctx, null, api, async () => ctx); } finally { log.restore(); }
+  assert.deepEqual(api.acks.map((a) => [a.portal, a.ok]), [['linkedin', false], ['indeed', true]]);
+});
+
+test('an empty action list acks nothing and does nothing', async () => {
+  const api = ackApi([]);
+  const log = quiet();
+  try { assert.equal(await handleConnectionActions(null, null, api, async () => null), false); }
+  finally { log.restore(); }
+  assert.deepEqual(api.acks, []);
+});

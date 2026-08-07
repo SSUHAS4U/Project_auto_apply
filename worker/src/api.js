@@ -65,6 +65,14 @@ export class Api {
     return this.#req('/api/worker/session', { method: 'POST', body: { portal, loggedIn, detail } });
   }
   connectionActions() { return this.#req('/api/worker/connection-actions'); }
+
+  /**
+   * Confirm an action actually happened. Until this lands the backend keeps the request
+   * queued, so a tick that could not open a window retries instead of losing the click.
+   */
+  connectionAck(portal, ok, detail) {
+    return this.#req('/api/worker/connection-ack', { method: 'POST', body: { portal, ok, detail } });
+  }
   evaluate(job) { return this.#req('/api/worker/evaluate', { method: 'POST', body: job }); }
   /** Is this person a recruiter / hiring? { contact, isRecruiter, hiringNow, confidence, topic } */
   verifyPerson(p) { return this.#req('/api/worker/verify-person', { method: 'POST', body: p }); }

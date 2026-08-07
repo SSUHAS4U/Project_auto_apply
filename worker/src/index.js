@@ -180,13 +180,22 @@ async function main() {
     // the next run reads.
     await handleConnectionActions(ctx, page, api, async () => {
       if (!background) return ctx;
-      console.log('\n  → Opening a browser window so you can sign in…\n');
+      console.log('\n  → Opening a browser window so you can sign in…');
       try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
       background = false;
       await ctx.close().catch(() => {});
+      // Firefox holds a lock file inside the profile directory and does not always drop it the
+      // instant close() resolves. Relaunching the same profile straight away can fail with
+      // "profile is already in use" — and since the whole point of this callback is to produce
+      // a visible window, that failure is the difference between Connect working and Connect
+      // appearing to do nothing. Give the lock a moment, then relaunch.
+      await sleep(1200);
       ({ ctx, page } = await launchBrowser({ headless: false }));
       return ctx;
-    }).catch(() => {});
+    }).catch((e) => {
+      // Not swallowed. A connect path that fails invisibly is the bug being fixed here.
+      console.log(`\n  ! Connection handling failed: ${String(e && e.message ? e.message : e).slice(0, 160)}\n`);
+    });
     // Report session status often when idle so the Connections cards stay accurate (a watcher
     // in handleConnectionActions also flips a card to Active seconds after sign-in).
     if (sessionTick++ % 2 === 0) await reportSessions(ctx, api).catch(() => {});
