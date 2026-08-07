@@ -307,10 +307,6 @@ export interface PortalConnection {
   requestedAction?: string | null;
   detail?: string | null;
   updatedAt: string;
-  /** Connected, but the worker has not confirmed the session recently. Derived server-side. */
-  stale?: boolean;
-  /** When it was last actually confirmed. Only present when `stale`. */
-  staleSince?: string | null;
 }
 
 export interface PortalContact {

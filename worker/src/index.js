@@ -190,6 +190,30 @@ async function main() {
   while (running) {
     // Connection handling every loop: act on Connect/Disconnect requests, and report
     // session status periodically (every ~6th idle tick) so the dashboard stays live.
+    // A DEAD BROWSER MUST BE REVIVED HERE, not only inside a run.
+    //
+    // The relaunch used to live in the block executor, so it could only fire while a run was in
+    // progress. When the browser died and the schedule was idle, nothing brought it back: the
+    // log filled with "the automation browser is not responding … the run will relaunch it"
+    // every few seconds, forever, promising a recovery that had no way of happening. Connect
+    // could not work either — there was no browser to open a window in — so the card sat on
+    // "not connected" while the worker cheerfully polled a backend it had nothing to offer.
+    if (!(await pageAlive(page))) {
+      console.log('\n  ⟳ the automation browser had stopped responding — reopening it…');
+      logEvent('lifecycle', { event: 'browser dead while idle — relaunching', headless: background });
+      await ctx.close().catch(() => {});
+      await sleep(1200);   // let the profile lock drop before reopening the same directory
+      try {
+        ({ ctx, page } = await launchBrowser({ headless: background }));
+        console.log('  ✓ automation browser is back.\n');
+      } catch (e) {
+        console.log(`  ! could not reopen the browser: ${String(e && e.message).slice(0, 140)}`);
+        logEvent('lifecycle', { event: 'relaunch failed', error: String(e && e.message).slice(0, 200) });
+        await sleep(15000);   // do not spin on a machine that cannot start a browser at all
+        continue;
+      }
+    }
+
     // Connect must be able to put a REAL window on screen. While running headless there is
     // nothing to type into, so the callback relaunches the browser visibly and hands back the
     // new context. Same profile directory, so the cookies the sign-in produces are the ones

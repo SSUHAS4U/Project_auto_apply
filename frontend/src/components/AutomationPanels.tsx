@@ -368,26 +368,21 @@ function SessionBanner({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   // "connecting" means a login window is open right now — nagging mid-sign-in is noise.
   if (conn.status === 'connecting') return null;
-  const off = conn.status === 'disconnected';
-  if (!off && !conn.stale) return null;
+  if (conn.status !== 'disconnected') return null;
 
   return (
-    <div className={`card card-pad ${off ? 'banner-alert' : 'banner-warn'}`} role="status"
+    <div className="card card-pad banner-alert" role="status"
       style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <Icon name={off ? 'alert' : 'clock'} size={16} />
+      <Icon name="alert" size={16} />
       <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.55 }}>
-        <b>{off ? `${name} is not connected` : `${name} hasn't been confirmed recently`}</b>
+        <b>{name} is not connected</b>
         <div className="faint" style={{ marginTop: 3 }}>
-          {off
-            ? `Runs can't apply to anything while ${name} is signed out — its pages carry no apply `
-              + 'button for signed-out visitors. Connect it and sign in once; it is remembered from then on.'
-            : `It last confirmed ${fmtDate(conn.staleSince ?? conn.updatedAt)}. If runs are finishing `
-              + 'with nothing applied, the session has probably expired — connect again to be sure.'}
+          Runs can't apply to anything while {name} is signed out — its pages carry no apply
+          button for signed-out visitors. Connect it and sign in once; it is remembered from
+          then on.
         </div>
       </div>
-      <Link to="/connections" className="btn btn-sm" style={{ flexShrink: 0 }}>
-        {off ? 'Connect' : 'Check'}
-      </Link>
+      <Link to="/connections" className="btn btn-sm" style={{ flexShrink: 0 }}>Connect</Link>
     </div>
   );
 }

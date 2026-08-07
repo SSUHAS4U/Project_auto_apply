@@ -183,20 +183,6 @@ public class AgentService {
     /** Give a stuck "connecting" this long before we call it failed (covers slow sign-ins). */
     private static final long CONNECT_TIMEOUT_SECONDS = 150;
 
-    /**
-     * How long a "connected" may go unconfirmed before the card stops claiming it is live.
-     *
-     * A connected row was only ever written, never re-examined, so once the worker had said
-     * "yes" the card read Active for good — including for a LinkedIn session that had since
-     * expired. The owner saw a green Active card while every run ended 0/0/0 for want of a
-     * cookie, which is the worst possible combination: the dashboard actively argued against
-     * the truth.
-     *
-     * A running worker re-reports every loop tick and after every block, so silence this long
-     * means it is not confirming. 20 minutes is comfortably longer than one block plus the
-     * 3-minute online window, so a healthy run never trips it.
-     */
-    private static final long SESSION_STALE_SECONDS = 1200;
 
     /** All portal connections, seeding rows and expiring any stuck "connecting" state. */
     @Transactional
@@ -220,15 +206,6 @@ public class AgentService {
                         : "JobPilot Desktop isn't running — start it, then click Connect.");
                 c.setUpdatedAt(Instant.now());
                 connections.save(c);
-            }
-            // A "connected" nobody has confirmed lately is a claim, not a fact. Flag it rather
-            // than flipping it to disconnected: telling someone their live session is dead is
-            // its own bug, and sends them re-authenticating for no reason. The card says
-            // "unconfirmed" and offers Connect; nothing is destroyed either way.
-            if ("connected".equals(c.getStatus())
-                    && c.getUpdatedAt().isBefore(Instant.now().minusSeconds(SESSION_STALE_SECONDS))) {
-                c.setStale(true);
-                c.setStaleSince(c.getUpdatedAt());
             }
         }
         return list;

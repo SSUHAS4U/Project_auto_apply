@@ -133,15 +133,15 @@ export async function shouldContact(api, person, plan = {}, posts = []) {
   try {
     v = await api.verifyPerson({ name: person.name, headline: person.headline || '', posts });
   } catch {
-    return _verdict({ ok: false, reason: 'verification unavailable', topic: '', confidence: 0 });
+    return { ok: false, reason: 'verification unavailable', topic: '', confidence: 0 };
   }
   const confidence = Number(v.confidence ?? 0);
   if (!v.contact) return { ok: false, reason: v.reason || 'not a hiring contact', topic: '', confidence };
   if (confidence < min) {
-    return _verdict({ ok: false, reason: `only ${confidence}% sure they hire (need ${min}%)`, topic: v.topic || '', confidence });
+    return { ok: false, reason: `only ${confidence}% sure they hire (need ${min}%)`, topic: v.topic || '', confidence };
   }
-  return _verdict({ ok: true, reason: v.reason || '', topic: v.topic || '', confidence,
-    isRecruiter: !!v.isRecruiter, hiringNow: !!v.hiringNow });
+  return { ok: true, reason: v.reason || '', topic: v.topic || '', confidence,
+    isRecruiter: !!v.isRecruiter, hiringNow: !!v.hiringNow };
 }
 
 /**
@@ -167,6 +167,6 @@ export async function claimOutreach(api, { portal = 'linkedin', company, role, r
   } catch {
     // Fail CLOSED: if we can't confirm this isn't a duplicate, don't send. An unsent message
     // costs nothing; a second one to the same recruiter costs credibility.
-    return _verdict({ ok: false, reason: 'could not check the outreach limits' });
+    return { ok: false, reason: 'could not check the outreach limits' };
   }
 }
