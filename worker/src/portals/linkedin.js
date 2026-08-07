@@ -4,7 +4,16 @@
 // questions from the profile/AI, and (optionally) sends a connection request afterward.
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
-import { humanDelay, sleep, botChallengeCount } from '../browser.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
+
+/**
+ * Keyword/location pairs to search in ONE run. The rest are picked up by the next run — see
+ * the rotation below. Six pairs at one page each is ~6 result loads per run against 216, a
+ * rate a person could plausibly produce.
+ */
+const SEARCHES_PER_RUN = 6;
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
@@ -358,7 +367,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
   let paneFailures = 0;                      // consecutive job pages that would not render
   let paneRests = 0;                         // how many times we have backed off for them
-  const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
+  // ONE result page per search, whatever the plan asks for.
+  //
+  // Three pages meant three result loads per keyword/location pair before a single job was
+  // opened — 216 loads across the matrix, one every 25 seconds for 90 minutes. Pages 2 and 3 of
+  // a LinkedIn search are largely the same postings repeated by different agencies, so the run
+  // was spending most of its detection budget on its worst results. Clamped here rather than in
+  // the plan so a stale setting on the backend cannot quietly reintroduce it.
+  const pagesPerSearch = 1;
+  void plan.pagesPerSearch;
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
   const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
@@ -390,9 +407,40 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
         detail: `LinkedIn had nothing to search — ${(plan.keywords || []).length} keyword(s) and ${(plan.locations || []).length} location(s). Set target roles and locations in Setup.` });
     }
-    outer:
+    // ROTATE the search matrix instead of walking all of it every run.
+    //
+    // The owner's plan is 12 keywords x 6 locations x 3 pages = 216 result-page loads inside a
+    // 90-minute phase: one every 25 seconds, before a single job is opened. LinkedIn's
+    // PerimeterX reads exactly that and flags the session `uc=scraping` from the first page —
+    // after which job pages return no data at all, which is why 72 searches reported 0 jobs and
+    // the run applied to nothing.
+    //
+    // Cutting the settings would silently discard what the owner configured. Rotating does not:
+    // each run takes a WINDOW of the matrix and the next run starts where this one stopped, so
+    // every keyword and location is still covered — just across several runs instead of one
+    // burst. A day's coverage is unchanged; the request rate is what drops.
+    const pairs = [];
     for (const keyword of plan.keywords) {
-      for (const location of plan.locations) {
+      for (const location of plan.locations) pairs.push({ keyword, location });
+    }
+    const offsetFile = path.join(APP_DIR, '.search-offset');
+    let offset = 0;
+    try { offset = parseInt(fs.readFileSync(offsetFile, 'utf8'), 10) || 0; } catch { /* first run */ }
+    const window = Math.max(1, Math.min(SEARCHES_PER_RUN, pairs.length));
+    const slice = [];
+    for (let i = 0; i < window; i++) slice.push(pairs[(offset + i) % pairs.length]);
+    try { fs.writeFileSync(offsetFile, String((offset + window) % pairs.length)); } catch { /* non-fatal */ }
+    if (pairs.length > window) {
+      console.log(`
+  Searching ${window} of ${pairs.length} keyword/location pairs this run`);
+      console.log(`  (starting at #${offset + 1} — the next run continues from where this one stops,`);
+      console.log('   so everything is still covered, just not all in one burst.)');
+    }
+    logEvent('search', { event: 'matrix', total: pairs.length, window, offset });
+
+    outer:
+    for (const { keyword, location } of slice) {
+      {
         if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) {
           phase1End = state.stopped ? 'the run was stopped'
             : state.paused ? 'paused'
