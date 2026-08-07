@@ -118,12 +118,21 @@ export function humanDelay(min = 700, max = 1800) {
  * streamer — that uploaded a screenshot every second, which burned the VM's free egress
  * budget for a feature nobody used. Returns a stop().
  */
-export function startPausePoller(api, state) {
+export function startPausePoller(api, state, reportSessions) {
   let stopped = false;
   let missedRun = 0;   // consecutive polls where our run was not the active one
   let lastReply = '';  // the raw /next body that triggered it — see below
+  let ticks = 0;
   const tick = async () => {
     while (!stopped) {
+      // Refresh the portal cards DURING a run, not only between blocks.
+      //
+      // Session status was reported from the main loop only, which a running block owns for up
+      // to 90 minutes. So signing in mid-run left the Connections card — and the banner on the
+      // portal page — insisting "LinkedIn is not connected" while the terminal was happily
+      // applying to jobs. The dashboard was describing a state that had already been fixed, and
+      // the only cure was waiting out the whole block. Every 20th tick is once a minute.
+      if (reportSessions && ticks++ % 20 === 0) await reportSessions().catch(() => {});
       try {
         // /next heartbeats the worker (dashboard "desktop ready") and reports the pause flag.
         // It's a GET that only promotes queued→running, so polling it mid-run is a no-op.

@@ -217,3 +217,74 @@ test('an empty action list acks nothing and does nothing', async () => {
   finally { log.restore(); }
   assert.deepEqual(api.acks, []);
 });
+
+// ---- Easy Apply control matching ---------------------------------------------
+//
+// The live log showed a modal whose buttons were printed as present and on-screen:
+//   Dismiss | Review job post | I understand the tips and want to continue the apply process
+//   Continue applying
+// and the run still reported "the Easy Apply form has no Submit/Continue control we
+// recognise", handing a fit-78 job to a human. Two faults met there.
+
+/** The matcher exactly as the page-side code builds it. */
+const matches = (src, label) => new RegExp(src).test(label);
+const NEVER = /review job post|^dismiss|^back\b|^discard|save (?:and )?(?:exit|for later)|^cancel/;
+
+const BS = String.fromCharCode(8);   // U+0008 — see the first test
+const NEXT = 'continue applying|continue to next step|review your application'
+  + '|^continue$|^next$|^review$|^continue\\b|^next\\b|^review\\b';
+const SUBMIT = '^submit application|^submit\\b|submit application';
+
+test('a backslash-b in a JS string was a backspace, killing three of five alternatives', () => {
+  // The bug, pinned so it cannot come back. In a JS string literal, backslash-b is U+0008 — a
+  // backspace character — not the regex word boundary it reads as. So '^submit\\b' compiled to
+  // "^submit<BACKSPACE>" and could never match anything. Three of the five alternatives the
+  // adapter shipped were dead on arrival, silently, and only the ones written without \\b
+  // ever did any work.
+  //
+  // Built from its code point on purpose: written as a literal, an editor or shell would
+  // "helpfully" repair the very thing under test.
+  const broken = '^review' + BS;
+  assert.equal(broken.charCodeAt(7), 8, 'the literal really does carry a backspace');
+  assert.equal(matches(broken, 'review'), false, 'so it matched nothing at all');
+  // Correctly escaped — a real backslash reaches RegExp — it is a word boundary and behaves.
+  assert.equal(matches('^review\\b', 'review'), true);
+  assert.equal(matches('^review\\b', 'reviewer of things'), false);
+  // And the patterns the adapter actually ships must be of the escaped kind.
+  assert.ok(!NEXT.includes(BS), 'the advance pattern must not carry a backspace');
+  assert.ok(!SUBMIT.includes(BS), 'the submit pattern must not carry a backspace');
+});
+
+test('the safety-tips interstitial is recognised as an advance', () => {
+  // Not anchored: the real label buries "continue applying" right at the end.
+  const label = 'i understand the tips and want to continue the apply process continue applying';
+  assert.ok(!NEVER.test(label));
+  assert.ok(matches(NEXT, label), 'this exact button left a fit-78 job unapplied');
+});
+
+test('"Review job post" is never clicked as an advance', () => {
+  // It matches /^review\b/ perfectly well now that the boundary works — and clicking it
+  // navigates out of the apply flow, losing the half-filled form. The deny-list is what
+  // has to stop it, which is why that check runs BEFORE the pattern.
+  assert.ok(matches(NEXT, 'review job post'), 'it does match the advance pattern...');
+  assert.ok(NEVER.test('review job post'), '...so only the deny-list prevents the click');
+});
+
+test('the other escape hatches in the modal are denied too', () => {
+  for (const l of ['dismiss', 'back to job', 'discard', 'save for later', 'cancel']) {
+    assert.ok(NEVER.test(l), `${l} must never count as an advance`);
+  }
+});
+
+test('the ordinary step and submit buttons still match', () => {
+  // The deny-list must not block the normal path — a matcher that recognises nothing is the
+  // failure being fixed here, not an improvement on it.
+  for (const l of ['continue to next step', 'next', 'review your application', 'review', 'continue']) {
+    assert.ok(matches(NEXT, l) && !NEVER.test(l), `advance control not recognised: "${l}"`);
+  }
+  for (const l of ['submit application', 'submit']) {
+    assert.ok(matches(SUBMIT, l), `submit control not recognised: "${l}"`);
+  }
+  // Submit is tried before next, so "review your application" cannot pre-empt a real submit.
+  assert.equal(matches(SUBMIT, 'review your application'), false);
+});

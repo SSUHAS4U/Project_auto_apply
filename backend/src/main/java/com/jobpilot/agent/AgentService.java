@@ -357,6 +357,27 @@ public class AgentService {
     public AgentRun setRunStatus(UUID userId, UUID runId, String status, String currentAction) {
         AgentRun r = runs.findById(runId).orElseThrow();
         boolean becameAttention = "needs_attention".equals(status) && !"needs_attention".equals(r.getStatus());
+        // Log every transition OUT of a live status, with a stack frame naming the caller.
+        //
+        // A 90-minute run keeps ending at ~12 minutes, and /next now proves the server had no
+        // active run at that moment ({"idle":true}). activeRun() only returns null when the
+        // status has left (running, needs_attention, paused, queued) — yet the reaper cannot
+        // have done it (it requires the worker to be OFFLINE, and this one was heartbeating
+        // every 3 seconds), and the LinkedIn adapter never calls runStatus at all. So something
+        // else moves it, and four separate theories have now been wrong about what.
+        //
+        // Rather than guess a fifth time: record it. Who called, from where, and what the run
+        // looked like before.
+        if (status != null && !LIVE.contains(status) && LIVE.contains(r.getStatus())) {
+            StackTraceElement[] st = Thread.currentThread().getStackTrace();
+            StringBuilder who = new StringBuilder();
+            for (int i = 2; i < Math.min(st.length, 8); i++) who.append(st[i]).append(" < ");
+            log.warn("RUN-END {} {} -> {} after {}s | action={} | caller: {}",
+                    r.getPortal(), r.getStatus(), status,
+                    r.getStartedAt() == null ? -1
+                            : java.time.Duration.between(r.getStartedAt(), Instant.now()).toSeconds(),
+                    currentAction, who);
+        }
         if (status != null) r.setStatus(status);
         if (currentAction != null) r.setCurrentAction(currentAction);
         if ("done".equals(status) || "failed".equals(status)) r.setEndedAt(Instant.now());

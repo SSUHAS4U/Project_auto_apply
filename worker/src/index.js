@@ -141,7 +141,11 @@ async function main() {
   }
 
   const state = { runId: null, portal: null, action: 'Idle — waiting for a run', paused: false };
-  const stopStream = startPausePoller(api, state);
+  // The poller reports session status too, so the Connections card and the portal banner track
+  // reality during a block instead of freezing for its whole 90 minutes. Reads `ctx` through the
+  // closure rather than capturing it, because a relaunch (Connect, or a crashed browser) swaps
+  // the context out — a captured one would keep reporting on a dead profile.
+  const stopStream = startPausePoller(api, state, () => reportSessions(ctx, api));
 
   // graceful shutdown
   let running = true;

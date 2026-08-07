@@ -188,11 +188,11 @@ async function pageState(page) {
  */
 async function indeedLoggedIn(page, api, state) {
   const cookies = await page.context().cookies('https://www.indeed.com').catch(() => []);
-  // Indeed's primary session cookie, or any long-lived session-looking one for the domain —
-  // matching connections.js, so the run and the Connections card can never disagree.
-  const live = cookies.some((c) => c.name === 'PPID' && c.value)
-    || cookies.some((c) => /(_at|session|SID|login|auth)/i.test(c.name) && (c.value || '').length > 20);
-  if (live) return true;
+  // The auth cookie and nothing else — the same rule connections.js applies, so the run and the
+  // Connections card can never disagree. A "any session-looking cookie name" fallback is what
+  // made a signed-out LinkedIn read as connected (JSESSIONID matches /SID/), and Indeed hands
+  // out CTK and SHOE to anonymous visitors just as freely.
+  if (cookies.some((c) => c.name === 'PPID' && (c.value || '').length > 0)) return true;
   console.log('\n  ⚠ Not signed in to Indeed — the session cookie is gone.');
   console.log('     Indeed hides its own Apply button from signed-out visitors, so there is');
   console.log('     nothing to apply to. Sign in once in the window that opens; the session');

@@ -1040,11 +1040,16 @@ async function easyApply(page, api, profile, resume, state) {
     // click uses.
     const pickIndex = async (source) => modal.$$eval('button, [role="button"]', (ns, src) => {
       const re = new RegExp(src);
+      // Controls that LOOK like an advance but leave the application behind. "Review job post"
+      // sits in the same modal as "Continue applying" and matches /^review\b/ perfectly well —
+      // clicking it navigates back to the posting and the half-filled form is gone. Checked
+      // before the match, so no pattern can ever reach these however it is written later.
+      const NEVER = /review job post|^dismiss|^back\b|^discard|save (?:and )?(?:exit|for later)|^cancel/;
       for (let i = 0; i < ns.length; i++) {
         const n = ns[i];
         const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
           .replace(/\s+/g, ' ').trim().toLowerCase();
-        if (!label || !re.test(label)) continue;
+        if (!label || NEVER.test(label) || !re.test(label)) continue;
         // Only what a person could actually click: a real box, not a hidden step.
         const r = n.getBoundingClientRect();
         if (r.width > 0 && r.height > 0 && getComputedStyle(n).visibility !== 'hidden') return i;
@@ -1059,7 +1064,13 @@ async function easyApply(page, api, profile, resume, state) {
       return true;
     };
 
-    const submitAt = await pickIndex('^submit application|^submit\b|submit application');
+    // NOTE the doubled backslashes. These patterns are STRINGS handed to `new RegExp` page-side,
+    // and in a JS string literal `\b` is a backspace character (U+0008), not a word boundary. So
+    // `'^submit\b'` compiled to "^submit<BACKSPACE>" and could never match anything — three of
+    // the five alternatives below were dead on arrival, silently. Only the ones without `\b`
+    // ever worked, which is why a modal offering "Continue applying" was reported as having no
+    // control we recognise while the diagnostic printed the button right there.
+    const submitAt = await pickIndex('^submit application|^submit\\b|submit application');
     if (submitAt >= 0 && await clickIndex(submitAt)) {
       state.action = 'Easy Apply — submitting';
       await humanDelay(1500, 2600);
@@ -1067,7 +1078,18 @@ async function easyApply(page, api, profile, resume, state) {
       return 'applied';
     }
     // "Review" comes before Submit on the last step; treat it as another advance.
-    const nextAt = await pickIndex('continue to next step|review your application|^continue\b|^next\b|^review\b');
+    //
+    // "continue applying" is LinkedIn's safety-tips interstitial — it appears before the form on
+    // some postings, and its button text reads in full:
+    //     "I understand the tips and want to continue the apply process Continue applying"
+    // so it matches nowhere near the start of the label. Matched anywhere, not anchored.
+    //
+    // The bare words ARE anchored and word-bounded on purpose. That same modal also offers
+    // "Review job post", which navigates out of the apply flow entirely — an unanchored
+    // /review/ would click it and lose the application. See the deny-list in pickIndex.
+    const nextAt = await pickIndex(
+      'continue applying|continue to next step|review your application'
+      + '|^continue$|^next$|^review$|^continue\\b|^next\\b|^review\\b');
     if (nextAt >= 0 && await clickIndex(nextAt)) {
       state.action = `Easy Apply — step ${step + 1} done, continuing`;
       await humanDelay(1200, 2200); continue;
