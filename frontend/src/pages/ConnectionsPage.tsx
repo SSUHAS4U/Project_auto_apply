@@ -129,8 +129,17 @@ export function ConnectionsPage() {
         {Object.keys(PORTALS).map((key) => {
           const p = PORTALS[key];
           const c = conns.find((x) => x.portal === key);
-          const connected = c?.status === 'connected';
-          const s = STATUS[c?.status ?? 'disconnected'] ?? STATUS.disconnected;
+          // "Connected but unconfirmed" is its own state. A green Active badge sat next to
+          // runs that were ending 0/0/0 for want of an expired cookie, because a connected
+          // row was written once and never re-checked. `stale` is the backend saying it has
+          // not heard a confirmation lately — so the badge stops pulsing, says Unconfirmed,
+          // and offers Connect. It is NOT downgraded to disconnected: a live session told to
+          // re-authenticate is the opposite mistake, and just as bad.
+          const stale = !!c?.stale;
+          const connected = c?.status === 'connected' && !stale;
+          const s = stale
+            ? { label: 'Unconfirmed', tone: 'amber' }
+            : STATUS[c?.status ?? 'disconnected'] ?? STATUS.disconnected;
           return (
             <div key={key} className="card conn-card">
               <div className="conn-top">
@@ -163,7 +172,13 @@ export function ConnectionsPage() {
                   {c?.status === 'connecting' ? 'Waiting for sign-in…' : `Connect ${p.name}`}
                 </button>
               )}
-              {inApp && c?.detail && !connected && (
+              {inApp && stale && (
+                <div className="t-amber" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.55 }}>
+                  Last confirmed {fmtDate(c!.staleSince ?? c!.updatedAt)}. Sessions do expire —
+                  if runs are finishing with nothing applied, sign in again.
+                </div>
+              )}
+              {inApp && c?.detail && !connected && !stale && (
                 <div className={c.status === 'connecting' ? 'faint' : 't-amber'} style={{ fontSize: 12, marginTop: 8 }}>{c.detail}</div>
               )}
               {inApp && c?.updatedAt && <div className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>Updated {fmtDate(c.updatedAt)}</div>}

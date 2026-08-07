@@ -1801,3 +1801,26 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   white-space: nowrap;
 }
 .brand-sub { white-space: nowrap; }
+
+/* Session banners on the LinkedIn / Indeed pages.
+   Two tones because the two states need different urgency: `alert` is "this portal is signed
+   out and cannot apply to anything", `warn` is "nobody has confirmed the session lately".
+   Colour is carried by the left edge and a tinted surface rather than a saturated fill, so it
+   reads in both themes without a second palette — colour-mix against --card keeps the tint
+   correct whichever theme is active, instead of a hardcoded light-theme wash. */
+.banner-alert, .banner-warn {
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-card));
+}
+.banner-warn {
+  border-left-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 8%, var(--bg-card));
+}
+.banner-alert > svg { color: var(--red); flex-shrink: 0; margin-top: 1px; }
+.banner-warn > svg { color: var(--amber); flex-shrink: 0; margin-top: 1px; }
+/* Narrow screens: the action drops under the text rather than squeezing it to one word
+   per line — measured at 360px, where the side-by-side layout wraps "Connect" mid-word. */
+@media (max-width: 520px) {
+  .banner-alert, .banner-warn { flex-wrap: wrap; }
+  .banner-alert > .btn, .banner-warn > .btn { width: 100%; justify-content: center; }
+}

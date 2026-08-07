@@ -40,10 +40,46 @@ test('a present-but-empty auth cookie counts as signed out', async () => {
   assert.equal(await isLoggedIn(ctxWith([{ name: 'li_at', value: '' }]), 'linkedin'), false);
 });
 
-test('a short lookalike cookie is not mistaken for a session', async () => {
-  // The >20-char rule on the loose fallback: `li_at` absent, and a stub value must not pass.
-  const ctx = ctxWith([{ name: 'lang_session', value: 'en_US' }]);
-  assert.equal(await isLoggedIn(ctx, 'linkedin'), false);
+test('a signed-out LinkedIn visitor is NOT reported as signed in', async () => {
+  // THE bug. isLoggedIn fell back to "any long-lived session-ish cookie name":
+  //     /(_at|session|SID|login|auth)/i.test(c.name) && c.value.length > 20
+  // `SID` matches JSESSIONID, which LinkedIn hands to anonymous visitors. So a signed-out
+  // profile read as connected: the card showed Active, the gate that opens a login window
+  // never fired, and the run finished 0/0/0 against a signed-out job search.
+  // These are the cookies a real signed-out linkedin.com visit leaves behind.
+  const signedOut = [
+    { name: 'JSESSIONID', value: '"ajax:8374652019384756201"' },
+    { name: 'bcookie', value: '"v=2&8f3c1a90-4b2e-4f77-9d21-0c8e5a6b3d19"' },
+    { name: 'bscookie', value: '"v=1&2026' + 'a'.repeat(60) + '"' },
+    { name: 'lidc', value: 'b=OGST04:s=O:r=O:a=O:p=O:g=3021:u=1' },
+    { name: 'li_gc', value: 'MTsyMTsxNzY0NTAwMDAwOzI7MDIx' + 'b'.repeat(30) },
+    { name: 'lang', value: 'v=2&lang=en-us' },
+  ];
+  assert.equal(await isLoggedIn(ctxWith(signedOut), 'linkedin'), false,
+    'no li_at means signed out, whatever else is in the jar');
+  // And each one individually — any single false positive is enough to reproduce the bug.
+  for (const c of signedOut) {
+    assert.equal(await isLoggedIn(ctxWith([c]), 'linkedin'), false, `${c.name} must not imply a session`);
+  }
+});
+
+test('a signed-out Indeed visitor is NOT reported as signed in', async () => {
+  const signedOut = [
+    { name: 'CTK', value: '1hq7k9c2ljd0d800' },
+    { name: 'INDEED_CSRF_TOKEN', value: 'Zt4mQ9xLpR2vN8kD' + 'c'.repeat(30) },
+    { name: 'SHOE', value: 'bK4mLpQ2xR9vN' + 'd'.repeat(40) },
+    { name: 'SOCK', value: 'eyJhbGciOiJIUzI1NiJ9' + 'e'.repeat(40) },
+  ];
+  assert.equal(await isLoggedIn(ctxWith(signedOut), 'indeed'), false);
+  assert.equal(await anyPortalLoggedIn(ctxWith(signedOut)), false,
+    'a signed-out jar must not keep the app headless');
+});
+
+test('the real auth cookie still counts, even in a crowded jar', async () => {
+  // The walls must not be so tight that a genuine session reads as signed out — that failure
+  // mode sends someone re-authenticating a session that was fine.
+  const jar = [{ name: 'JSESSIONID', value: '"ajax:123"' }, { name: 'lidc', value: 'b=OGST04' }, LI];
+  assert.equal(await isLoggedIn(ctxWith(jar), 'linkedin'), true);
 });
 
 test('both signed in is signed in for each, independently', async () => {

@@ -222,6 +222,15 @@ test('the signed-out authwall is reported, not silently treated as "no jobs"', a
   const said = log + JSON.stringify(api.events);
   assert.ok(/log in|sign|authwall|session/i.test(said),
     `a signed-out run must say so:\n${log}`);
+  // Say it in the TERMINAL, not only as a dashboard event. This printed nothing between
+  // "▶ LINKEDIN — starting" and a 0/0/0 summary, which reads as broken automation rather
+  // than an expired cookie.
+  assert.match(log, /not signed in/i, `the terminal must name the reason:\n${log}`);
+  // And tell the backend immediately, so the Connections card cannot keep showing a green
+  // "Active" beside a run that just ended 0/0/0 for want of that very session.
+  assert.deepEqual(
+    api.sessions.map((x) => [x.portal, x.loggedIn]), [['linkedin', false]],
+    'a signed-out run must report the dead session straight away');
 });
 
 test('the apply cap is respected', async () => {

@@ -306,6 +306,11 @@ async function ensureLoggedIn(page, api, state) {
   console.log('     The signed-out job search still lists jobs, but those pages carry no Easy');
   console.log('     Apply button, so there is nothing to apply to. Sign in once in the window');
   console.log('     that opens; the session is remembered from then on.\n');
+  // Tell the backend NOW, so the Connections card stops claiming Active the instant we know
+  // otherwise. Waiting for the periodic sweep left a green "Active" badge next to a run that
+  // had just ended 0/0/0 because the cookie was gone — the dashboard contradicting the log.
+  await api.session('linkedin', false, 'Signed out — the LinkedIn session cookie is gone.')
+    .catch(() => { /* the event below still records it */ });
   await api.event({
     runId: state.runId, portal: 'linkedin', type: 'error',
     detail: 'Not signed in to LinkedIn. The signed-out job search still lists jobs, but those pages '

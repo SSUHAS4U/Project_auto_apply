@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runIndeed } from '../src/portals/indeed.js';
-import { FakeSite, FakeApi, launch, captureLog, makeState } from './harness.mjs';
+import { FakeSite, FakeApi, launch, captureLog, makeState, INDEED_SESSION } from './harness.mjs';
 import * as fx from './fixtures.mjs';
 
 /** A site that behaves like Indeed on a good day: search pages, job pages, an apply flow. */
@@ -38,8 +38,11 @@ const plan = {
   fitMin: 75,
 };
 
-async function runOnce({ site, api = new FakeApi(), planOver = {}, stateOver = {} }) {
-  const { browser, ctx } = await launch();
+async function runOnce({ site, api = new FakeApi(), planOver = {}, stateOver = {}, signedIn = true }) {
+  // Signed in by default: the adapter checks for Indeed's auth cookie before walking any
+  // search, because a signed-out visitor is served no Indeed Apply button and so cannot
+  // apply to anything. Tests that want the bail-out pass signedIn: false.
+  const { browser, ctx } = await launch({ cookies: signedIn ? INDEED_SESSION : [] });
   const log = captureLog();
   try {
     await site.install(ctx);
@@ -215,4 +218,21 @@ test('the same job is never processed twice across searches', async () => {
   const { site: s } = await runOnce({ site, planOver: { locations: ['Bengaluru', 'Hyderabad'] } });
   const opened = s.urls(/[?&]vjk=/);
   assert.equal(new Set(opened).size, opened.length, 'no job page should be opened twice');
+});
+
+test('a signed-out Indeed run bails out loudly instead of walking every search', async () => {
+  // Indeed had NO sign-in check at all. A signed-out run walked all 72 searches, found nothing
+  // applyable, and finished by listing "usual causes" — offering "not signed in" as one guess
+  // among three, when the cookie sitting in the profile answers it outright.
+  const api = new FakeApi();
+  const s = new FakeSite().add(/indeed\.com/, () => '<html><body><h1>Jobs</h1></body></html>');
+  const { result, log } = await runOnce({ site: s, api, signedIn: false });
+
+  assert.equal(result.applied, 0);
+  assert.match(log, /not signed in to indeed/i, `the terminal must name the reason:\n${log}`);
+  // Reported to the backend immediately, so the Connections card cannot keep claiming Active.
+  assert.deepEqual(api.sessions.map((x) => [x.portal, x.loggedIn]), [['indeed', false]]);
+  // And it must not have gone on to search anyway — that is the whole point of bailing.
+  assert.equal(api.calls.filter((c) => c.name === 'evaluate').length, 0,
+    'a signed-out run must not spend the AI budget on jobs it can never apply to');
 });

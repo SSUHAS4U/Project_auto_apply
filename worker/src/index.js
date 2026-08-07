@@ -174,7 +174,19 @@ async function main() {
   while (running) {
     // Connection handling every loop: act on Connect/Disconnect requests, and report
     // session status periodically (every ~6th idle tick) so the dashboard stays live.
-    await handleConnectionActions(ctx, page, api).catch(() => {});
+    // Connect must be able to put a REAL window on screen. While running headless there is
+    // nothing to type into, so the callback relaunches the browser visibly and hands back the
+    // new context. Same profile directory, so the cookies the sign-in produces are the ones
+    // the next run reads.
+    await handleConnectionActions(ctx, page, api, async () => {
+      if (!background) return ctx;
+      console.log('\n  → Opening a browser window so you can sign in…\n');
+      try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
+      background = false;
+      await ctx.close().catch(() => {});
+      ({ ctx, page } = await launchBrowser({ headless: false }));
+      return ctx;
+    }).catch(() => {});
     // Report session status often when idle so the Connections cards stay accurate (a watcher
     // in handleConnectionActions also flips a card to Active seconds after sign-in).
     if (sessionTick++ % 2 === 0) await reportSessions(ctx, api).catch(() => {});

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { api } from '../api/client';
-import type { AgentEvent, AgentRunInfo, AgentStatus } from '../types';
+import type { AgentEvent, AgentRunInfo, AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from './Icon';
 import { JobCardV2 } from './JobCardV2';
@@ -340,12 +341,66 @@ function MetricList({ portal, cell, rows, done, onDone }: {
 
 /** Everything the automation does on ONE portal: its metrics + job lists and that portal's
  *  live activity feed. (Outreach/email lives in Connections, next to its toggles.) */
+/**
+ * "This portal is signed out" — said on the portal's OWN page, not only under Connections.
+ *
+ * Without this the LinkedIn page showed a normal panel with runs, metrics and an activity feed
+ * while every run ended 0 applied because the session cookie had expired. Nothing on the page
+ * the owner was actually looking at mentioned the one thing that mattered, and the Connections
+ * card two clicks away still read Active.
+ *
+ * Silent when the session is fine and when the state is simply unknown — a banner that appears
+ * during a normal backend blip trains people to ignore it, which costs more than it saves.
+ */
+function SessionBanner({ portal }: { portal: 'linkedin' | 'indeed' }) {
+  const [conn, setConn] = useState<PortalConnection | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.agentConnections()
+      .then((cs) => { if (alive) setConn(cs.find((c) => c.portal === portal) ?? null); })
+      .catch(() => { /* leave the last known state rather than flashing a false alarm */ });
+    load();
+    const t = setInterval(load, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, [portal]);
+
+  if (!conn) return null;
+  const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
+  // "connecting" means a login window is open right now — nagging mid-sign-in is noise.
+  if (conn.status === 'connecting') return null;
+  const off = conn.status === 'disconnected';
+  if (!off && !conn.stale) return null;
+
+  return (
+    <div className={`card card-pad ${off ? 'banner-alert' : 'banner-warn'}`} role="status"
+      style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <Icon name={off ? 'alert' : 'clock'} size={16} />
+      <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.55 }}>
+        <b>{off ? `${name} is not connected` : `${name} hasn't been confirmed recently`}</b>
+        <div className="faint" style={{ marginTop: 3 }}>
+          {off
+            ? `Runs can't apply to anything while ${name} is signed out — its pages carry no apply `
+              + 'button for signed-out visitors. Connect it and sign in once; it is remembered from then on.'
+            : `It last confirmed ${fmtDate(conn.staleSince ?? conn.updatedAt)}. If runs are finishing `
+              + 'with nothing applied, the session has probably expired — connect again to be sure.'}
+        </div>
+      </div>
+      <Link to="/connections" className="btn btn-sm" style={{ flexShrink: 0 }}>
+        {off ? 'Connect' : 'Check'}
+      </Link>
+    </div>
+  );
+}
+
 export function PortalPanel({ portal }: { portal: 'linkedin' | 'indeed' }) {
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
   return (
     // .portal-panel, not an inline grid: its rows need min-width:0 or the metrics strip's
     // min-content width (~930px) pushes the whole page sideways on a narrow screen.
     <div className="portal-panel">
+      {/* Above the metrics on purpose: "0 applied" is meaningless until you know the session
+          is dead, and that is the first thing anyone reads on this page. */}
+      <SessionBanner portal={portal} />
       <PortalMetrics only={portal} />
       {portal === 'linkedin' && <FlowBreakdownLive />}
       <div className="section-title" style={{ margin: '4px 0 0' }}><Icon name="live" size={15} /> {name} activity</div>

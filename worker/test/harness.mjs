@@ -99,6 +99,7 @@ export class FakeApi {
     this.calls = [];
     this.events = [];
     this.statuses = [];
+    this.sessions = [];   // portal session reports — see session() below
     this.opts = opts;
     this.flow = null;
     this.eventFailures = 0;
@@ -129,6 +130,18 @@ export class FakeApi {
   async runStatus(runId, status, detail) {
     this.#rec('runStatus', { runId, status, detail });
     this.statuses.push({ status, detail });
+    return {};
+  }
+
+  /**
+   * Portal session status, as the adapters report it the moment they find themselves signed
+   * out. Recorded rather than ignored: "did the run tell the dashboard the session is dead?"
+   * is exactly the assertion that was missing when a green Active card sat next to a run
+   * finishing 0/0/0.
+   */
+  async session(portal, loggedIn, detail) {
+    this.#rec('session', { portal, loggedIn, detail });
+    this.sessions.push({ portal, loggedIn, detail });
     return {};
   }
 
@@ -224,6 +237,16 @@ export function announceEngine() {
 /** A signed-in LinkedIn session, as the adapter recognises one. */
 export const LINKEDIN_SESSION = [{
   name: 'li_at', value: 'test-session-token', domain: '.linkedin.com', path: '/',
+  httpOnly: true, secure: true, sameSite: 'None',
+}];
+
+/**
+ * A live Indeed session. Indeed's adapter now checks for its auth cookie before walking 72
+ * searches that a signed-out visitor could never apply through, so every Indeed test that
+ * exercises the run itself has to be signed in — otherwise it is testing the bail-out.
+ */
+export const INDEED_SESSION = [{
+  name: 'PPID', value: 'test-session-token', domain: '.indeed.com', path: '/',
   httpOnly: true, secure: true, sameSite: 'None',
 }];
 

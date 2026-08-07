@@ -178,7 +178,38 @@ async function pageState(page) {
   return CHALLENGE_RE.test(sig.text) ? 'blocked' : 'ok';
 }
 
+/**
+ * Is there a live Indeed session? The auth cookie is the source of truth.
+ *
+ * Indeed had no sign-in check at all: a signed-out run walked every search, found nothing
+ * applyable, and finished by listing "usual causes" — offering "not signed in" as one guess
+ * among three when the cookie sitting in the profile answers it outright. LinkedIn already
+ * checks this; the asymmetry was the bug.
+ */
+async function indeedLoggedIn(page, api, state) {
+  const cookies = await page.context().cookies('https://www.indeed.com').catch(() => []);
+  // Indeed's primary session cookie, or any long-lived session-looking one for the domain —
+  // matching connections.js, so the run and the Connections card can never disagree.
+  const live = cookies.some((c) => c.name === 'PPID' && c.value)
+    || cookies.some((c) => /(_at|session|SID|login|auth)/i.test(c.name) && (c.value || '').length > 20);
+  if (live) return true;
+  console.log('\n  ⚠ Not signed in to Indeed — the session cookie is gone.');
+  console.log('     Indeed hides its own Apply button from signed-out visitors, so there is');
+  console.log('     nothing to apply to. Sign in once in the window that opens; the session');
+  console.log('     is remembered from then on.\n');
+  await api.session('indeed', false, 'Signed out — the Indeed session cookie is gone.').catch(() => {});
+  await api.event({
+    runId: state.runId, portal: 'indeed', type: 'error',
+    detail: 'Not signed in to Indeed. Signed-out job pages carry no Indeed Apply button, so nothing '
+      + 'can be applied to. JobPilot will open a login window on the next run; sign in there once '
+      + 'and the session is remembered.',
+  });
+  return false;
+}
+
 export async function runIndeed(page, api, plan, state, ctx) {
+  // Bail out loudly rather than walking 72 searches that cannot produce a single application.
+  if (!(await indeedLoggedIn(page, api, state))) return { applied: 0 };
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
   // An Indeed run lasts ~1.5h unless you stop it (floor enforced here so a stale schedule row

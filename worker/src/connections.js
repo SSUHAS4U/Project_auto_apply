@@ -14,15 +14,32 @@ const PORTALS = {
   indeed:   { home: 'https://www.indeed.com',    login: 'https://secure.indeed.com/account/login', cookie: 'PPID' },
 };
 
-/** True if the persistent context holds this portal's auth cookie. */
+/**
+ * True if the persistent context holds this portal's AUTH cookie. Nothing else counts.
+ *
+ * This used to fall back to "any long-lived cookie whose name looks session-ish":
+ *
+ *     /(_at|session|SID|login|auth)/i.test(c.name) && c.value.length > 20
+ *
+ * `SID` matches `JSESSIONID`, which LinkedIn sets for anonymous visitors — so a completely
+ * signed-out profile passed this check. Everything downstream then went wrong at once: the
+ * Connections card showed a green "Active" for a dead session, the per-portal gate that is
+ * supposed to open a login window never fired because it believed we were signed in, and the
+ * run went ahead and finished 0/0/0 against a signed-out job search. The dashboard was
+ * confidently contradicting the log, and the only cookie that actually decides was being
+ * overruled by a regex.
+ *
+ * `li_at` / `PPID` are set at sign-in and cleared at sign-out. That is the whole question.
+ * Failing closed here is also the right direction: the cost of a false "signed out" is one
+ * unnecessary login window, and the cost of a false "signed in" is every run silently doing
+ * nothing — which is what has been happening.
+ */
 export async function isLoggedIn(ctx, portal) {
   const spec = PORTALS[portal];
   if (!spec) return false;
   try {
     const cookies = await ctx.cookies(spec.home);
-    // primary auth cookie, or any long-lived session-looking cookie for the domain
-    if (cookies.some((c) => c.name === spec.cookie && c.value)) return true;
-    return cookies.some((c) => /(_at|session|SID|login|auth)/i.test(c.name) && (c.value || '').length > 20);
+    return cookies.some((c) => c.name === spec.cookie && (c.value || '').length > 0);
   } catch {
     return false;
   }
@@ -94,7 +111,7 @@ export async function reportSessions(ctx, api) {
  * clear that portal's cookies. Returns true if it opened a login (so the caller can pause
  * autonomous work while the owner authenticates).
  */
-export async function handleConnectionActions(ctx, page, api) {
+export async function handleConnectionActions(ctx, page, api, showWindow) {
   let openedLogin = false;
   let actions = [];
   try { actions = await api.connectionActions(); } catch { return false; }
@@ -104,6 +121,13 @@ export async function handleConnectionActions(ctx, page, api) {
     if (!spec) continue;
     if (action === 'connect') {
       try {
+        // A login page opened in a HEADLESS context renders nowhere. Once any portal had been
+        // signed in the app runs with no window, so clicking Connect dutifully navigated an
+        // invisible tab to the login form and reported success — from the owner's side the
+        // button simply did nothing, forever, which is exactly the state to be stuck in when
+        // a session has expired. Ask the caller for a real window first; it owns the browser
+        // lifecycle, so it is the only place that can relaunch non-headless.
+        if (showWindow) ctx = (await showWindow()) || ctx;
         const p = await ctx.newPage();
         await p.bringToFront().catch(() => {});
         await p.goto(spec.login, { waitUntil: 'domcontentloaded' }).catch(() => {});
