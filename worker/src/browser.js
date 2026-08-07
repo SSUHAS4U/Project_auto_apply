@@ -108,6 +108,23 @@ async function harden(ctx) {
       });
       p.on('response', (r) => {
         try {
+          // LinkedIn's bot detection, caught at the only place it is visible.
+          //
+          // PerimeterX / HUMAN Security is loaded as li.protechts.net with app_id=PX… and a
+          // `uc=scraping` parameter — LinkedIn labelling the session, in as many words. It
+          // arrives with a reCAPTCHA Enterprise frame, and once it escalates the job-cards API
+          // starts returning 503, results come back empty and the session stops being honoured.
+          //
+          // Nothing surfaced this. The run read the empty results as "no jobs", printed
+          // "0 Easy-Apply jobs" seventy times, announced "every search was exhausted" and
+          // finished — while the real answer was sitting in the network traffic all along.
+          const u = r.url();
+          if (/protechts\.net|perimeterx|px-cdn|recaptcha\/enterprise/i.test(u)) {
+            botChallenges++;
+            if (botChallenges === 1) logEvent('bot-detection', { first: u.slice(0, 300) });
+          }
+        } catch { /* ignore */ }
+        try {
           // Only the document itself and anything that failed — logging every image would bury
           // the signal and the file would be gigabytes.
           const st = r.status();
@@ -136,6 +153,13 @@ async function harden(ctx) {
   }).catch(() => { /* older Playwright — flags alone still help */ });
   return ctx.pages()[0] || (await ctx.newPage());
 }
+
+/**
+ * How many times LinkedIn's anti-bot has fired this process. Read by the adapters so an
+ * unreadable page can be reported as what it is — a block — rather than as "no results".
+ */
+let botChallenges = 0;
+export function botChallengeCount() { return botChallenges; }
 
 export function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 

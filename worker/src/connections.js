@@ -86,6 +86,25 @@ function watchLogin(ctx, api, portal) {
 
 /** Report all portal session states to the backend (best-effort). */
 export async function reportSessions(ctx, api) {
+  // "We could not read the cookies" is NOT "you are signed out".
+  //
+  // isLoggedIn fails closed, which is correct when deciding whether to START a run — never
+  // drive a portal you might not be signed into. It is wrong as a status report. When the
+  // browser context dies mid-run every cookie read throws, so BOTH portals were reported as
+  // signed out in the same second, and the dashboard told the owner their LinkedIn login had
+  // been lost while the real fault was a dead browser. Days were spent re-authenticating a
+  // session that had never expired.
+  //
+  // So probe the context first. If it cannot answer at all, report nothing and leave the cards
+  // showing what was last actually observed — the stale marker added alongside this covers the
+  // case where that turns out to be old.
+  let contextAlive = true;
+  try { await ctx.cookies('https://www.linkedin.com'); } catch { contextAlive = false; }
+  if (!contextAlive) {
+    console.log('  ⚠ the automation browser is not responding — leaving the connection cards as they are');
+    console.log('    (this is a dead browser, not a lost sign-in; the run will relaunch it).');
+    return;
+  }
   let anySignedIn = false;
   for (const portal of Object.keys(PORTALS)) {
     try {

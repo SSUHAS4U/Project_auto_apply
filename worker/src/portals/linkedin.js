@@ -4,7 +4,7 @@
 // questions from the profile/AI, and (optionally) sends a connection request afterward.
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
-import { humanDelay, sleep } from '../browser.js';
+import { humanDelay, sleep, botChallengeCount } from '../browser.js';
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
@@ -321,6 +321,18 @@ async function ensureLoggedIn(page, api, state) {
   return false;
 }
 
+/**
+ * Is the page still usable? A closed page rejects every call instantly, which is exactly what a
+ * dead browser looks like from inside the job loop: fifty failures in two milliseconds.
+ */
+async function pageAlive(page) {
+  try {
+    if (!page || page.isClosed?.()) return false;
+    await page.evaluate(() => 1);
+    return true;
+  } catch { return false; }
+}
+
 export async function runLinkedIn(page, api, plan, state, ctx) {
   // Bail out loudly rather than "successfully" processing 190 unapplyable guest pages.
   if (!(await ensureLoggedIn(page, api, state))) return { applied: 0 };
@@ -400,7 +412,23 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       const seenIds = new Set(cards.map((c) => c.id));
       for (let pg = 1; pg < pagesPerSearch; pg++) {
         if (state.stopped || state.paused || Date.now() > phase1Deadline) break;
-        await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
+        // Same rule as the job pages: a search that cannot navigate is not a search with no
+        // results. The log is unambiguous — after the browser died at 12:03:44 the run printed
+        // "0 Easy-Apply jobs" for SEVENTY consecutive searches, then announced "every search was
+        // exhausted" and finished, having never navigated again. Not one authwall redirect in the
+        // whole run: the session was fine, the browser was gone. Fail loudly so the dead-browser
+        // handler in index.js relaunches and retries the block.
+        const searchOk = await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays),
+          { waitUntil: 'domcontentloaded' })
+          .then(() => true)
+          .catch((e) => {
+            logEvent('search', { outcome: 'goto-failed', keyword, location, page: pg,
+              error: String(e && e.message).slice(0, 200) });
+            return false;
+          });
+        if (!searchOk && !(await pageAlive(page))) {
+          throw new Error('Target page, context or browser has been closed');
+        }
         await waitForResults(page);
         const more = (await collectJobCards(page)).filter((c) => !seenIds.has(c.id));
         if (more.length === 0) break;
@@ -448,7 +476,25 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           // Processing" was a real judgement, just not about the job it was filed against.
           // Navigating is slower than clicking and is worth it: a wrong verdict is worse than
           // a slow one.
-          await page.goto(jobPaneUrl(keyword, location, id, maxAgeDays), { waitUntil: 'domcontentloaded' }).catch(() => {});
+          // The navigation failure is RECORDED, not swallowed. `.catch(() => {})` here hid the
+          // single most important fact in the whole run: the log showed 50 "pane not rendered"
+          // entries at four per millisecond, six minutes after the last actual navigation —
+          // the page was dead and every goto was rejecting instantly, silently, forever.
+          const navOk = await page.goto(jobPaneUrl(keyword, location, id, maxAgeDays),
+            { waitUntil: 'domcontentloaded' })
+            .then(() => true)
+            .catch((e) => {
+              logEvent('job', { outcome: 'goto-failed', id, error: String(e && e.message).slice(0, 200) });
+              return false;
+            });
+          // A page that cannot navigate cannot be recovered by trying the next job on it. Spinning
+          // through the remaining ids takes milliseconds and produces nothing but a failure streak,
+          // and then the rest timer sleeps on a browser that will never answer. Throw so index.js's
+          // dead-browser handler relaunches and retries the block — that path already exists and was
+          // simply never reached, because this catch ate the very evidence it keys on.
+          if (!navOk && !(await pageAlive(page))) {
+            throw new Error('Target page, context or browser has been closed');
+          }
           let pane = await page.waitForSelector(PANE_SEL, { timeout: 8000 }).then(() => true).catch(() => false);
           // The selectors are a hint; the CONTENT decides. A renamed container must not turn a
           // perfectly good job page into a skip.
@@ -512,6 +558,28 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
                   detail: `job pages kept failing to load through ${paneRests - 1} backoffs — stopping Easy Apply. `
                     + 'Check you are signed into linkedin.com in the automation browser.' });
                 phase1End = 'job pages would not load even after resting';
+                break outer;
+              }
+              // Name the real cause when the evidence is there. LinkedIn's anti-bot fires
+              // li.protechts.net?...&uc=scraping alongside a reCAPTCHA Enterprise frame, and
+              // from then on the job-cards API 503s, results come back empty and the session
+              // stops being honoured. Resting through THAT is pointless — it is not throttling
+              // that a minute cures, it is the account being flagged. Say so instead of
+              // printing "0 Easy-Apply jobs" seventy times and calling it "searches exhausted".
+              const challenges = botChallengeCount();
+              if (challenges > 0) {
+                console.log(`
+  ✋ LinkedIn's bot detection has fired ${challenges} time(s) this run`);
+                console.log('     (li.protechts.net / PerimeterX with uc=scraping, plus reCAPTCHA Enterprise).');
+                console.log('     Once flagged, job pages return no data however long we wait — this is not');
+                console.log('     a slow page. Stopping so the account is not pushed further.');
+                await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+                  detail: `LinkedIn flagged this session as automated (${challenges} bot-detection `
+                    + 'challenges). Job pages stopped returning data. Reduce the number of searches '
+                    + 'per run, or leave LinkedIn alone for a few hours before trying again.' });
+                await api.runStatus(state.runId, 'needs_attention',
+                  'LinkedIn flagged the session as automated').catch(() => {});
+                phase1End = 'LinkedIn flagged the session as automated';
                 break outer;
               }
               const restMs = paneRests * 60_000;
