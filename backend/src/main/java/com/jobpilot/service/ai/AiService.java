@@ -182,14 +182,17 @@ public class AiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             for (AiClient c : chain) {
                 try {
+                    recordAttempt(c.name());
                     String out = c.complete(system, user, fast, maxTokens);
                     if (out == null || out.isBlank()) throw new IllegalStateException("empty response");
                     coolUntil.remove(c.name());   // it answered — it is healthy again
+                    recordOk(c.name());
                     increment();
                     if (ck != null) cache.put(ck, out);
                     return out;
                 } catch (Exception e) {
                     last = e;
+                    recordFailure(c.name(), e.getMessage() == null ? e.toString() : e.getMessage());
                     noteFailure(c.name(), e);     // rest a rate-limited provider, don't re-hit it
                     String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                     failures.put(c.name(), msg.replaceAll("\\s+", " ").trim());
@@ -344,6 +347,42 @@ public class AiService {
      * How long until the FIRST provider is available again, in ms; 0 when one is ready now.
      * Callers use it to wait out a rate limit rather than discard the work they were doing.
      */
+    /**
+     * Per-provider tally for this process: calls attempted, calls refused, and why.
+     *
+     * The run log said "AI unavailable" thirty times and nothing else — no provider, no reason,
+     * no sense of where a free tier's budget had gone. These counters make the depletion legible:
+     * a provider with many attempts and many rate limits is out of quota, one with attempts and
+     * unreachable errors is having an outage, and one with zero attempts is not configured at all.
+     * Three different problems that looked identical from outside.
+     */
+    private final Map<String, int[]> tally = new ConcurrentHashMap<>();   // [attempts, rateLimited, unreachable, ok]
+
+    void recordAttempt(String provider) { tally.computeIfAbsent(provider, k -> new int[4])[0]++; }
+    void recordOk(String provider) { tally.computeIfAbsent(provider, k -> new int[4])[3]++; }
+    void recordFailure(String provider, String message) {
+        int[] t = tally.computeIfAbsent(provider, k -> new int[4]);
+        if (RATE_LIMITED.matcher(String.valueOf(message)).find()) t[1]++;
+        else if (UNREACHABLE.matcher(String.valueOf(message)).find()) t[2]++;
+    }
+
+    /**
+     * One line, safe to put in a message that reaches a log file: no keys, no prompt text.
+     * e.g. "groq 24 calls/19 rate-limited/0 down, gemini 14 calls/11 rate-limited/1 down".
+     */
+    public String usageSummary() {
+        if (tally.isEmpty()) return "no AI calls recorded this process";
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, int[]> e : tally.entrySet()) {
+            int[] t = e.getValue();
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.getKey()).append(' ').append(t[0]).append(" calls/")
+              .append(t[3]).append(" ok/").append(t[1]).append(" rate-limited/")
+              .append(t[2]).append(" down");
+        }
+        return sb.toString();
+    }
+
     public long shortestCooldownMs() {
         Instant now = Instant.now();
         long best = Long.MAX_VALUE;

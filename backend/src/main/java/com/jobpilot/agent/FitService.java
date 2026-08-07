@@ -200,9 +200,25 @@ public class FitService {
                     }
                 } catch (Exception ignored) { /* fall through to the keyword verdict */ }
             }
-            log.debug("jobFit AI failed: {}", e.getMessage());
+            // SAY WHY, all the way out to the worker's log file.
+            //
+            // "AI unavailable — keyword score only" was the entire explanation, on 30 of 38
+            // evaluations in one run. It names the symptom and hides every fact needed to act:
+            // which provider refused, whether it was a rate limit or an outage, and how long it
+            // is resting. Those have completely different answers — a quota needs fewer calls or
+            // a bigger plan, an outage needs a retry, a missing key needs configuring — and from
+            // the outside they were indistinguishable. The message now carries all three, so the
+            // worker log records it per job and nobody has to guess where the budget went.
+            String why = String.valueOf(e.getMessage());
+            if (why.length() > 160) why = why.substring(0, 160);
+            long restingMs = ai.shortestCooldownMs();
+            String detail = "AI unavailable — keyword score only"
+                    + " [" + ai.usageSummary() + "]"
+                    + (restingMs > 0 ? " resting " + (restingMs / 1000) + "s" : "")
+                    + " — " + why;
+            log.warn("jobFit AI failed: {}", detail);
             return verdict(keywordScore, keywordScore >= 60, 40, List.of(), List.of(),
-                    "AI unavailable — keyword score only", "keyword");
+                    detail, "keyword");
         }
     }
 
