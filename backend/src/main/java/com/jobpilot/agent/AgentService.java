@@ -305,6 +305,12 @@ public class AgentService {
                 });
         if (loggedIn) {
             c.setStatus("connected");
+            // A signed-in portal has nothing left to connect. Without this a queued "connect"
+            // outlived the sign-in that satisfied it: the card showed "Waiting for sign-in…"
+            // and "session active" at the same time — two statements that cannot both be true —
+            // and the request sat there forever because nothing ever retired it. Achieving the
+            // goal IS completing the request.
+            c.setRequestedAction(null);
             c.setDetail(detail);
             c.setUpdatedAt(Instant.now());
         } else if (!"connecting".equals(c.getStatus())) {
