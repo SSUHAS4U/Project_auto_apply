@@ -157,9 +157,25 @@ public class AgentService {
     }
 
     /** True if JobPilot Desktop has pinged within the last 30s (it polls every ~4s). */
+    /**
+     * Has the worker checked in recently enough to be considered present?
+     *
+     * THREE MINUTES, not thirty seconds. The worker polls /next every ~3s, so thirty seconds is
+     * ten consecutive misses — which sounds impossible and is not: this backend runs on a
+     * CPU-starved e2-micro where a cold request measured 2.9 seconds, and a handful of slow or
+     * timed-out polls in a row is ordinary. Combined with the reaper below (which fires on the
+     * 5-minute rotation tick for any run older than 10 minutes) that made a brief network hiccup
+     * fatal, and it showed up as runs dying at 10-15 minutes with
+     *     "the server reports nothing running"
+     * while the worker was mid-way through its jobs and perfectly healthy.
+     *
+     * A genuinely dead worker is still caught: it stops polling entirely, so three minutes of
+     * silence is unambiguous. The cost of waiting is a stale run lingering slightly longer; the
+     * cost of not waiting is killing live runs, which is far worse.
+     */
     public boolean isWorkerOnline(UUID userId) {
         Instant t = lastWorkerSeen.get(userId);
-        return t != null && t.isAfter(Instant.now().minusSeconds(30));
+        return t != null && t.isAfter(Instant.now().minusSeconds(180));
     }
 
     // ---- portal connections (the "Connect" UX) ------------------------------

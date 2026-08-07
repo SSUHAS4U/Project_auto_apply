@@ -225,6 +225,16 @@ async function main() {
         ({ ctx, page } = await launchBrowser({ headless: background }));
         res = await adapter(page, api, order.plan, state, ctx);
       }
+      // Clear the local run id BEFORE telling the server the run is over.
+      //
+      // The pause poller asks /next every 3 seconds and compares the answer to state.runId.
+      // Marking the run done first left a window — the summary below takes a moment to print —
+      // in which the server correctly reported nothing running while state.runId still pointed
+      // at the run we had just ended. The poller read that as "our run vanished" and printed
+      //     ■ Run <id> is no longer the active run on the server
+      // at the end of EVERY block, which looked like the automation being killed mid-flight and
+      // sent us hunting for a phantom for days. The worker was warning about its own shutdown.
+      state.runId = null;
       await api.runStatus(order.runId, 'done', `Block complete — ${res.applied || 0} applied`);
       // Full breakdown, not just "applied": a 0 with no explanation is what made this feel
       // like nothing was happening. Every job lands in exactly one of these buckets.
@@ -236,6 +246,7 @@ async function main() {
         console.error('  the tray and reopen it — the browser profile may be locked by a stale process.');
       }
       await api.event({ runId: order.runId, portal: order.portal, type: 'error', detail: String(e).slice(0, 200) });
+      state.runId = null;   // same reason as the success path above
       await api.runStatus(order.runId, 'failed', e.message.slice(0, 120));
     }
     state.runId = null; state.portal = null; state.action = 'Idle — waiting for a run';
