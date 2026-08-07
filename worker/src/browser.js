@@ -41,9 +41,18 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
       log(headless
         ? '  Automation browser running in the background (no window).'
         : '  Automation browser open.');
+      log(`     [profile] Camoufox — ${ffDir}`);
       return { ctx, page: await harden(ctx) };
     } catch (e) {
-      log(`  ! Bundled browser failed to start (${String(e.message).slice(0, 120)}) — using Chrome.`);
+      // Falling back to Chrome switches PROFILE DIRECTORY as well as browser: Camoufox keeps
+      // its session in .profile-ff, Chrome in .profile. A sign-in done in one is invisible to
+      // the other, so a run that launches Camoufox after you signed in through the Chrome
+      // fallback reports "not signed in" against a session that genuinely exists — it is just
+      // in the other folder. Say so loudly; a silent fallback makes that indistinguishable
+      // from a login that was never saved.
+      log(`  ! Bundled browser failed to start (${String(e.message).slice(0, 120)})`);
+      log('  ! Falling back to Chrome — NOTE this uses a SEPARATE profile, so portals signed');
+      log('    in under the bundled browser will show as signed out until it starts again.');
     }
   }
   const opts = {
@@ -66,6 +75,7 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
   };
   try {
     const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'chrome' });
+    log(`     [profile] Chrome — ${userDataDir}`);
     return { ctx, page: await harden(ctx) };
   } catch (e) {
     try {
@@ -132,8 +142,15 @@ export function startPausePoller(api, state, reportSessions) {
       // portal page — insisting "LinkedIn is not connected" while the terminal was happily
       // applying to jobs. The dashboard was describing a state that had already been fixed, and
       // the only cure was waiting out the whole block. Every 20th tick is once a minute.
-      if (reportSessions && ticks++ % 20 === 0) await reportSessions().catch(() => {});
+      //
+      // INSIDE the try, and this matters more than it looks. This loop is the worker's
+      // heartbeat: /next below is what tells the backend the desktop app is alive. If anything
+      // here throws, the while loop exits, the heartbeat stops, and ten minutes later the
+      // stale-run reaper ends a perfectly healthy run with "the desktop app stopped while it
+      // was running" — the exact message the dashboard has been showing. A cosmetic card
+      // refresh must never be able to kill the heartbeat.
       try {
+        if (reportSessions && ticks++ % 20 === 0) await reportSessions().catch(() => {});
         // /next heartbeats the worker (dashboard "desktop ready") and reports the pause flag.
         // It's a GET that only promotes queued→running, so polling it mid-run is a no-op.
         const r = await api.next();

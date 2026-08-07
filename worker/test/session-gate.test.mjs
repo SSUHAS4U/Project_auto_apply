@@ -116,7 +116,7 @@ test('every portal has a real login URL to send someone to', () => {
 // locked profile directory, a dead context — threw the click away, while the worker's
 // `catch { /* ignore */ }` made sure nobody ever learned why. The card sat on "Waiting for
 // sign-in…" and pressing Connect again just repeated the loss.
-import { handleConnectionActions } from '../src/connections.js';
+import { handleConnectionActions, resetConnectThrottle } from '../src/connections.js';
 
 /** Records acks the way the backend would, so "did it confirm?" is assertable. */
 function ackApi(actions) {
@@ -137,6 +137,7 @@ const quiet = () => {
 };
 
 test('a connect that cannot open a window is NOT acknowledged', async () => {
+  resetConnectThrottle();
   const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
   const log = quiet();
   try {
@@ -168,6 +169,7 @@ test('a connect that opens the login page IS acknowledged', async () => {
     },
     async cookies() { return []; },
   };
+  resetConnectThrottle();
   const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
   const log = quiet();
   try { await handleConnectionActions(ctx, null, api, async () => ctx); } finally { log.restore(); }
@@ -187,6 +189,7 @@ test('a blank login tab is a failure, not a success', async () => {
       };
     },
   };
+  resetConnectThrottle();
   const api = ackApi([{ portal: 'indeed', action: 'connect' }]);
   const log = quiet();
   try { await handleConnectionActions(ctx, null, api, async () => ctx); } finally { log.restore(); }
@@ -201,6 +204,7 @@ test('one failing portal does not stop the other from connecting', async () => {
       return { bringToFront: async () => {}, goto: async () => { if (opened === 1) throw new Error('boom'); } };
     },
   };
+  resetConnectThrottle();
   const api = ackApi([
     { portal: 'linkedin', action: 'connect' },
     { portal: 'indeed', action: 'connect' },
@@ -287,4 +291,46 @@ test('the ordinary step and submit buttons still match', () => {
   }
   // Submit is tried before next, so "review your application" cannot pre-empt a real submit.
   assert.equal(matches(SUBMIT, 'review your application'), false);
+});
+
+test('a stuck connect request does not relaunch the browser every tick', async () => {
+  // THE thing that wiped the sign-in. The main loop calls this about every four seconds, and
+  // since v133 a request survives until it is acknowledged — correct in itself, but it meant a
+  // request whose ack never landed reopened the login window on every tick, and each attempt
+  // tears the browser down and rebuilds it. Firefox writes cookies to cookies.sqlite lazily, so
+  // a profile cycled that fast never flushes: sign in, and it is gone moments later.
+  resetConnectThrottle();
+  let windows = 0;
+  const ctx = {
+    async newPage() { return { bringToFront: async () => {}, goto: async () => {} }; },
+    async cookies() { return []; },              // never becomes signed in
+  };
+  const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
+  api.connectionAck = async () => { throw new Error('backend unreachable'); };  // ack never lands
+  const log = quiet();
+  try {
+    for (let tick = 0; tick < 25; tick++) {      // ~100 seconds of loop ticks
+      await handleConnectionActions(ctx, null, api, async () => { windows++; return ctx; });
+    }
+  } finally { log.restore(); }
+  assert.equal(windows, 1, `the browser was relaunched ${windows} times for one Connect click`);
+});
+
+test('a completed sign-in ends the request even if the ack was lost', async () => {
+  // The other half: once the cookie is there the request is done, whatever the ack did.
+  // Without this an ack that failed would keep reopening the login page forever, on top of a
+  // session that was already working.
+  resetConnectThrottle();
+  let windows = 0;
+  const ctx = {
+    async newPage() { return { bringToFront: async () => {}, goto: async () => {} }; },
+    async cookies() { return [{ name: 'li_at', value: 'AQEDAT' + 'x'.repeat(40) }]; },
+  };
+  const api = ackApi([{ portal: 'linkedin', action: 'connect' }]);
+  const log = quiet();
+  try { await handleConnectionActions(ctx, null, api, async () => { windows++; return ctx; }); }
+  finally { log.restore(); }
+  assert.equal(windows, 0, 'an already-signed-in portal must not reopen a login window');
+  assert.deepEqual(api.acks.map((a) => [a.portal, a.ok]), [['linkedin', true]]);
+  assert.deepEqual(api.sessions.map((s2) => [s2.portal, s2.loggedIn]), [['linkedin', true]]);
 });

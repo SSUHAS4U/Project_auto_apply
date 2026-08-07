@@ -111,6 +111,29 @@ export async function reportSessions(ctx, api) {
  * clear that portal's cookies. Returns true if it opened a login (so the caller can pause
  * autonomous work while the owner authenticates).
  */
+/**
+ * When each portal's login window was last opened.
+ *
+ * The main loop calls this roughly every four seconds. Since v133 a connect request survives
+ * until the worker acknowledges it — which is right, because delivery is not proof — but it
+ * means a request whose ack never lands is re-attempted on EVERY tick. Each attempt closes the
+ * headless context and relaunches the browser, so a single stuck request turned into the
+ * browser being torn down and rebuilt every four seconds.
+ *
+ * Firefox writes cookies to cookies.sqlite lazily. A profile closed and reopened that fast
+ * never gets to flush, so a sign-in completed in one window was gone by the next — which is
+ * exactly "it says connected, then the login is wiped out". Retry, but at human speed.
+ */
+const lastConnectAttempt = new Map();
+const CONNECT_RETRY_MS = 90_000;
+
+/**
+ * Clear the retry throttle. Only the tests use this: the throttle is deliberately module-level
+ * state that outlives a single call, so without a reset each test would inherit the previous
+ * one's cooldown and silently assert nothing.
+ */
+export function resetConnectThrottle() { lastConnectAttempt.clear(); }
+
 export async function handleConnectionActions(ctx, page, api, showWindow) {
   let openedLogin = false;
   let actions = [];
@@ -120,6 +143,16 @@ export async function handleConnectionActions(ctx, page, api, showWindow) {
     const spec = PORTALS[portal];
     if (!spec) continue;
     if (action === 'connect') {
+      // Already signed in? Then the request is done, whatever the ack did. Without this a
+      // successful sign-in whose ack failed would keep reopening the login page forever.
+      if (await isLoggedIn(ctx, portal)) {
+        await api.session(portal, true, 'session active').catch(() => {});
+        await api.connectionAck(portal, true, 'Signed in.').catch(() => {});
+        continue;
+      }
+      const since = Date.now() - (lastConnectAttempt.get(portal) || 0);
+      if (since < CONNECT_RETRY_MS) continue;   // a window is already open; let them type
+      lastConnectAttempt.set(portal, Date.now());
       try {
         // A login page opened in a HEADLESS context renders nowhere. Once any portal had been
         // signed in the app runs with no window, so clicking Connect dutifully navigated an
