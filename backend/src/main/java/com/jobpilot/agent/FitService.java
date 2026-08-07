@@ -310,6 +310,24 @@ public class FitService {
         String key = "post:" + Objects.hash(text.toLowerCase());
         Map<String, Object> hit = cache.get(key);
         if (hit != null) return hit;
+
+        // Decide the obvious posts from their words first. Post scan is budgeted for 150 posts
+        // a run; one model call each is ten-plus minutes of a free tier's whole allowance, and
+        // that is precisely how job evaluation came to leave 95 of 108 jobs unjudged. Hiring
+        // posts announce themselves ("we are hiring", "share your resume", "DM me") and so do
+        // jobseekers' posts, which must never be contacted. Only the genuinely mixed ones cost
+        // a call.
+        PostSignals.Signal sig = PostSignals.judge(text);
+        if (sig.band() == PostSignals.Band.CLEAR_NOT) {
+            Map<String, Object> r = post(false, sig.confidence(), "", "", "rules");
+            cache.put(key, r);
+            return r;
+        }
+        if (sig.band() == PostSignals.Band.CLEAR_HIRING) {
+            Map<String, Object> r = post(true, sig.confidence(), sig.role(), sig.reason(), "rules");
+            cache.put(key, r);
+            return r;
+        }
         if (!ai.isEnabled()) return no;
 
         Map<String, Object> out;
