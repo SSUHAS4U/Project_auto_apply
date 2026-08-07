@@ -124,9 +124,33 @@ public class KeywordMatchScorer implements MatchScorer {
             else if (containsSkill(desc, skill)) matched += 1.0;  // mentioned in JD
         }
         if (considered == 0) return 0;
-        double ratio = Math.min(1.0, matched / considered);
-        double absolute = Math.min(matched, 6) / 6.0;
-        return (int) Math.round((ratio * 0.5 + absolute * 0.5) * 45);
+        // Normalise against a REALISTIC number of skills for one job, not the whole profile.
+        //
+        // `considered` was every skill listed on the profile. A candidate who lists 30 skills
+        // was punished for it: a perfect Java/Spring match (4 hits) scored ratio 0.13, and a
+        // Three.js role (2 hits) scored 0.07 — both then hit the same `absolute` ceiling, so
+        // every job in a real run came back 43. A game-developer role and a Java backend role
+        // scoring identically is not a fit gate; it is a constant, and with fitMin 50 nothing
+        // could ever pass.
+        //
+        // No job asks for thirty technologies. Eight is a generous ceiling for what one
+        // posting actually requires, so matching four of them is a strong signal whether the
+        // profile lists ten skills or fifty. Listing more skills can now only ever help.
+        // Count what MATCHED. Do not divide by the profile at all.
+        //
+        // Any ratio over the profile's own skill list makes listing a skill a liability: the
+        // same job, matching the same three technologies, scored 74 against a 3-skill profile
+        // and 61 against a 20-skill one. Capping the denominator softened that but did not
+        // remove it, because the denominator was still the wrong quantity — what matters is
+        // how much of the JOB is covered, and a job that names three technologies is fully
+        // covered by matching three.
+        //
+        // Five weighted hits is a strong match (a title hit counts 1.5, a description hit 1.0),
+        // so five is the ceiling. Beyond that, more overlap cannot make a candidate more
+        // suitable than "clearly suitable", and below it the score moves smoothly. A Java
+        // backend role and a Three.js role can no longer land on the same number.
+        double absolute = Math.min(matched, 5) / 5.0;
+        return (int) Math.round(absolute * 45);
     }
 
     /** True if the text contains the skill (or any synonym) as a whole word. */
