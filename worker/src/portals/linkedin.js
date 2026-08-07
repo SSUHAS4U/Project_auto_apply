@@ -8,7 +8,7 @@ import { humanDelay, sleep } from '../browser.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
-import { shouldApply, claimOutreach } from '../gate.js';
+import { shouldApply, shouldContact, claimOutreach } from '../gate.js';
 import { cleanupDue, withdrawStaleInvites } from '../invites.js';
 
 // Seniority is filtered here because LinkedIn's own filters don't reliably exclude it. The
@@ -831,13 +831,26 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
               title: intent.role || 'Hiring post', company: '', url: applyLink,
               detail: `${post.name || 'author'} posted an application link — apply manually` });
           } else if (post.authorUrl) {
-            routed.message++;
-            await api.upsertContact({
-              portal: 'linkedin', name: post.name, profileUrl: post.authorUrl,
-              company: '', role: intent.role || 'hiring post author',
-              sourceJobUrl: post.link || undefined,
-            }).catch(() => {});
-            console.log(`     📣 ${post.name || 'someone'} is hiring — ${intent.topic || intent.role || 'an opening'}`);
+            // SECOND WALL. Until now the post classifier was the ONLY thing between a
+            // misjudgement and a real person being contacted: this route called upsertContact
+            // directly, so one wrong verdict was one wrong message. Post text and author are
+            // different evidence — a post can read as hiring while its author's own headline
+            // says "Open to work" — and `shouldContact` already rejects those headlines and
+            // weighs the post as evidence. Two independent checks, both of which must pass.
+            const person = await shouldContact(
+              api, { name: post.name, headline: post.headline || '' }, plan, [post.text]);
+            if (!person.ok) {
+              routed.notHiring++;
+              console.log(`     ⊘ ${post.name || 'someone'} — not contacting: ${person.reason}`);
+            } else {
+              routed.message++;
+              await api.upsertContact({
+                portal: 'linkedin', name: post.name, profileUrl: post.authorUrl,
+                company: '', role: intent.role || 'hiring post author',
+                sourceJobUrl: post.link || undefined,
+              }).catch(() => {});
+              console.log(`     📣 ${post.name || 'someone'} is hiring — ${intent.topic || intent.role || 'an opening'}`);
+            }
           }
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
             title: intent.role || 'Hiring post', url: post.link || post.authorUrl,
@@ -853,6 +866,17 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
           // Claim the PERSON before mailing them, passing both identifiers. This is what stops
           // the same recruiter being emailed from one post and messaged from another: the claim
           // records the address, so the messaging flow's later check finds them.
+          // SECOND WALL, same reasoning as the message route. claimOutreach answers "have we
+          // already, and are we within limits" — NOT "is this a person worth contacting". An
+          // address scraped from a jobseeker's own post would sail straight through it.
+          const person = await shouldContact(
+            api, { name: post.name, headline: post.headline || '' }, plan, [post.text]);
+          if (!person.ok) {
+            routed.skipped++;
+            console.log(`     ⊘ ${email} — not emailing: ${person.reason}`);
+            continue;
+          }
+
           const claim = await claimOutreach(api, {
             portal: 'linkedin', company: '', role: post.name || 'hiring post',
             recruiterUrl: post.authorUrl || '', recruiterName: post.name || '',
