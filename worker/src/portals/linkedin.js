@@ -336,6 +336,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
   const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
+  // WHY Phase 1 ended. Only two reasons are meant to stop it — the time budget and the daily
+  // application cap — and for weeks it was being ended by neither, with nothing in the log
+  // saying so. Every exit now names itself, so "it stopped early" is answerable from the
+  // terminal instead of from a database.
+  let phase1End = 'every search was exhausted';
   // Jobs already handled THIS RUN. LinkedIn returns the same posting in every city search, so
   // without this the worker re-opened and re-answered the same job 5-6 times (the HeadSpin /
   // Jobgether rows repeating in Hyderabad, Chennai, Remote, Mumbai…) and burned the hour on
@@ -362,7 +367,13 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     outer:
     for (const keyword of plan.keywords) {
       for (const location of plan.locations) {
-        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) break outer;
+        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) {
+          phase1End = state.stopped ? 'the run was stopped'
+            : state.paused ? 'paused'
+            : applied >= applyCap ? `the daily cap of ${applyCap} applications was reached`
+            : `the ${plan.phase1Minutes || 90}-minute Easy Apply budget ran out`;
+          break outer;
+        }
 
       state.action = `Opening LinkedIn Easy-Apply search: "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
@@ -394,7 +405,13 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 
       for (const cardInfo of cards) {
         const id = cardInfo.id;
-        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) break outer;
+        if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) {
+          phase1End = state.stopped ? 'the run was stopped'
+            : state.paused ? 'paused'
+            : applied >= applyCap ? `the daily cap of ${applyCap} applications was reached`
+            : `the ${plan.phase1Minutes || 90}-minute Easy Apply budget ran out`;
+          break outer;
+        }
         // Skip anything already handled in this run (same posting, different city search).
         const roleKey = ((cardInfo.title || '') + '|' + (cardInfo.company || '')).toLowerCase().replace(/\s+/g, ' ').trim();
         if (doneJobs.has(id) || (roleKey !== '|' && doneJobs.has(roleKey))) continue;
@@ -460,6 +477,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
               console.log('     Usually: the LinkedIn session expired, or LinkedIn changed the job page.');
               await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
                 detail: `${paneFailures} job pages in a row failed to load — stopping Easy Apply. Check you are signed into linkedin.com in the automation browser.` });
+              phase1End = `${paneFailures} job pages in a row would not load`;
               break outer;
             }
             continue;
@@ -564,6 +582,18 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   }
 
   api.flow = null;   // Easy Apply is done; the next three tag themselves.
+
+  // Close Phase 1 out loud. "0 applied" with no explanation is what made a run that was
+  // being killed from outside look identical to one that simply found nothing.
+  {
+    const usedMin = Math.round((Date.now() - (phase1Deadline - Math.max(plan.phase1Minutes || 90, 5) * 60_000)) / 60000);
+    console.log(`
+  ══ Easy Apply finished after ${usedMin}m of ${plan.phase1Minutes || 90}m — ${phase1End} ══`);
+    console.log(`     ${applied}/${applyCap} applications this run`);
+    await api.event({ runId: state.runId, portal: 'linkedin', flow: 'easyApply', type: 'info',
+      detail: `Easy Apply ended after ${usedMin}m of ${plan.phase1Minutes || 90}m — ${phase1End}. `
+            + `${applied}/${applyCap} applications.` }).catch(() => {});
+  }
 
   // ── The remaining three flows. ──
   if (!state.stopped && !state.paused && Date.now() < deadline) {
