@@ -1,3 +1,4 @@
+import { logEvent } from './logfile.js';
 // The decision gates: what gets applied to, and who gets contacted.
 //
 // Both portals used to apply to anything scoring 25+ on keyword overlap, which is how a Python
@@ -18,14 +19,30 @@ const DEFAULT_PERSON_CONF = 80;
  * in the terminal so every skip says WHY, instead of the job silently vanishing.
  */
 export async function shouldApply(api, post, plan = {}) {
+  // Every verdict recorded with the inputs that produced it. The terminal prints a one-line
+  // summary — "skipped: stack mismatch (fit 40) — missing Job description details" — which says
+  // what happened but never why: was there a description at all, did the AI answer, which of the
+  // five attempts succeeded? Those are different failures needing different fixes, and telling
+  // them apart from the summary alone has been impossible.
+  const _t0 = Date.now();
+  const _verdict = (v) => {
+    logEvent('gate', {
+      title: post && post.title, company: post && post.company,
+      descriptionChars: ((post && post.description) || '').length,
+      ms: Date.now() - _t0,
+      ok: v.ok, score: v.score, manual: v.manual ?? false,
+      techMatch: v.techMatch, source: v.source ?? null, reason: v.reason ?? null,
+    });
+    return v;
+  };
   const min = Number(plan.fitMin ?? DEFAULT_FIT_MIN);
   const description = post.description || '';
 
   // Nothing to judge: the description is the evidence. Applying blind is the behaviour we're
   // removing, so this becomes a manual lead rather than an automatic submit.
   if (description.trim().length < 80) {
-    return { ok: false, score: 0, techMatch: false, manual: true,
-      reason: 'could not read the job description', label: 'no description to judge' };
+    return _verdict({ ok: false, score: 0, techMatch: false, manual: true,
+      reason: 'could not read the job description', label: 'no description to judge' });
   }
 
   // Rate limits are TEMPORARY, and a job verdict is not urgent. Both free tiers refill on a
@@ -50,8 +67,8 @@ export async function shouldApply(api, post, plan = {}) {
       if (attempt === 4) break;
     } catch {
       if (attempt === 4) {
-        return { ok: false, score: 0, techMatch: false, manual: true,
-          reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' };
+        return _verdict({ ok: false, score: 0, techMatch: false, manual: true,
+          reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' });
       }
     }
     // 8s, then 20s. Long enough for a per-minute window to move, short enough that a blocked
@@ -63,8 +80,8 @@ export async function shouldApply(api, post, plan = {}) {
     await new Promise((r) => setTimeout(r, backoff));
   }
   if (!v) {
-    return { ok: false, score: 0, techMatch: false, manual: true,
-      reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' };
+    return _verdict({ ok: false, score: 0, techMatch: false, manual: true,
+      reason: 'evaluation service unreachable', label: 'could not evaluate — left for manual' });
   }
 
   const score = Number(v.score ?? 0);
@@ -76,9 +93,9 @@ export async function shouldApply(api, post, plan = {}) {
   // never be reported as one: presenting it as "stack mismatch (fit 0)" made an empty profile
   // look like 57 unsuitable jobs, which is unfixable by anyone reading the log. Name the cause.
   if (v.source === 'no_profile') {
-    return { ok: false, score: 0, techMatch: false, manual: true,
+    return _verdict({ ok: false, score: 0, techMatch: false, manual: true,
       reason: reason || 'profile is empty',
-      label: 'cannot judge fit — your Profile has no skills saved (fill in Profile, then run again)' };
+      label: 'cannot judge fit — your Profile has no skills saved (fill in Profile, then run again)' });
   }
 
   // `source: "keyword"` means the AI could not render a verdict and this is keyword overlap —
@@ -86,21 +103,21 @@ export async function shouldApply(api, post, plan = {}) {
   // substitute for the rubric, so an unevaluated job becomes a manual lead. A missed job costs
   // a click; a wrong application costs credibility with a real employer.
   if (v.source === 'keyword') {
-    return { ok: false, score, techMatch: false, manual: true,
+    return _verdict({ ok: false, score, techMatch: false, manual: true,
       reason: reason || 'AI evaluator unavailable',
-      label: `not evaluated (AI unavailable) — left for manual review` };
+      label: `not evaluated (AI unavailable) — left for manual review` });
   }
 
   // BOTH conditions, per the spec: a high score with the wrong stack is still the wrong job.
   if (!techMatch) {
-    return { ok: false, score, techMatch, reason,
-      label: `stack mismatch (fit ${score})${missing.length ? ` — missing ${missing.join(', ')}` : ''}` };
+    return _verdict({ ok: false, score, techMatch, reason,
+      label: `stack mismatch (fit ${score})${missing.length ? ` — missing ${missing.join(', ')}` : ''}` });
   }
   if (score < min) {
-    return { ok: false, score, techMatch, reason,
-      label: `fit ${score} < ${min}${reason ? ` — ${reason}` : ''}` };
+    return _verdict({ ok: false, score, techMatch, reason,
+      label: `fit ${score} < ${min}${reason ? ` — ${reason}` : ''}` });
   }
-  return { ok: true, score, techMatch, reason, label: `fit ${score}${reason ? ` — ${reason}` : ''}` };
+  return _verdict({ ok: true, score, techMatch, reason, label: `fit ${score}${reason ? ` — ${reason}` : ''}` });
 }
 
 /**
@@ -116,15 +133,15 @@ export async function shouldContact(api, person, plan = {}, posts = []) {
   try {
     v = await api.verifyPerson({ name: person.name, headline: person.headline || '', posts });
   } catch {
-    return { ok: false, reason: 'verification unavailable', topic: '', confidence: 0 };
+    return _verdict({ ok: false, reason: 'verification unavailable', topic: '', confidence: 0 });
   }
   const confidence = Number(v.confidence ?? 0);
   if (!v.contact) return { ok: false, reason: v.reason || 'not a hiring contact', topic: '', confidence };
   if (confidence < min) {
-    return { ok: false, reason: `only ${confidence}% sure they hire (need ${min}%)`, topic: v.topic || '', confidence };
+    return _verdict({ ok: false, reason: `only ${confidence}% sure they hire (need ${min}%)`, topic: v.topic || '', confidence });
   }
-  return { ok: true, reason: v.reason || '', topic: v.topic || '', confidence,
-    isRecruiter: !!v.isRecruiter, hiringNow: !!v.hiringNow };
+  return _verdict({ ok: true, reason: v.reason || '', topic: v.topic || '', confidence,
+    isRecruiter: !!v.isRecruiter, hiringNow: !!v.hiringNow });
 }
 
 /**
@@ -150,6 +167,6 @@ export async function claimOutreach(api, { portal = 'linkedin', company, role, r
   } catch {
     // Fail CLOSED: if we can't confirm this isn't a duplicate, don't send. An unsent message
     // costs nothing; a second one to the same recruiter costs credibility.
-    return { ok: false, reason: 'could not check the outreach limits' };
+    return _verdict({ ok: false, reason: 'could not check the outreach limits' });
   }
 }

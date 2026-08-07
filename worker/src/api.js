@@ -2,7 +2,12 @@
 // (X-Worker-Token), bound server-side to the owning user. No portal passwords ever
 // touch the backend — the browser on this PC holds the real logged-in sessions.
 
+import { logEvent } from './logfile.js';
+
 export class Api {
+  /** Monotonic id so a request and its reply can be paired in the log. */
+  static seq = 0;
+
   constructor(baseUrl, token) {
     this.base = baseUrl.replace(/\/$/, '');
     this.token = token;
@@ -14,20 +19,41 @@ export class Api {
     this.flow = null;
   }
 
+  /**
+   * Every request and every reply goes to the log file.
+   *
+   * This layer was completely invisible, and it is where the answers were. Five releases were
+   * spent arguing about why a run ended, when the truth was one /next reply the worker never
+   * recorded. Nothing here is filtered by importance: the whole point is that we stop deciding
+   * in advance which line will turn out to matter. Bodies are capped, not sampled, so a big
+   * response is shortened but never absent.
+   */
   async #req(path, { method = 'GET', body } = {}) {
-    const res = await fetch(this.base + path, {
-      method,
-      headers: {
-        'X-Worker-Token': this.token,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`${method} ${path} → ${res.status} ${text.slice(0, 200)}`);
+    const t0 = Date.now();
+    const reqId = (++Api.seq).toString(36);
+    logEvent('http', { id: reqId, dir: '>', method, path, body: body ?? null });
+    let res;
+    try {
+      res = await fetch(this.base + path, {
+        method,
+        headers: {
+          'X-Worker-Token': this.token,
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      // A network failure never reached any log before. "The backend was unreachable for two
+      // minutes" and "the backend said idle" are different bugs that looked identical.
+      logEvent('http', { id: reqId, dir: '!', method, path, ms: Date.now() - t0, error: String(e && e.message) });
+      throw e;
     }
-    const text = await res.text();
+    const text = await res.text().catch(() => '');
+    logEvent('http', {
+      id: reqId, dir: '<', method, path, status: res.status, ms: Date.now() - t0,
+      body: text.length > 4000 ? text.slice(0, 4000) + `…(+${text.length - 4000} bytes)` : text,
+    });
+    if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${text.slice(0, 200)}`);
     return text ? JSON.parse(text) : {};
   }
 

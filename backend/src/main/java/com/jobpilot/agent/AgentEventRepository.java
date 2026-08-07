@@ -21,6 +21,18 @@ public interface AgentEventRepository extends JpaRepository<AgentEvent, UUID> {
 
     List<AgentEvent> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable page);
 
+    /**
+     * How many events a run has written since a given moment — a PERSISTED liveness signal.
+     *
+     * The stale-run reaper judged liveness from an in-memory heartbeat map, which is empty
+     * after any restart and is not shared between processes. A worker whose polls land on one
+     * instance while the rotation scheduler runs on another looks permanently absent, and the
+     * run is ended with "the desktop app stopped while it was running" while the terminal is
+     * visibly still working. Events are written to the database throughout a run, so counting
+     * them answers "is the worker alive?" from shared state that survives both.
+     */
+    long countByRunIdAndCreatedAtAfter(UUID runId, Instant since);
+
     List<AgentEvent> findByUserIdAndTypeOrderByCreatedAtDesc(UUID userId, String type, Pageable page);
 
     long countByUserIdAndTypeAndCreatedAtAfter(UUID userId, String type, Instant after);

@@ -23,6 +23,7 @@ import {
   reportSessions, handleConnectionActions, anyPortalLoggedIn, isLoggedIn, loginUrl,
 } from './connections.js';
 import { logSummary } from './log.js';
+import { initFileLog, logEvent, logDir } from './logfile.js';
 
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
@@ -107,9 +108,20 @@ async function main() {
   const hello = await api.hello().catch((e) => { console.error('  Auth failed:', e.message); process.exit(1); });
   console.log(`  Connected as ${hello.name || hello.userId}.`);
 
+  // Start the full log before anything else can fail. Everything from here on — every terminal
+  // line, every HTTP call and its reply, every navigation, every uncaught error — is written to
+  // disk. The terminal stays a summary for reading; this is the record for diagnosing, and it
+  // exists because release after release was spent inferring causes that one unrecorded line
+  // would have settled outright.
+  const logPath = initFileLog();
+  console.log(`\n  Full log: ${logPath}`);
+  console.log('  Everything this run does is recorded there. Send that file when something goes wrong.');
+  console.log(`  (folder: ${logDir()} — kept for 7 days)\n`);
+
   // Visible only until a portal is signed in. After that every run happens with no window at
   // all — the terminal log is the whole interface, which is the point: you shouldn't have to
   // watch a browser drive itself.
+
   const signedInMarker = path.join(APP_DIR, '.signed-in');
   let background = fs.existsSync(signedInMarker);
   let { ctx, page } = await launchBrowser({ headless: background });
@@ -225,6 +237,8 @@ async function main() {
     state.paused = false;
     state.stopped = false; // cleared per block; the pause poller sets it if Stop is clicked
     console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);
+    logEvent('run', { event: 'block start', runId: order.runId, portal: order.portal,
+      plan: order.plan });
     await api.runStatus(order.runId, 'running', `Working ${order.portal}`);
     try {
       // The browser can die between blocks (Playwright's own crash, or the window was closed).

@@ -2,6 +2,7 @@
 import { chromium, firefox } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { logEvent } from './logfile.js';
 
 // When packaged as a single .exe (pkg), the code lives in a virtual snapshot — the profile
 // and config must live next to the actual executable. In dev (run from the worker folder
@@ -95,6 +96,33 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
  * hardening the browser itself provides.
  */
 async function harden(ctx) {
+  // Record what the browser actually did. Which URL a job page really landed on — a redirect to
+  // an authwall, a 999 rate-limit, a challenge — was never written down anywhere, so "the job
+  // page did not render" has been an unexplained symptom for days. Attached at the CONTEXT so
+  // pages opened later by the apply flows are covered too, and every handler is defensive: a
+  // logging listener that throws would break navigation itself.
+  const watch = (p) => {
+    try {
+      p.on('framenavigated', (f) => {
+        try { if (f === p.mainFrame()) logEvent('nav', { url: f.url() }); } catch { /* ignore */ }
+      });
+      p.on('response', (r) => {
+        try {
+          // Only the document itself and anything that failed — logging every image would bury
+          // the signal and the file would be gigabytes.
+          const st = r.status();
+          if (st >= 400 || r.request().resourceType() === 'document') {
+            logEvent('net', { status: st, type: r.request().resourceType(), url: r.url().slice(0, 300) });
+          }
+        } catch { /* ignore */ }
+      });
+      p.on('pageerror', (e) => logEvent('pageerror', String(e && e.message).slice(0, 300)));
+      p.on('crash', () => logEvent('pageerror', 'the page crashed'));
+    } catch { /* ignore */ }
+  };
+  ctx.on('page', watch);
+  ctx.pages().forEach(watch);
+
   await ctx.addInitScript(() => {
     // CDP sets this to true; real browsing has it undefined.
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });

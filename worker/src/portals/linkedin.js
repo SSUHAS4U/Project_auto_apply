@@ -5,6 +5,7 @@
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
 import { humanDelay, sleep } from '../browser.js';
+import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
@@ -344,6 +345,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   const applyCap = plan.applyCap ?? 15;
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
   let paneFailures = 0;                      // consecutive job pages that would not render
+  let paneRests = 0;                         // how many times we have backed off for them
   const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
@@ -475,6 +477,14 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           }
           if (!pane) {
             paneFailures++;
+            // The evidence, every single time — not just the first. Which URL the browser is
+            // really on distinguishes an authwall from a 999 rate-limit from a layout change,
+            // and those need completely different fixes. The terminal prints one dump per
+            // streak to stay readable; the file records all of them.
+            logEvent('job', {
+              outcome: 'pane-not-rendered', id, streak: paneFailures,
+              url: page.url(), title: cardInfo.title || null,
+            });
             // Diagnose once with evidence, instead of repeating the same guess 57 times.
             if (paneFailures === 1) {
               console.log('     ⚠ the job page did not render as expected — dumping what is actually there:');
@@ -483,14 +493,39 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
                 url: `https://www.linkedin.com/jobs/view/${id}/`,
                 detail: 'job pages are not rendering — LinkedIn layout change or a signed-out session. See the terminal for the page dump.' });
             }
-            // Every job failing the same way is one fault, not 57. Stop and say so.
-            if (paneFailures >= 15) {
-              console.log(`\n  ✋ ${paneFailures} job pages in a row would not load — ending Phase 1.`);
-              console.log('     Usually: the LinkedIn session expired, or LinkedIn changed the job page.');
-              await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
-                detail: `${paneFailures} job pages in a row failed to load — stopping Easy Apply. Check you are signed into linkedin.com in the automation browser.` });
-              phase1End = `${paneFailures} job pages in a row would not load`;
-              break outer;
+            // REST, then keep going — do not throw away 80 minutes of budget on a streak.
+            //
+            // A signed-in run found 75 Easy-Apply jobs and still hit this after 9 of its 90
+            // minutes. With a valid session and unchanged markup, a streak of blank panes is
+            // LinkedIn slowing us down, and the answer to being throttled is to wait, exactly
+            // as the Indeed adapter already does (MAX_BACKOFFS there). Ending the phase treats
+            // a temporary condition as a permanent fault and guarantees the run does nothing.
+            //
+            // Three rests of 1, 2 and 3 minutes. Only if the pages are STILL blank after six
+            // minutes of patience is this a real fault worth stopping for.
+            if (paneFailures > 0 && paneFailures % 15 === 0) {
+              paneRests++;
+              if (paneRests > 3) {
+                console.log(`\n  ✋ job pages still would not load after ${paneRests - 1} rests — ending Phase 1.`);
+                console.log('     Usually: the LinkedIn session expired, or LinkedIn changed the job page.');
+                await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+                  detail: `job pages kept failing to load through ${paneRests - 1} backoffs — stopping Easy Apply. `
+                    + 'Check you are signed into linkedin.com in the automation browser.' });
+                phase1End = 'job pages would not load even after resting';
+                break outer;
+              }
+              const restMs = paneRests * 60_000;
+              console.log(`\n  ⏸ ${paneFailures} job pages in a row would not load — resting ${paneRests}m, then continuing.`);
+              console.log('     (LinkedIn throttles fast browsing; the run has budget left, so wait rather than quit.)');
+              state.action = `Resting ${paneRests}m — LinkedIn is not rendering job pages`;
+              await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
+                detail: `${paneFailures} job pages would not render — resting ${paneRests}m before continuing.` });
+              // Broken into short sleeps so Stop and Pause still take effect promptly, and so
+              // the run keeps writing events (the backend reads those as proof it is alive).
+              for (let i = 0; i < restMs / 5000 && !state.stopped && Date.now() < deadline; i++) {
+                await sleep(5000);
+              }
+              if (state.stopped || Date.now() >= deadline) { phase1End = 'time or stop'; break outer; }
             }
             continue;
           }
@@ -498,6 +533,12 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           await humanDelay(1200, 2400);
 
           const post = await readPosting(page);
+          logEvent('job', {
+            outcome: 'page-read', id, url: page.url(),
+            title: post.title || null, titleFrom: post.title ? 'pane' : 'card',
+            descriptionChars: (post.description || '').length,
+            company: post.company || null, easyApply: post.easyApply ?? null,
+          });
           // Fall back to the card's title/company if the detail pane didn't render — never log a
           // "Role"/"Company" blank.
           title = post.title || cardInfo.title || '';

@@ -4,3 +4,4 @@ dist/
 worker.config.json
 jobpilot-desktop.config.json
 *.log
+logs/

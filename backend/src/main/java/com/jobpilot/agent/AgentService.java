@@ -1153,6 +1153,24 @@ public class AgentService {
             AgentRun r = found.get();
             Instant started = r.getStartedAt() != null ? r.getStartedAt() : r.getCreatedAt();
             if (started == null || started.isAfter(cutoff)) continue;   // too recent to judge
+
+            // The decisive check, and the one that was missing: has this run written anything
+            // lately? Everything above reasons from `lastWorkerSeen`, an in-memory map. That map
+            // is empty after any restart and is NOT shared between processes, so a worker whose
+            // polls land on one instance while this scheduler runs on another looks permanently
+            // absent. The run is then ended with "the desktop app stopped while it was running"
+            // while the terminal is visibly mid-search — which is exactly what the owner has
+            // been seeing, at roughly twelve minutes, run after run.
+            //
+            // Events are written to the database throughout a run (a job identified, a skip, a
+            // search starting). If any arrived inside the window, the worker is alive: shared
+            // state, survives restarts, indifferent to which instance served the poll. A live
+            // run is never reaped on the word of a map we cannot trust.
+            if (events.countByRunIdAndCreatedAtAfter(r.getId(), cutoff) > 0) {
+                log.info("Not reaping {} run {} — it has written events within {}m",
+                        r.getPortal(), r.getId(), STALE_RUN_MINUTES);
+                continue;
+            }
             r.setStatus("failed");
             r.setEndedAt(Instant.now());
             r.setCurrentAction("Ended — JobPilot Desktop stopped while this run was active");
