@@ -77,6 +77,10 @@ export function linkedinJob({
   id = '4001', title = 'Java Backend Developer', company = 'Acme Technologies',
   easyApply = true, description = JOB_DESCRIPTION, descriptionSelector = 'id="job-details"',
   aboutPanel = ABOUT_COMPANY,
+  // LinkedIn collapses long descriptions behind "see more" and renders only a preview. That is
+  // why 278 real reads had a median of 600 characters: the gate was judging the first paragraph
+  // of every job, which describes the company rather than the requirements.
+  truncated = false,
 } = {}) {
   const applyBtn = easyApply
     ? `<button class="jobs-apply-button" aria-label="Easy Apply to ${title} at ${company}"
@@ -98,7 +102,12 @@ export function linkedinJob({
           <span class="job-details-jobs-unified-top-card__job-insight">₹12,00,000 - ₹18,00,000 per year</span>
           <div class="jobs-apply-button--top-card">${applyBtn}</div>
         </div>
-        <article ${descriptionSelector}><p>${description}</p></article>
+        <article ${descriptionSelector}>${truncated
+      ? `<p>${description.slice(0, 260)}</p>`
+        + `<div id="jd-rest" style="display:none"><p>${description.slice(260)}</p></div>`
+        + `<button aria-label="Click to see more description"`
+        + ` onclick="document.getElementById('jd-rest').style.display='block';this.remove();">see more</button>`
+      : `<p>${description}</p>`}</article>
         ${HIRING_TEAM}
         ${aboutPanel}
       </div>

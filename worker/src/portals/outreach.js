@@ -43,7 +43,12 @@ function loggedOut(page) {
  * even though the page was full of recruiters. A /in/ link is what a person result IS, so this
  * survives the class renames.
  */
-async function collectPeople(page) {
+/**
+ * Exported for tests only. The people search is the one place the connections wall gets its
+ * evidence, and a whole run rejecting ~300 people traced to one wrong split in here — so it
+ * needs coverage that does not require driving LinkedIn.
+ */
+export async function collectPeople(page) {
   return page.$$eval('a[href*="/in/"]', (links) => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const out = [];
@@ -75,7 +80,20 @@ async function collectPeople(page) {
       const boxText = clean(box.innerText);
       // The headline is usually the line after the name inside the same card.
       const after = boxText.split(name).slice(1).join(name);
-      const headline = clean(after).split('•')[0].slice(0, 140);
+      // The headline follows the bullet, it does not precede it.
+      //
+      // A live card reads "Karthick M • 2nd Technical Recruiter at Acme", so `after` is
+      // " • 2nd Technical Recruiter at Acme" and taking split('•')[0] returned the empty
+      // string before the bullet — EVERY time. With no headline, shouldContact finds no
+      // recruiter title, has no posts to fall back on, and refuses: a whole run rejected all
+      // ~300 people with "no recruiter title and no posts to judge", including profiles
+      // literally titled "techrecruiter" and "HR". The wall was not being strict; it was
+      // being fed nothing.
+      const parts = clean(after).split('•');
+      const headline = clean(parts.length > 1 ? parts.slice(1).join(' ') : parts[0])
+        // Drop the leading connection-degree marker the bullet introduces ("2nd", "3rd+").
+        .replace(/^\s*\d(?:st|nd|rd|th)\+?\s*/i, '')
+        .slice(0, 140);
       seen.add(href);
       out.push({ name, profileUrl: href, headline });
     }

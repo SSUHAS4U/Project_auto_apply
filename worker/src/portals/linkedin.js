@@ -9,11 +9,14 @@ import path from 'node:path';
 import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
 
 /**
- * Keyword/location pairs to search in ONE run. The rest are picked up by the next run — see
- * the rotation below. Six pairs at one page each is ~6 result loads per run against 216, a
- * rate a person could plausibly produce.
+ * Gap between one search and the next.
+ *
+ * The previous run did 216 result loads in 90 minutes — one every 25 seconds — and LinkedIn
+ * flagged it `uc=scraping` eight seconds in. Two minutes between searches is a rate a person
+ * plausibly produces, and over a 90-minute phase it still covers ~45 pairs: seven times the
+ * work of the six-search cap, at a twentieth of the old request rate.
  */
-const SEARCHES_PER_RUN = 6;
+const SEARCH_GAP_MS = 120_000;
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
@@ -161,6 +164,30 @@ async function readPosting(page) {
       }
       return '';
     }).catch(() => '');
+  // EXPAND THE DESCRIPTION FIRST. LinkedIn collapses it behind a "see more" control and only
+  // renders a preview until that is clicked.
+  //
+  // Measured over 278 reads in one run: median 600 characters, against real postings of several
+  // thousand. So the fit gate was judging roughly the first paragraph of every job — the part
+  // that says who the company is, not what the role needs. Requirements live below the fold,
+  // which is precisely the text a skills match depends on.
+  //
+  // Clicked page-side by geometry rather than by class name: LinkedIn ships hashed class names
+  // that change on deploy, and the control has appeared as both a button and a link. Matching
+  // the visible label is what survives. Failure here is not fatal — a truncated description
+  // still beats none, so this only ever improves what the next step reads.
+  await page.evaluate(() => {
+    const wanted = /see more|show more|…more|more/i;
+    for (const n of document.querySelectorAll('button, [role="button"], a')) {
+      const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
+        .replace(/\s+/g, ' ').trim();
+      if (!label || label.length > 40 || !wanted.test(label)) continue;
+      const r = n.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) { n.click(); return; }
+    }
+  }).catch(() => { /* not every posting is truncated */ });
+  await humanDelay(400, 900);
+
   // The description is what the compatibility gate judges on, so an empty one means the job is
   // skipped as "no description to judge" — which is exactly what happened to a whole run when
   // these class names went stale. Try the known containers, then fall back to the LARGEST text
@@ -426,21 +453,49 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     const offsetFile = path.join(APP_DIR, '.search-offset');
     let offset = 0;
     try { offset = parseInt(fs.readFileSync(offsetFile, 'utf8'), 10) || 0; } catch { /* first run */ }
-    const window = Math.max(1, Math.min(SEARCHES_PER_RUN, pairs.length));
+    // TIME-BOXED, not count-boxed.
+    //
+    // Cutting the run to six pairs fixed the request RATE and broke the schedule: the phase
+    // exhausted its six searches in 11 minutes and then sat idle for the remaining 79 of its
+    // 90. That trades detection risk for doing almost nothing, which is not a trade worth
+    // making — PerimeterX reads the rate, not the total, so the answer is to keep going at a
+    // human pace rather than to stop early.
+    //
+    // So: work through the whole matrix in order, starting where the last run stopped, until
+    // the time budget or the apply cap says otherwise. The offset is written after EVERY pair
+    // rather than once up front, so a run that is stopped, crashes, or runs out of time still
+    // resumes from the right place instead of repeating what it already searched.
     const slice = [];
-    for (let i = 0; i < window; i++) slice.push(pairs[(offset + i) % pairs.length]);
-    try { fs.writeFileSync(offsetFile, String((offset + window) % pairs.length)); } catch { /* non-fatal */ }
-    if (pairs.length > window) {
-      console.log(`
-  Searching ${window} of ${pairs.length} keyword/location pairs this run`);
-      console.log(`  (starting at #${offset + 1} — the next run continues from where this one stops,`);
-      console.log('   so everything is still covered, just not all in one burst.)');
-    }
-    logEvent('search', { event: 'matrix', total: pairs.length, window, offset });
+    for (let i = 0; i < pairs.length; i++) slice.push(pairs[(offset + i) % pairs.length]);
+    console.log(`\n  Searching from pair #${offset + 1} of ${pairs.length}, `
+      + `about one every ${Math.round(SEARCH_GAP_MS / 1000)}s until the ${plan.phase1Minutes || 90}m budget is used.`);
+    console.log('  (the next run continues from wherever this one stops, so everything is covered.)');
+    logEvent('search', { event: 'matrix', total: pairs.length, offset, gapMs: SEARCH_GAP_MS });
+
+    let searchesDone = 0;
 
     outer:
     for (const { keyword, location } of slice) {
       {
+        // Space the searches out. This is the whole anti-detection budget now: not fewer
+        // searches, just slower ones. Skipped before the first so a short run still starts
+        // immediately, and broken into short sleeps so Stop and Pause stay responsive.
+        // The adapter harness sets JOBPILOT_TEST_NO_PACING; without honouring it here a suite
+        // that walks several searches would sit idle for hours. Nothing in the app sets it.
+        if (searchesDone > 0 && process.env.JOBPILOT_TEST_NO_PACING !== '1') {
+          const until = Date.now() + SEARCH_GAP_MS;
+          while (Date.now() < until && !state.stopped && !state.paused
+                 && Date.now() < phase1Deadline && applied < applyCap) {
+            await sleep(3000);
+          }
+        }
+        searchesDone++;
+        // Record progress per pair, not once at the start: a run that is stopped or times out
+        // must resume where it actually got to, otherwise the next run repeats the same
+        // searches and the far end of the matrix is never reached at all.
+        try {
+          fs.writeFileSync(offsetFile, String((offset + searchesDone) % pairs.length));
+        } catch { /* non-fatal */ }
         if (state.stopped || state.paused || Date.now() > phase1Deadline || applied >= applyCap) {
           phase1End = state.stopped ? 'the run was stopped'
             : state.paused ? 'paused'

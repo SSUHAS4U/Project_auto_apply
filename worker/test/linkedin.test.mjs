@@ -253,3 +253,26 @@ test('an unanswerable screening question stops the application rather than half-
   assert.equal(result.applied, 0, 'must never submit a form it could not complete');
   assert.equal(a.eventsOfType('easy_apply').length, 0);
 });
+
+test('a description hidden behind "see more" is expanded before it is judged', async () => {
+  // 278 reads in one run had a median of 600 characters against postings of several thousand.
+  // LinkedIn renders a preview and hides the rest behind "see more", so the fit gate was
+  // judging the opening paragraph — the company blurb — and never the requirements, which is
+  // where every skill a match depends on actually lives.
+  const api = new FakeApi();
+  await runOnce({ s: site({ jobOpts: { truncated: true } }), api });
+  const desc = judgedDescription(api);
+
+  assert.ok(desc.length > 400, `the description was still truncated (${desc.length} chars): ${desc.slice(0, 200)}`);
+  // Text from the far end of the posting — only reachable once expanded.
+  assert.match(desc, /Kafka|event-driven/i, `the tail of the description never arrived:\n${desc.slice(-200)}`);
+});
+
+test('a posting with no "see more" is read exactly as before', async () => {
+  // The expansion must not disturb the ordinary case: no control to click, nothing changes.
+  const api = new FakeApi();
+  await runOnce({ s: site(), api });
+  const desc = judgedDescription(api);
+  assert.match(desc, /Spring Boot/, 'an untruncated description must still be read in full');
+  assert.ok(!/Talent Acquisition/.test(desc), 'and must not pick up the recruiter panel');
+});
