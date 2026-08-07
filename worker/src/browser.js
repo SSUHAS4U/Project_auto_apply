@@ -121,6 +121,7 @@ export function humanDelay(min = 700, max = 1800) {
 export function startPausePoller(api, state) {
   let stopped = false;
   let missedRun = 0;   // consecutive polls where our run was not the active one
+  let lastReply = '';  // the raw /next body that triggered it — see below
   const tick = async () => {
     while (!stopped) {
       try {
@@ -141,6 +142,12 @@ export function startPausePoller(api, state) {
             // acting on one reading turned a two-second hiccup into a dead hour that printed
             // nothing at all. Say it out loud too: this was invisible before.
             missedRun++;
+            // Keep the raw reply. "The server reports nothing running" has now been blamed on
+            // the reaper, on backend deploys and on a heartbeat window, and the run records
+            // afterwards said `done`, not `failed` — which fits none of those. Guessing from
+            // the outside has cost days, so record exactly what /next returned at the moment
+            // the decision was made.
+            lastReply = JSON.stringify(r || null).slice(0, 200);
             if (missedRun === 2) {
               // Say it ONCE, and say enough to diagnose it. This printed on every subsequent
               // tick, three times in one run, while explaining nothing about the cause — and
@@ -149,8 +156,12 @@ export function startPausePoller(api, state) {
               // Those need different fixes, so name which one it was.
               console.log(`\n  ■ Run ${state.runId} is no longer the active run on the server`
                 + ` — ${activeId ? `the server is now running ${activeId}` : 'the server reports nothing running'}.`);
-              console.log('     Finishing this block. If you did not press Stop, the backend most likely'
-                + ' restarted (a deploy) while this run was in progress.');
+              // The raw reply, because every theory so far has been wrong. This has been blamed
+              // on the reaper, on backend deploys and on a 30-second heartbeat window — and the
+              // run records afterwards read `done` with "Block complete", which fits none of
+              // them. One line here ends the guessing.
+              console.log(`     [diag] /next replied: ${lastReply}`);
+              console.log('     Finishing this block.');
               state.stopped = true;
             }
           } else {
