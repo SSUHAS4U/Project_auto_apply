@@ -19,7 +19,9 @@ import { Api } from './api.js';
 import { launchBrowser, startPausePoller, sleep, APP_DIR } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
-import { reportSessions, handleConnectionActions, anyPortalLoggedIn } from './connections.js';
+import {
+  reportSessions, handleConnectionActions, anyPortalLoggedIn, isLoggedIn, loginUrl,
+} from './connections.js';
 import { logSummary } from './log.js';
 
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
@@ -208,6 +210,23 @@ async function main() {
         console.log('  ⟳ the automation browser had closed — reopening it…');
         await ctx.close().catch(() => {});
         ({ ctx, page } = await launchBrowser({ headless: background }));
+      }
+      // The portal about to run must be signed in — not "some portal". `anyPortalLoggedIn`
+      // above is an OR across every portal, so a live Indeed session kept the app headless
+      // while LinkedIn's cookie was gone. The LinkedIn block then ended in under a second
+      // with 0/0/0 and an event saying "open the automation browser and log in" — advice
+      // that cannot be followed, because headless means there is no window to open. Check
+      // the one portal we are about to drive, and if it is signed out, put a real window
+      // on its login page so the instruction is actually actionable.
+      if (background && !(await isLoggedIn(ctx, order.portal))) {
+        console.log(`\n  ⚠ Not signed in to ${order.portal} — its session has expired.`);
+        console.log('     Opening a window on the login page. Sign in there; the session is');
+        console.log('     remembered and later runs go back to being invisible.\n');
+        try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
+        background = false;
+        await ctx.close().catch(() => {});
+        ({ ctx, page } = await launchBrowser({ headless: false }));
+        await page.goto(loginUrl(order.portal)).catch(() => {});
       }
       let res;
       try {

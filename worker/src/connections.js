@@ -15,7 +15,7 @@ const PORTALS = {
 };
 
 /** True if the persistent context holds this portal's auth cookie. */
-async function isLoggedIn(ctx, portal) {
+export async function isLoggedIn(ctx, portal) {
   const spec = PORTALS[portal];
   if (!spec) return false;
   try {
@@ -26,6 +26,11 @@ async function isLoggedIn(ctx, portal) {
   } catch {
     return false;
   }
+}
+
+/** Where to send someone whose session for this portal has lapsed. One list, not two. */
+export function loginUrl(portal) {
+  return (PORTALS[portal] || PORTALS.linkedin).login;
 }
 
 /**

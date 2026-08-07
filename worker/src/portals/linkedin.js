@@ -299,11 +299,18 @@ async function ensureLoggedIn(page, api, state) {
   // Any of these means a logged-in chrome is rendering; don't depend on one class name.
   const me = await page.$('[data-control-name="identity_welcome_message"], .global-nav__me, .global-nav, #global-nav, a[href*="/in/"]');
   if (!authwalled && me) return true;
+  // Say it in the TERMINAL as well. This only ever emitted a dashboard event, so the terminal
+  // showed "▶ LINKEDIN — starting" followed immediately by a 0/0/0 summary with no reason at
+  // all — indistinguishable from the automation being broken, which is exactly how it read.
+  console.log('\n  ⚠ Not signed in to LinkedIn — the li_at session cookie is gone.');
+  console.log('     The signed-out job search still lists jobs, but those pages carry no Easy');
+  console.log('     Apply button, so there is nothing to apply to. Sign in once in the window');
+  console.log('     that opens; the session is remembered from then on.\n');
   await api.event({
     runId: state.runId, portal: 'linkedin', type: 'error',
     detail: 'Not signed in to LinkedIn. The signed-out job search still lists jobs, but those pages '
-      + 'have no Easy Apply button — nothing can be applied to. Open the automation browser, log into '
-      + 'linkedin.com once (the session is remembered), then run again.',
+      + 'have no Easy Apply button — nothing can be applied to. JobPilot will open a login window on '
+      + 'the next run; sign in there once and the session is remembered.',
   });
   return false;
 }
