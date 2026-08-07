@@ -77,13 +77,14 @@ class FitServiceTest {
     }
 
     @Test
-    void aGenuineMatchPassesThrough() {
-        aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":85,\"matched\":[\"Java\",\"React\"],\"reason\":\"strong overlap\"}");
+    void aGenuineMatchPassesThroughWithoutAskingTheModel() {
+        // Matching is a skills-overlap question and the taxonomy answers it. The model is not
+        // consulted at all now — a rate limit must never be able to cost a verdict again.
+        aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":85}");
         Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        assertEquals(88, v.get("score"));
-        assertEquals(true, v.get("techMatch"));
-        assertEquals("ai", v.get("source"));
-        assertEquals(List.of("Java", "React"), v.get("matched"));
+        assertEquals("rules", v.get("source"));
+        assertNotNull(v.get("score"));
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -94,44 +95,54 @@ class FitServiceTest {
     }
 
     @Test
-    void unreadableAiReplyFallsBackInsteadOfThrowing() {
+    void aBrokenModelCannotAffectAVerdict() {
+        // It could not even be asked, so whatever it would have said is irrelevant.
         aiReplies("I'm sorry, I can't help with that.");
         Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        assertEquals("keyword", v.get("source"));
+        assertEquals("rules", v.get("source"));
         assertNotNull(v.get("score"));
     }
 
     @Test
-    void aiFailureFallsBackInsteadOfThrowing() {
+    void everyProviderBeingDownStillProducesAVerdict() {
+        // THE regression this whole change exists to prevent. On a real run 30 of 38 jobs came
+        // back "not evaluated (AI unavailable)" and joined a manual pile of 35 that nobody
+        // reads. A job must always leave the gate with a number.
         when(ai.complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any()))
                 .thenThrow(new RuntimeException("provider down"));
         Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        assertEquals("keyword", v.get("source"));
+        assertEquals("rules", v.get("source"));
+        assertNotNull(v.get("score"), "a job must never leave the gate unjudged");
     }
 
     @Test
     void scoresAreClampedToTheValidRange() {
-        aiReplies("{\"score\":999,\"techMatch\":true,\"confidence\":-40}");
         Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        assertEquals(100, v.get("score"));
-        assertEquals(0, v.get("confidence"));
+        int score = (Integer) v.get("score");
+        int conf = (Integer) v.get("confidence");
+        assertTrue(score >= 0 && score <= 100, "score out of range: " + score);
+        assertTrue(conf >= 0 && conf <= 100, "confidence out of range: " + conf);
     }
 
     @Test
-    void theSameJobIsJudgedOnceAndCached() {
-        aiReplies("{\"score\":80,\"techMatch\":true,\"confidence\":80}");
-        fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        // Determinism AND cost: the same posting must not be re-judged.
-        verify(ai, times(1)).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
+    void theSameJobGetsTheSameVerdictEveryTime() {
+        // Determinism was previously bought with a cache around a non-deterministic model.
+        // Rules give it for free, which is a better guarantee: identical input, identical
+        // output, no cache to go stale and no cost to re-running it.
+        Map<String, Object> a = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
+        Map<String, Object> b = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
+        assertEquals(a.get("score"), b.get("score"));
+        assertEquals(a.get("techMatch"), b.get("techMatch"));
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
-    void jsonWrappedInProseOrFencesIsStillParsed() {
-        aiReplies("Sure!\n```json\n{\"score\":81,\"techMatch\":true,\"confidence\":70}\n```\nHope that helps.");
-        Map<String, Object> v = fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
-        assertEquals(81, v.get("score"));
-        assertEquals("ai", v.get("source"));
+    void matchingMakesNoNetworkCallAtAll() {
+        // The point of the change, stated as a test: judging a job costs nothing and cannot be
+        // rate limited. Four evaluate calls a minute were exhausting a quota that allows 15-30,
+        // because the quota had already been spent elsewhere — now it does not matter.
+        fit.jobFit(NEUTRAL, "X", "Bengaluru", longJd());
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -250,11 +261,13 @@ class FitServiceTest {
     }
 
     @Test
-    void aPopulatedProfileStillReachesTheAi() {
-        aiReplies("{\"score\":88,\"techMatch\":true,\"confidence\":90,\"matched\":[\"Java\"],"
-                + "\"missing\":[],\"reason\":\"strong match\"}");
+    void aPopulatedProfileIsStillActuallyJudged() {
+        // The pair to the test above: the no-profile guard must refuse a job it cannot judge,
+        // but it must NOT swallow a job it can. With a real profile the verdict comes from the
+        // rules and carries a score — not the "no_profile" refusal.
         Map<String, Object> v = fit.jobFit(NEUTRAL, "Acme", "Bengaluru", longJd());
-        assertEquals("ai", v.get("source"), "the guard must not swallow real evaluations");
-        assertEquals(88, v.get("score"));
+        assertEquals("rules", v.get("source"), "the guard must not swallow real evaluations");
+        assertNotNull(v.get("score"));
+        verify(ai, never()).complete(anyString(), anyString(), anyBoolean(), anyBoolean(), any());
     }
 }

@@ -162,64 +162,29 @@ public class FitService {
                     desc.length() < 80 ? "description too short to judge" : "AI disabled — keyword score only",
                     "keyword");
         }
-        String user = "CANDIDATE\n" + candidate
-                + "\n\nJOB\nTitle: " + nz(title)
-                + "\nCompany: " + nz(company)
-                + "\nLocation: " + nz(location)
-                + "\nDescription:\n" + desc.substring(0, Math.min(desc.length(), 4000));
-        try {
-            JsonNode n = parseJson(ai.complete(FIT_SYSTEM, user, false, true, VERDICT_TOKENS));
-            if (n == null) return verdict(keywordScore, keywordScore >= 60, 40, List.of(), List.of(),
-                    "AI reply unreadable — keyword score only", "keyword");
-            int score = clamp(n.path("score").asInt(keywordScore));
-            boolean tech = n.path("techMatch").asBoolean(false);
-            int conf = clamp(n.path("confidence").asInt(60));
-            // Enforce the cap the prompt asks for, in code — a model that ignores its own rule
-            // must not be able to wave a stack-mismatch through.
-            if (!tech) score = Math.min(score, 55);
-            return verdict(score, tech, conf, strings(n.path("matched")), strings(n.path("missing")),
-                    n.path("reason").asText(""), "ai");
-        } catch (Exception e) {
-            // Rate limits are the common case here, not real failures. Wait for the shortest
-            // provider cooldown and ask ONCE more before giving up: on a real day 95 of 108
-            // jobs left the gate as "AI unavailable", never judged at all, which is why 173
-            // jobs found produced 4 "relevant". A verdict is worth a few seconds of waiting.
-            long restMs = ai.shortestCooldownMs();
-            if (restMs > 0 && restMs <= 90_000) {
-                log.info("jobFit: providers resting {}s — waiting rather than discarding this job", restMs / 1000);
-                try { Thread.sleep(restMs + 1_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                try {
-                    JsonNode n2 = parseJson(ai.complete(FIT_SYSTEM, user, false, true, VERDICT_TOKENS));
-                    if (n2 != null) {
-                        int score2 = clamp(n2.path("score").asInt(keywordScore));
-                        boolean tech2 = n2.path("techMatch").asBoolean(false);
-                        if (!tech2) score2 = Math.min(score2, 55);
-                        return verdict(score2, tech2, clamp(n2.path("confidence").asInt(60)),
-                                strings(n2.path("matched")), strings(n2.path("missing")),
-                                n2.path("reason").asText(""), "ai");
-                    }
-                } catch (Exception ignored) { /* fall through to the keyword verdict */ }
-            }
-            // SAY WHY, all the way out to the worker's log file.
-            //
-            // "AI unavailable — keyword score only" was the entire explanation, on 30 of 38
-            // evaluations in one run. It names the symptom and hides every fact needed to act:
-            // which provider refused, whether it was a rate limit or an outage, and how long it
-            // is resting. Those have completely different answers — a quota needs fewer calls or
-            // a bigger plan, an outage needs a retry, a missing key needs configuring — and from
-            // the outside they were indistinguishable. The message now carries all three, so the
-            // worker log records it per job and nobody has to guess where the budget went.
-            String why = String.valueOf(e.getMessage());
-            if (why.length() > 160) why = why.substring(0, 160);
-            long restingMs = ai.shortestCooldownMs();
-            String detail = "AI unavailable — keyword score only"
-                    + " [" + ai.usageSummary() + "]"
-                    + (restingMs > 0 ? " resting " + (restingMs / 1000) + "s" : "")
-                    + " — " + why;
-            log.warn("jobFit AI failed: {}", detail);
-            return verdict(keywordScore, keywordScore >= 60, 40, List.of(), List.of(),
-                    detail, "keyword");
-        }
+        // JOB MATCHING NO LONGER CALLS AI. The owner's decision, and the right one.
+        //
+        // Matching a CV to a job description is a skills-overlap question, and the deterministic
+        // gate already answers it: TechTaxonomy normalises the stack, seniority comes from the
+        // title, DeterministicFit bands the overlap. AI was being spent on work that did not need
+        // it — and because "no AI" was treated as "no verdict", a single refusal turned 30 of 38
+        // jobs into manual leads nobody will ever process.
+        //
+        // Measured from a real run: at most FOUR evaluate calls a minute, against free tiers that
+        // allow 15-30. The automation never came near a rate limit. The daily quota was already
+        // gone before the run started — spent by the scheduled scout/discovery/ingest jobs. No
+        // pacing here would have helped, and a fourth provider would have moved the same problem.
+        //
+        // AI is now reserved for what a rule genuinely cannot do: writing outreach messages and
+        // emails, and answering a screening question the profile does not already answer. That is
+        // a handful of calls a day rather than one per job.
+        //
+        // Total by construction: EVERY job leaves here with a number. A wrong number is
+        // recoverable — the owner sees the job and the reason. A missing verdict is not: it joins
+        // a manual pile of 35 that never gets read.
+        int score = clamp(keywordScore);
+        return verdict(score, score >= 60, score >= 75 ? 85 : 60, List.of(), List.of(),
+                "skills overlap " + score + "/100 (deterministic — no AI needed)", "rules");
     }
 
     private Map<String, Object> verdict(int score, boolean tech, int confidence,
