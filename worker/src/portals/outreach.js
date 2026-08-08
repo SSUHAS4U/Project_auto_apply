@@ -448,6 +448,33 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
           continue;
         }
 
+        // RUNG 1 — A DIRECT MESSAGE, tried FIRST.
+        //
+        // This used to be the fallback for people with no Connect button. That ordering was
+        // backwards on two counts. A message reaches the recruiter today; an invitation reaches
+        // them only if they accept, which most never do — and every invitation spends capacity
+        // from LinkedIn's weekly allowance, while a message spends none.
+        //
+        // That allowance is not theoretical here: the account is sitting on 155 pending
+        // invitations, the cleanup withdraws nothing under 21 days old, and LinkedIn restricts
+        // the invite control long before the queue clears. Under those conditions the connection
+        // route is the one that cannot run, and it was being tried first on every person.
+        //
+        // composeMessage returns false when there is no Message button — an ordinary profile
+        // with closed messaging — so nothing is lost by asking it first; that person simply
+        // falls through to the invitation below, exactly as before.
+        const dm = await composeMessage(page, resume, note || '').catch(() => false);
+        if (dm) {
+          sent++;
+          console.log(`     ✉ messaged ${person.name} directly (no invitation needed)`);
+          await api.setConnectionStatus(id, { status: 'connected', runId: state.runId }).catch(() => {});
+          await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
+            title: `Messaged ${person.name}`, url: person.profileUrl, detail: 'direct message with résumé' });
+          await humanDelay(2000, 4000);
+          continue;
+        }
+
+        // RUNG 2 — an invitation with a note, for everyone messaging could not reach.
         const result = await inviteWithNote(page, null, note || '');
         if (result === 'limit') {
           console.log('     ⚠ LinkedIn weekly invite limit reached — pausing connections');
@@ -460,17 +487,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
           console.log(`     + invited ${person.name}${company ? ` · ${company}` : ''}`);
           await api.setConnectionStatus(id, { status: 'connection_sent', runId: state.runId, note }).catch(() => {});
         } else {
-          // No Connect button → they may allow a DIRECT message (Open Profile / already
-          // connected / a hiring-post author). Message them straight away with the résumé
-          // instead of skipping — no request needed.
-          const dm = await composeMessage(page, resume, note || '').catch(() => false);
-          if (dm) {
-            sent++;
-            console.log(`     ✉ messaged ${person.name} directly (no request needed)`);
-            await api.setConnectionStatus(id, { status: 'connected', runId: state.runId }).catch(() => {});
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'message_sent',
-              title: `Messaged ${person.name}`, url: person.profileUrl, detail: 'direct message with résumé' });
-          } else {
+          {
             // RUNG 3 — Follow. A capped account still gets Follow on every profile, and it
             // costs no invitation capacity. Strictly worse than connecting, strictly better
             // than dropping the person with nothing recorded, which is what used to happen to

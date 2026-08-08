@@ -1053,6 +1053,37 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
 
     let analysedHere = 0;   // posts read for THIS keyword (the cumulative one is `analysed`)
     for (let scroll = 0; scroll < scrolls && found < cap && analysed < target && Date.now() < phaseDeadline; scroll++) {
+      // EXPAND EVERY TRUNCATED POST FIRST — the addresses live below the fold.
+      //
+      // LinkedIn collapses a post after about three lines and hides the rest behind "…see
+      // more". A recruiter's post puts the role, the location and the salary up top and
+      // "Send resume at name@example.com" near the bottom, so the collapsed text almost never
+      // contains the address. That is why 197 posts in one run produced zero emails: they were
+      // there, and the page had not rendered them.
+      //
+      // Clicked page-side by visible label, because LinkedIn's class names are hashed and
+      // change on deploy. Every click is independently guarded: one post refusing to expand
+      // must not stop the rest, and a post that was never truncated has no control to click.
+      await page.evaluate(() => {
+        const wanted = /see more|…more|\bmore\b/i;
+        for (const n of document.querySelectorAll('button, [role="button"]')) {
+          try {
+            // Judge the two labels SEPARATELY. LinkedIn's aria-label is a whole sentence —
+            // "see more, to open the full post" — so concatenating it with the button text and
+            // capping the result at 30 characters rejected the exact control this exists to
+            // click. Caught by a fixture built from a real post rather than an invented one.
+            // The visible text keeps its cap (a long visible label belongs to some other
+            // button); the aria-label is matched on its wording alone.
+            const aria = (n.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+            const text = (n.innerText || '').replace(/\s+/g, ' ').trim();
+            if (!((aria && wanted.test(aria)) || (text && text.length <= 30 && wanted.test(text)))) continue;
+            const r = n.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) n.click();
+          } catch { /* one stubborn post must not stop the others */ }
+        }
+      }).catch(() => { /* nothing truncated on this screen */ });
+      await humanDelay(600, 1100);
+
       // read every post currently rendered
       // Class-independent: try the known post containers, but if LinkedIn has renamed them
       // (which is why this reported "scanned 0 posts"), fall back to the WHOLE PAGE as one
@@ -1177,16 +1208,17 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
           hiringPosts++;
           const applyLink = findApplyLink(post.text);
 
-          if (applyLink) {
-            // A form or careers page. Nothing here can fill an arbitrary external form, so
-            // pretending otherwise would lose the opportunity silently — it becomes a manual
-            // lead with the link, and lands in the daily manual-apply digest.
-            routed.manual++;
-            console.log(`     🔗 ${post.name || 'someone'} — apply link: ${applyLink.slice(0, 60)}`);
-            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
-              title: intent.role || 'Hiring post', company: '', url: applyLink,
-              detail: `${post.name || 'author'} posted an application link — apply manually` });
-          } else if (post.authorUrl) {
+          // THE LADDER, worked in the order a person would work it:
+          //   1. an address anywhere — the post text, then the author's profile → EMAIL
+          //   2. a reachable author                                             → MESSAGE
+          //   3. nothing but a link                                             → MANUAL
+          //
+          // The apply-link branch used to come FIRST, so a post carrying both a careers link
+          // and a reachable recruiter was filed as a manual lead and the recruiter was never
+          // contacted — the strongest route losing to the weakest purely because of branch
+          // order. A link is what you fall back to when there is nobody to talk to, not a
+          // reason to stop looking for someone.
+          if (post.authorUrl) {
             // SECOND WALL. Until now the post classifier was the ONLY thing between a
             // misjudgement and a real person being contacted: this route called upsertContact
             // directly, so one wrong verdict was one wrong message. Post text and author are
@@ -1207,6 +1239,25 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
               }).catch(() => {});
               console.log(`     📣 ${post.name || 'someone'} is hiring — ${intent.topic || intent.role || 'an opening'}`);
             }
+            // Refused by the wall, but the post still carries a link? It is an opening either
+            // way. Dropping it entirely because we declined to message the author throws away
+            // a real lead over a contact decision that has nothing to do with the job.
+            if (!person.ok && applyLink) {
+              routed.manual++;
+              console.log(`     🔗 ${post.name || 'someone'} — apply link: ${applyLink.slice(0, 60)}`);
+              await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+                title: intent.role || 'Hiring post', company: '', url: applyLink,
+                detail: `${post.name || 'author'} posted an application link — apply manually` });
+            }
+          } else if (applyLink) {
+            // Nobody to contact, but there IS somewhere to apply. Nothing here can fill an
+            // arbitrary external form, and pretending otherwise would lose the opportunity
+            // silently — so it becomes a manual lead in the daily digest.
+            routed.manual++;
+            console.log(`     🔗 ${post.name || 'someone'} — apply link: ${applyLink.slice(0, 60)}`);
+            await api.event({ runId: state.runId, portal: 'linkedin', type: 'manual_apply',
+              title: intent.role || 'Hiring post', company: '', url: applyLink,
+              detail: `${post.name || 'author'} posted an application link — apply manually` });
           }
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'post_analysed',
             title: intent.role || 'Hiring post', url: post.link || post.authorUrl,
