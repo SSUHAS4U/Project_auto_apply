@@ -87,7 +87,7 @@ public class AssistService {
      * "College name" it will happily write a five-sentence pitch unless the shape is pinned
      * down and then enforced on the way out.
      */
-    private enum Shape { VALUE, YES_NO, NUMBER, DATE, URL, ESSAY }
+    enum Shape { VALUE, YES_NO, NUMBER, DATE, URL, ESSAY }
 
     /** Spelled out for the model, so the shape isn't left to its judgement. */
     private static final Map<Shape, String> SHAPE_RULE = Map.of(
@@ -115,11 +115,20 @@ public class AssistService {
     // Salary/CTC and notice period are deliberately NOT here: "6.5 LPA" and "30 days" are the
     // answers forms want, and stripping them to a bare number loses the unit.
     private static final java.util.regex.Pattern NUMBER_Q = java.util.regex.Pattern.compile(
-            "how many|number of|years? of experience|\\bcgpa\\b|\\bgpa\\b|percentage|\\bmarks\\b"
+            // "How much exp do you have in docker" also contains "do you have", which YES_NO_Q
+            // matches. NUMBER_Q is tried first, but it only knew "how many" — so that question
+            // fell through and the model was INSTRUCTED "Exactly one word: Yes or No". It
+            // obeyed, and a years question was answered "Yes" on a real application. The model
+            // understood the question perfectly well; it was told the wrong shape to answer in.
+            // Anything asking HOW MUCH of something is a quantity even when phrased as "do you
+            // have", so these must cover the ways employers actually write it.
+            "how many|how much (exp|experience)|how long have you|number of|years? of experience"
+                    + "|total (it )?exp\\b|yrs?\\.? (of )?exp|years? exp\\b"
+                    + "|\\bcgpa\\b|\\bgpa\\b|percentage|\\bmarks\\b"
                     + "|\\bage\\b|graduation year|passing year",
             java.util.regex.Pattern.CASE_INSENSITIVE);
 
-    private static Shape shapeOf(String question, String fieldType) {
+    static Shape shapeOf(String question, String fieldType) {
         // The control type is the strongest signal — a <input type=date> can only take a date.
         if (fieldType != null) {
             switch (fieldType) {

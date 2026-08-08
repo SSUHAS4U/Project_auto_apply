@@ -1,4 +1,4 @@
-import { isAnswerSafe } from './answer-guard.js';
+import { validateAnswer } from './answer-guard.js';
 // Generic, portal-agnostic form filler. Matches visible fields to profile answers by
 // their labels; anything it can't answer from the profile it routes to the backend's
 // AI (/answer), which stays honest — it returns NEEDS_ATTENTION rather than inventing.
@@ -281,7 +281,7 @@ export async function fillForm(page, profile, api, root) {
       // Fails closed on purpose. A refusal costs one paused application the owner finishes in
       // the dashboard; a wrong figure is already in front of a hiring manager and cannot be
       // withdrawn. The question is saved either way, so answering it once fixes it for good.
-      const safety = isAnswerSafe(label, value, { currency: profile.salaryCurrency || 'INR' });
+      const safety = validateAnswer(label, value, { currency: profile.salaryCurrency || 'INR' });
       if (!safety.ok) {
         // Through logBlank so it lands in the LOG FILE too, in full and with its reason —
         // the terminal truncates a long question to fit its column, which loses the very

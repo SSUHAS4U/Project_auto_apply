@@ -184,7 +184,24 @@ public class FitService {
         // a manual pile of 35 that never gets read.
         int score = clamp(keywordScore);
         return verdict(score, score >= 60, score >= 75 ? 85 : 60, List.of(), List.of(),
-                "skills overlap " + score + "/100 (deterministic — no AI needed)", "rules");
+                reasonFor(score), "rules");
+    }
+
+    /**
+     * The one line the owner reads next to a skipped job.
+     *
+     * It used to render as: "skipped: fit 43 < 50 — skills overlap 43/100 (deterministic — no
+     * AI needed)". That states the score three times, and "deterministic — no AI needed" is an
+     * implementation note that belongs in a log, not on a screen. The caller already prints the
+     * score and the threshold; this should add the one thing they do not know — whether the job
+     * was close or nowhere near.
+     */
+    private static String reasonFor(int score) {
+        if (score >= 75) return "strong overlap with your stack";
+        if (score >= 60) return "good overlap with your stack";
+        if (score >= 45) return "partial overlap — some of your stack, not most of it";
+        if (score >= 25) return "little overlap with your stack";
+        return "a different stack entirely";
     }
 
     private Map<String, Object> verdict(int score, boolean tech, int confidence,
