@@ -521,10 +521,27 @@ public class AssistService {
         //    purely so you can review/correct them; reusing those created a feedback loop that
         //    memorised a wrong answer forever (that's how "expected ctc = 1" kept coming back).
         Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key)
-                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank())
-                .filter(q -> !"auto".equals(q.getSource()));
+                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
         if (exact.isPresent()) {
-            return Map.of("answer", exact.get().getAnswer(), "source", "saved");
+            // An EXACT key match is reused whatever produced it, including an answer the
+            // automation worked out itself ("auto").
+            //
+            // This used to exclude auto answers, because reusing them memorised a wrong one
+            // forever — "expected ctc = 1" kept coming back long after the bug that produced it
+            // was fixed. That was the right call when nothing checked an answer before it was
+            // submitted. It is the wrong call now: it meant every job re-asked the model the
+            // same question, which is most of the AI budget spent re-deriving answers already
+            // known, and the owner asked for the opposite — answer a new question once, store
+            // it, reuse it from the next job onward, within the same run.
+            //
+            // What changed is that the answer guard now inspects the value against the question
+            // before it reaches a form, so a reused answer with the wrong units or magnitude is
+            // refused rather than submitted. Every auto answer is also listed in Autofill
+            // answers marked for review, and an answer the owner edits becomes "saved" and wins
+            // permanently. The fuzzy step below stays owner-only: an exact question is a fact,
+            // a similar one is a guess, and guesses must not compound.
+            return Map.of("answer", exact.get().getAnswer(),
+                    "source", "auto".equals(exact.get().getSource()) ? "auto-reused" : "saved");
         }
         // 2. Fuzzy match against your own answers (token overlap) — reuse a similar one.
         QaPair similar = bestMatch(qaRepo.findByUserIdOrderByUpdatedAtDesc(userId).stream()

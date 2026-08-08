@@ -1,3 +1,4 @@
+import { isAnswerSafe } from './answer-guard.js';
 // Generic, portal-agnostic form filler. Matches visible fields to profile answers by
 // their labels; anything it can't answer from the profile it routes to the backend's
 // AI (/answer), which stays honest — it returns NEEDS_ATTENTION rather than inventing.
@@ -164,7 +165,7 @@ export async function fillChoices(page, api, root) {
       if (!ans.needsAttention && ans.answer) pick = String(ans.answer).trim();
     } catch { /* fall through to attention */ }
     if (!pick) {
-      logBlank(question);
+      logBlank(question, 'no answer yet', api.portal || '');
       attention.push(question);
       await api.recordQuestion(question, '').catch(() => {});
       continue;
@@ -175,7 +176,7 @@ export async function fillChoices(page, api, root) {
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().includes(low) || low.includes(o.toLowerCase()));
     if (idx < 0) idx = g.options.findIndex((o) => o.toLowerCase().startsWith(low.split(/\s+/)[0]));
     if (idx < 0) {
-      logBlank(question);
+      logBlank(question, 'no answer yet', api.portal || '');
       attention.push(question);
       await api.recordQuestion(question, '').catch(() => {});
       continue;
@@ -245,15 +246,53 @@ export async function fillForm(page, profile, api, root) {
           // submitted perfectly well with that box left empty.
           const required = await el.evaluate((n) =>
             n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
-          logBlank(label);
+          logBlank(label, 'no answer yet', api.portal || '');
           if (required) attention.push(label);
           // Save it so the owner can keep an answer in Profile → Autofill answers.
           await api.recordQuestion(label, '').catch(() => {});
           continue;
         }
         value = ans.answer;
+        // SAVE IT NOW, so the next job answers this question without asking again.
+        //
+        // A successful answer was never recorded — only failures were. So every job re-asked
+        // the model the same screening questions ("how many years of Java?", "notice period")
+        // and paid for it every time, which is most of an AI budget spent re-deriving answers
+        // already known. Two jobs in a row asking the same thing should cost one call, not two.
+        //
+        // Stored as "auto" and listed in Autofill answers for review: the owner sees what was
+        // answered on their behalf and can correct it, and a corrected answer wins from then on.
+        // Awaited rather than fired and forgotten, so the very next job in this same run sees
+        // it — that is the difference between "eventually" and "immediately", and it is what
+        // was asked for.
+        if (!ans.fromSaved) {
+          await api.recordQuestion(label, String(value)).catch(() => { /* telemetry, never fatal */ });
+        }
       }
       if (!value) continue;
+
+      // LAST CHECK BEFORE IT REACHES THE EMPLOYER.
+      //
+      // Everything above decides WHAT to answer; this decides whether the answer is safe to
+      // submit. A run typed 800000 — the owner's expected annual package in rupees — into
+      // "What is your expected hourly rate in USD?". The lookup was not wrong: the value was
+      // right for the question it was stored against and catastrophic for the one being asked.
+      //
+      // Fails closed on purpose. A refusal costs one paused application the owner finishes in
+      // the dashboard; a wrong figure is already in front of a hiring manager and cannot be
+      // withdrawn. The question is saved either way, so answering it once fixes it for good.
+      const safety = isAnswerSafe(label, value, { currency: profile.salaryCurrency || 'INR' });
+      if (!safety.ok) {
+        // Through logBlank so it lands in the LOG FILE too, in full and with its reason —
+        // the terminal truncates a long question to fit its column, which loses the very
+        // wording needed to answer it. Same path for LinkedIn and Indeed.
+        logBlank(label, `not submitted: ${safety.reason}`, api.portal || '');
+        await api.recordQuestion(label, '').catch(() => {});
+        const required = await el.evaluate((n) =>
+          n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
+        if (required) attention.push(label);
+        continue;
+      }
 
       if (tag === 'select') {
         // Pick the CLOSEST option, not an exact-label match: "Male" must still select an option

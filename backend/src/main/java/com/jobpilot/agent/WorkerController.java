@@ -360,7 +360,11 @@ public class WorkerController {
             String out = nz((String) r.get("answer")).trim();
             if (out.isBlank())
                 return Map.of("answer", "", "needsAttention", true, "reason", "not supported by profile");
-            return Map.of("answer", out);
+            // Tell the worker whether this came from the bank, so it does not re-record an
+            // answer it just read from there. Without it every reuse rewrites the same row and
+            // the "first asked on" attribution drifts.
+            String src = nz((String) r.get("source"));
+            return Map.of("answer", out, "fromSaved", src.startsWith("saved") || src.startsWith("auto-reused"));
         } catch (Exception e) {
             return Map.of("answer", "", "needsAttention", true, "reason", "answer failed");
         }

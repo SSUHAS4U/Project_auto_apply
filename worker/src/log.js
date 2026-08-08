@@ -1,3 +1,5 @@
+import { logEvent } from './logfile.js';
+
 // Pretty, consistent terminal output for the worker.
 //
 // The desktop terminal panel renders the worker's raw stdout as plain text — no ANSI colour —
@@ -37,12 +39,31 @@ export function logField(question, value) {
   console.log(`       ${pad(q)} ${value}`);
 }
 
-export function logBlank(question) {
+/**
+ * A question the automation could not answer.
+ *
+ * Recorded in BOTH places, and for both portals. The terminal line is truncated to stay
+ * readable — `pad()` cuts a long question down to fit the column — so the one surface that
+ * shows it is also the one that loses the wording you need in order to answer it. The log file
+ * keeps the question in full, untruncated, alongside the portal and the reason.
+ *
+ * `reason` distinguishes the two ways this happens, which need different responses:
+ *  · "no answer yet"  — nothing in the profile or saved answers covers it; answer it once
+ *    in Automation → questions and it is reused from then on;
+ *  · a guard refusal  — an answer existed but was unsafe to submit for THIS question
+ *    (an annual rupee figure asked for as an hourly USD rate), which usually means the
+ *    profile needs a separate field rather than a corrected one.
+ */
+export function logBlank(question, reason = 'no answer yet', portal = '') {
   const q = cleanQuestion(question);
   const key = 'blank|' + q.toLowerCase();
+  // The log file is written EVERY time, before the de-duplication below. Seeing that the same
+  // question blocked four different applications is the signal that it is worth answering, and
+  // printing it once was hiding exactly that.
+  logEvent('question', { portal: portal || undefined, unanswered: String(question), reason });
   if (seen.has(key)) return;
   seen.add(key);
-  console.log(`       ${pad(q)} ⚠ no answer yet — saved to Autofill answers`);
+  console.log(`       ${pad(q)} ⚠ ${reason} — saved to Autofill answers`);
 }
 
 const RESULTS = {
