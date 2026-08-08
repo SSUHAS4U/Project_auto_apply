@@ -518,6 +518,49 @@ public class AssistService {
      * the HTML control hint (date / tel / url / email / number / textarea / dropdown / text).
      */
     @Transactional
+    /**
+     * "How many years of X do you have?" — answered from the profile, with no model call.
+     *
+     * This one question blocked FOURTEEN applications in a single day. Every /answer call that
+     * day failed ("answer failed", 42 of 42), because the answerer is AI-first and the daily
+     * quota was already spent before the run started. A question whose answer is sitting in the
+     * profile should never depend on a model being reachable.
+     *
+     * The rule is the honest one, not the flattering one: if the technology is on the profile,
+     * the candidate's total experience is the answer (a skill cannot predate the career); if it
+     * is not on the profile, the answer is 0. Overstating here is not a bug to trade away — it
+     * is a false statement to an employer.
+     *
+     * @return the answer, or null when this is not a years-of-a-skill question.
+     */
+    private String yearsOfSkillFromProfile(String question, Profile p) {
+        if (p == null || question == null) return null;
+        String q = question.toLowerCase(Locale.ENGLISH);
+        boolean yearsQ = (q.contains("how many year") || q.contains("how much exp")
+                || q.contains("years of experience") || q.contains("yrs of exp")
+                || (q.contains("how long") && q.contains("work")))
+                && !q.contains("total") && !q.contains("overall");
+        if (!yearsQ) return null;
+
+        double total = parseYears(p.getYearsExperience());
+        if (total <= 0) return null;   // nothing to reason from — let the model try
+
+        List<String> skills = p.getSkills() == null ? List.of() : p.getSkills();
+        for (String skill : skills) {
+            if (skill == null || skill.isBlank()) continue;
+            String sk = skill.toLowerCase(Locale.ENGLISH).trim();
+            if (sk.length() < 2) continue;
+            // Whole-word so "go" does not match "django" and "r" does not match everything.
+            if (java.util.regex.Pattern.compile("\\b" + java.util.regex.Pattern.quote(sk) + "\\b")
+                    .matcher(q).find()) {
+                return trimNumber(total);
+            }
+        }
+        // The question named a technology and the profile does not list it. Zero is the truthful
+        // answer, and it is also what keeps the application moving instead of pausing.
+        return "0";
+    }
+
     public Map<String, Object> answer(String question, String fieldType) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("question is required");
@@ -525,10 +568,15 @@ public class AssistService {
         UUID userId = UserContext.require();
         String key = normalize(question);
 
-        // 1. Exact key match in the bank — but ONLY answers YOU own (saved from the extension or
-        //    edited in LinkedIn questions). Entries the automation guessed are stored as "auto"
-        //    purely so you can review/correct them; reusing those created a feedback loop that
-        //    memorised a wrong answer forever (that's how "expected ctc = 1" kept coming back).
+        // Before the model: a question the profile already answers must not depend on a quota.
+        String fromProfile = yearsOfSkillFromProfile(question, profiles.get());
+        if (fromProfile != null) {
+            return Map.of("answer", fromProfile, "source", "profile");
+        }
+
+        // 1. Exact key match in the bank, whatever produced it — including answers the
+        //    automation worked out itself. See the note on the return below for why auto
+        //    answers are now reused, and what makes that safe.
         Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key)
                 .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
         if (exact.isPresent()) {

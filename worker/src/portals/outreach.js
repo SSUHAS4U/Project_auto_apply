@@ -89,11 +89,25 @@ export async function collectPeople(page) {
       // ~300 people with "no recruiter title and no posts to judge", including profiles
       // literally titled "techrecruiter" and "HR". The wall was not being strict; it was
       // being fed nothing.
-      const parts = clean(after).split('•');
-      const headline = clean(parts.length > 1 ? parts.slice(1).join(' ') : parts[0])
-        // Drop the leading connection-degree marker the bullet introduces ("2nd", "3rd+").
-        .replace(/^\s*\d(?:st|nd|rd|th)\+?\s*/i, '')
-        .slice(0, 140);
+      // Take the first segment that is actually a HEADLINE, not LinkedIn's social proof.
+      //
+      // A run sent "is a mutual connection" as the headline for 147 people, "are mutual
+      // connections" for 43 more and variants for another 67 — roughly 257 of ~700. Their real
+      // headline sat elsewhere in the card, so shouldContact found no recruiter title, had no
+      // posts to fall back on, and refused them: 688 rejected as "no recruiter title and no
+      // posts to judge", while genuine recruiters ("IT Recruiter @Coretek Labs") came through
+      // perfectly. Taking everything after the first bullet was too blunt — on a card that
+      // shows mutual connections, that segment IS the social proof.
+      //
+      // So walk the segments and skip what is demonstrably not a headline: the connection
+      // degree, mutual-connection blurbs, follower counts, and the action buttons. Whatever
+      // survives is the person's own description of themselves.
+      const NOISE = /^(\d(?:st|nd|rd|th)\+?)$|mutual connection|^\d[\d,.]*[km]? (followers?|connections?)$|^(follow|connect|message|view profile)$/i;
+      const segments = clean(after)
+        .split(/[•\n]/)
+        .map((x) => clean(x).replace(/^\s*\d(?:st|nd|rd|th)\+?\s*/i, '').trim())
+        .filter((x) => x.length > 2 && !NOISE.test(x));
+      const headline = (segments[0] || '').slice(0, 140);
       seen.add(href);
       out.push({ name, profileUrl: href, headline });
     }

@@ -366,7 +366,16 @@ public class WorkerController {
             String src = nz((String) r.get("source"));
             return Map.of("answer", out, "fromSaved", src.startsWith("saved") || src.startsWith("auto-reused"));
         } catch (Exception e) {
-            return Map.of("answer", "", "needsAttention", true, "reason", "answer failed");
+            // SAY WHAT FAILED. This returned the bare string "answer failed" and discarded the
+            // exception, so a whole day of runs produced 42 answer attempts, 0 successes, and
+            // no way to tell whether it was a rate limit, a missing profile field or a null
+            // dereference. Three different problems, one indistinguishable message — and every
+            // Indeed application that needed a screening answer was blocked by it.
+            String why = e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            if (why.length() > 200) why = why.substring(0, 200);
+            log.warn("answer('{}') failed: {}", question, why, e);
+            return Map.of("answer", "", "needsAttention", true, "reason", "answer failed — " + why);
         }
     }
 

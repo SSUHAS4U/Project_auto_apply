@@ -16,7 +16,7 @@ function peopleSearch(rows) {
   const li = (r) => `
     <li class="artdeco-list__item">
       <a href="https://www.linkedin.com/in/${r.slug}/" aria-label="${r.name}">${r.name}</a>
-      <span> • ${r.degree} ${r.headline}</span>
+      <span> • ${r.degree}${r.social ? ` • ${r.social}` : ''} • ${r.headline}</span>
     </li>`;
   return '<!doctype html><html><head><meta charset="utf-8"><title>People | LinkedIn</title></head>'
     + `<body><main><div class="search-results-container"><ul>${rows.map(li).join('')}</ul></div></main></body></html>`;
@@ -76,4 +76,36 @@ test('the headline carries the words the wall actually reads', async () => {
 test('a page with no results yields nobody rather than junk', async () => {
   const people = await collect(peopleSearch([]));
   assert.deepEqual(people, []);
+});
+
+test('LinkedIn social proof is not mistaken for a headline', () => {
+  // A run sent "is a mutual connection" as the headline for 147 people, "are mutual
+  // connections" for 43 more and variants for another 67 — roughly 257 of ~700. Their real
+  // headline was elsewhere in the card, so the wall found no recruiter title, had no posts to
+  // fall back on, and refused them: 688 rejected as "no recruiter title and no posts to judge"
+  // while genuine recruiters came through fine. These are the exact strings from that log.
+  const rows = [
+    { name: 'Priya R', slug: 'priya-r', degree: '2nd', social: 'Arun is a mutual connection',
+      headline: 'Technical Recruiter at Acme' },
+    { name: 'Sneha B', slug: 'sneha-b', degree: '3rd+', social: 'are mutual connections',
+      headline: 'Senior Recruiter | IT Recruitment' },
+    { name: 'Kiran M', slug: 'kiran-m', degree: '2nd', social: 'is a mutual connection · 7K followers',
+      headline: 'Talent Acquisition Specialist' },
+    { name: 'Ravi K', slug: 'ravi-k', degree: '2nd', social: '', headline: 'Senior Software Engineer' },
+  ];
+  return collect(peopleSearch(rows)).then((people) => {
+    assert.equal(people.length, 4);
+    for (const p of people) {
+      assert.ok(!/mutual connection|followers?$/i.test(p.headline),
+        `social proof leaked into the headline for ${p.name}: "${p.headline}"`);
+      assert.ok(p.headline.trim().length > 0, `${p.name} lost their headline entirely`);
+    }
+    const by = Object.fromEntries(people.map((p) => [p.name, p.headline]));
+    assert.match(by['Priya R'], /Technical Recruiter at Acme/);
+    assert.match(by['Sneha B'], /Senior Recruiter/);
+    assert.match(by['Kiran M'], /Talent Acquisition Specialist/);
+    // And the half that must not break: a non-recruiter is still read correctly, so the wall
+    // can still refuse them for the right reason.
+    assert.match(by['Ravi K'], /Senior Software Engineer/);
+  });
 });

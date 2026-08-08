@@ -912,6 +912,52 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
 // ---- Phase 1: hiring-post scan → HR email extraction ------------------------
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+/**
+ * Look for the author's email where a person would actually look: their profile.
+ *
+ * The scan only ever read the POST text, and recruiters almost never put an address there —
+ * 117 posts in one run were counted as having no address, and 0 emails were sent all day. A
+ * human looking for a recruiter's email opens their profile and checks the contact panel and
+ * the About section, which is where people do put it.
+ *
+ * Opens the profile in a SEPARATE tab so the feed the scan is walking keeps its scroll
+ * position; a scan that restarts from the top on every author re-reads the same posts forever.
+ * Every step is best-effort: an email is a bonus route, and failing to find one must never cost
+ * the message or connection route that would otherwise have run.
+ *
+ * @returns {Promise<string>} the address, or '' when there is none to find.
+ */
+async function emailFromProfile(ctx, authorUrl) {
+  if (!ctx || !authorUrl) return '';
+  let p = null;
+  try {
+    p = await ctx.newPage();
+    await p.goto(authorUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await humanDelay(900, 1800);
+
+    // 1. The contact panel — where LinkedIn puts an address the person chose to publish.
+    //    Reached by its own URL rather than by clicking "Contact info", because the link's
+    //    label and class both change and the overlay URL has been stable for years.
+    const contactUrl = authorUrl.replace(/\/+$/, '') + '/overlay/contact-info/';
+    await p.goto(contactUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    await humanDelay(700, 1400);
+    let text = await p.evaluate(() => (document.body && document.body.innerText) || '').catch(() => '');
+    let hit = (text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e))[0];
+    if (hit) return hit;
+
+    // 2. The profile body — About sections and headlines often carry "reach me at …".
+    await p.goto(authorUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    await humanDelay(700, 1400);
+    text = await p.evaluate(() => (document.body && document.body.innerText) || '').catch(() => '');
+    hit = (text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e))[0];
+    return hit || '';
+  } catch {
+    return '';
+  } finally {
+    if (p) await p.close().catch(() => {});
+  }
+}
 // Obvious non-recruiter addresses — never lead on these.
 const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|support@|help@|info@linkedin/i;
 
@@ -1099,6 +1145,23 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
         // not judged a single one of them, and made a flow working exactly as designed look
         // like a broken classifier. Recruiters almost never put an email in a post, so this is
         // the ordinary case and the honest number to show.
+        // No address in the post? Then look where a person would look: the author's PROFILE.
+        //
+        // The scan only ever read the post text, and recruiters almost never put an address
+        // there — one run counted 117 posts as having no address and sent 0 emails all day.
+        // Their contact panel and About section are where people actually publish it.
+        //
+        // Only in the email flow, and only with an author to open: this costs a page load per
+        // author, and spending that on the post-scan flow (which already has a message route)
+        // would double the request rate for a route it does not need. Confined to the flow
+        // whose entire job is finding an address.
+        if (emails.length === 0 && plan.emailOnly && post.authorUrl && found < cap) {
+          const fromBio = await emailFromProfile(page.context(), post.authorUrl).catch(() => '');
+          if (fromBio) {
+            emails.push(fromBio);
+            logEvent('outreach', { found: 'email-in-profile', author: post.name || null });
+          }
+        }
         if (emails.length === 0 && plan.emailOnly) { routed.noAddress++; continue; }
 
         if (emails.length === 0 && found < cap) {
