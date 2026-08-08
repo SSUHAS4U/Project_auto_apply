@@ -177,7 +177,7 @@ async function readPosting(page) {
   // the visible label is what survives. Failure here is not fatal — a truncated description
   // still beats none, so this only ever improves what the next step reads.
   await page.evaluate(() => {
-    const wanted = /see more|show more|…more|more/i;
+    const wanted = /see more|show more|…more|more/i;
     for (const n of document.querySelectorAll('button, [role="button"], a')) {
       const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
         .replace(/\s+/g, ' ').trim();
@@ -962,10 +962,32 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   const seen = new Set();
   // Every analysed post lands in exactly ONE of these. Reporting them together is the
   // difference between "scanned 150 → 0 emails" and knowing what actually happened.
-  const routed = { email: 0, message: 0, manual: 0, notHiring: 0, skipped: 0 };
+  const routed = { email: 0, message: 0, manual: 0, notHiring: 0, noAddress: 0, skipped: 0 };
   console.log(`\n  🔎 Scanning hiring posts — target ${target} post(s) this block…`);
 
-  for (const keyword of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
+  // SEARCH UNTIL THE BUDGET IS USED, not until the keyword list runs out.
+  //
+  // This walked the keywords once and stopped, so a 60-minute post scan finished in two
+  // minutes and handed back 58 — and a 30-minute email scan finished in one. Reporting that as
+  // "it ran out of posts" was wrong: LinkedIn has effectively unlimited posts, and the flow had
+  // simply stopped asking. It is the same defect Easy Apply had, fixed there and not carried
+  // across.
+  //
+  // Now: keyword × location, cycled from where the last pass ended, until the time budget, the
+  // post target or the contact cap says stop. The loop conditions inside already check all
+  // three, so this only removes the artificial ceiling — nothing here can overrun a budget.
+  const scanPairs = [];
+  for (const kw of plan.keywords.slice(0, dedicated ? plan.keywords.length : 3)) {
+    for (const loc of (plan.locations && plan.locations.length ? plan.locations : [''])) {
+      scanPairs.push(loc ? `${kw} ${loc}` : kw);
+    }
+  }
+  // Repeated deliberately: a second pass over the same search returns posts published since the
+  // first, which is the point of spending an hour on it rather than two minutes.
+  const scanQueue = [];
+  for (let pass = 0; pass < 6; pass++) scanQueue.push(...scanPairs);
+  for (const keyword of scanQueue) {
+    if (found >= cap || analysed >= target || Date.now() >= phaseDeadline) break;
     if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;
     if (analysed >= target) break;   // today's reading target is met
     state.action = `Scanning LinkedIn posts: "${keyword} hiring"`;
@@ -1071,7 +1093,13 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
         // read 150 posts and produced nothing.
         // In email-only mode a post without an address is simply not this flow's business —
         // the post-scan flow already routed it to a message or a manual link.
-        if (emails.length === 0 && plan.emailOnly) { routed.notHiring++; continue; }
+        // NOT "not hiring" — no address in the text, which is a different fact entirely.
+        //
+        // Counting these as notHiring reported "117 not actually hiring" for a scan that had
+        // not judged a single one of them, and made a flow working exactly as designed look
+        // like a broken classifier. Recruiters almost never put an email in a post, so this is
+        // the ordinary case and the honest number to show.
+        if (emails.length === 0 && plan.emailOnly) { routed.noAddress++; continue; }
 
         if (emails.length === 0 && found < cap) {
           const key = post.authorUrl || post.link;
@@ -1186,13 +1214,17 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   console.log(`        💬 ${routed.message} queued to message (author is hiring)`);
   console.log(`        🔗 ${routed.manual} apply links → manual list`);
   console.log(`        ·  ${routed.notHiring} not actually hiring`);
+  if (routed.noAddress) {
+    console.log(`        ·  ${routed.noAddress} had no email address in the post (normal — most don't)`);
+  }
   if (routed.skipped) console.log(`        ⊘  ${routed.skipped} already contacted (limit or duplicate)`);
   if (analysed < target && !state.stopped && !state.paused) {
     console.log(`        (short of target — the block ran out of time or LinkedIn ran out of posts)`);
   }
   await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
     detail: `post scan: ${analysed}/${target} analysed — ${routed.email} emailed, `
-      + `${routed.message} to message, ${routed.manual} manual link(s), ${routed.notHiring} not hiring` });
+      + `${routed.message} to message, ${routed.manual} manual link(s), ${routed.notHiring} not hiring, `
+      + `${routed.noAddress} without an address` });
   return routed;
 }
 
@@ -1233,7 +1265,22 @@ async function easyApply(page, api, profile, resume, state) {
     // Narrate each step so the live feed caption shows the Easy Apply progressing.
     state.action = `Easy Apply — step ${step + 1} (filling the form)`;
     // EVERYTHING scoped to `modal`: the fill helpers must not touch the search header behind it.
-    await uploadResume(page, resume, modal).catch(() => {});
+    // A resume that did not attach must NOT be submitted past.
+    //
+    // The upload is asynchronous and both portals show "Uploading…" while it runs; the old call
+    // handed the file to the browser and moved straight on, so a form could be submitted before
+    // the file landed. An employer receiving an application with no CV is worse than one that
+    // waits for you — and nothing in the log said it had happened.
+    //
+    // Only when a resume EXISTS to upload: a profile without one is a separate, already-handled
+    // case, and treating it as a failure here would pause every application for those users.
+    const resumeOk = await uploadResume(page, resume, modal).catch(() => false);
+    if (resume && resume.hasResume && !resumeOk) {
+      await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
+        title, company, detail: 'the resume did not finish uploading — left for you rather than '
+          + 'submitting an application without a CV' });
+      return 'attention';
+    }
     const { attention } = await fillForm(page, profile, api, modal);
     // Screening questions are mostly radio groups, which fillForm skips — answer them too,
     // otherwise the step can never validate and Submit never appears.

@@ -206,7 +206,7 @@ async function followPerson(page, scope) {
       (n.getAttribute('aria-label') || '') + ' ' + (n.innerText || '')
     ).replace(/\s+/g, ' ').trim().toLowerCase()).catch(() => '');
     // "Follow" only — never "Following" (already done) or "Unfollow".
-    if (/^follow/.test(label) && !/unfollow|following/.test(label)) {
+    if (/^follow/.test(label) && !/unfollow|following/.test(label)) {
       if (await h.isVisible().catch(() => false)) {
         await h.click({ timeout: 3000 }).catch(() => {});
         await humanDelay(700, 1300);

@@ -4,6 +4,7 @@ import { validateAnswer } from './answer-guard.js';
 // AI (/answer), which stays honest — it returns NEEDS_ATTENTION rather than inventing.
 import { humanDelay } from './browser.js';
 import { logField, logBlank } from './log.js';
+import { logEvent } from './logfile.js';
 
 // profile key → label keywords that imply it. Ordered most-specific first (matchKey returns
 // the first hit), so e.g. "first name" wins over the generic "name". Covers the common
@@ -94,6 +95,22 @@ async function isTypeahead(el) {
       || !!n.getAttribute('aria-controls') || !!n.getAttribute('aria-owns')
       || (n.getAttribute('autocomplete') === 'off' && n.hasAttribute('aria-expanded'));
   }).catch(() => false);
+}
+
+/**
+ * Text that sits where a label goes but asks nothing.
+ *
+ * A file input mid-upload renders "Uploading…" as its nearest text, and labelFor() walks up to
+ * three ancestors looking for exactly that. It was then treated as a screening question,
+ * routed to the model, and — with no possible answer — recorded as unanswered and used to
+ * pause the application. Five Indeed applications stalled on a progress indicator.
+ */
+const NOT_A_QUESTION = /^(uploading|loading|please wait|processing|saving|uploaded|attaching)|^\s*[.…]+\s*$/i;
+
+export function isRealQuestion(label) {
+  const l = String(label || '').replace(/\s+/g, ' ').trim();
+  if (l.length < 2) return false;
+  return !NOT_A_QUESTION.test(l);
 }
 
 function matchKey(label) {
@@ -224,7 +241,7 @@ export async function fillForm(page, profile, api, root) {
       if (current && current.trim()) continue; // don't clobber prefilled values
 
       const label = await labelFor(el);
-      if (!label) continue;
+      if (!label || !isRealQuestion(label)) continue;
       const key = matchKey(label);
       const tag = await el.evaluate((n) => n.tagName.toLowerCase());
       // A field with no direct profile mapping is a custom SCREENING question — those are the
@@ -246,7 +263,11 @@ export async function fillForm(page, profile, api, root) {
           // submitted perfectly well with that box left empty.
           const required = await el.evaluate((n) =>
             n.required || n.getAttribute('aria-required') === 'true').catch(() => false);
-          logBlank(label, 'no answer yet', api.portal || '');
+          // The BACKEND's reason, not a generic one. "no option fit the profile", "not
+          // supported by profile" and "AI off" are three different problems needing three
+          // different fixes, and all three read as "no answer yet" — which is how one question
+          // blocked eight Indeed applications with nothing recorded about why.
+          logBlank(label, ans.reason ? `no answer — ${ans.reason}` : 'no answer yet', api.portal || '');
           if (required) attention.push(label);
           // Save it so the owner can keep an answer in Profile → Autofill answers.
           await api.recordQuestion(label, '').catch(() => {});
@@ -354,7 +375,7 @@ export async function fillDropdowns(page, profile, api, root) {
       if (cur && cur.length < 40 && !/select|choose|please|^-+$|^—$/.test(cur)) continue;
 
       const label = await labelFor(t);
-      if (!label) continue;
+      if (!label || !isRealQuestion(label)) continue;
 
       await t.click({ timeout: 2500 }).catch(() => {});
       await humanDelay(500, 1000);
@@ -402,15 +423,73 @@ export async function fillDropdowns(page, profile, api, root) {
 }
 
 /** Attach the resume PDF (base64 from the backend) to a file input, if the form has one. */
+/**
+ * Attach the resume AND wait until the portal says it has it.
+ *
+ * This used to call setInputFiles and return true on the next line — the file was handed to the
+ * browser and the run moved straight on. Both portals upload asynchronously and show
+ * "Uploading…" while they do, which is how that text ended up being read as a screening
+ * question in the first place. Ignoring the label is right; ignoring the upload is not, and an
+ * application submitted before the file lands is worse than one that pauses — the employer gets
+ * a candidate with no CV and nothing in the log says so.
+ *
+ * So: attach, then wait for the portal's own evidence that it finished — the progress text
+ * gone, and the filename visible on the form. Returns false if it never confirms, so the caller
+ * can treat a resume-less application as needing a human rather than submitting it.
+ */
 export async function uploadResume(page, resume, root) {
   if (!resume || !resume.hasResume) return false;
-  const input = await (root || page).$('input[type=file]');
+  const scope = root || page;
+  const input = await scope.$('input[type=file]');
   if (!input) return false;
+  const filename = resume.filename || 'resume.pdf';
   const buffer = Buffer.from(resume.contentBase64, 'base64');
-  await input.setInputFiles({
-    name: resume.filename || 'resume.pdf',
-    mimeType: 'application/pdf',
-    buffer,
-  }).catch(() => {});
-  return true;
+  try {
+    await input.setInputFiles({ name: filename, mimeType: 'application/pdf', buffer });
+  } catch (e) {
+    console.log(`     \u26a0 could not attach the resume: ${String(e && e.message).slice(0, 120)}`);
+    logEvent('resume', { outcome: 'attach-failed', filename, error: String(e && e.message).slice(0, 200) });
+    return false;
+  }
+
+  // Up to 45s. A slow connection on a 200KB PDF is ordinary; failing at 5s would report a
+  // working upload as broken, which is its own bad outcome.
+  const stem = filename.replace(/\.[^.]+$/, '').slice(0, 40);
+  const deadline = Date.now() + 45_000;
+  let sawProgress = false;
+  while (Date.now() < deadline) {
+    const state = await scope.evaluate((st) => {
+      const body = (document.body && document.body.innerText || '').replace(/\s+/g, ' ');
+      return {
+        busy: /uploading|processing|attaching|please wait/i.test(body),
+        // The portal echoes the filename back once it has the file. Matched on the stem so an
+        // extension rewrite ("resume.pdf" shown as "resume") still counts.
+        named: st.length > 2 && body.toLowerCase().includes(st.toLowerCase()),
+      };
+    }, stem).catch(() => ({ busy: false, named: false }));
+    if (state.busy) { sawProgress = true; await humanDelay(700, 1200); continue; }
+    if (state.named) {
+      logEvent('resume', { outcome: 'uploaded', filename, waited: sawProgress });
+      return true;
+    }
+    // Not busy and not named yet — give it a moment before deciding either way.
+    if (!sawProgress) { await humanDelay(700, 1200); }
+    else break;   // it finished uploading but never showed the name; checked once more below
+  }
+
+  // One last look, because some forms replace the filename with a generic "Resume attached".
+  const settled = await scope.evaluate((st) => {
+    const body = (document.body && document.body.innerText || '').replace(/\s+/g, ' ');
+    if (/uploading|processing|attaching/i.test(body)) return false;
+    return body.toLowerCase().includes(st.toLowerCase())
+      || /resume (attached|uploaded)|attached resume|\.pdf\b/i.test(body);
+  }, stem).catch(() => false);
+
+  if (settled) {
+    logEvent('resume', { outcome: 'uploaded', filename, waited: sawProgress });
+    return true;
+  }
+  console.log(`     \u26a0 the resume did not finish uploading (${filename}) — treating this as needing you`);
+  logEvent('resume', { outcome: 'not-confirmed', filename, waited: sawProgress });
+  return false;
 }

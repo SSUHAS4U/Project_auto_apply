@@ -581,7 +581,16 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
     if (state.paused) return 'attention';
     if ((await pageState(applyPage)) !== 'ok') return 'attention';
 
-    await uploadResume(applyPage, resume).catch(() => {});
+    // Same rule as LinkedIn: never submit past a resume that did not attach. Indeed's upload is
+    // asynchronous too — "Uploading…" is what blocked five applications here by being read as a
+    // screening question, and the underlying problem was that nothing waited for it to finish.
+    const resumeOk = await uploadResume(applyPage, resume).catch(() => false);
+    if (resume && resume.hasResume && !resumeOk) {
+      await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
+        detail: 'the resume did not finish uploading — left for you rather than submitting an '
+          + 'application without a CV' });
+      return 'attention';
+    }
     const { attention } = await fillForm(applyPage, profile, api);
     // Indeed's screening step is radio-group based too — fillForm skips those.
     const { attention: choiceAttention } = await fillChoices(applyPage, api);
