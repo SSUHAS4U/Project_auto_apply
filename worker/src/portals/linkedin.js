@@ -1390,8 +1390,14 @@ async function easyApply(page, api, profile, resume, state) {
     // case, and treating it as a failure here would pause every application for those users.
     const resumeOk = await uploadResume(page, resume, modal).catch(() => false);
     if (resume && resume.hasResume && !resumeOk) {
+      // No `title`/`company` here: easyApply(page, api, profile, resume, state) does not receive
+      // them. Referencing them threw ReferenceError: title is not defined on every resume that
+      // failed to confirm — 38 applications failed in one run, and the guard meant to protect
+      // an application became the thing that destroyed it. node --check cannot see an
+      // out-of-scope reference, and no test exercised this path because it only runs when an
+      // upload does not confirm.
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
-        title, company, detail: 'the resume did not finish uploading — left for you rather than '
+        detail: 'the resume did not finish uploading — left for you rather than '
           + 'submitting an application without a CV' });
       return 'attention';
     }

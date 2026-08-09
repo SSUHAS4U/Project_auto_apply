@@ -3,7 +3,9 @@
 // from the profile/AI. Jobs that redirect to an employer site ("Apply on company site")
 // are skipped. Indeed is aggressive about bot detection, so this is deliberately slow and
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
-import { humanDelay, sleep } from '../browser.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { humanDelay, sleep, APP_DIR } from '../browser.js';
 import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { shouldApply } from '../gate.js';
@@ -207,6 +209,15 @@ async function indeedLoggedIn(page, api, state) {
   return false;
 }
 
+/**
+ * Gap between one Indeed search and the next.
+ *
+ * A run of 72 back-to-back searches drew 277 HTTP 429s and a Cloudflare Turnstile challenge.
+ * Two minutes is a rate a person plausibly produces, and over a long block it still covers most
+ * of the matrix — spread out rather than burst.
+ */
+const INDEED_SEARCH_GAP_MS = 120_000;
+
 export async function runIndeed(page, api, plan, state, ctx) {
   // Bail out loudly rather than walking 72 searches that cannot produce a single application.
   if (!(await indeedLoggedIn(page, api, state))) return { applied: 0 };
@@ -253,17 +264,61 @@ export async function runIndeed(page, api, plan, state, ctx) {
   let diagShown = false;   // dump the page diagnostics once, not on every empty search
   let blockedJobs = 0;     // consecutive job pages hidden behind a checkpoint
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
-  const pagesPerSearch = Math.max(1, plan.pagesPerSearch || 3);
+  // ONE result page per search. Pages 2 and 3 of an Indeed search are largely the same
+  // postings relisted by agencies, so three pages tripled the request rate for the worst
+  // results — and request rate is exactly what earned 277 429s.
+  const pagesPerSearch = 1;
+  void plan.pagesPerSearch;
   let sawAnyFresh = false; // did ANY search yield a job we hadn't already handled?
   let opened = 0;          // job pages actually opened — the number that was invisible before
   let externals = 0;       // jobs with no Indeed Apply button (all of them = a selector fault)
   // Indeed returns the same postings for every city (16 each time in the last run), so without
   // this the worker re-opened and re-processed the identical 16 jobs six times over.
   const doneJobs = new Set();
+  // PACED AND ROTATED, the same treatment LinkedIn got — and which was never carried here.
+  //
+  // A run produced 277 HTTP 429s, 148 reCAPTCHA Enterprise loads and 4 Cloudflare Turnstile
+  // challenges: 95 jobs paused behind a checkpoint and nothing was submitted. That is not a
+  // broken adapter, it is Indeed answering 72 back-to-back searches the way any site answers
+  // being hammered. LinkedIn's pacing fix cut 216 page loads to 6 and stopped its
+  // `uc=scraping` flag; Indeed was left running the whole matrix flat out.
+  //
+  // Same shape as LinkedIn: walk keyword x location from where the last run stopped, one
+  // search every two minutes, until the time budget or the apply cap ends it. The offset is
+  // written after EVERY pair so a stopped or timed-out run resumes where it actually reached
+  // instead of re-walking the same searches and never seeing the far end.
+  const indeedPairs = [];
+  for (const kw of kws) for (const loc of locs) indeedPairs.push({ keyword: kw, location: loc });
+  const indeedOffsetFile = path.join(APP_DIR, '.indeed-search-offset');
+  let indeedOffset = 0;
+  try { indeedOffset = parseInt(fs.readFileSync(indeedOffsetFile, 'utf8'), 10) || 0; } catch { /* first run */ }
+  const indeedQueue = [];
+  for (let i = 0; i < indeedPairs.length; i++) {
+    indeedQueue.push(indeedPairs[(indeedOffset + i) % indeedPairs.length]);
+  }
+  console.log(`  Starting at pair #${indeedOffset + 1} of ${indeedPairs.length}, `
+    + `about one search every ${Math.round(INDEED_SEARCH_GAP_MS / 1000)}s until the budget is used.`);
+  let indeedSearches = 0;
+
   outer:
-  for (const keyword of plan.keywords) {
-    for (const location of plan.locations) {
+  for (const { keyword, location } of indeedQueue) {
+    {
       if (state.stopped || state.paused || Date.now() > deadline || applied >= applyCap) break outer;
+
+      // Space the searches out. Skipped before the first so a short run starts immediately, and
+      // broken into short sleeps so Stop and Pause stay responsive. The harness sets
+      // JOBPILOT_TEST_NO_PACING; nothing in the app does.
+      if (indeedSearches > 0 && process.env.JOBPILOT_TEST_NO_PACING !== '1') {
+        const until = Date.now() + INDEED_SEARCH_GAP_MS;
+        while (Date.now() < until && !state.stopped && !state.paused
+               && Date.now() < deadline && applied < applyCap) {
+          await sleep(3000);
+        }
+      }
+      indeedSearches++;
+      try {
+        fs.writeFileSync(indeedOffsetFile, String((indeedOffset + indeedSearches) % indeedPairs.length));
+      } catch { /* non-fatal */ }
 
       state.action = `Searching Indeed "${keyword}" in ${location}`;
       await api.event({ runId: state.runId, portal: 'indeed', type: 'info', detail: state.action });

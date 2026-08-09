@@ -46,13 +46,15 @@ const plan = {
   },
 };
 
-async function runOnce({ s, api = new FakeApi(), planOver = {}, stateOver = {}, signedIn = true }) {
+async function runOnce({ s, api = new FakeApi(), planOver = {}, stateOver = {}, signedIn = true, resume }) {
   const { browser, ctx } = await launch({ cookies: signedIn ? LINKEDIN_SESSION : [] });
   const log = captureLog();
   try {
     await s.install(ctx);
     const page = await ctx.newPage();
     const state = makeState(stateOver);
+    // The harness serves the resume through the api, exactly as production does.
+    if (resume) api.opts = { ...(api.opts || {}), resume };
     const result = await runLinkedIn(page, api, { ...plan, ...planOver }, state, ctx);
     return { result, api, log: log.text(), site: s, state };
   } finally {
@@ -275,4 +277,26 @@ test('a posting with no "see more" is read exactly as before', async () => {
   const desc = judgedDescription(api);
   assert.match(desc, /Spring Boot/, 'an untruncated description must still be read in full');
   assert.ok(!/Talent Acquisition/.test(desc), 'and must not pick up the recruiter panel');
+});
+
+test('a resume that will not confirm pauses the job — it does not crash the run', async () => {
+  // THE regression. The v145 guard that refuses to submit without a CV referenced `title` and
+  // `company`, which easyApply(page, api, profile, resume, state) does not receive. Every job
+  // whose upload failed to confirm threw "ReferenceError: title is not defined" — 38 failures
+  // in one run, and the guard meant to protect an application became what destroyed it.
+  //
+  // node --check cannot see an out-of-scope reference and there is no linter here, so the only
+  // thing that catches this is executing the path. A fixture with no file input makes
+  // uploadResume return false, which is exactly the condition the guard fires on.
+  const api = new FakeApi();
+  const { result, log } = await runOnce({
+    s: site(),
+    api,
+    // A resume the profile HAS — the guard is deliberately skipped when there is none.
+    resume: { hasResume: true, filename: 'resume.pdf', contentBase64: Buffer.from('%PDF-1.4 test').toString('base64') },
+  });
+
+  assert.ok(!/title is not defined|is not defined/i.test(log),
+    `the run threw a ReferenceError instead of pausing the job:\n${log}`);
+  assert.equal(typeof result.applied, 'number', 'the block must still return a result');
 });
