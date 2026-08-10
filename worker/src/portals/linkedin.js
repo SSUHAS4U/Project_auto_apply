@@ -5,6 +5,7 @@
 // Conservative by design — human delays, caps, stop-on-pause; never touches external
 // "Apply on company website" links.
 import fs from 'node:fs';
+import { fault } from '../fault.js';
 import path from 'node:path';
 import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
 
@@ -19,7 +20,8 @@ import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
 const SEARCH_GAP_MS = 120_000;
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
-import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob } from '../log.js';
+import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
+import { newLedger, seal } from '../ledger.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
 import { shouldApply, shouldContact, claimOutreach } from '../gate.js';
 import { cleanupDue, withdrawStaleInvites } from '../invites.js';
@@ -370,6 +372,10 @@ async function pageAlive(page) {
 }
 
 export async function runLinkedIn(page, api, plan, state, ctx) {
+  // Account for every job this block touches. Sealed before the return below, whatever the
+  // ending — finished, stopped, timed out — so a run can never end unexplained.
+  const runLedger = newLedger('linkedin');
+  setLedger(runLedger);
   // Bail out loudly rather than "successfully" processing 190 unapplyable guest pages.
   if (!(await ensureLoggedIn(page, api, state))) return { applied: 0 };
 
@@ -639,7 +645,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             if (!(await paneShowsJob(page, id))) {
               pane = false;
               if (paneFailures === 0) {
-                console.log(`     ⚠ the pane would not switch to job ${id} — skipping it rather than judging another job's text.`);
+                fault('PANE_WRONG_JOB', { id, url: page.url() });
               }
             }
           }
@@ -655,7 +661,8 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
             });
             // Diagnose once with evidence, instead of repeating the same guess 57 times.
             if (paneFailures === 1) {
-              console.log('     ⚠ the job page did not render as expected — dumping what is actually there:');
+              fault('PANE_NOT_RENDERING', { id, url: page.url(), streak: paneFailures });
+              console.log('     dumping what is actually on the page:');
               await describeJobPage(page).catch(() => {});
               await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
                 url: `https://www.linkedin.com/jobs/view/${id}/`,
@@ -906,12 +913,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       });
     }
   }
+  seal(runLedger, { applied, searched: runLedger.seen });
+  setLedger(null);
   return { applied, ...tally };
 }
 
 // ---- Phase 1: hiring-post scan → HR email extraction ------------------------
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|support@|help@|info@linkedin/i;
 
 /**
  * Look for the author's email where a person would actually look: their profile.
@@ -959,7 +969,6 @@ async function emailFromProfile(ctx, authorUrl) {
   }
 }
 // Obvious non-recruiter addresses — never lead on these.
-const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|support@|help@|info@linkedin/i;
 
 // A URL in a hiring post that is an actual way to apply, rather than a company homepage or a
 // link back into LinkedIn. Matching the well-known ATS hosts is far more reliable than trying
@@ -1505,7 +1514,7 @@ async function easyApply(page, api, profile, resume, state) {
           return label ? `${label}${shown ? '' : ' [hidden]'}` : '';
         })
         .filter(Boolean).slice(0, 10)).catch(() => []);
-      console.log('     ⚠ the Easy Apply form has no Submit/Continue control we recognise.');
+      fault('APPLY_FORM_UNRECOGNISED', { step, url: page.url() });
       console.log(`     [diag] step ${step + 1}, buttons: ${seen.join(' | ') || '(none)'}`);
     }
     await closeModal(page);

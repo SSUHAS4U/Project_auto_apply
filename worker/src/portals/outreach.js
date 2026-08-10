@@ -12,6 +12,7 @@
 // DOM often, so a selector miss skips that one item instead of breaking the run. Nothing is
 // invented and nothing sends unless your template/toggle allow it (the backend enforces that).
 import { humanDelay } from '../browser.js';
+import { fault } from '../fault.js';
 import { shouldContact, claimOutreach } from '../gate.js';
 
 const NOTE_LIMIT = 300;
@@ -182,7 +183,8 @@ async function reportProfileNotRendering(page) {
     };
   }).catch(() => null);
   if (!info) { console.log('     [diag] the profile page could not be read at all'); return; }
-  console.log('     ⚠ no Connect/Message control on this profile — what the page actually is:');
+  fault('PROFILE_NO_CONTROLS', { url: page.url() });
+  console.log('     what the page actually is:');
   console.log(`     [diag] ${info.url}`);
   console.log(`     [diag] h1: "${info.h1}"  ·  buttons: ${info.buttons}  ·  body: ${info.bodyLen} chars`);
   console.log(`     [diag] controls: ${info.labels.join(' | ') || '(none)'}`);
@@ -307,7 +309,7 @@ async function composeMessage(page, resume, body) {
   // is actually IN the box.
   const text = (body || '').trim();
   if (!text) {
-    console.log('     ⚠ no message text — refusing to send a résumé on its own');
+    fault('MESSAGE_NOT_SENT', { reason: 'no message text was generated' });
     return false;
   }
 
@@ -328,7 +330,7 @@ async function composeMessage(page, resume, body) {
   // identical from here otherwise — and previously Send fired regardless.
   const typed = await box.evaluate((el) => (el.innerText || el.textContent || '').trim()).catch(() => '');
   if (!typed || typed.length < Math.min(12, text.length)) {
-    console.log(`     ⚠ the message did not land in the box (got ${typed.length} of ${text.length} chars) — not sending`);
+    fault('MESSAGE_NOT_SENT', { reason: 'text did not reach the box', got: typed.length, wanted: text.length });
     return false;
   }
 
@@ -348,7 +350,7 @@ async function composeMessage(page, resume, body) {
         await page.keyboard.type(text, { delay: 15 }).catch(() => {});
         const again = await box.evaluate((el) => (el.innerText || el.textContent || '').trim()).catch(() => '');
         if (!again) {
-          console.log('     ⚠ attaching the résumé cleared the message — not sending');
+          fault('MESSAGE_NOT_SENT', { reason: 'the attachment cleared the typed message' });
           return false;
         }
       }
@@ -382,7 +384,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
     await api.event({ runId: state.runId, portal: 'linkedin', type: 'info', detail: state.action });
     await page.goto(peopleSearchUrl(keyword, city), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await humanDelay(2200, 3600);
-    if (loggedOut(page)) { console.log('     ⚠ not signed in — log into linkedin.com in the automation browser'); return sent; }
+    if (loggedOut(page)) { fault('SESSION_EXPIRED', { portal: 'linkedin', where: 'people search' }); return sent; }
 
     const people = await collectPeople(page);
     console.log(`     "${keyword} recruiter · ${city}" → ${people.length} people found`);
@@ -477,7 +479,7 @@ export async function sendConnectionRequests(page, api, plan, state, resume) {
         // RUNG 2 — an invitation with a note, for everyone messaging could not reach.
         const result = await inviteWithNote(page, null, note || '');
         if (result === 'limit') {
-          console.log('     ⚠ LinkedIn weekly invite limit reached — pausing connections');
+          fault('INVITE_LIMIT', { sentThisRun: sent });
           await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
             detail: 'LinkedIn weekly invite limit reached — pausing connection requests.' });
           return sent;

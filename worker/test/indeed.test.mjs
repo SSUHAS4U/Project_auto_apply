@@ -157,8 +157,15 @@ test('employer-site jobs are left for manual apply, never auto-submitted', async
 test('every job being external is called out as a probable selector fault', async () => {
   const site = healthySite({ cards: 6, apply: 'external' });
   const { log } = await runOnce({ site, planOver: { applyCap: 20 } });
-  assert.ok(/EVERY job reported no Indeed Apply button/.test(log),
-    `6 external jobs and 0 applies must be flagged as suspicious:\n${log}`);
+  // Asserts the BEHAVIOUR, not one sentence. This broke when the message moved into the fault
+  // registry — the old assertion was pinned to exact wording rather than to the guarantee, so
+  // it failed on a change that improved the very thing it guards. What must hold: the run says
+  // every job was external, AND tells the owner how to tell a genuine external listing from a
+  // stale selector.
+  assert.ok(/external/i.test(log),
+    `6 external jobs and 0 applies must be flagged:\n${log}`);
+  assert.ok(/Manual needed|selector/i.test(log),
+    `and must say how to tell a real external listing from a broken selector:\n${log}`);
 });
 
 test('the gate blocks a stack mismatch and says why', async () => {

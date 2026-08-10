@@ -22,6 +22,13 @@ export const APP_DIR = process.pkg ? path.dirname(process.execPath) : process.cw
  * in the background and the terminal log is the only surface. The first run stays visible so
  * the sign-in can actually be done.
  */
+/**
+ * How many times LinkedIn's anti-bot has fired this process. Read by the adapters so an
+ * unreadable page can be reported as what it is — a block — rather than as "no results".
+ */
+let botChallenges = 0;
+export function botChallengeCount() { return botChallenges; }
+
 export async function launchBrowser({ headless = false, log = console.log } = {}) {
   const userDataDir = path.join(APP_DIR, '.profile'); // persisted logins live here
   fs.mkdirSync(userDataDir, { recursive: true });
@@ -153,13 +160,6 @@ async function harden(ctx) {
   }).catch(() => { /* older Playwright — flags alone still help */ });
   return ctx.pages()[0] || (await ctx.newPage());
 }
-
-/**
- * How many times LinkedIn's anti-bot has fired this process. Read by the adapters so an
- * unreadable page can be reported as what it is — a block — rather than as "no results".
- */
-let botChallenges = 0;
-export function botChallengeCount() { return botChallenges; }
 
 export function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 

@@ -4,9 +4,11 @@
 // are skipped. Indeed is aggressive about bot detection, so this is deliberately slow and
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
 import fs from 'node:fs';
+import { fault } from '../fault.js';
 import path from 'node:path';
 import { humanDelay, sleep, APP_DIR } from '../browser.js';
-import { logJobHeader, logSkipped, logResult, beginJob } from '../log.js';
+import { logJobHeader, logSkipped, logResult, beginJob, setLedger } from '../log.js';
+import { newLedger, seal } from '../ledger.js';
 import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
 import { shouldApply } from '../gate.js';
 
@@ -220,6 +222,8 @@ const INDEED_SEARCH_GAP_MS = 120_000;
 
 export async function runIndeed(page, api, plan, state, ctx) {
   // Bail out loudly rather than walking 72 searches that cannot produce a single application.
+  const runLedger = newLedger('indeed');
+  setLedger(runLedger);
   if (!(await indeedLoggedIn(page, api, state))) return { applied: 0 };
   const profile = await api.profile().catch(() => ({}));
   const resume = await api.resume().catch(() => ({ hasResume: false }));
@@ -422,7 +426,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
           // appeared to hang forever, which is exactly the "16 results, then nothing" loop.
           if ((await pageState(jobPage)) !== 'ok') {
             blockedJobs++;
-            if (blockedJobs === 1) console.log('     ⚠ job pages are behind a checkpoint — solve it in the browser');
+            if (blockedJobs === 1) fault('BOT_CHALLENGE', { where: 'job pages', url: page.url() });
             await jobPage.close();
             // Three in a row used to END THE BLOCK. That is the wrong response to this
             // particular signal: verified live, individual job pages open fine (6/6 readable)
@@ -439,7 +443,9 @@ export async function runIndeed(page, api, plan, state, ctx) {
                 await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
                   detail: `Indeed kept showing a checkpoint on job pages through ${MAX_BACKOFFS} pauses. Open Indeed in the automation browser, solve it, then run again.` });
                 await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha on job pages').catch(() => {});
-                return { applied };
+                seal(runLedger, { applied, searched: runLedger.seen });
+  setLedger(null);
+  return { applied };
               }
               // 1m, 2m, 3m — lengthening, like a person pausing. Collapsed under the test flag,
               // the same way humanDelay is, so the suite does not sit through real minutes.
@@ -537,7 +543,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
     // of Indeed genuinely having no in-site applications. Those two look identical in the logs,
     // which is exactly how Indeed came to look like it had never worked.
     if (applied === 0 && externals === opened && opened >= 5) {
-      console.log('     ⚠ EVERY job reported no Indeed Apply button. That is usually a selector');
+      fault('NO_APPLY_BUTTON', { externals, opened });
+      console.log('     (was: every job reported no Indeed Apply button — usually a selector');
       console.log('       change on Indeed rather than reality — see the [diag] dump above.');
       await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
         detail: `all ${opened} jobs reported no Indeed Apply button — likely an Indeed layout change rather than genuinely external listings` });

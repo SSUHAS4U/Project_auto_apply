@@ -1,4 +1,5 @@
 import { logEvent } from './logfile.js';
+import { record } from './ledger.js';
 
 // Pretty, consistent terminal output for the worker.
 //
@@ -9,6 +10,17 @@ import { logEvent } from './logfile.js';
 
 const LINE = '─'.repeat(56);
 const DLINE = '═'.repeat(56);
+
+/**
+ * The run ledger, set once per block by the adapter.
+ *
+ * Held here rather than threaded through every function because logResult and logSkipped are
+ * already the two places every portal reports an outcome. Anything that reports a result is
+ * therefore counted, including paths added later by someone who has never read ledger.js —
+ * a guarantee that depends on remembering to add a line is not a guarantee.
+ */
+let ledger = null;
+export function setLedger(l) { ledger = l; }
 
 export function logSearch(keyword, location, count) {
   console.log('\n' + LINE);
@@ -23,6 +35,7 @@ export function logJobHeader(title, company, fitText) {
 }
 
 export function logSkipped(title, reason) {
+  record(ledger, 'skipped', reason);
   console.log(`\n  ⤼ ${title}   —   skipped: ${reason}`);
 }
 
@@ -74,6 +87,7 @@ const RESULTS = {
   failed:    '     ✗  Failed',
 };
 export function logResult(kind, extra) {
+  record(ledger, kind, extra || kind);
   // For a pause, name the exact question that stopped it and where to answer it.
   if (kind === 'attention' && extra) {
     console.log(`     ⏸  Paused — needs your answer:  “${cleanQuestion(extra)}”`);

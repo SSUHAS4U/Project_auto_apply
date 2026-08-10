@@ -3,26 +3,32 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "JobPilot Desktop — the local companion that drives Naukri/LinkedIn/Indeed in your own Chrome while the JobPilot backend stays the brain and the dashboard watches live.",
+  "description": "JobPilot Desktop \u2014 the local companion that drives Naukri/LinkedIn/Indeed in your own Chrome while the JobPilot backend stays the brain and the dashboard watches live.",
   "bin": "dist/bundle.cjs",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "test": "eslint src test && node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
     "bundle": "esbuild src/index.js --bundle --platform=node --format=cjs --target=node18 --external:playwright-core --outfile=dist/bundle.cjs",
     "build:win": "npm run bundle && pkg . --targets node20-win-x64 --output dist/jobpilot-desktop-win-x64.exe",
     "build:mac-x64": "npm run bundle && pkg . --targets node20-macos-x64 --output dist/jobpilot-desktop-macos-x64",
     "build:mac-arm64": "npm run bundle && pkg . --targets node20-macos-arm64 --output dist/jobpilot-desktop-macos-arm64",
-    "build:linux": "npm run bundle && pkg . --targets node20-linux-x64 --output dist/jobpilot-desktop-linux-x64"
+    "build:linux": "npm run bundle && pkg . --targets node20-linux-x64 --output dist/jobpilot-desktop-linux-x64",
+    "lint": "eslint src test"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "playwright-core": "^1.47.0"
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^5.16.1",
-    "esbuild": "^0.23.0"
+    "esbuild": "^0.23.0",
+    "eslint": "^9.39.5"
   },
   "pkg": {
-    "assets": ["node_modules/playwright-core/**/*"]
+    "assets": [
+      "node_modules/playwright-core/**/*"
+    ]
   }
 }
