@@ -800,7 +800,13 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
               url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score} — apply manually (external form)` });
           } else if (result === 'attention') {
             tally.attention++;
-            const blocked = (state.blockedQuestions || [])[0];
+            // ALWAYS carry a reason. `blockedQuestions` is empty whenever the pause came from
+            // something that is not a question — the resume guard, most of all — and passing
+            // undefined made the ledger record "attention: attention" for 30 jobs. Thirty
+            // pauses with nothing to explain them is precisely the blindness the ledger exists
+            // to remove, so an unattributed pause is now labelled as one.
+            const blocked = (state.blockedQuestions || [])[0]
+              || state.attentionReason || 'paused with no reason recorded (instrumentation gap)';
             logResult('attention', blocked);
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
               title, company, detail: blocked ? `needs your answer: ${blocked}` : 'needs attention — an unanswerable question' });
@@ -1399,6 +1405,9 @@ async function easyApply(page, api, profile, resume, state) {
     // case, and treating it as a failure here would pause every application for those users.
     const resumeOk = await uploadResume(page, resume, modal).catch(() => false);
     if (resume && resume.hasResume && !resumeOk) {
+      // Name the cause so the ledger can attribute this pause. Without it the run reported 30
+      // unexplained "attention" outcomes and 92 silent refusals.
+      state.attentionReason = 'the resume did not finish uploading';
       // No `title`/`company` here: easyApply(page, api, profile, resume, state) does not receive
       // them. Referencing them threw ReferenceError: title is not defined on every resume that
       // failed to confirm — 38 applications failed in one run, and the guard meant to protect

@@ -18,6 +18,7 @@
 //  · bound the size, so an unattended machine cannot fill its disk.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 // Derived here rather than imported from browser.js. browser.js logs, so importing APP_DIR back
 // out of it forms a cycle, and under ESM the loser of that cycle sees the binding in its
@@ -47,6 +48,15 @@ const APP_DIR = process.pkg ? path.dirname(process.execPath) : process.cwd();
  */
 function resolveLogDir() {
   if (process.env.JOBPILOT_LOG_DIR) return process.env.JOBPILOT_LOG_DIR;
+  // NEVER write to the owner's real log from a test run.
+  //
+  // fault.test.mjs and ledger.test.mjs are plain unit tests — they do not import the browser
+  // harness, so they wrote their fixtures straight into %LOCALAPPDATA%\JobPilot\logs. Three
+  // fabricated faults (a deliberate null dereference, an unregistered id, a 50/10/40 job gap)
+  // sat in the production log and were nearly diagnosed as real production failures. A log you
+  // cannot trust is worse than no log, and this is checked here rather than in each test so it
+  // holds however the tests are invoked — npm, node --test, or an IDE.
+  if (process.env.NODE_TEST_CONTEXT) return path.join(os.tmpdir(), 'jobpilot-test-logs');
   const home = process.env.HOME || process.env.USERPROFILE || APP_DIR;
   if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
     return path.join(process.env.LOCALAPPDATA, 'JobPilot', 'logs');

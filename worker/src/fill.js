@@ -481,8 +481,8 @@ export async function uploadResume(page, resume, root) {
   const settled = await scope.evaluate((st) => {
     const body = (document.body && document.body.innerText || '').replace(/\s+/g, ' ');
     if (/uploading|processing|attaching/i.test(body)) return false;
-    return body.toLowerCase().includes(st.toLowerCase())
-      || /resume (attached|uploaded)|attached resume|\.pdf\b/i.test(body);
+    if (st.length > 2 && body.toLowerCase().includes(st.toLowerCase())) return true;
+    return /resume (attached|uploaded|selected)|attached resume|\bcv\b[^.]{0,20}attached|[\w-]+\.pdf\b/i.test(body);
   }, stem).catch(() => false);
 
   if (settled) {

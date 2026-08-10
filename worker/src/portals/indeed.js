@@ -340,12 +340,26 @@ export async function runIndeed(page, api, plan, state, ctx) {
         unreadable++;
         console.log(`  ⚠ ${keyword} · ${location} → the page could not be read (attempt ${unreadable}/3)`);
         if (unreadable >= 3) {
-          console.log('     ✋ three unreadable pages in a row — the browser session is wedged.');
-          console.log('        Close the automation browser, reopen JobPilot, and run again.');
-          await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
-            detail: 'Indeed pages could not be read three times in a row — the browser session is wedged. Restart JobPilot Desktop and run again.' });
-          await api.runStatus(state.runId, 'needs_attention', 'Indeed session wedged — restart the app').catch(() => {});
-          return { applied, blocked: true };
+          // RELAUNCH — do not ask the owner to do it by hand.
+          //
+          // This ended the block and printed "Close the automation browser, reopen JobPilot,
+          // and run again", asking a person to perform the one recovery the code can perform
+          // itself. The run then sat at 0/0/0 until somebody happened to read the terminal, and
+          // today that is exactly what Indeed did: three unreadable pages, block over, nothing
+          // applied, no retry.
+          //
+          // index.js already closes the context, waits for the profile lock to drop, reopens on
+          // the same profile and retries the block. That path is tested and has existed for
+          // versions — Indeed never reached it because this branch RETURNED instead of throwing.
+          // A wedged session is what a dead or blocked context looks like from in here, so
+          // throwing is the honest signal as well as the useful one.
+          fault('BROWSER_DEAD', { portal: 'indeed', unreadablePages: unreadable, url: page.url() });
+          await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
+            detail: 'Indeed pages could not be read three times in a row — reopening the browser '
+              + 'and retrying this block.' });
+          seal(runLedger, { applied, searched: runLedger.seen });
+          setLedger(null);
+          throw new Error('Target page, context or browser has been closed');
         }
         await sleep(5000);
         continue;
