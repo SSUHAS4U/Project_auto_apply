@@ -42,7 +42,15 @@ function searchUrl(keyword, location, start = 0, maxAgeDays = 0) {
   if (start > 0) p.set('start', String(start));
   // f_TPR=r<seconds> — "posted within". Keeps months-old, almost certainly filled postings out.
   if (maxAgeDays > 0) p.set('f_TPR', `r${Math.round(maxAgeDays * 86400)}`);
-  return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
+  // /jobs/search-results/, not /jobs/search/.
+  //
+  // LinkedIn moved the results page. A run produced 545 redirects of
+  //     /jobs/search/?...  ->  /jobs/search-results?skipRedirect=true&...
+  // and the redirect DROPS query parameters on the way — the `location` filter among them, so
+  // even the searches that survived were not the search we asked for. Every one of 110 searches
+  // reported "0 Easy-Apply jobs" while the pages returned HTTP 200 with a live session and real
+  // jobs on them. Requesting the destination directly keeps the parameters intact.
+  return `https://www.linkedin.com/jobs/search-results/?${p.toString()}`;
 }
 
 /**
@@ -73,8 +81,21 @@ function jobPaneUrl(keyword, location, id, maxAgeDays = 0) {
 const CARD_SELECTOR =
   'li[data-occludable-job-id], div.job-card-container[data-job-id], li.jobs-search-results__list-item, [data-job-id]';
 
+/**
+ * The same list, plus anything that merely CONTAINS a job link.
+ *
+ * Every selector above is a LinkedIn class or data attribute, and LinkedIn renames them. When
+ * it moved to /jobs/search-results/ the whole set matched nothing, so 110 searches reported
+ * "0 Easy-Apply jobs" against pages that were full of jobs — the same failure the post collector
+ * had when its classes were hashed, and it was solved there the same way.
+ *
+ * A job card IS an element containing a link to /jobs/view/<id>. That is what the thing is,
+ * not what it is currently called, so no rename can break it. The id comes out of the href.
+ */
+const CARD_SELECTOR_ANY = `${CARD_SELECTOR}, a[href*="/jobs/view/"]`;
+
 async function waitForResults(page) {
-  await page.waitForSelector(CARD_SELECTOR, { timeout: 18000 }).catch(() => {});
+  await page.waitForSelector(CARD_SELECTOR_ANY, { timeout: 18000 }).catch(() => {});
   await page.waitForTimeout(1200).catch(() => {});
 }
 
@@ -82,7 +103,7 @@ async function collectJobCards(page) {
   // The results rail; ids live on the <li> or a data attribute. Also grab the title + company
   // from the CARD itself — the detail pane sometimes hasn't rendered when we read it, and we
   // never want to log a job with no role. LinkedIn changes these classes often, so cast wide.
-  const cards = await page.$$eval(CARD_SELECTOR, (nodes) => {
+  const cards = await page.$$eval(CARD_SELECTOR_ANY, (nodes) => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     /**
      * Collapse a string that is exactly itself twice, and strip LinkedIn's badge suffixes.
@@ -98,8 +119,15 @@ async function collectJobCards(page) {
       return m ? m[1].trim() : v;
     };
     return nodes.map((n) => {
+      // The id, from a data attribute if LinkedIn still sets one — otherwise straight out of
+      // the job link's href. /jobs/view/<id> is the one part of a job card that cannot be
+      // renamed, because it is the address of the job itself.
+      const hrefOf = (el) => (el && el.getAttribute && el.getAttribute('href')) || '';
+      const fromHref = (h) => { const m = String(h).match(/\/jobs\/view\/(\d+)/); return m ? m[1] : null; };
       const id = n.getAttribute('data-occludable-job-id') || n.getAttribute('data-job-id')
-        || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'));
+        || (n.querySelector('[data-job-id]') && n.querySelector('[data-job-id]').getAttribute('data-job-id'))
+        || fromHref(hrefOf(n))
+        || fromHref(hrefOf(n.querySelector && n.querySelector('a[href*="/jobs/view/"]')));
       const t = n.querySelector('.job-card-list__title, .job-card-list__title--link, .artdeco-entity-lockup__title, a.job-card-container__link');
       const c = n.querySelector('.job-card-container__primary-description, .artdeco-entity-lockup__subtitle, .job-card-container__company-name');
       // LinkedIn renders the title TWICE — a visible span plus a visually-hidden copy for
