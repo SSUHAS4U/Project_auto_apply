@@ -5,3 +5,6 @@ worker.config.json
 jobpilot-desktop.config.json
 *.log
 logs/
+.search-offset
+.indeed-search-offset
+.invite-cleanup.json
