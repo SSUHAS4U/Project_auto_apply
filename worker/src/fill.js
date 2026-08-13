@@ -440,8 +440,20 @@ export async function fillDropdowns(page, profile, api, root) {
 export async function uploadResume(page, resume, root) {
   if (!resume || !resume.hasResume) return false;
   const scope = root || page;
+  // NO FILE INPUT MEANS NOTHING TO UPLOAD — which is success, not failure.
+  //
+  // This returned false, and the callers read false as "the upload failed" and refused to
+  // submit. But both portals normally arrive with the member's saved resume already attached
+  // and render no file input at all, so the guard meant to prevent a CV-less application
+  // blocked every application that already HAD a CV. It is the same mistake as demanding our
+  // own filename back, one layer down: `false` was carrying two opposite meanings.
+  //
+  // 'none' says nothing needed uploading. The callers treat that as fine, because it is.
   const input = await scope.$('input[type=file]');
-  if (!input) return false;
+  if (!input) {
+    logEvent('resume', { outcome: 'no-upload-needed', filename: resume.filename || null });
+    return 'none';
+  }
   const filename = resume.filename || 'resume.pdf';
   const buffer = Buffer.from(resume.contentBase64, 'base64');
   try {

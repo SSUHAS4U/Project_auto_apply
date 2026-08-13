@@ -512,9 +512,16 @@ export async function runIndeed(page, api, plan, state, ctx) {
             result === 'applied' ? 'applied'
               : result === 'external' ? 'external'
               : result === 'attention' ? 'attention' : 'none',
-            result === 'attention' ? (state.attentionReason || undefined) : undefined,
+            // BOTH sources. The screening questions live in state.blockedQuestions and the
+            // non-question causes in state.attentionReason; v151 read only the latter, so the
+            // twelve jobs that paused on a real question reported "attention: attention" and the
+            // question itself — the one thing the owner could have acted on — was discarded.
+            result === 'attention'
+              ? ((state.blockedQuestions || [])[0] || state.attentionReason || undefined)
+              : undefined,
           );
           state.attentionReason = null;   // per job, never carried into the next one
+          state.blockedQuestions = null;
           if (result === 'applied') {
             applied++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
@@ -675,7 +682,10 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
     // asynchronous too — "Uploading…" is what blocked five applications here by being read as a
     // screening question, and the underlying problem was that nothing waited for it to finish.
     const resumeOk = await uploadResume(applyPage, resume).catch(() => false);
-    if (resume && resume.hasResume && !resumeOk) {
+    // 'none' means the form had no file input, i.e. the resume is already attached —
+    // that is success. Only an attempted upload that never confirmed is a failure.
+    if (resume && resume.hasResume && resumeOk !== true && resumeOk !== 'none') {
+      state.attentionReason = 'the resume did not finish uploading';
       await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
         detail: 'the resume did not finish uploading — left for you rather than submitting an '
           + 'application without a CV' });

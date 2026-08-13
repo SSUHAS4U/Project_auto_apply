@@ -1404,7 +1404,9 @@ async function easyApply(page, api, profile, resume, state) {
     // Only when a resume EXISTS to upload: a profile without one is a separate, already-handled
     // case, and treating it as a failure here would pause every application for those users.
     const resumeOk = await uploadResume(page, resume, modal).catch(() => false);
-    if (resume && resume.hasResume && !resumeOk) {
+    // 'none' means the form had no file input, i.e. the resume is already attached —
+    // that is success. Only an attempted upload that never confirmed is a failure.
+    if (resume && resume.hasResume && resumeOk !== true && resumeOk !== 'none') {
       // Name the cause so the ledger can attribute this pause. Without it the run reported 30
       // unexplained "attention" outcomes and 92 silent refusals.
       state.attentionReason = 'the resume did not finish uploading';
