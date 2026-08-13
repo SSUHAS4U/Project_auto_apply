@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { Api } from './api.js';
-import { launchBrowser, startPausePoller, sleep, APP_DIR } from './browser.js';
+import { launchBrowser, startPausePoller, sleep, APP_DIR, closeBrowser, killStrayBrowsers } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import {
@@ -122,6 +122,14 @@ async function main() {
   // all — the terminal log is the whole interface, which is the point: you shouldn't have to
   // watch a browser drive itself.
 
+  // Clear orphaned browsers from a previous session BEFORE launching.
+  //
+  // Fifteen Camoufox processes were found alive on the owner's machine, 4.1 GB between them,
+  // each holding a lock on the same profile. Every search returned zero and it looked exactly
+  // like being blocked by the portal. An orphan left by a crash or a previous run poisons the
+  // first browser of the next run, so a restart only helps if the strays go first.
+  await killStrayBrowsers({ log: console.log });
+
   const signedInMarker = path.join(APP_DIR, '.signed-in');
   let background = fs.existsSync(signedInMarker);
   let { ctx, page } = await launchBrowser({ headless: background });
@@ -138,7 +146,7 @@ async function main() {
     console.log('  — common right after a reinstall). Reopening a window so you can log in again…');
     try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
     background = false;
-    await ctx.close().catch(() => {});
+    await closeBrowser(ctx);
     ({ ctx, page } = await launchBrowser({ headless: false }));
   }
 
@@ -180,7 +188,7 @@ async function main() {
         sleep(4000),                            // never hang the app's exit on a slow network
       ]);
     }
-    await ctx.close().catch(() => {});
+    await closeBrowser(ctx);
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
@@ -201,7 +209,7 @@ async function main() {
     if (!(await pageAlive(page))) {
       console.log('\n  ⟳ the automation browser had stopped responding — reopening it…');
       logEvent('lifecycle', { event: 'browser dead while idle — relaunching', headless: background });
-      await ctx.close().catch(() => {});
+      await closeBrowser(ctx);
       await sleep(1200);   // let the profile lock drop before reopening the same directory
       try {
         ({ ctx, page } = await launchBrowser({ headless: background }));
@@ -223,7 +231,7 @@ async function main() {
       console.log('\n  → Opening a browser window so you can sign in…');
       try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
       background = false;
-      await ctx.close().catch(() => {});
+      await closeBrowser(ctx);
       // Firefox holds a lock file inside the profile directory and does not always drop it the
       // instant close() resolves. Relaunching the same profile straight away can fail with
       // "profile is already in use" — and since the whole point of this callback is to produce
@@ -271,7 +279,7 @@ async function main() {
       // relaunch if not, so a dead browser self-heals instead of failing every run.
       if (!(await pageAlive(page))) {
         console.log('  ⟳ the automation browser had closed — reopening it…');
-        await ctx.close().catch(() => {});
+        await closeBrowser(ctx);
         ({ ctx, page } = await launchBrowser({ headless: background }));
       }
       // The portal about to run must be signed in — not "some portal". `anyPortalLoggedIn`
@@ -287,7 +295,7 @@ async function main() {
         console.log('     remembered and later runs go back to being invisible.\n');
         try { fs.rmSync(signedInMarker, { force: true }); } catch { /* non-fatal */ }
         background = false;
-        await ctx.close().catch(() => {});
+        await closeBrowser(ctx);
         ({ ctx, page } = await launchBrowser({ headless: false }));
         await page.goto(loginUrl(order.portal)).catch(() => {});
       }
@@ -303,7 +311,7 @@ async function main() {
         console.log('\n  ⟳ the automation browser closed mid-run — reopening and retrying this block…');
         await api.event({ runId: order.runId, portal: order.portal, type: 'info',
           detail: 'browser closed mid-run — reopened and retried' });
-        await ctx.close().catch(() => {});
+        await closeBrowser(ctx);
         ({ ctx, page } = await launchBrowser({ headless: background }));
         res = await adapter(page, api, order.plan, state, ctx);
       }

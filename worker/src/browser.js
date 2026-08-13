@@ -29,6 +29,59 @@ export const APP_DIR = process.pkg ? path.dirname(process.execPath) : process.cw
 let botChallenges = 0;
 export function botChallengeCount() { return botChallenges; }
 
+/**
+ * Close the automation browser and make sure its PROCESS is actually gone.
+ *
+ * `ctx.close()` closes the Playwright context. With the bundled Camoufox it does not reliably
+ * end the underlying process, and every recovery path added between v133 and v150 — the idle
+ * relaunch, the dead-browser retry, Connect reopening a window — called `ctx.close()` and
+ * moved straight on.
+ *
+ * So each "relaunch" left the old process alive still holding an exclusive lock on
+ * .profile-ff. The new instance could not take the lock, both died, the next recovery left
+ * another orphan, and the run spiralled: FIFTEEN Camoufox processes and 4.1 GB of RAM on the
+ * owner's machine, every search returning zero because the browser was dead rather than
+ * because the portal withheld anything. The recovery machinery caused the failure it was
+ * recovering from, and it looked exactly like being blocked — which is what I diagnosed, twice,
+ * wrongly.
+ *
+ * Camoufox is bundled by JobPilot and nothing else on the machine runs it, so any surviving
+ * camoufox process after a close is ours and is an orphan. Killing it is safe and is the only
+ * thing that reliably frees the profile.
+ */
+export async function closeBrowser(ctx, { log = () => {} } = {}) {
+  try { await ctx?.close(); } catch { /* already gone */ }
+  // Give the process a moment to exit cleanly before forcing it — a clean exit flushes
+  // cookies.sqlite, and killing too eagerly is how a fresh sign-in gets lost.
+  await sleep(1500);
+  await killStrayBrowsers({ log });
+}
+
+/**
+ * Kill any Camoufox still running. Called on close and again at startup.
+ *
+ * Startup matters as much as close: an orphan left by a previous session (or a crash) holds the
+ * profile lock before the new worker even launches, so the very first browser of the run is
+ * already doomed. Clearing them first is what makes a restart actually fix things.
+ */
+export async function killStrayBrowsers({ log = () => {} } = {}) {
+  try {
+    const { execFile } = await import('node:child_process');
+    const run = (cmd, args) => new Promise((resolve) => {
+      try { execFile(cmd, args, { timeout: 10000 }, () => resolve()); } catch { resolve(); }
+    });
+    if (process.platform === 'win32') {
+      await run('taskkill', ['/F', '/IM', 'camoufox.exe', '/T']);
+    } else {
+      await run('pkill', ['-f', 'camoufox']);
+    }
+    logEvent('lifecycle', { event: 'killed stray browser processes', platform: process.platform });
+    log('     (cleared any leftover automation browser processes)');
+  } catch (e) {
+    logEvent('lifecycle', { event: 'stray-kill failed', error: String(e && e.message).slice(0, 160) });
+  }
+}
+
 export async function launchBrowser({ headless = false, log = console.log } = {}) {
   const userDataDir = path.join(APP_DIR, '.profile'); // persisted logins live here
   fs.mkdirSync(userDataDir, { recursive: true });
