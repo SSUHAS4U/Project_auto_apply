@@ -502,8 +502,19 @@ export async function runIndeed(page, api, plan, state, ctx) {
           logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
           const result = await indeedApply(jobPage, api, profile, resume, state, ctx);
-          logResult(result === 'applied' ? 'applied' : result === 'external' ? 'external'
-            : result === 'attention' ? 'attention' : 'none');
+          // Pass the REASON through, not just the outcome. This called logResult('attention')
+          // with nothing attached, so the terminal printed a bare "Paused — needs your answer"
+          // and the ledger recorded "attention: attention" — five pauses in one run with no
+          // explanation, sending the owner hunting for a screening question that did not exist.
+          // The same fix went into linkedin.js and was never carried here, which is how a fix
+          // reported as done stayed broken on half the product.
+          logResult(
+            result === 'applied' ? 'applied'
+              : result === 'external' ? 'external'
+              : result === 'attention' ? 'attention' : 'none',
+            result === 'attention' ? (state.attentionReason || undefined) : undefined,
+          );
+          state.attentionReason = null;   // per job, never carried into the next one
           if (result === 'applied') {
             applied++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'easy_apply',
@@ -654,8 +665,11 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
   await humanDelay(1800, 3200);
 
   for (let step = 0; step < 12; step++) {
-    if (state.paused) return 'attention';
-    if ((await pageState(applyPage)) !== 'ok') return 'attention';
+    if (state.paused) { state.attentionReason = 'the run was paused'; return 'attention'; }
+    if ((await pageState(applyPage)) !== 'ok') {
+      state.attentionReason = 'the apply page was blocked or unreadable';
+      return 'attention';
+    }
 
     // Same rule as LinkedIn: never submit past a resume that did not attach. Indeed's upload is
     // asynchronous too — "Uploading…" is what blocked five applications here by being read as a
@@ -694,5 +708,12 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
     break;
   }
   if (applyPage !== page) await applyPage.close().catch(() => {});
+  // The catch-all. Reaching here means the flow ran out of steps without submitting and without
+  // any earlier branch explaining why — so say THAT, rather than printing a bare "needs your
+  // answer" that sends the owner looking for a screening question that may not exist. Five of
+  // today's pauses came through here with nothing recorded at all.
+  if (!state.attentionReason) {
+    state.attentionReason = 'the apply flow ended without a submit step (no question was blocking it)';
+  }
   return 'attention';
 }
