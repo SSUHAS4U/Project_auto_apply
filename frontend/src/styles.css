@@ -1864,7 +1864,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
       color-mix(in srgb, #fff 78%, transparent) 0%,
       color-mix(in srgb, #fff 52%, transparent) 46%,
       color-mix(in srgb, #fff 38%, transparent) 100%);
-  border: 1px solid color-mix(in srgb, #fff 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, #fff 60%);
   box-shadow:
     inset 0 1px 0 0 color-mix(in srgb, #fff 90%, transparent),
     inset 0 -1px 0 0 color-mix(in srgb, #fff 30%, transparent),
@@ -1903,11 +1903,18 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
     transform .34s cubic-bezier(.34, 1.56, .44, 1);
 }
 .dock-item svg { transition: transform .34s cubic-bezier(.34, 1.56, .44, 1); }
-.dock-item:hover { color: var(--text); }
 .dock-item:hover svg { transform: translateY(-2px) scale(1.08); }
 .dock-item:active svg { transform: translateY(0) scale(.9); transition-duration: .1s; }
-.dock-item.is-active { color: var(--text); }
-.dock-item.is-active svg { transform: translateY(-1px); }
+
+/* White ONLY where the pill actually is. `is-lit` and `is-active` come apart the
+   moment you hover something else: the pill slides away, and an icon left white
+   on light glass would vanish. So white tracks the pill, and the route you are
+   really on stays accent-tinted with its dot — you can preview another section
+   without losing sight of where you are. */
+.dock-item.is-lit { color: #fff; }
+.dock-item.is-lit svg { transform: translateY(-1px); }
+.dock-item.is-active:not(.is-lit) { color: var(--accent-hi); }
+.dock-item:hover:not(.is-lit) { color: var(--text); }
 .dock-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -1929,6 +1936,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
     transform .34s cubic-bezier(.34, 1.56, .44, 1);
 }
 .dock-item.is-active .dock-dot { opacity: .9; transform: scale(1); }
+.dock-item.is-active:not(.is-lit) .dock-dot { background: var(--accent-hi); }
 
 /* ONE element that MOVES — that is what makes the selection glide sideways
    instead of blinking between positions. It is a piece of glass in its own
@@ -1940,17 +1948,17 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   left: 0;
   height: 42px;
   border-radius: 999px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, #fff 100%, transparent) 0%,
-      color-mix(in srgb, #fff 88%, transparent) 100%);
+  /* THE ACCENT, not white glass. The dock was the one surface in the app still
+     wearing neutral grey while every other selected thing — sidebar item, hub
+     tab, primary button — is indigo. A navigation control that does not use the
+     app's own selection colour reads as a different app bolted on.
+     Same 135deg accent gradient as .btn-primary, so it is literally the same
+     blue the rest of the product uses. */
+  background: linear-gradient(135deg, var(--accent-hi), var(--accent));
   box-shadow:
-    inset 0 1px 0 0 #fff,
-    inset 0 -1px 0 0 color-mix(in srgb, #fff 60%, transparent),
-    0 1px 1px rgba(15, 23, 42, 0.06),
-    0 4px 10px -2px rgba(15, 23, 42, 0.18);
-  /* The same spring as the icons. A shared curve is why a set of separate
-     animations reads as one movement. */
+    inset 0 1px 0 0 color-mix(in srgb, #fff 34%, transparent),
+    0 1px 2px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 6px 16px -3px color-mix(in srgb, var(--accent) 45%, transparent);
   transition:
     transform .42s cubic-bezier(.34, 1.4, .44, 1),
     width .42s cubic-bezier(.34, 1.4, .44, 1);
@@ -1960,12 +1968,14 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
    at low alpha over a dark base is glass; the light-mode values simply go grey
    and flat, which is the usual way a "dark theme" ends up looking cheap. */
 :root[data-theme="dark"] .dock-inner {
+  /* Blue and black, not grey and black. The sheen carries a little accent in it
+     so the bar belongs to the same product as the pill sitting inside it. */
   background:
     linear-gradient(180deg,
-      color-mix(in srgb, #fff 14%, transparent) 0%,
-      color-mix(in srgb, #fff 7%, transparent) 46%,
+      color-mix(in srgb, var(--accent) 22%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 11%, transparent) 46%,
       color-mix(in srgb, #fff 4%, transparent) 100%);
-  border-color: color-mix(in srgb, #fff 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   box-shadow:
     inset 0 1px 0 0 color-mix(in srgb, #fff 22%, transparent),
     inset 0 -1px 0 0 color-mix(in srgb, #fff 6%, transparent),
@@ -1981,17 +1991,14 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
     0 20px 48px -12px rgba(0, 0, 0, 0.8),
     0 46px 90px -30px rgba(0, 0, 0, 0.7);
 }
-:root[data-theme="dark"] .dock-pill {
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, #fff 26%, transparent) 0%,
-      color-mix(in srgb, #fff 15%, transparent) 100%);
-  box-shadow:
-    inset 0 1px 0 0 color-mix(in srgb, #fff 34%, transparent),
-    inset 0 -1px 0 0 color-mix(in srgb, #fff 10%, transparent),
-    0 2px 8px -2px rgba(0, 0, 0, 0.7);
-}
-:root[data-theme="dark"] .dock-item { color: color-mix(in srgb, var(--text) 52%, transparent); }
+/* No dark override for .dock-item's colour on purpose.
+   `:root[data-theme="dark"] .dock-item` weighs the same as
+   `.dock-item.is-active:not(.is-lit)` and, sitting later in the file, quietly won —
+   so in dark mode the active item lost its blue the moment you hovered anything
+   else. The base rule already reads correctly in both themes because it is
+   color-mix'd from var(--text), which flips with the theme by itself. Raising
+   specificity here would have fixed the symptom and left the trap for the next
+   dock rule someone adds. */
 
 /* The page must not end underneath the dock, or the final row of any list is
    permanently covered — which would be "disturbing the page" however good the

@@ -111,15 +111,21 @@ export function SubNavDock({ items }: { items: DockItem[] }) {
             aria-hidden="true"
           />
         )}
-        {items.map((it) => (
+        {items.map((it, i) => (
           <NavLink
             key={it.to}
             to={it.to}
             end={it.end}
-            className={({ isActive }) => `dock-item ${isActive ? 'is-active' : ''}`}
+            // `is-lit` means "the pill is underneath THIS item right now" — which is not the
+            // same as being the active route, because hovering moves the pill away. The icon
+            // on the pill has to be white to read against the accent fill, but the moment the
+            // pill slides elsewhere that same white would be invisible on light glass. So the
+            // colour follows the pill, and the active route falls back to accent-tinted.
+            className={({ isActive }) =>
+              `dock-item ${isActive ? 'is-active' : ''} ${i === shownIndex ? 'is-lit' : ''}`}
             aria-label={it.label}
-            onPointerEnter={(e) => { if (e.pointerType !== 'touch') setHoverIndex(items.indexOf(it)); }}
-            onFocus={() => setHoverIndex(items.indexOf(it))}
+            onPointerEnter={(e) => { if (e.pointerType !== 'touch') setHoverIndex(i); }}
+            onFocus={() => setHoverIndex(i)}
             onBlur={() => setHoverIndex(-1)}
           >
             <Icon name={it.ico} size={17} />
