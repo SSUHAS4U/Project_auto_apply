@@ -19,7 +19,7 @@ import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
  */
 const SEARCH_GAP_MS = 120_000;
 import { logEvent } from '../logfile.js';
-import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
 import { newLedger, seal } from '../ledger.js';
 import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
@@ -812,12 +812,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           logJobHeader(title || 'Role', company || '', gate.label);
           beginJob(); // reset per-job de-duplication of the field rows below
           state.blockedQuestions = null;
-          const result = await easyApply(page, api, profile, resume, state);
+          const result = await easyApply(page, api, profile, state);
           if (result === 'applied') {
             applied++;
             logResult('applied');
             await api.event({ runId: state.runId, portal: 'linkedin', type: 'easy_apply',
-              title, company, url: `https://www.linkedin.com/jobs/view/${id}/`, detail: `fit ${score}` });
+              title, company, url: `https://www.linkedin.com/jobs/view/${id}/`,
+              // The resume LinkedIn actually attached, recorded per application — that is the
+              // whole point of observing it instead of uploading one.
+              detail: `fit ${score}${state.resumeName ? ` — resume: ${state.resumeName}` : ''}` });
           } else if (result === 'external') {
             // No Easy Apply → the owner applies by hand; recorded as manual_apply so the
             // dashboard lists it and the daily digest emails it.
@@ -1387,7 +1390,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */
 let easyApplyDiagShown = false;
-async function easyApply(page, api, profile, resume, state) {
+async function easyApply(page, api, profile, state) {
   // The search is Easy-Apply-only (f_AL=true), so the detail pane WILL have an Easy Apply
   // button once it finishes loading. The pane loads async after the card click, so poll for
   // the button for a few seconds before giving up — otherwise a slow render was being
@@ -1422,33 +1425,17 @@ async function easyApply(page, api, profile, resume, state) {
     // Narrate each step so the live feed caption shows the Easy Apply progressing.
     state.action = `Easy Apply — step ${step + 1} (filling the form)`;
     // EVERYTHING scoped to `modal`: the fill helpers must not touch the search header behind it.
-    // A resume that did not attach must NOT be submitted past.
+    // Which resume the PORTAL has attached. Observed and recorded, never uploaded, and it
+    // does NOT gate the submit.
     //
-    // The upload is asynchronous and both portals show "Uploading…" while it runs; the old call
-    // handed the file to the browser and moved straight on, so a form could be submitted before
-    // the file landed. An employer receiving an application with no CV is worse than one that
-    // waits for you — and nothing in the log said it had happened.
-    //
-    // Only when a resume EXISTS to upload: a profile without one is a separate, already-handled
-    // case, and treating it as a failure here would pause every application for those users.
-    const resumeOk = await uploadResume(page, resume, modal).catch(() => false);
-    // 'none' means the form had no file input, i.e. the resume is already attached —
-    // that is success. Only an attempted upload that never confirmed is a failure.
-    if (resume && resume.hasResume && resumeOk !== true && resumeOk !== 'none') {
-      // Name the cause so the ledger can attribute this pause. Without it the run reported 30
-      // unexplained "attention" outcomes and 92 silent refusals.
-      state.attentionReason = 'the resume did not finish uploading';
-      // No `title`/`company` here: easyApply(page, api, profile, resume, state) does not receive
-      // them. Referencing them threw ReferenceError: title is not defined on every resume that
-      // failed to confirm — 38 applications failed in one run, and the guard meant to protect
-      // an application became the thing that destroyed it. node --check cannot see an
-      // out-of-scope reference, and no test exercised this path because it only runs when an
-      // upload does not confirm.
-      await api.event({ runId: state.runId, portal: 'linkedin', type: 'error',
-        detail: 'the resume did not finish uploading — left for you rather than '
-          + 'submitting an application without a CV' });
-      return 'attention';
-    }
+    // The previous guard held an application whenever it could not confirm an upload of OUR
+    // copy of the resume — but LinkedIn arrives with the member's own saved resume already
+    // selected and never echoes our filename back, so the confirmation could not arrive in the
+    // normal case. Every job paused on "the resume did not finish uploading" while the right
+    // resume sat attached on screen. LinkedIn holds the file and will not accept its own form
+    // without one; JobPilot's job is to record which one went, not to supply it.
+    const attached = await observeResume(page, modal).catch(() => ({ attached: false, name: null }));
+    state.resumeName = attached.name;
     const { attention } = await fillForm(page, profile, api, modal);
     // Screening questions are mostly radio groups, which fillForm skips — answer them too,
     // otherwise the step can never validate and Submit never appears.

@@ -422,86 +422,74 @@ export async function fillDropdowns(page, profile, api, root) {
   return { attention };
 }
 
-/** Attach the resume PDF (base64 from the backend) to a file input, if the form has one. */
 /**
- * Attach the resume AND wait until the portal says it has it.
+ * Read which resume the PORTAL has selected. Never uploads one.
  *
- * This used to call setInputFiles and return true on the next line — the file was handed to the
- * browser and the run moved straight on. Both portals upload asynchronously and show
- * "Uploading…" while they do, which is how that text ended up being read as a screening
- * question in the first place. Ignoring the label is right; ignoring the upload is not, and an
- * application submitted before the file lands is worse than one that pauses — the employer gets
- * a candidate with no CV and nothing in the log says so.
+ * JobPilot has no business attaching a file here. LinkedIn and Indeed each already hold the
+ * member's resume and arrive at the apply step with it selected — that is the file the employer
+ * is meant to receive. Pushing our own copy in was solving a problem neither portal has.
  *
- * So: attach, then wait for the portal's own evidence that it finished — the progress text
- * gone, and the filename visible on the form. Returns false if it never confirms, so the caller
- * can treat a resume-less application as needing a human rather than submitting it.
+ * It also broke applying outright. The upload was asynchronous, so the code had to wait for the
+ * portal to echo OUR filename back; when the portal showed its own saved resume instead — which
+ * is the normal case — the echo never came, the upload was declared unconfirmed, and the
+ * application was held for review. Job after job paused on "the resume did not finish uploading"
+ * while the correct resume sat attached on screen. The guard meant to prevent a CV-less
+ * application became the reason nothing was submitted at all.
+ *
+ * So this observes and does not act: find the name of whatever the portal has attached, record
+ * it so the run can be checked afterwards, and return. It reports; it never blocks. A missing
+ * name is noted and the application proceeds, because the portal — not JobPilot — decides what
+ * it sends, and it will refuse its own form if it truly has no resume.
+ *
+ * Returns { attached, name }.
  */
-export async function uploadResume(page, resume, root) {
-  if (!resume || !resume.hasResume) return false;
+export async function observeResume(page, root) {
   const scope = root || page;
-  // NO FILE INPUT MEANS NOTHING TO UPLOAD — which is success, not failure.
-  //
-  // This returned false, and the callers read false as "the upload failed" and refused to
-  // submit. But both portals normally arrive with the member's saved resume already attached
-  // and render no file input at all, so the guard meant to prevent a CV-less application
-  // blocked every application that already HAD a CV. It is the same mistake as demanding our
-  // own filename back, one layer down: `false` was carrying two opposite meanings.
-  //
-  // 'none' says nothing needed uploading. The callers treat that as fine, because it is.
-  const input = await scope.$('input[type=file]');
-  if (!input) {
-    logEvent('resume', { outcome: 'no-upload-needed', filename: resume.filename || null });
-    return 'none';
-  }
-  const filename = resume.filename || 'resume.pdf';
-  const buffer = Buffer.from(resume.contentBase64, 'base64');
-  try {
-    await input.setInputFiles({ name: filename, mimeType: 'application/pdf', buffer });
-  } catch (e) {
-    console.log(`     \u26a0 could not attach the resume: ${String(e && e.message).slice(0, 120)}`);
-    logEvent('resume', { outcome: 'attach-failed', filename, error: String(e && e.message).slice(0, 200) });
-    return false;
-  }
+  const found = await scope.evaluate(() => {
+    const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    // Filenames only. Anchored to a document extension so a company called "Acme Inc." or a
+    // sentence ending in ".pdf support" cannot be mistaken for the attachment.
+    const FILE = /([\w][\w \-&().]{0,80}\.(?:pdf|docx?|rtf))\b/i;
 
-  // Up to 45s. A slow connection on a 200KB PDF is ordinary; failing at 5s would report a
-  // working upload as broken, which is its own bad outcome.
-  const stem = filename.replace(/\.[^.]+$/, '').slice(0, 40);
-  const deadline = Date.now() + 45_000;
-  let sawProgress = false;
-  while (Date.now() < deadline) {
-    const state = await scope.evaluate((st) => {
-      const body = (document.body && document.body.innerText || '').replace(/\s+/g, ' ');
-      return {
-        busy: /uploading|processing|attaching|please wait/i.test(body),
-        // The portal echoes the filename back once it has the file. Matched on the stem so an
-        // extension rewrite ("resume.pdf" shown as "resume") still counts.
-        named: st.length > 2 && body.toLowerCase().includes(st.toLowerCase()),
-      };
-    }, stem).catch(() => ({ busy: false, named: false }));
-    if (state.busy) { sawProgress = true; await humanDelay(700, 1200); continue; }
-    if (state.named) {
-      logEvent('resume', { outcome: 'uploaded', filename, waited: sawProgress });
-      return true;
+    // 1. The portal's own filename element. LinkedIn renders the selected resume in a card whose
+    //    class carries "file-name"; Indeed's markup is similar. Most reliable when present,
+    //    because it is the portal stating its choice rather than us inferring it from prose.
+    for (const n of document.querySelectorAll('[class*="file-name" i], [class*="filename" i]')) {
+      const t = clean(n.innerText || n.textContent);
+      if (t && t.length < 120) return { name: t, how: 'filename-element' };
     }
-    // Not busy and not named yet — give it a moment before deciding either way.
-    if (!sawProgress) { await humanDelay(700, 1200); }
-    else break;   // it finished uploading but never showed the name; checked once more below
-  }
 
-  // One last look, because some forms replace the filename with a generic "Resume attached".
-  const settled = await scope.evaluate((st) => {
-    const body = (document.body && document.body.innerText || '').replace(/\s+/g, ' ');
-    if (/uploading|processing|attaching/i.test(body)) return false;
-    if (st.length > 2 && body.toLowerCase().includes(st.toLowerCase())) return true;
-    return /resume (attached|uploaded|selected)|attached resume|\bcv\b[^.]{0,20}attached|[\w-]+\.pdf\b/i.test(body);
-  }, stem).catch(() => false);
+    // 2. A CHECKED resume option. Both portals list saved resumes as radios once there is more
+    //    than one, and only the checked one is actually sent — reading the first label instead
+    //    would confidently report the wrong file, which is worse than reporting none.
+    for (const r of document.querySelectorAll('input[type=radio]:checked, input[type=checkbox]:checked')) {
+      const box = r.closest('label, li, [class*="option" i], [class*="card" i], div');
+      const m = clean(box && box.innerText).match(FILE);
+      if (m) return { name: m[1].trim(), how: 'checked-option' };
+    }
 
-  if (settled) {
-    logEvent('resume', { outcome: 'uploaded', filename, waited: sawProgress });
-    return true;
+    // 3. Any document filename visible in the apply form.
+    const body = clean(document.body && document.body.innerText);
+    const m = body.match(FILE);
+    if (m) return { name: m[1].trim(), how: 'form-text' };
+
+    // 4. The portal's built-in resume, which is a profile rather than a file and so has no
+    //    filename at all. Still a real attachment — reporting "none" here would be wrong.
+    if (/indeed resume/i.test(body)) return { name: 'Indeed Resume', how: 'built-in' };
+    if (/linkedin profile/i.test(body) && /resume|cv\b/i.test(body)) {
+      return { name: 'LinkedIn profile', how: 'built-in' };
+    }
+    return null;
+  }).catch(() => null);
+
+  if (found && found.name) {
+    console.log(`     ✓ resume attached by the portal: ${found.name}`);
+    logEvent('resume', { outcome: 'portal-attached', name: found.name, detectedBy: found.how });
+    return { attached: true, name: found.name };
   }
-  console.log(`     \u26a0 the resume did not finish uploading (${filename}) — treating this as needing you`);
-  logEvent('resume', { outcome: 'not-confirmed', filename, waited: sawProgress });
-  return false;
+  // Not a failure and not a pause — the portal validates its own form. Recorded so that "was a
+  // resume ever attached?" is answerable from the log rather than guessed at.
+  console.log('     · no resume name visible on this form — the portal decides what it sends');
+  logEvent('resume', { outcome: 'none-visible' });
+  return { attached: false, name: null };
 }

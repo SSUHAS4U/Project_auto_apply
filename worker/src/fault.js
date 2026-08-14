@@ -47,14 +47,6 @@ export const FAULTS = {
     action: 'The worker reopens it and retries the block. No action needed unless it repeats.',
     owner: false,
   },
-  RESUME_NOT_CONFIRMED: {
-    what: 'The resume did not finish uploading, so the application was NOT submitted.',
-    why: 'Both portals upload asynchronously. Submitting before the file lands sends an '
-       + 'application with no CV, which cannot be undone.',
-    action: 'Usually a slow upload and it succeeds next run. If every job reports it, re-upload '
-       + 'the resume in Documents — the stored file may be corrupt.',
-    owner: false,
-  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

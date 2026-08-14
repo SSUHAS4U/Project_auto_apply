@@ -9,7 +9,7 @@ import path from 'node:path';
 import { humanDelay, sleep, APP_DIR } from '../browser.js';
 import { logJobHeader, logSkipped, logResult, beginJob, setLedger } from '../log.js';
 import { newLedger, seal } from '../ledger.js';
-import { fillForm, fillChoices, fillDropdowns, uploadResume } from '../fill.js';
+import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
 import { shouldApply } from '../gate.js';
 
 // Indeed throttles job pages under sustained access. Rest up to 3 times (1m + 2m + 3m)
@@ -226,7 +226,8 @@ export async function runIndeed(page, api, plan, state, ctx) {
   setLedger(runLedger);
   if (!(await indeedLoggedIn(page, api, state))) return { applied: 0 };
   const profile = await api.profile().catch(() => ({}));
-  const resume = await api.resume().catch(() => ({ hasResume: false }));
+  // No resume fetch here on purpose: Indeed serves its own hosted resume and JobPilot
+  // never uploads one, so pulling the file down would be a download nothing consumes.
   // An Indeed run lasts ~1.5h unless you stop it (floor enforced here so a stale schedule row
   // can't cut it short). Indeed has no post-scan/outreach phase — it only applies.
   // Duration comes from Automation → Schedule (Indeed minutes).
@@ -501,7 +502,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
           logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
-          const result = await indeedApply(jobPage, api, profile, resume, state, ctx);
+          const result = await indeedApply(jobPage, api, profile, state, ctx);
           // Pass the REASON through, not just the outcome. This called logResult('attention')
           // with nothing attached, so the terminal printed a bare "Paused — needs your answer"
           // and the ledger recorded "attention: attention" — five pauses in one run with no
@@ -659,7 +660,7 @@ async function describeApplyArea(page) {
   console.log(`     [diag] iframes: ${info.frames} · buttons: ${info.buttons.join(' | ') || '(none)'}`);
 }
 
-async function indeedApply(page, api, profile, resume, state, ctx) {
+async function indeedApply(page, api, profile, state, ctx) {
   const btn = await findIndeedApplyButton(page);
   if (!btn) return 'external';
 
@@ -678,19 +679,11 @@ async function indeedApply(page, api, profile, resume, state, ctx) {
       return 'attention';
     }
 
-    // Same rule as LinkedIn: never submit past a resume that did not attach. Indeed's upload is
-    // asynchronous too — "Uploading…" is what blocked five applications here by being read as a
-    // screening question, and the underlying problem was that nothing waited for it to finish.
-    const resumeOk = await uploadResume(applyPage, resume).catch(() => false);
-    // 'none' means the form had no file input, i.e. the resume is already attached —
-    // that is success. Only an attempted upload that never confirmed is a failure.
-    if (resume && resume.hasResume && resumeOk !== true && resumeOk !== 'none') {
-      state.attentionReason = 'the resume did not finish uploading';
-      await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
-        detail: 'the resume did not finish uploading — left for you rather than submitting an '
-          + 'application without a CV' });
-      return 'attention';
-    }
+    // Same rule as LinkedIn: observe which resume Indeed has attached, record it, submit anyway.
+    // Indeed serves its own hosted resume, which has no filename to match against at all, so a
+    // guard demanding our filename back could never pass here either.
+    const attached = await observeResume(applyPage).catch(() => ({ attached: false, name: null }));
+    state.resumeName = attached.name;
     const { attention } = await fillForm(applyPage, profile, api);
     // Indeed's screening step is radio-group based too — fillForm skips those.
     const { attention: choiceAttention } = await fillChoices(applyPage, api);
