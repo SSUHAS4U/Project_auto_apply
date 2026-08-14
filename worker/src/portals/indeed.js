@@ -222,6 +222,12 @@ const INDEED_SEARCH_GAP_MS = 120_000;
 
 export async function runIndeed(page, api, plan, state, ctx) {
   // Bail out loudly rather than walking 72 searches that cannot produce a single application.
+  // Outcome buckets. Indeed returned bare `{ applied }` while LinkedIn returned the full set,
+  // so logSummary printed "✅ 0 submitted ⏸ 0 need you ✋ 0 manual ⤼ 0 skipped ✗ 0 failed" over
+  // a block that had just paused on 24 jobs. Nothing was miscounted — nothing was counted at
+  // all, and a row of zeros reads as "the run did nothing" rather than "the run did 24 things
+  // and could not finish any of them".
+  const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
   const runLedger = newLedger('indeed');
   setLedger(runLedger);
   if (!(await indeedLoggedIn(page, api, state))) return { applied: 0 };
@@ -383,7 +389,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
             detail: 'checkpoint/captcha persists — pausing Indeed for this block. Solve it in the browser, then run again.' });
           await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha — solve it in the browser').catch(() => {});
-          return { applied, blocked: true };
+          return { applied, blocked: true, ...tally };
         }
         await api.event({ runId: state.runId, portal: 'indeed', type: 'error',
           detail: 'checkpoint/captcha — solve it in the browser, then it resumes' });
@@ -460,7 +466,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
                 await api.runStatus(state.runId, 'needs_attention', 'Indeed captcha on job pages').catch(() => {});
                 seal(runLedger, { applied, searched: runLedger.seen });
   setLedger(null);
-  return { applied };
+  return { applied, ...tally };
               }
               // 1m, 2m, 3m — lengthening, like a person pausing. Collapsed under the test flag,
               // the same way humanDelay is, so the suite does not sit through real minutes.
@@ -484,6 +490,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
           if (SENIOR_RE.test(post.title || '')) {
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company, detail: 'skip — senior/leadership role' });
+            tally.skipped++;
             logSkipped(post.title || 'Role', 'senior/leadership role');
             continue;
           }
@@ -493,6 +500,9 @@ export async function runIndeed(page, api, plan, state, ctx) {
             await api.event({ runId: state.runId, portal: 'indeed',
               type: gate.manual ? 'manual_apply' : 'info', title: post.title, company: post.company,
               url: `https://${host}/viewjob?jk=${jk}`, detail: `skip — ${gate.label}` });
+            // A gate refusal that names a MANUAL outcome is a lead, not a discard — counting
+            // both as "skipped" is what made a run that produced 40 manual leads report none.
+            if (gate.manual) tally.manual++; else tally.skipped++;
             logSkipped(post.title || 'Role', gate.label);
             continue;
           }
@@ -529,6 +539,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
               title: post.title, company: post.company, url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score}` });
           } else if (result === 'external') {
             externals++;
+            tally.manual++;
             // A genuinely external job is normal. EVERY job being external is a selector fault
             // wearing the same clothes — that is what made Indeed look like it had no Easy
             // Apply jobs at all. Dump the page once so the next run carries the evidence.
@@ -540,6 +551,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
               title: post.title, company: post.company,
               url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
           } else if (result === 'attention') {
+            tally.attention++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'info',
               title: post.title, company: post.company,
               detail: (state.blockedQuestions || [])[0]
@@ -548,11 +560,13 @@ export async function runIndeed(page, api, plan, state, ctx) {
           } else {
             // Same silent-drop bug as LinkedIn had: anything that wasn't applied/external
             // emitted NOTHING, so the job disappeared with no counter and no error.
+            tally.manual++;
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
               url: `https://${host}/viewjob?jk=${jk}`, detail: 'no Indeed Apply button found — apply manually' });
           }
         } catch (e) {
+          tally.failed++;
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error', detail: String(e).slice(0, 160) });
         } finally {
           await jobPage.close().catch(() => {});
@@ -602,7 +616,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
         detail: 'Indeed returned no jobs — sign into indeed.com in the automation browser, then run again.' });
     }
   }
-  return { applied };
+  return { applied, ...tally };
 }
 
 /** Indeed Apply is a multi-step flow that often opens on smartapply.indeed.com. */
@@ -660,6 +674,53 @@ async function describeApplyArea(page) {
   console.log(`     [diag] iframes: ${info.frames} · buttons: ${info.buttons.join(' | ') || '(none)'}`);
 }
 
+/**
+ * Is the APPLY page usable? 'ok' | 'blocked' | 'unreadable', with evidence.
+ *
+ * `pageState` above judges SEARCH pages, and its healthy signal is `hasResults` — job cards on
+ * the page. An apply form has no job cards by definition, so every apply page fell through to
+ * the challenge heuristics, and any page it could not evaluate came back 'unreadable'. Indeed's
+ * apply flow opens in a NEW TAB and redirects through smartapply.indeed.com, so an evaluate
+ * fired too early throws on a destroyed execution context — reported as "the apply page was
+ * blocked or unreadable" and the job abandoned. That reason accounted for 13 of one run's 24
+ * pauses, with nothing recorded to tell a real block from a page that simply had not arrived.
+ *
+ * So this waits for the tab to settle, retries, judges by whether a FORM is present, and
+ * returns the evidence either way.
+ */
+async function applyPageState(page) {
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const sig = await page.evaluate(() => {
+      const visible = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.width >= 120 && r.height >= 120 && getComputedStyle(el).visibility !== 'hidden';
+      };
+      const widget = [...document.querySelectorAll(
+        'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[title*="captcha" i],'
+        + ' iframe[title*="challenge" i], #challenge-form, #challenge-running, .g-recaptcha,'
+        + ' .h-captcha, [data-testid="captcha"], form[action*="challenge"]')].some(visible);
+      return {
+        title: (document.title || '').slice(0, 120),
+        text: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 2000),
+        widget,
+        // The apply flow's own evidence: any control you could fill or press. This is what
+        // `hasResults` should have been for this page.
+        controls: document.querySelectorAll(
+          'input, select, textarea, button, [role="button"]').length,
+      };
+    }).catch(() => null);
+    last = sig;
+    if (sig && sig.controls > 0 && !sig.widget) return { state: 'ok', sig };
+    if (sig && sig.widget) return { state: 'blocked', sig };
+    if (sig && CHALLENGE_RE.test(sig.text.toLowerCase())) return { state: 'blocked', sig };
+    // Nothing to act on yet — the tab is probably still redirecting. Give it a moment.
+    await humanDelay(900, 1500);
+  }
+  return { state: last ? 'unreadable' : 'unreadable', sig: last };
+}
+
 async function indeedApply(page, api, profile, state, ctx) {
   const btn = await findIndeedApplyButton(page);
   if (!btn) return 'external';
@@ -671,11 +732,25 @@ async function indeedApply(page, api, profile, state, ctx) {
   ]);
   const applyPage = maybeNew || page; // the flow may open in a new tab
   await humanDelay(1800, 3200);
+  let lastUrl = applyPage.url();
+  let lastButtons = [];
 
   for (let step = 0; step < 12; step++) {
     if (state.paused) { state.attentionReason = 'the run was paused'; return 'attention'; }
-    if ((await pageState(applyPage)) !== 'ok') {
-      state.attentionReason = 'the apply page was blocked or unreadable';
+    const health = await applyPageState(applyPage);
+    if (health.state !== 'ok') {
+      // Say WHICH, and carry what was on screen. "blocked or unreadable" covered two opposite
+      // situations — a real challenge to solve, and a tab that had not finished loading — and
+      // told the owner to go looking for a screening question in both.
+      state.attentionReason = health.state === 'blocked'
+        ? 'Indeed showed a security check on the apply page'
+        : 'the apply page never finished loading';
+      fault(health.state === 'blocked' ? 'INDEED_APPLY_BLOCKED' : 'INDEED_APPLY_UNREADABLE', {
+        url: applyPage.url(),
+        title: health.sig?.title || null,
+        controls: health.sig?.controls ?? null,
+        sample: (health.sig?.text || '').slice(0, 160),
+      });
       return 'attention';
     }
 
@@ -708,6 +783,12 @@ async function indeedApply(page, api, profile, state, ctx) {
     }
     const cont = await applyPage.$('button:has-text("Continue"), button[aria-label*="Continue"], button:has-text("Next")');
     if (cont) { await cont.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue; }
+    // About to give up: record what the page offered, while the page still exists. Read after
+    // the close below and it is gone — which is why this branch has never carried evidence.
+    lastUrl = applyPage.url();
+    lastButtons = await applyPage.$$eval('button, [role="button"], input[type=submit]',
+      (els) => els.map((e) => ((e.innerText || e.value || e.getAttribute('aria-label') || '')
+        .replace(/\s+/g, ' ').trim())).filter(Boolean).slice(0, 12)).catch(() => []);
     break;
   }
   if (applyPage !== page) await applyPage.close().catch(() => {});
@@ -718,5 +799,9 @@ async function indeedApply(page, api, profile, state, ctx) {
   if (!state.attentionReason) {
     state.attentionReason = 'the apply flow ended without a submit step (no question was blocking it)';
   }
+  // 11 of one run's 24 pauses came through here and recorded NOTHING about the page — so
+  // "there was no Submit button" could not be distinguished from "the button is called
+  // something we do not match". The buttons that WERE there settle it in one line.
+  fault('INDEED_NO_SUBMIT_STEP', { url: lastUrl, buttons: lastButtons });
   return 'attention';
 }

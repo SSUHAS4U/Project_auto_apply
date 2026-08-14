@@ -66,6 +66,33 @@ export const FAULTS = {
        + 'worker/src/portals/linkedin.js need updating.',
     owner: false,
   },
+  INDEED_APPLY_BLOCKED: {
+    what: 'Indeed put a security check in front of the application form.',
+    why: 'Indeed challenges applications that arrive faster than a person would send them, or '
+       + 'from a session it has already flagged.',
+    action: 'No action — the job is left for you and the run continues. If most jobs report it, '
+       + 'apply to a few by hand for a day so the account looks used rather than driven.',
+    owner: false,
+  },
+  INDEED_APPLY_UNREADABLE: {
+    what: 'The Indeed apply page never finished loading, so the application was not sent.',
+    why: 'Indeed opens the application in a new tab and redirects it through smartapply. Read '
+       + 'too early, that tab has no content yet — which is not the same as being blocked, '
+       + 'though it was reported that way for a whole run.',
+    action: 'No action — it is retried on the next run. If it repeats on every job, Indeed has '
+       + 'changed the apply flow and the evidence in this record names the page it landed on.',
+    owner: false,
+  },
+  INDEED_NO_SUBMIT_STEP: {
+    what: 'The Indeed application form ran out of steps without offering a Submit button.',
+    why: 'Either the flow genuinely ends elsewhere (an employer site), or Indeed renamed the '
+       + 'button and the matcher no longer finds it. The `buttons` list in this record is what '
+       + 'the page actually offered, which distinguishes the two.',
+    action: 'No action needed unless it repeats. If the buttons list clearly contains a submit '
+       + 'control under another name, that name belongs in the matcher in '
+       + 'worker/src/portals/indeed.js.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',
