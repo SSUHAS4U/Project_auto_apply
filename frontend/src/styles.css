@@ -1826,18 +1826,26 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 }
 
 /* ── Floating sub-navigation dock ──────────────────────────────────────────────
-   Replaces the vertical list the sidebar used to expand. That list pushed every
-   group below it down the page, so opening one module moved the others and you
-   had to re-find your target. This floats above the content instead, so nothing
-   in the layout reflows when it appears.
+   Centred on the CONTENT, not the viewport.
 
-   `pointer-events` is set on the dock itself, not a full-width wrapper: an
-   invisible bar across the viewport would swallow clicks on whatever sits behind
-   it, which is exactly the "don't disturb the page" requirement. */
+   `left: 50%` centres against the window, and the window includes the 240px
+   sidebar — so the dock sat 120px left of the page it belongs to and looked
+   plainly wrong next to centred content. It is offset by the sidebar width and
+   centred in what remains, which is the column the reader is actually looking at.
+   Below the layout breakpoint the sidebar becomes a drawer and the offset drops
+   to zero.
+
+   The material is built the way Apple builds it, in layers, because a single
+   flat translucent fill reads as grey plastic no matter how much blur is behind
+   it:
+     1. a heavy backdrop blur with saturation lifted, so colour bleeds through
+     2. a vertical sheen — light at the top, near-transparent at the bottom
+     3. a 1px inner highlight on the top edge and a fainter one underneath
+     4. two shadows: a tight contact shadow and a wide soft one for the float */
 .dock {
   position: fixed;
-  left: 50%;
-  bottom: 22px;
+  left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
+  bottom: 26px;
   transform: translateX(-50%);
   z-index: 60;
   pointer-events: none;          /* the container is inert … */
@@ -1846,110 +1854,205 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 7px;
+  gap: 4px;
+  padding: 8px;
   border-radius: 999px;
   pointer-events: auto;          /* … only the pill itself takes clicks */
-  /* The glass: a top-down sheen over a translucent base, a hairline highlight
-     along the top edge, and a soft drop shadow to lift it off the page. */
+  isolation: isolate;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-elev) 96%, #fff) 0%,
-                           color-mix(in srgb, var(--bg-elev) 88%, transparent) 100%);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+    linear-gradient(180deg,
+      color-mix(in srgb, #fff 78%, transparent) 0%,
+      color-mix(in srgb, #fff 52%, transparent) 46%,
+      color-mix(in srgb, #fff 38%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, #fff 60%, transparent);
   box-shadow:
-    0 1px 0 0 color-mix(in srgb, #fff 70%, transparent) inset,
-    0 10px 30px -8px rgba(15, 23, 42, 0.28),
-    0 2px 8px -2px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+    inset 0 1px 0 0 color-mix(in srgb, #fff 90%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 30%, transparent),
+    0 1px 2px rgba(15, 23, 42, 0.10),
+    0 12px 34px -10px rgba(15, 23, 42, 0.30),
+    0 30px 60px -24px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  /* The container itself settles when the route changes — it breathes rather
+     than snapping, which is most of what makes a control feel physical. */
+  transition: box-shadow .3s ease;
 }
+.dock-inner:hover {
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 95%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 34%, transparent),
+    0 1px 2px rgba(15, 23, 42, 0.12),
+    0 16px 40px -10px rgba(15, 23, 42, 0.34),
+    0 34px 70px -26px rgba(15, 23, 42, 0.26);
+}
+
 .dock-item {
   position: relative;
   z-index: 1;                    /* above the sliding highlight */
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 40px;
+  width: 46px;
+  height: 42px;
   border-radius: 999px;
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--text) 55%, transparent);
   text-decoration: none;
-  transition: color .18s ease, transform .18s cubic-bezier(.2, .8, .3, 1);
+  /* A spring, not a linear ramp: overshoot slightly and settle. This curve is
+     what separates "it moved" from "it feels like an object". */
+  transition:
+    color .22s ease,
+    transform .34s cubic-bezier(.34, 1.56, .44, 1);
 }
-.dock-item:hover { color: var(--text); transform: translateY(-1px); }
-.dock-item:active { transform: translateY(0) scale(.94); }
+.dock-item svg { transition: transform .34s cubic-bezier(.34, 1.56, .44, 1); }
+.dock-item:hover { color: var(--text); }
+.dock-item:hover svg { transform: translateY(-2px) scale(1.08); }
+.dock-item:active svg { transform: translateY(0) scale(.9); transition-duration: .1s; }
 .dock-item.is-active { color: var(--text); }
-/* Keyboard focus must be visible — the hover lift alone is invisible to a
-   keyboard user, and this is a navigation control. */
+.dock-item.is-active svg { transform: translateY(-1px); }
 .dock-item:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-/* The dot under the active icon, as in the reference. Scales in rather than
-   appearing, so it reads as part of the same motion as the sliding highlight. */
+/* The dot under the active icon. Scales in with the same spring, so it reads as
+   one motion with the sliding highlight rather than a separate blink. */
 .dock-dot {
   position: absolute;
-  bottom: 3px;
-  width: 3px;
-  height: 3px;
+  bottom: 4px;
+  width: 3.5px;
+  height: 3.5px;
   border-radius: 999px;
   background: currentColor;
   opacity: 0;
-  transform: scale(.4);
-  transition: opacity .2s ease, transform .2s cubic-bezier(.2, .8, .3, 1);
+  transform: scale(.3);
+  transition:
+    opacity .24s ease,
+    transform .34s cubic-bezier(.34, 1.56, .44, 1);
 }
-.dock-item.is-active .dock-dot { opacity: 1; transform: scale(1); }
+.dock-item.is-active .dock-dot { opacity: .9; transform: scale(1); }
 
-/* ONE element that moves, rather than a background on each item — that is what
-   makes the selection glide sideways instead of blinking between positions. */
+/* ONE element that MOVES — that is what makes the selection glide sideways
+   instead of blinking between positions. It is a piece of glass in its own
+   right: brighter than the bar it sits in, with its own highlight and shadow so
+   it reads as raised rather than merely tinted. */
 .dock-pill {
   position: absolute;
-  top: 7px;
+  top: 8px;
   left: 0;
-  height: 40px;
+  height: 42px;
   border-radius: 999px;
-  background: var(--bg-card);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, #fff 100%, transparent) 0%,
+      color-mix(in srgb, #fff 88%, transparent) 100%);
   box-shadow:
-    0 1px 0 0 color-mix(in srgb, #fff 85%, transparent) inset,
-    0 2px 6px -1px rgba(15, 23, 42, 0.18);
-  transition: transform .28s cubic-bezier(.2, .8, .3, 1), width .28s cubic-bezier(.2, .8, .3, 1);
+    inset 0 1px 0 0 #fff,
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 60%, transparent),
+    0 1px 1px rgba(15, 23, 42, 0.06),
+    0 4px 10px -2px rgba(15, 23, 42, 0.18);
+  /* The same spring as the icons. A shared curve is why a set of separate
+     animations reads as one movement. */
+  transition:
+    transform .42s cubic-bezier(.34, 1.4, .44, 1),
+    width .42s cubic-bezier(.34, 1.4, .44, 1);
 }
 
-/* Dark mode inverts the palette rather than dimming it: a sheen made of white at
-   8% over a dark base reads as glass, whereas the light-mode values simply look
-   grey and flat. */
+/* Dark mode inverts the material rather than dimming it. A sheen made of white
+   at low alpha over a dark base is glass; the light-mode values simply go grey
+   and flat, which is the usual way a "dark theme" ends up looking cheap. */
 :root[data-theme="dark"] .dock-inner {
   background:
-    linear-gradient(180deg, color-mix(in srgb, #fff 8%, var(--bg-elev)) 0%,
-                           color-mix(in srgb, #fff 2%, var(--bg-elev)) 100%);
+    linear-gradient(180deg,
+      color-mix(in srgb, #fff 14%, transparent) 0%,
+      color-mix(in srgb, #fff 7%, transparent) 46%,
+      color-mix(in srgb, #fff 4%, transparent) 100%);
+  border-color: color-mix(in srgb, #fff 14%, transparent);
   box-shadow:
-    0 1px 0 0 color-mix(in srgb, #fff 12%, transparent) inset,
-    0 12px 34px -10px rgba(0, 0, 0, 0.7),
-    0 2px 10px -3px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 0 color-mix(in srgb, #fff 22%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 6%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 16px 40px -12px rgba(0, 0, 0, 0.75),
+    0 40px 80px -30px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme="dark"] .dock-inner:hover {
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 8%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    0 20px 48px -12px rgba(0, 0, 0, 0.8),
+    0 46px 90px -30px rgba(0, 0, 0, 0.7);
 }
 :root[data-theme="dark"] .dock-pill {
-  background: color-mix(in srgb, #fff 14%, var(--bg-card));
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, #fff 26%, transparent) 0%,
+      color-mix(in srgb, #fff 15%, transparent) 100%);
   box-shadow:
-    0 1px 0 0 color-mix(in srgb, #fff 16%, transparent) inset,
-    0 2px 8px -2px rgba(0, 0, 0, 0.6);
+    inset 0 1px 0 0 color-mix(in srgb, #fff 34%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #fff 10%, transparent),
+    0 2px 8px -2px rgba(0, 0, 0, 0.7);
+}
+:root[data-theme="dark"] .dock-item { color: color-mix(in srgb, var(--text) 52%, transparent); }
+
+/* The page must not end underneath the dock, or the final row of any list is
+   permanently covered — which would be "disturbing the page" however good the
+   dock looks. */
+.main { padding-bottom: 96px; }
+
+/* Below the layout breakpoint the sidebar is a drawer, so there is no column to
+   offset against and the dock centres on the window. */
+@media (max-width: 900px) {
+  .dock { left: 50%; }
 }
 
-/* The page must not end underneath the dock. Without this the last row of any
-   list is permanently covered — which would be "disturbing the page", however
-   good the dock looks. */
-.main { padding-bottom: 92px; }
-
-/* Someone who has asked for less motion gets the state change without the
-   travel: the highlight still marks the active item, it simply does not slide. */
+/* Someone who asked for less motion gets the state change without the travel:
+   the highlight still marks the active item, it simply does not fly. */
 @media (prefers-reduced-motion: reduce) {
-  .dock-pill, .dock-item, .dock-dot { transition: none; }
+  .dock-pill, .dock-item, .dock-item svg, .dock-dot, .dock-inner { transition: none; }
 }
 
-/* Narrow screens: the dock stays centred but tightens up so six icons still fit
-   on a 360px phone without spilling off either edge. */
+/* Phones: tighter, so six icons still fit on a 360px screen without spilling. */
 @media (max-width: 520px) {
-  .dock { bottom: 14px; }
-  .dock-inner { padding: 5px; gap: 0; }
-  .dock-item { width: 38px; height: 36px; }
-  .dock-pill { top: 5px; height: 36px; }
+  .dock { bottom: 16px; }
+  .dock-inner { padding: 6px; gap: 1px; }
+  .dock-item { width: 40px; height: 38px; }
+  .dock-pill { top: 6px; height: 38px; }
+}
+
+/* The instant name-on-hover.
+   The browser's `title` attribute takes roughly a second to appear — useless for a row of
+   icons you are scanning. This shows immediately and rides the same spring as everything
+   else in the dock, so it reads as part of one movement rather than a separate popup. */
+.dock-label {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  color: var(--bg-elev);
+  background: color-mix(in srgb, var(--text) 92%, transparent);
+  box-shadow: 0 4px 14px -4px rgba(15, 23, 42, .45);
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px) scale(.94);
+  pointer-events: none;          /* never let the label block the icon underneath it */
+  transition:
+    opacity .14s ease,
+    transform .28s cubic-bezier(.34, 1.56, .44, 1);
+}
+.dock-item:hover .dock-label,
+.dock-item:focus-visible .dock-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+:root[data-theme="dark"] .dock-label {
+  color: var(--bg);
+  background: color-mix(in srgb, var(--text) 96%, transparent);
+}
+/* On touch there is no hover, and a label pinned above a finger is just clutter — the
+   finger-tracking highlight is the feedback there. */
+@media (hover: none) {
+  .dock-label { display: none; }
 }

@@ -25,6 +25,10 @@ export function SubNavDock({ items }: { items: DockItem[] }) {
   // it as `index * width` breaks the moment an icon is a different size or the dock wraps —
   // measuring the actual element is the version that survives a style change.
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
+  // Which item the pointer or finger is currently over. -1 means neither, and the highlight
+  // returns to the active route. Kept separate from `activeIndex` so releasing a drag snaps
+  // back to where you actually are rather than to wherever you let go.
+  const [hoverIndex, setHoverIndex] = useState(-1);
 
   // Which item is active. Matched here rather than relying on NavLink's own class, because the
   // highlight has to know WHICH element to measure, not merely that one of them is active.
@@ -39,25 +43,36 @@ export function SubNavDock({ items }: { items: DockItem[] }) {
 
   // useLayoutEffect, not useEffect: measuring after paint makes the pill visibly jump into
   // place on first render. This positions it before the browser draws.
+  // The index the highlight should sit on: what the pointer is over, or failing that, where
+  // the route says you are. Hover WINS while it lasts — that is what makes the bar feel alive
+  // under the cursor instead of only reacting after a click.
+  const shownIndex = hoverIndex >= 0 ? hoverIndex : activeIndex;
+
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
-    if (!wrap || activeIndex < 0) { setPill(null); return; }
-    const el = wrap.children[activeIndex] as HTMLElement | undefined;
+    if (!wrap || shownIndex < 0) { setPill(null); return; }
+    // querySelectorAll('.dock-item'), NOT children[i].
+    //
+    // The sliding pill is itself the first child of this wrapper, so children[activeIndex]
+    // was off by one on every item — the highlight sat on Connectors while the dot marked
+    // LinkedIn. Selecting the items explicitly means adding another decoration inside the
+    // dock can never shift the highlight again.
+    const el = wrap.querySelectorAll('.dock-item')[shownIndex] as HTMLElement | undefined;
     if (!el) { setPill(null); return; }
     setPill({ x: el.offsetLeft, w: el.offsetWidth });
-  }, [activeIndex, items]);
+  }, [shownIndex, items]);
 
   // Re-measure when the window resizes. Without this the highlight is stranded at its old
   // offset after a resize while the icons have moved underneath it.
   useEffect(() => {
     const onResize = () => {
       const wrap = wrapRef.current;
-      const el = wrap?.children[activeIndex] as HTMLElement | undefined;
+      const el = wrap?.querySelectorAll('.dock-item')[shownIndex] as HTMLElement | undefined;
       if (el) setPill({ x: el.offsetLeft, w: el.offsetWidth });
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [activeIndex]);
+  }, [shownIndex]);
 
   if (items.length === 0) return null;
 
@@ -65,7 +80,28 @@ export function SubNavDock({ items }: { items: DockItem[] }) {
     // aria-label, because a bar of unlabelled glyphs is unusable with a screen reader and
     // "i" for Indeed is not guessable even visually.
     <nav className="dock" aria-label="Section navigation">
-      <div className="dock-inner" ref={wrapRef}>
+      <div
+        className="dock-inner"
+        ref={wrapRef}
+        // TOUCH: follow the finger across the bar, like an iOS segmented control. Without this
+        // a phone gets no feedback at all until the tap completes — the hover states below are
+        // meaningless on a touchscreen, so the whole "alive" quality would be desktop-only.
+        onTouchMove={(e) => {
+          const t = e.touches[0];
+          if (!t) return;
+          const items2 = wrapRef.current?.querySelectorAll('.dock-item');
+          if (!items2) return;
+          for (let i = 0; i < items2.length; i++) {
+            const r = (items2[i] as HTMLElement).getBoundingClientRect();
+            if (t.clientX >= r.left && t.clientX <= r.right) { setHoverIndex(i); return; }
+          }
+        }}
+        // Lifting snaps the highlight back to the real route. The NavLink under the finger
+        // handles the navigation itself, so this only clears the preview.
+        onTouchEnd={() => setHoverIndex(-1)}
+        onTouchCancel={() => setHoverIndex(-1)}
+        onPointerLeave={() => setHoverIndex(-1)}
+      >
         {pill && (
           // The highlight is one element that MOVES, not a class on each item. That is what
           // makes Setup -> LinkedIn glide sideways instead of blinking from one to the other.
@@ -81,10 +117,17 @@ export function SubNavDock({ items }: { items: DockItem[] }) {
             to={it.to}
             end={it.end}
             className={({ isActive }) => `dock-item ${isActive ? 'is-active' : ''}`}
-            title={it.label}
             aria-label={it.label}
+            onPointerEnter={(e) => { if (e.pointerType !== 'touch') setHoverIndex(items.indexOf(it)); }}
+            onFocus={() => setHoverIndex(items.indexOf(it))}
+            onBlur={() => setHoverIndex(-1)}
           >
             <Icon name={it.ico} size={17} />
+            {/* The name, shown INSTANTLY on hover. The browser's own `title` tooltip waits
+                about a second before appearing, which is far too slow to answer "what is this
+                icon?" while the cursor is moving along the bar — by the time it shows, the
+                reader has already moved on or given up. This one has no delay. */}
+            <span className="dock-label" aria-hidden="true">{it.label}</span>
             <span className="dock-dot" aria-hidden="true" />
           </NavLink>
         ))}
