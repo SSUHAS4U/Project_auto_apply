@@ -49,13 +49,63 @@ export function botChallengeCount() { return botChallenges; }
  * camoufox process after a close is ours and is an orphan. Killing it is safe and is the only
  * thing that reliably frees the profile.
  */
+/** Which browser processes each context owns, so closing one cannot kill another's. */
+const OWNED_PIDS = new WeakMap();
+
 export async function closeBrowser(ctx, { log = () => {} } = {}) {
+  const mine = OWNED_PIDS.get(ctx) || null;
   try { await ctx?.close(); } catch { /* already gone */ }
   // Give the process a moment to exit cleanly before forcing it — a clean exit flushes
   // cookies.sqlite, and killing too eagerly is how a fresh sign-in gets lost.
   await sleep(1500);
-  await killStrayBrowsers({ log });
+  // KILL ONLY WHAT WE LAUNCHED.
+  //
+  // This used to call killStrayBrowsers, which runs `taskkill /F /IM camoufox.exe /T` and takes
+  // out every Camoufox on the machine. Three worker processes started on 2026-08-14 (06:30,
+  // 12:46, 12:47) — with two alive at once, one worker closing its browser kills the other's
+  // mid-run, and the victim sees exactly what has been reported all along: a browser that died
+  // for no local reason. Image-name killing is right at STARTUP, where clearing orphans is the
+  // whole point, and wrong everywhere else.
+  if (mine && mine.length) {
+    await killPids(mine);
+    logEvent('lifecycle', { event: 'closed own browser', pids: mine });
+  } else {
+    // No recorded pids (an older context, or the snapshot failed) — fall back to the blunt
+    // instrument rather than leaking a process, and say that is what happened.
+    logEvent('lifecycle', { event: 'closing browser without pid record — using image-name kill' });
+    await killStrayBrowsers({ log });
+  }
+  OWNED_PIDS.delete(ctx);
 }
+
+/** Camoufox pids currently running, so a launch can work out which ones it created. */
+async function browserPids() {
+  const { execFile } = await import('node:child_process');
+  const run = (cmd, args) => new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { timeout: 10000 }, (err, stdout) => resolve(String(stdout || '')));
+    } catch { resolve(''); }
+  });
+  const out = process.platform === 'win32'
+    ? await run('tasklist', ['/FI', 'IMAGENAME eq camoufox.exe', '/NH', '/FO', 'CSV'])
+    : await run('pgrep', ['-f', 'camoufox']);
+  const pids = process.platform === 'win32'
+    ? [...out.matchAll(/"camoufox\.exe","(\d+)"/gi)].map((m) => Number(m[1]))
+    : out.split('\n').map((n) => Number(n.trim())).filter(Boolean);
+  return pids.filter((n) => Number.isFinite(n) && n > 0);
+}
+
+async function killPids(pids) {
+  const { execFile } = await import('node:child_process');
+  const run = (cmd, args) => new Promise((resolve) => {
+    try { execFile(cmd, args, { timeout: 10000 }, () => resolve()); } catch { resolve(); }
+  });
+  for (const pid of pids) {
+    if (process.platform === 'win32') await run('taskkill', ['/F', '/T', '/PID', String(pid)]);
+    else { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+  }
+}
+
 
 /**
  * Kill any Camoufox still running. Called on close and again at startup.
@@ -93,6 +143,7 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
   if (exe) {
     try {
       fs.mkdirSync(ffDir, { recursive: true });
+      const before = await browserPids().catch(() => []);
       const ctx = await firefox.launchPersistentContext(ffDir, {
         executablePath: exe,
         headless,
@@ -103,7 +154,15 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
         ? '  Automation browser running in the background (no window).'
         : '  Automation browser open.');
       log(`     [profile] Camoufox — ${ffDir}`);
-      return { ctx, page: await harden(ctx) };
+      // Diff the process list either side of the launch: whatever is new belongs to us. The
+      // parent Camoufox spawns children, so /T on each pid takes the tree with it.
+      const after = await browserPids().catch(() => []);
+      const ours = after.filter((p) => !before.includes(p));
+      if (ours.length) OWNED_PIDS.set(ctx, ours);
+      logEvent('lifecycle', { event: 'browser launched', pids: ours, headless });
+      const hardened = await harden(ctx);
+      startHeartbeat(ctx, hardened);
+      return { ctx, page: hardened };
     } catch (e) {
       // Falling back to Chrome switches PROFILE DIRECTORY as well as browser: Camoufox keeps
       // its session in .profile-ff, Chrome in .profile. A sign-in done in one is invisible to
@@ -137,11 +196,15 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
   try {
     const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'chrome' });
     log(`     [profile] Chrome — ${userDataDir}`);
-    return { ctx, page: await harden(ctx) };
+    const hardened = await harden(ctx);
+    startHeartbeat(ctx, hardened);
+    return { ctx, page: hardened };
   } catch (e) {
     try {
       const ctx = await chromium.launchPersistentContext(userDataDir, { ...opts, channel: 'msedge' });
-      return { ctx, page: await harden(ctx) };
+      const hardened = await harden(ctx);
+      startHeartbeat(ctx, hardened);
+      return { ctx, page: hardened };
     } catch {
       console.error('\n  Could not find Google Chrome (or Microsoft Edge) on this computer.');
       console.error('  Install Chrome from https://www.google.com/chrome and run JobPilot Desktop again.\n');
@@ -155,6 +218,72 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
  * open later) — patches the few properties automation still leaks, on top of whatever
  * hardening the browser itself provides.
  */
+/**
+ * The browser's OWN account of its death, recorded the instant it happens.
+ *
+ * Until now a dead browser was DISCOVERED, not observed: the next navigation threw "Target page,
+ * context or browser has been closed" and the run inferred it, sometimes minutes later. On
+ * 2026-08-14 the last page activity was at 14:28:10 and the death surfaced at 14:34:47 — a
+ * 6.6-minute hole in which the only honest statement was "it died at some point in here". No
+ * uptime, no last-known-good moment, nothing to correlate against.
+ *
+ * Two jobs, both cheap:
+ *   · listen for the context's own `close` and each page's `crash`, so the moment is recorded
+ *     by the browser rather than deduced from a later failure
+ *   · touch the page every 30s so a death during a long idle surfaces then, not at the next
+ *     search — the run rests for minutes at a time (Indeed's throttle backoff is 1+2+3), and
+ *     those rests are exactly when it has been dying
+ *
+ * The heartbeat is deliberately tolerant: `evaluate` legitimately throws while a navigation is
+ * in flight, so it takes three consecutive failures to call it a death. One strict check here
+ * would manufacture the outage it is meant to observe — which this project has already done
+ * once, with the recovery machinery that orphaned browsers.
+ */
+function startHeartbeat(ctx, page) {
+  const bornAt = Date.now();
+  let lastOk = Date.now();
+  let misses = 0;
+  let reported = false;
+
+  const report = (how, extra = {}) => {
+    if (reported) return;
+    reported = true;
+    logEvent('lifecycle', {
+      event: 'browser died',
+      how,
+      uptimeMs: Date.now() - bornAt,
+      // How long it had been since the browser last answered. A large value means it died
+      // during an idle rest; a small one means it died under load. Those are different bugs.
+      quietForMs: Date.now() - lastOk,
+      ...extra,
+    });
+  };
+
+  try {
+    ctx.on('close', () => report('context closed'));
+    ctx.on('page', (p) => {
+      try { p.on('crash', () => report('page crashed', { url: p.url() })); } catch { /* ignore */ }
+    });
+    page.on('crash', () => report('page crashed', { url: page.url() }));
+  } catch { /* a listener that throws must never break the launch */ }
+
+  const timer = setInterval(async () => {
+    if (reported) return;
+    try {
+      await page.evaluate(() => 1);
+      lastOk = Date.now();
+      misses = 0;
+    } catch (e) {
+      misses++;
+      if (misses >= 3) report('heartbeat stopped', { error: String(e && e.message).slice(0, 160) });
+    }
+  }, 30_000);
+  // Never hold the process open on this alone.
+  if (timer.unref) timer.unref();
+  try { ctx.on('close', () => clearInterval(timer)); } catch { /* ignore */ }
+  return timer;
+}
+
 async function harden(ctx) {
   // Record what the browser actually did. Which URL a job page really landed on — a redirect to
   // an authwall, a 999 rate-limit, a challenge — was never written down anywhere, so "the job

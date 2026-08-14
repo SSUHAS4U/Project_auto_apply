@@ -334,6 +334,12 @@ async function main() {
         await api.event({ runId: order.runId, portal: order.portal, type: 'info',
           detail: `browser closed mid-run — reopened and continued (attempt ${attempt + 1} of 3)` });
         await closeBrowser(ctx);
+        // WAIT FOR THE PROFILE LOCK. Firefox holds a lock file inside the profile directory and
+        // does not drop it the instant close() resolves — every other relaunch path in this file
+        // sleeps here, and this one did not. The run of 2026-08-14 shows the cost: the browser
+        // relaunched at 14:34:54 and was dead again at 14:36:15, 81 seconds later, because it
+        // had opened onto a profile the previous process had not finished letting go of.
+        await sleep(2500);
         ({ ctx, page } = await launchBrowser({ headless: background }));
       }
       }
