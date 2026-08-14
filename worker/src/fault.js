@@ -116,6 +116,15 @@ export const FAULTS = {
        + 'worker/src/portals/linkedin.js are stale.',
     owner: false,
   },
+  POSTS_UNACCOUNTED: {
+    what: 'The post scan reported more posts analysed than it can explain the outcome of.',
+    why: 'Every post must leave through exactly one route — emailed, messaged, manual, not '
+       + 'hiring, no address, already contacted, or skipped. A gap means a code path drops a '
+       + 'post silently, which is how a scan came to report 159 analysed against 10 outcomes.',
+    action: 'No action for you — the counts in this record name the gap. It is a bug in '
+       + 'scanHiringPosts in worker/src/portals/linkedin.js, not something the run can fix.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

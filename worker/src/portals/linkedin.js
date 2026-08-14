@@ -1279,7 +1279,15 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   // Dedicated outreach phase (after the apply quota) is UNCAPPED on leads — it scans every
   // keyword, scrolls deep, and keeps harvesting until the block's time runs out.
   const cap = dedicated ? Infinity : 8;
-  const scrolls = dedicated ? 25 : 4;
+  // 60 scrolls, not 25.
+  //
+  // With re-reads no longer inflating the count, a pass over one search yields far fewer NEW
+  // posts than the old number suggested — the "159 analysed in 2 minutes" was the same handful
+  // of posts counted over and over. Reaching a genuine 150 means going deeper into each feed
+  // and through more searches, so the scroll depth and the pass count both go up. Every loop
+  // here is still bounded by the time budget, the post target and the contact cap, so this
+  // raises the ceiling without being able to overrun anything.
+  const scrolls = dedicated ? 60 : 4;
   // How many posts to READ. The old scan had no target at all, so "150 analysed" was whatever
   // happened to fall out of the scroll loop rather than a goal it was working towards.
   const target = dedicated ? (plan.postScanTarget || 150) : 40;
@@ -1290,7 +1298,10 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   const seen = new Set();
   // Every analysed post lands in exactly ONE of these. Reporting them together is the
   // difference between "scanned 150 → 0 emails" and knowing what actually happened.
-  const routed = { email: 0, message: 0, manual: 0, notHiring: 0, noAddress: 0, skipped: 0 };
+  const routed = { email: 0, message: 0, manual: 0, notHiring: 0, noAddress: 0, skipped: 0,
+                   duplicate: 0, alreadyContacted: 0 };
+  // Every DISTINCT post seen this block, so re-reads after a scroll are not counted again.
+  const postKeys = new Set();
   console.log(`\n  🔎 Scanning hiring posts — target ${target} post(s) this block…`);
 
   // SEARCH UNTIL THE BUDGET IS USED, not until the keyword list runs out.
@@ -1313,7 +1324,7 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   // Repeated deliberately: a second pass over the same search returns posts published since the
   // first, which is the point of spending an hour on it rather than two minutes.
   const scanQueue = [];
-  for (let pass = 0; pass < 6; pass++) scanQueue.push(...scanPairs);
+  for (let pass = 0; pass < 12; pass++) scanQueue.push(...scanPairs);
   for (const keyword of scanQueue) {
     if (found >= cap || analysed >= target || Date.now() >= phaseDeadline) break;
     if (state.stopped || state.paused || Date.now() > phaseDeadline || found >= cap) break;
@@ -1396,7 +1407,10 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
           els = cands.filter((e) => !cands.some((o) => o !== e && e.contains(o)));
         }
         if (els.length === 0) return [];
-        return els.slice(0, 40).map((el) => {
+        // 80, not 40. This caps how much of the RENDERED feed is read per scroll; with
+        // duplicates now filtered out, a low cap here is a hard ceiling on genuinely new posts
+        // rather than a defence against re-reading the same ones.
+        return els.slice(0, 80).map((el) => {
           const a = el.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
           const nameEl = el.querySelector('.update-components-actor__title span[aria-hidden], .update-components-actor__title, a[href*="/in/"]');
           const authorA = el.querySelector('a[href*="/in/"]');
@@ -1438,10 +1452,29 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
                    text: (el.innerText || '').slice(0, 4500) };
         });
       }).catch(() => []);
-      analysed += posts.length;
-      analysedHere += posts.length;
-
+      // COUNT EACH POST ONCE.
+      //
+      // `posts` is everything currently rendered, re-read after every scroll — so a post near
+      // the top of the feed was counted again on each pass. That is how a scan reported "159
+      // analysed" in two minutes, roughly a post every 0.75 seconds including the AI intent
+      // call, and why only 10 of those 159 ever landed in an outcome bucket: the duplicates
+      // were dropped by the outreach `seen` check with a bare `continue`, contributing to
+      // nothing. The target of 150 was therefore being "met" by re-reading the same handful of
+      // posts, which is also why the flow always finished in two minutes.
+      //
+      // Keyed on author AND the text, so a recruiter posting twice counts twice while the same
+      // post seen five times counts once.
+      const fresh = [];
       for (const post of posts) {
+        const key = `${post.authorUrl || post.link || ''}|${(post.text || '').slice(0, 80)}`;
+        if (postKeys.has(key)) { routed.duplicate++; continue; }
+        postKeys.add(key);
+        fresh.push(post);
+      }
+      analysed += fresh.length;
+      analysedHere += fresh.length;
+
+      for (const post of fresh) {
         const emails = [...new Set((post.text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e)))];
 
         // ROUTE 2 & 3 — no email in the post. Classify the intent once, then send it down the
@@ -1479,7 +1512,10 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
 
         if (emails.length === 0 && found < cap) {
           const key = post.authorUrl || post.link;
-          if (!key || seen.has(key)) continue;
+          // Was: a bare `continue`, so a post whose author we had already contacted left no
+          // trace in any bucket and the printed numbers could not be made to add up.
+          if (!key) { routed.skipped++; continue; }
+          if (seen.has(key)) { routed.alreadyContacted++; continue; }
           const intent = await api.postIntent(post.text).catch(() => ({ isHiring: false }));
           if (!intent.isHiring || (intent.confidence ?? 0) < (plan.personConfMin ?? 80)) {
             routed.notHiring++;
@@ -1610,6 +1646,20 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
   console.log(`        💬 ${routed.message} queued to message (author is hiring)`);
   console.log(`        🔗 ${routed.manual} apply links → manual list`);
   console.log(`        ·  ${routed.notHiring} not actually hiring`);
+  if (routed.alreadyContacted) console.log(`        ·  ${routed.alreadyContacted} already contacted before`);
+  if (routed.noAddress) console.log(`        ·  ${routed.noAddress} no address in the post`);
+  if (routed.skipped) console.log(`        ·  ${routed.skipped} skipped (no author link to act on)`);
+  if (routed.duplicate) console.log(`        ·  ${routed.duplicate} re-reads of a post already counted`);
+  // The numbers must ADD UP. "159 analysed" against ten outcomes was the visible symptom of a
+  // count that meant something different from what it said, and nothing checked it.
+  {
+    const bucketed = routed.email + routed.message + routed.manual + routed.notHiring
+      + routed.noAddress + routed.skipped + routed.alreadyContacted;
+    if (bucketed !== analysed) {
+      logEvent('post-scan', { unaccounted: analysed - bucketed, analysed, ...routed });
+      fault('POSTS_UNACCOUNTED', { analysed, bucketed, ...routed });
+    }
+  }
   if (routed.noAddress) {
     console.log(`        ·  ${routed.noAddress} had no email address in the post (normal — most don't)`);
   }
