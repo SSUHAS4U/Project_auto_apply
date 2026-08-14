@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { SubNavDock } from './SubNavDock';
 import { useEffect, useState } from 'react';
 import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
 import { getTheme, toggleTheme, type Theme } from '../lib/theme';
@@ -77,7 +78,25 @@ export function Layout() {
   // Which group is expanded — default to the group owning the current route.
   const groupOf = (path: string) =>
     NAV.find((g) => g.children?.some((c) => path.startsWith(c.to)))?.label ?? '';
-  const [open, setOpen] = useState<string>(groupOf(location.pathname));
+  // Which module the sidebar shows as current. Only READ for the highlight now — the
+  // expanded list it used to drive is gone, replaced by the dock.
+  const [, setOpen] = useState<string>(groupOf(location.pathname));
+
+  // The dock's items: the children of whichever group owns the current route.
+  //
+  // Derived from the SAME NAV array the sidebar uses, so the two can never drift apart — a
+  // second, hand-maintained list would be wrong within a release. The longest match wins
+  // because /auto-apply and /auto-apply/linkedin both prefix-match the second path, and the
+  // shorter one would otherwise claim it. Admin-only entries stay filtered exactly as before.
+  const dockGroup = NAV
+    .filter((g) => g.children?.some((c) => location.pathname.startsWith(c.to)))
+    .sort((a, b) => {
+      const longest = (g: NavEntry) => Math.max(
+        ...(g.children || []).filter((c) => location.pathname.startsWith(c.to)).map((c) => c.to.length),
+      );
+      return longest(b) - longest(a);
+    })[0];
+  const dockItems = (dockGroup?.children || []).filter((c) => !c.admin || admin);
 
   // Re-check role from the server (handles grants/revokes + sessions predating roles).
   useEffect(() => {
@@ -115,25 +134,26 @@ export function Layout() {
 
       {NAV.map((g) => g.children ? (
         <div key={g.label} className="nav-group">
+          {/* Clicking a module OPENS IT — it navigates to that module's first page, and the
+              dock at the bottom then offers the rest. Before this it only toggled an expanded
+              list; with the list gone that click did nothing at all but spin a caret, which is
+              a worse starting point than the vertical menu it replaced. The caret is gone with
+              it: there is nothing left to expand, so an affordance promising one would lie. */}
           <button
             className={`nav-item nav-parent ${groupOf(location.pathname) === g.label ? 'active' : ''}`}
-            onClick={() => setOpen((o) => (o === g.label ? '' : g.label))}
-            aria-expanded={open === g.label}>
+            onClick={() => {
+              const first = (g.children || []).filter((c) => !c.admin || admin)[0];
+              if (first) nav(first.to);
+              setOpen(g.label);
+              setDrawer(false);   // on mobile the drawer must close, as it did when a child was tapped
+            }}>
             <span className="ico"><Icon name={g.ico} size={18} /></span>
             <span>{g.label}</span>
-            <span className={`nav-caret ${open === g.label ? 'open' : ''}`}><Icon name="chevron" size={14} /></span>
           </button>
-          {open === g.label && (
-            <div className="nav-children">
-              {g.children.filter((c) => !c.admin || admin).map((c) => (
-                <NavLink key={c.to} to={c.to} end={c.end}
-                  className={({ isActive }) => `nav-item nav-child ${isActive ? 'active' : ''}`}>
-                  <span className="ico"><Icon name={c.ico} size={15} /></span>
-                  <span>{c.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          )}
+          {/* The expanded list used to live here. It pushed every group below it down the
+              page, so opening one module moved the others and you had to re-find your
+              target. The floating dock at the bottom replaces it — same links, same
+              routes, no reflow. */}
         </div>
       ) : (
         <NavLink key={g.to} to={g.to!} end={g.end}
@@ -192,6 +212,12 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* The sub-navigation for the module currently open. Derived from the SAME NAV array
+          the sidebar uses, so the two can never drift apart — a second hand-maintained list
+          would be wrong within a release. Admin-only entries stay filtered exactly as they
+          were in the sidebar. */}
+      <SubNavDock items={dockItems} />
 
       <AssistantWidget />
     </div>

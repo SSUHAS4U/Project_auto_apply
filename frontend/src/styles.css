@@ -1824,3 +1824,132 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .banner-alert, .banner-warn { flex-wrap: wrap; }
   .banner-alert > .btn, .banner-warn > .btn { width: 100%; justify-content: center; }
 }
+
+/* ── Floating sub-navigation dock ──────────────────────────────────────────────
+   Replaces the vertical list the sidebar used to expand. That list pushed every
+   group below it down the page, so opening one module moved the others and you
+   had to re-find your target. This floats above the content instead, so nothing
+   in the layout reflows when it appears.
+
+   `pointer-events` is set on the dock itself, not a full-width wrapper: an
+   invisible bar across the viewport would swallow clicks on whatever sits behind
+   it, which is exactly the "don't disturb the page" requirement. */
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 60;
+  pointer-events: none;          /* the container is inert … */
+}
+.dock-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 7px;
+  border-radius: 999px;
+  pointer-events: auto;          /* … only the pill itself takes clicks */
+  /* The glass: a top-down sheen over a translucent base, a hairline highlight
+     along the top edge, and a soft drop shadow to lift it off the page. */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elev) 96%, #fff) 0%,
+                           color-mix(in srgb, var(--bg-elev) 88%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 70%, transparent) inset,
+    0 10px 30px -8px rgba(15, 23, 42, 0.28),
+    0 2px 8px -2px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.dock-item {
+  position: relative;
+  z-index: 1;                    /* above the sliding highlight */
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 40px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color .18s ease, transform .18s cubic-bezier(.2, .8, .3, 1);
+}
+.dock-item:hover { color: var(--text); transform: translateY(-1px); }
+.dock-item:active { transform: translateY(0) scale(.94); }
+.dock-item.is-active { color: var(--text); }
+/* Keyboard focus must be visible — the hover lift alone is invisible to a
+   keyboard user, and this is a navigation control. */
+.dock-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The dot under the active icon, as in the reference. Scales in rather than
+   appearing, so it reads as part of the same motion as the sliding highlight. */
+.dock-dot {
+  position: absolute;
+  bottom: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  transform: scale(.4);
+  transition: opacity .2s ease, transform .2s cubic-bezier(.2, .8, .3, 1);
+}
+.dock-item.is-active .dock-dot { opacity: 1; transform: scale(1); }
+
+/* ONE element that moves, rather than a background on each item — that is what
+   makes the selection glide sideways instead of blinking between positions. */
+.dock-pill {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--bg-card);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 85%, transparent) inset,
+    0 2px 6px -1px rgba(15, 23, 42, 0.18);
+  transition: transform .28s cubic-bezier(.2, .8, .3, 1), width .28s cubic-bezier(.2, .8, .3, 1);
+}
+
+/* Dark mode inverts the palette rather than dimming it: a sheen made of white at
+   8% over a dark base reads as glass, whereas the light-mode values simply look
+   grey and flat. */
+:root[data-theme="dark"] .dock-inner {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 8%, var(--bg-elev)) 0%,
+                           color-mix(in srgb, #fff 2%, var(--bg-elev)) 100%);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 12%, transparent) inset,
+    0 12px 34px -10px rgba(0, 0, 0, 0.7),
+    0 2px 10px -3px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme="dark"] .dock-pill {
+  background: color-mix(in srgb, #fff 14%, var(--bg-card));
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 16%, transparent) inset,
+    0 2px 8px -2px rgba(0, 0, 0, 0.6);
+}
+
+/* The page must not end underneath the dock. Without this the last row of any
+   list is permanently covered — which would be "disturbing the page", however
+   good the dock looks. */
+.main { padding-bottom: 92px; }
+
+/* Someone who has asked for less motion gets the state change without the
+   travel: the highlight still marks the active item, it simply does not slide. */
+@media (prefers-reduced-motion: reduce) {
+  .dock-pill, .dock-item, .dock-dot { transition: none; }
+}
+
+/* Narrow screens: the dock stays centred but tightens up so six icons still fit
+   on a 360px phone without spilling off either edge. */
+@media (max-width: 520px) {
+  .dock { bottom: 14px; }
+  .dock-inner { padding: 5px; gap: 0; }
+  .dock-item { width: 38px; height: 36px; }
+  .dock-pill { top: 5px; height: 36px; }
+}
