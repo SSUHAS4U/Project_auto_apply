@@ -22,8 +22,9 @@ import { runIndeed } from './portals/indeed.js';
 import {
   reportSessions, handleConnectionActions, anyPortalLoggedIn, isLoggedIn, loginUrl,
 } from './connections.js';
-import { logSummary } from './log.js';
+import { logSummary, currentLedger, setLedger } from './log.js';
 import { initFileLog, logEvent, logDir } from './logfile.js';
+import { seal } from './ledger.js';
 
 const DEFAULT_BACKEND = 'https://35.212.189.37.sslip.io';
 const CONFIG_FILE = path.join(APP_DIR, 'jobpilot-desktop.config.json');
@@ -268,6 +269,13 @@ async function main() {
     api.portal = order.portal;   // tags screening questions with the portal that asked them
     state.paused = false;
     state.stopped = false; // cleared per block; the pause poller sets it if Stop is clicked
+    // Fresh clocks for a NEW block. `state` outlives every block — it is created once for the
+    // whole worker — so the resumable phase budgets below would otherwise carry over: the
+    // block after a 90-minute Easy Apply would open with its budget already spent and skip
+    // straight to outreach forever. These must be cleared here and ONLY here, never in the
+    // retry path, which is precisely where they need to survive.
+    state.phase1SpentMs = 0;
+    state.blockStartedAt = 0;
     console.log(`\n▶ ${order.portal.toUpperCase()} — starting`);
     logEvent('run', { event: 'block start', runId: order.runId, portal: order.portal,
       plan: order.plan });
@@ -299,21 +307,35 @@ async function main() {
         ({ ctx, page } = await launchBrowser({ headless: false }));
         await page.goto(loginUrl(order.portal)).catch(() => {});
       }
+      // THREE attempts, not one. On 2026-08-14 the browser died twice in 74 minutes — once at
+      // minute 56 while idle between searches, then again 16 minutes after the relaunch — and
+      // the second death ended the run outright. One retry is enough for a browser that dies
+      // once; this one dies repeatedly, and the run has to outlive it.
+      //
+      // `state` is deliberately NOT recreated between attempts: the adapter's phase budgets
+      // live on it, so each attempt CONTINUES the block instead of restarting it. Without that,
+      // a retry hands Easy Apply another full 90 minutes and the outreach flows never run —
+      // which is exactly why post scan, recruiter email and connections had never executed.
       let res;
+      for (let attempt = 1; ; attempt++) {
       try {
         res = await adapter(page, api, order.plan, state, ctx);
+        break;
       } catch (e) {
         // The browser can also die DURING a block — Chrome crashes, the machine sleeps, the
         // window is closed. Every later ctx.newPage() then throws "Target page, context or
         // browser has been closed" and the whole block was abandoned on the spot, an hour of
         // work thrown away over a recoverable fault. Reopen and give the block one more go.
-        if (!isDeadBrowser(e)) throw e;
-        console.log('\n  ⟳ the automation browser closed mid-run — reopening and retrying this block…');
+        if (!isDeadBrowser(e) || attempt >= 3) throw e;
+        console.log('\n  ⟳ the automation browser closed mid-run — reopening and CONTINUING '
+          + `this block (attempt ${attempt + 1} of 3)…`);
+        logEvent('lifecycle', { event: 'browser died mid-block — continuing', attempt,
+          phase1SpentMs: state.phase1SpentMs || 0 });
         await api.event({ runId: order.runId, portal: order.portal, type: 'info',
-          detail: 'browser closed mid-run — reopened and retried' });
+          detail: `browser closed mid-run — reopened and continued (attempt ${attempt + 1} of 3)` });
         await closeBrowser(ctx);
         ({ ctx, page } = await launchBrowser({ headless: background }));
-        res = await adapter(page, api, order.plan, state, ctx);
+      }
       }
       // Clear the local run id BEFORE telling the server the run is over.
       //
@@ -331,6 +353,18 @@ async function main() {
       logSummary(order.portal.charAt(0).toUpperCase() + order.portal.slice(1), res || {});
     } catch (e) {
       console.error(`✗ ${order.portal} block failed:`, e.message);
+      // ACCOUNT FOR THE RUN EVEN THOUGH IT CRASHED.
+      //
+      // The ledger is sealed at the end of the adapter, so a block that threw produced no
+      // accounting line whatsoever — the run of 2026-08-14 logged not one [ledger] record,
+      // because the browser died before the adapter could reach its own last line. The run
+      // that goes wrong is exactly the run whose numbers matter, and it was the only kind
+      // that had none.
+      const dying = currentLedger();
+      if (dying) {
+        seal(dying, { applied: 0, searched: dying.seen });
+        setLedger(null);
+      }
       if (isDeadBrowser(e)) {
         console.error('  The automation browser kept closing. If this repeats, quit JobPilot from');
         console.error('  the tray and reopen it — the browser profile may be locked by a stale process.');

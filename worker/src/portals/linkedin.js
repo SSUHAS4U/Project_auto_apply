@@ -277,26 +277,61 @@ async function readPosting(page) {
   // that change on deploy, and the control has appeared as both a button and a link. Matching
   // the visible label is what survives. Failure here is not fatal — a truncated description
   // still beats none, so this only ever improves what the next step reads.
-  await page.evaluate(() => {
-    const wanted = /see more|show more|…more|more/i;
-    for (const n of document.querySelectorAll('button, [role="button"], a')) {
-      const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
-        .replace(/\s+/g, ' ').trim();
-      if (!label || label.length > 40 || !wanted.test(label)) continue;
-      const r = n.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) { n.click(); return; }
-    }
-  }).catch(() => { /* not every posting is truncated */ });
-  await humanDelay(400, 900);
+  // Click, then CHECK IT WORKED — and try the next candidate if it did not.
+  //
+  // The old version clicked the first control whose label looked right and moved on, assuming
+  // success. "More" is a common label on a LinkedIn job pane (the overflow menu, "Show more
+  // results", the company follow card), so the first match was often not the description's
+  // expander at all — and having clicked something, it stopped and never tried the real one.
+  // Measuring the description length before and after turns that guess into a fact.
+  const paneChars = () => page.evaluate(() => {
+    const d = document.querySelector('#job-details, [class*="jobs-description"]');
+    return ((d && d.innerText) || '').replace(/\s+/g, ' ').trim().length;
+  }).catch(() => 0);
+  let beforeChars = await paneChars();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const clicked = await page.evaluate((skip) => {
+      const wanted = /see more|show more|…more|more/i;
+      let seen = 0;
+      for (const n of document.querySelectorAll('button, [role="button"], a')) {
+        const label = ((n.getAttribute('aria-label') || '') + ' ' + (n.innerText || ''))
+          .replace(/\s+/g, ' ').trim();
+        if (!label || label.length > 40 || !wanted.test(label)) continue;
+        const r = n.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        if (seen++ < skip) continue;      // already tried this one
+        n.click();
+        return true;
+      }
+      return false;
+    }, attempt).catch(() => false);
+    if (!clicked) break;                  // no more candidates
+    await humanDelay(400, 900);
+    const afterChars = await paneChars();
+    if (afterChars > beforeChars) break;  // it expanded — done
+    beforeChars = afterChars;
+  }
 
   // The description is what the compatibility gate judges on, so an empty one means the job is
   // skipped as "no description to judge" — which is exactly what happened to a whole run when
   // these class names went stale. Try the known containers, then fall back to the LARGEST text
   // block in the details pane, which survives any rename.
-  let description = await text('#job-details, .jobs-description__content, .jobs-box__html-content, '
+  const named = await text('#job-details, .jobs-description__content, .jobs-box__html-content, '
     + '[class*="jobs-description"], .jobs-details__main-content [class*="description"]');
-  if (description.replace(/\s+/g, ' ').trim().length < 80) {
-    description = await page.evaluate(() => {
+  // BOTH reads, then the longer — not "fall back only if the first is tiny".
+  //
+  // The old rule ran the fallback only when the named containers returned under 80 characters.
+  // A run then read descriptions of 95, 98, 111 and 115 characters: over the threshold, so the
+  // fallback never ran, and a one-line fragment was handed to the fit gate as though it were the
+  // job. Every job it judged came back with the identical score of 57, "partial overlap", which
+  // is what a matcher says when it is shown almost no text. 80 was never a description; it was
+  // just above the number that would have triggered a second look.
+  //
+  // Real postings run to thousands of characters, so the longer of the two reads is the better
+  // one essentially always, and comparing costs one page evaluation.
+  let description = named;
+  {
+    const alternative = await page.evaluate(() => {
       const pane = document.querySelector(
         '.jobs-details, .jobs-search__job-details, [class*="jobs-details"], main');
       if (!pane) return '';
@@ -335,6 +370,25 @@ async function readPosting(page) {
       // rather than a fabricated verdict about the job.
       return best.replace(/\s+/g, ' ').trim().length >= 200 ? best : '';
     }).catch(() => '');
+    const len = (t) => (t || '').replace(/\s+/g, ' ').trim().length;
+    if (len(alternative) > len(description)) description = alternative;
+  }
+
+  // Record WHAT WAS READ, not only how much of it.
+  //
+  // The previous log said `descriptionChars: 111` and nothing else, so a short read could be
+  // seen but not diagnosed — there was no way to tell a truncated description from the wrong
+  // element entirely without another run. A sample costs one log line and answers it outright.
+  const flat = description.replace(/\s+/g, ' ').trim();
+  logEvent('posting', {
+    chars: flat.length,
+    fromNamedContainer: named.replace(/\s+/g, ' ').trim().length,
+    sample: flat.slice(0, 220),
+  });
+  // A job description this short is not a short job description — it is a failed read. Say so,
+  // rather than letting the fit gate deliver a confident verdict on one line of text.
+  if (flat.length > 0 && flat.length < 300) {
+    fault('DESCRIPTION_TOO_SHORT', { chars: flat.length, sample: flat.slice(0, 160), url: page.url() });
   }
 
   return {
@@ -486,7 +540,16 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // "it stopped midway / never got to the post analysis" case.
   // Durations come from Automation → Schedule (apply mins + outreach mins).
   const blockMin = Math.max(plan.blockMinutes || 210, 30);
-  const deadline = Date.now() + blockMin * 60_000;
+  // The block clock starts ONCE, not on every attempt.
+  //
+  // index.js relaunches the browser and calls this adapter again when the browser dies mid-run.
+  // Both deadlines used to be `Date.now() + budget`, so a retry handed Phase 1 a brand-new
+  // 90 minutes and the block a brand-new 210 — the run of 2026-08-14 restarted Easy Apply from
+  // pair #44 with a full budget after the browser died at minute 56. Outreach, post scan and
+  // recruiter email were never reached, in that run or any other: Phase 1 could always afford
+  // to consume everything, twice.
+  if (!state.blockStartedAt) state.blockStartedAt = Date.now();
+  const deadline = state.blockStartedAt + blockMin * 60_000;
   let applied = 0;
   const tally = { manual: 0, attention: 0, failed: 0, skipped: 0 };
 
@@ -497,6 +560,9 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // so an unfinished quota automatically rolls into the next run.
   const applyCap = plan.applyCap ?? 15;
   const maxAgeDays = plan.maxAgeDays || 0;   // skip postings older than this
+  // PerimeterX challenges already counted when the previous search started, so the pacing below
+  // can react to NEW ones rather than to the running total.
+  let lastChallengeCount = botChallengeCount();
   let paneFailures = 0;                      // consecutive job pages that would not render
   let paneRests = 0;                         // how many times we have backed off for them
   // ONE result page per search, whatever the plan asks for.
@@ -510,7 +576,14 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   void plan.pagesPerSearch;
   const dailyTarget = plan.dailyTarget || applyCap;
   const doneToday = plan.appliedToday || 0;
-  const phase1Deadline = Date.now() + Math.max(plan.phase1Minutes || 90, 5) * 60_000;
+  // Phase 1's budget is SPENT, not restarted. `state.phase1SpentMs` survives a relaunch because
+  // index.js reuses the same state object across the retry, so a crash 56 minutes in leaves 34
+  // minutes of Easy Apply and then the remaining flows run — instead of Easy Apply starting over
+  // and eating the block a second time.
+  const phase1BudgetMs = Math.max(plan.phase1Minutes || 90, 5) * 60_000;
+  const phase1Spent = state.phase1SpentMs || 0;
+  const phase1StartedAt = Date.now();
+  const phase1Deadline = Math.min(phase1StartedAt + Math.max(phase1BudgetMs - phase1Spent, 0), deadline);
   // WHY Phase 1 ended. Only two reasons are meant to stop it — the time budget and the daily
   // application cap — and for weeks it was being ended by neither, with nothing in the log
   // saying so. Every exit now names itself, so "it stopped early" is answerable from the
@@ -528,7 +601,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // Easy Apply off changed nothing. The flow settings are now the only source.
   const easyApplyOff = (plan.flowConfig || {}).easyApply?.on === false;
   if (easyApplyOff) console.log('\n  ⏭  Easy Apply — switched off in Schedule');
-  if (!easyApplyOff && mode !== 'outreach' && applyCap > 0) {
+  // Already spent its budget on an earlier attempt of this block? Then it is finished, and the
+  // remaining flows get the rest. Without this the retry after a browser crash simply restarted
+  // Easy Apply — which is why post scan, recruiter email and connections have never once run.
+  const phase1Exhausted = phase1Spent >= phase1BudgetMs;
+  if (phase1Exhausted) {
+    console.log(`\n  ⏭  Easy Apply — its ${Math.round(phase1BudgetMs / 60_000)}m were already used `
+      + 'before the browser restarted; going straight to the outreach flows.');
+  }
+  if (!easyApplyOff && !phase1Exhausted && mode !== 'outreach' && applyCap > 0) {
     api.flow = 'easyApply';                     // tags this phase's events
     console.log(`\n  ══ Easy Apply — ${doneToday}/${dailyTarget} done today, ${applyCap} to go (max ${plan.phase1Minutes || 90}m) ══`);
     // An empty plan makes the loops below no-ops, so the phase prints its header and then
@@ -582,13 +663,41 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
     outer:
     for (const { keyword, location } of slice) {
       {
+        // Bank the time spent BEFORE doing anything that can crash the browser.
+        //
+        // Phase 1 exits by throwing when the browser dies, so an accounting line placed after
+        // the loop would never run in exactly the case it exists for. Updating it each pair
+        // means the retry knows how much of the 90 minutes is genuinely gone, whichever way
+        // this phase ends.
+        state.phase1SpentMs = phase1Spent + (Date.now() - phase1StartedAt);
         // Space the searches out. This is the whole anti-detection budget now: not fewer
         // searches, just slower ones. Skipped before the first so a short run still starts
         // immediately, and broken into short sleeps so Stop and Pause stay responsive.
         // The adapter harness sets JOBPILOT_TEST_NO_PACING; without honouring it here a suite
         // that walks several searches would sit idle for hours. Nothing in the app sets it.
         if (searchesDone > 0 && process.env.JOBPILOT_TEST_NO_PACING !== '1') {
-          const until = Date.now() + SEARCH_GAP_MS;
+          // PACE AGAINST WHAT LINKEDIN IS ACTUALLY DOING, not a fixed number.
+          //
+          // A 74-minute run drew 37 PerimeterX challenges (li.protechts.net, uc=scraping) at a
+          // flat 120s gap — roughly one per navigation. The jobs still loaded, so this is not
+          // yet the "account flagged" state handled further down, but a fixed gap cannot
+          // respond to it either way: it is the same 120s whether LinkedIn is ignoring us or
+          // challenging every single request.
+          //
+          // So the gap grows with the challenge rate and shrinks back when it settles. Each
+          // challenge seen since the previous search adds a minute, capped at five, because
+          // beyond that the answer is to stop rather than to creep.
+          const seenNow = botChallengeCount();
+          const fresh = Math.max(0, seenNow - lastChallengeCount);
+          lastChallengeCount = seenNow;
+          const extraMs = Math.min(fresh, 5) * 60_000;
+          if (extraMs > 0) {
+            console.log(`     · LinkedIn challenged ${fresh} request(s) since the last search — `
+              + `waiting an extra ${Math.round(extraMs / 60_000)}m before the next one.`);
+            logEvent('gate', { event: 'backoff', freshChallenges: fresh, totalChallenges: seenNow,
+              extraMs });
+          }
+          const until = Date.now() + SEARCH_GAP_MS + extraMs;
           while (Date.now() < until && !state.stopped && !state.paused
                  && Date.now() < phase1Deadline && applied < applyCap) {
             await sleep(3000);
@@ -982,7 +1091,10 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // Close Phase 1 out loud. "0 applied" with no explanation is what made a run that was
   // being killed from outside look identical to one that simply found nothing.
   {
-    const usedMin = Math.round((Date.now() - (phase1Deadline - Math.max(plan.phase1Minutes || 90, 5) * 60_000)) / 60000);
+    state.phase1SpentMs = phase1Spent + (Date.now() - phase1StartedAt);
+    // Total across every attempt of this block, not just this one — after a relaunch, "3m" for
+    // a phase that had already run 56 minutes is a lie the log used to tell.
+    const usedMin = Math.round(state.phase1SpentMs / 60000);
     console.log(`
   ══ Easy Apply finished after ${usedMin}m of ${plan.phase1Minutes || 90}m — ${phase1End} ══`);
     console.log(`     ${applied}/${applyCap} applications this run`);

@@ -29,6 +29,16 @@ export function logSearch(keyword, location, count) {
   console.log(LINE);
 }
 
+/**
+ * The ledger the current block is writing to, or null.
+ *
+ * Exists so a block that DIES can still be accounted for. `seal()` is called at the end of the
+ * adapter, and on 2026-08-14 the adapter threw when the browser closed — so the run produced no
+ * ledger line at all. A run whose accounting is lost precisely when it went wrong is the one
+ * case the ledger was built for, and it was the case it missed.
+ */
+export function currentLedger() { return ledger; }
+
 export function logJobHeader(title, company, fitText) {
   const co = company ? `  ·  ${company}` : '';
   console.log(`\n  ▸ ${title}${co}${fitText ? `   (${fitText})` : ''}`);
