@@ -368,7 +368,12 @@ async function readPosting(page) {
       // Below this it is not a job description, and an honest empty string is worth more than a
       // confident wrong one: gate.js turns it into "no description to judge" → a manual lead,
       // rather than a fabricated verdict about the job.
-      return best.replace(/\s+/g, ' ').trim().length >= 200 ? best : '';
+      // 120, not 200. The floor exists to reject stray UI text, but a genuine short posting
+      // ("We need a Java backend engineer in Pune. 3+ years. Apply within.") sits between the
+      // two — and discarding it handed the win to whatever the named selector had grabbed,
+      // which was sometimes the top card's metadata line. Below 120 it is not prose; above it,
+      // let the gate judge, and DESCRIPTION_TOO_SHORT still flags anything under 300.
+      return best.replace(/\s+/g, ' ').trim().length >= 120 ? best : '';
     }).catch(() => '');
     const len = (t) => (t || '').replace(/\s+/g, ' ').trim().length;
     if (len(alternative) > len(description)) description = alternative;
@@ -563,6 +568,9 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
   // PerimeterX challenges already counted when the previous search started, so the pacing below
   // can react to NEW ones rather than to the running total.
   let lastChallengeCount = botChallengeCount();
+  // What the PREVIOUS search returned. The backoff needs evidence of harm, and an
+  // empty result set is that evidence; a rising challenge counter on its own is not.
+  let lastSearchCards = -1;
   let paneFailures = 0;                      // consecutive job pages that would not render
   let paneRests = 0;                         // how many times we have backed off for them
   // ONE result page per search, whatever the plan asks for.
@@ -676,26 +684,32 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         // The adapter harness sets JOBPILOT_TEST_NO_PACING; without honouring it here a suite
         // that walks several searches would sit idle for hours. Nothing in the app sets it.
         if (searchesDone > 0 && process.env.JOBPILOT_TEST_NO_PACING !== '1') {
-          // PACE AGAINST WHAT LINKEDIN IS ACTUALLY DOING, not a fixed number.
+          // MEASURE the challenges; do NOT brake on them by themselves.
           //
-          // A 74-minute run drew 37 PerimeterX challenges (li.protechts.net, uc=scraping) at a
-          // flat 120s gap — roughly one per navigation. The jobs still loaded, so this is not
-          // yet the "account flagged" state handled further down, but a fixed gap cannot
-          // respond to it either way: it is the same 120s whether LinkedIn is ignoring us or
-          // challenging every single request.
+          // The first version of this added a minute per fresh challenge, capped at five. The
+          // run that followed shows why that was wrong: PerimeterX fires per REQUEST, not per
+          // search, so the counter jumped by 19 and 37 between searches and every gap pinned
+          // itself to the 5-minute cap. Searches went from 2 minutes to 7, Easy Apply spent its
+          // whole budget waiting, and the outreach flows never ran — the brake caused the exact
+          // starvation it was added alongside.
           //
-          // So the gap grows with the challenge rate and shrinks back when it settles. Each
-          // challenge seen since the previous search adds a minute, capped at five, because
-          // beyond that the answer is to stop rather than to creep.
+          // And the challenges were not doing any harm: that same run found 7 to 25 jobs per
+          // search and submitted three applications. A challenge is LinkedIn's sensor firing,
+          // not LinkedIn refusing. So the brake now needs EVIDENCE OF HARM — a search that
+          // came back empty while the challenge count was climbing. Challenges alone are
+          // recorded and otherwise ignored.
           const seenNow = botChallengeCount();
           const fresh = Math.max(0, seenNow - lastChallengeCount);
           lastChallengeCount = seenNow;
-          const extraMs = Math.min(fresh, 5) * 60_000;
-          if (extraMs > 0) {
-            console.log(`     · LinkedIn challenged ${fresh} request(s) since the last search — `
-              + `waiting an extra ${Math.round(extraMs / 60_000)}m before the next one.`);
-            logEvent('gate', { event: 'backoff', freshChallenges: fresh, totalChallenges: seenNow,
-              extraMs });
+          const harmed = fresh > 0 && lastSearchCards === 0;
+          const extraMs = harmed ? 120_000 : 0;
+          if (fresh > 0) {
+            logEvent('gate', { event: 'challenges', fresh, total: seenNow,
+              lastSearchCards, backedOff: harmed });
+          }
+          if (harmed) {
+            console.log(`     · the last search came back empty while LinkedIn challenged `
+              + `${fresh} request(s) — waiting an extra 2m before trying again.`);
           }
           const until = Date.now() + SEARCH_GAP_MS + extraMs;
           while (Date.now() < until && !state.stopped && !state.paused
@@ -816,6 +830,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           : needsLogin
             ? `LinkedIn asked to log in — sign into linkedin.com in the browser, then run again`
             : `No Easy-Apply results on this search — LinkedIn may have changed the page or need login` });
+      lastSearchCards = cards.length;
       logSearch(keyword, location, cards.length);
       if (cards.length === 0) continue;
 

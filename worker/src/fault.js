@@ -105,6 +105,17 @@ export const FAULTS = {
        + '0, the search itself returned nothing and the problem is upstream.',
     owner: false,
   },
+  DESCRIPTION_TOO_SHORT: {
+    what: 'The job description could not be read properly, so the match score for that job '
+        + 'is unreliable.',
+    why: 'LinkedIn renders the description in a panel that is collapsed behind "see more" and '
+       + 'whose container it renames. When the read falls through, what comes back is a '
+       + 'fragment — or the top card’s metadata line, which is not the job at all.',
+    action: 'No action — the job is still judged, and the `sample` in this record shows exactly '
+       + 'what was read. If most jobs report it, the description selectors in '
+       + 'worker/src/portals/linkedin.js are stale.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',
