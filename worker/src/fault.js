@@ -93,6 +93,18 @@ export const FAULTS = {
        + 'worker/src/portals/indeed.js.',
     owner: false,
   },
+  INDEED_PANE_NOT_RENDERED: {
+    what: 'The Indeed job panel never opened, so the job could not be applied to.',
+    why: 'Indeed shows the job beside the results rather than on its own page. When the panel '
+       + 'does not render, the only controls present are the ones the search page itself owns '
+       + '— which was '
+       + 'previously read as "this job has no Apply button" and filed as an employer-site '
+       + 'listing. 82 jobs were discarded that way in one run.',
+    action: 'No action — the job is retried next run, and the panel is now opened by clicking '
+       + 'the result card when the direct link does not render it. If `cards` in this record is '
+       + '0, the search itself returned nothing and the problem is upstream.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

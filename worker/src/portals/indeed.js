@@ -5,6 +5,7 @@
 // conservative; if a captcha/checkpoint appears it stops and flags "needs attention".
 import fs from 'node:fs';
 import { fault } from '../fault.js';
+import { logEvent } from '../logfile.js';
 import path from 'node:path';
 import { humanDelay, sleep, APP_DIR } from '../browser.js';
 import { logJobHeader, logSkipped, logResult, beginJob, setLedger } from '../log.js';
@@ -512,7 +513,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
           logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
-          const result = await indeedApply(jobPage, api, profile, state, ctx);
+          const result = await indeedApply(jobPage, api, profile, state, ctx, jk);
           // Pass the REASON through, not just the outcome. This called logResult('attention')
           // with nothing attached, so the terminal printed a bare "Paused — needs your answer"
           // and the ledger recorded "attention: attention" — five pauses in one run with no
@@ -543,10 +544,15 @@ export async function runIndeed(page, api, plan, state, ctx) {
             // A genuinely external job is normal. EVERY job being external is a selector fault
             // wearing the same clothes — that is what made Indeed look like it had no Easy
             // Apply jobs at all. Dump the page once so the next run carries the evidence.
+            // Terminal shows it once — 82 identical dumps is not a log, it is noise. The FILE
+            // records every one, because "1 job had no Apply button" and "82 did" are different
+            // problems and the old log could not tell them apart.
             if (externals === 1) {
               console.log('     ⓘ no Indeed Apply button on this job — what the page offers:');
               await describeApplyArea(jobPage).catch(() => {});
             }
+            logEvent('job', { portal: 'indeed', outcome: 'external', jk,
+              title: post.title || null, url: jobPage.url() });
             await api.event({ runId: state.runId, portal: 'indeed', type: 'manual_apply',
               title: post.title, company: post.company,
               url: `https://${host}/viewjob?jk=${jk}`, detail: `fit ${score} — apply manually (employer site)` });
@@ -630,6 +636,58 @@ export async function runIndeed(page, api, plan, state, ctx) {
  * the logs from a genuinely external job, so a selector change looked exactly like "Indeed has
  * no Easy Apply jobs" — which is why it appeared never to work.
  */
+/**
+ * Make sure the JOB PANE is actually open before anything judges what is on it.
+ *
+ * Evidence from 2026-08-14: 82 jobs were recorded as "apply manually (employer site)", and the
+ * diagnostic dump for them lists the page's buttons in full:
+ *
+ *   Skip to main content | 1 new update | 1 new update | Close | Clear what input |
+ *   Clear location input | Find jobs | Pay | Remote | Distance 1 | Job type | Job Language
+ *
+ * That is the search page's own chrome and nothing else. Not one control from the job panel —
+ * no Apply, no Save, no Report job, not even "Apply on company site". The pane had not rendered,
+ * so "this job has no Indeed Apply button" was a verdict about a panel that was not on screen.
+ * 82 applyable jobs may have been thrown away on it in a single run.
+ *
+ * Navigating to `?vjk=<key>` usually renders the pane server-side, but evidently not always. So:
+ * wait for it, and if it is still absent, CLICK THE CARD — which is what a person does, and what
+ * Indeed's own UI does (the search itself rewrites to `&vjk=<key>` on click).
+ */
+async function ensureJobPane(page, jk) {
+  const PANE = 'h2.jobsearch-JobInfoHeader-title, [data-testid="jobsearch-JobInfoHeader-title"], '
+    + '#jobDescriptionText, .jobsearch-JobComponent-description';
+  const present = async () => !!(await page.$(PANE).catch(() => null));
+
+  if (await present()) return true;
+  await page.waitForSelector(PANE, { timeout: 6000 }).catch(() => {});
+  if (await present()) return true;
+
+  // Still nothing — click the result card for this job, the way a person would.
+  const clicked = await page.evaluate((key) => {
+    const card = document.querySelector(`[data-jk="${key}"]`)
+      || document.querySelector(`a[href*="${key}"]`);
+    if (!card) return false;
+    const link = card.matches('a') ? card : card.querySelector('a');
+    (link || card).click();
+    return true;
+  }, jk).catch(() => false);
+  if (clicked) {
+    await page.waitForSelector(PANE, { timeout: 8000 }).catch(() => {});
+    if (await present()) return true;
+  }
+
+  // Genuinely absent. Say so with the evidence, rather than calling it an employer-site listing.
+  const diag = await page.evaluate(() => ({
+    cards: document.querySelectorAll('[data-jk]').length,
+    buttons: [...document.querySelectorAll('button, [role="button"]')]
+      .map((b) => (b.innerText || b.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean).slice(0, 14),
+  })).catch(() => ({ cards: null, buttons: [] }));
+  fault('INDEED_PANE_NOT_RENDERED', { jk, url: page.url(), clickedCard: clicked, ...diag });
+  return false;
+}
+
 async function findIndeedApplyButton(page) {
   // Indeed renders the Apply widget in an iframe on many layouts, so search frames too.
   const roots = [page, ...page.frames().filter((f) => f !== page.mainFrame())];
@@ -721,7 +779,14 @@ async function applyPageState(page) {
   return { state: last ? 'unreadable' : 'unreadable', sig: last };
 }
 
-async function indeedApply(page, api, profile, state, ctx) {
+async function indeedApply(page, api, profile, state, ctx, jk) {
+  // The pane FIRST. Without this, "no Indeed Apply button on this job" was being decided
+  // against the search page's own chrome — see ensureJobPane for what that actually looked
+  // like. A missing pane is not an employer-site listing, and must not be recorded as one.
+  if (!(await ensureJobPane(page, jk))) {
+    state.attentionReason = 'the job panel never opened, so the Apply button could not be found';
+    return 'attention';
+  }
   const btn = await findIndeedApplyButton(page);
   if (!btn) return 'external';
 
