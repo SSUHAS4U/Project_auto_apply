@@ -47,6 +47,25 @@ export const FAULTS = {
     action: 'The worker reopens it and retries the block. No action needed unless it repeats.',
     owner: false,
   },
+  SEARCH_FILTER_DROPPED: {
+    what: 'LinkedIn ignored the city filter, so the search ran across the whole country.',
+    why: 'LinkedIn rewrites the results URL after it loads and strips `location`. Both URL '
+       + 'forms were tried and both were rewritten. Every search then returns the same '
+       + 'nationwide list, which is why a run of 72 searches can find only a handful of jobs.',
+    action: 'No action — the next run retries both URL forms. If this repeats all day, the '
+       + 'cities in Automation are being ignored and results will be nationwide until it clears.',
+    owner: false,
+  },
+  SEARCH_LIST_NOT_READ: {
+    what: 'The search page returned only the one job LinkedIn had already opened, not the list.',
+    why: 'LinkedIn auto-opens a job on landing and renders the results list separately, as you '
+       + 'scroll. If the list has not rendered, the only job link on the page is the open one — '
+       + 'so the search reports exactly 1 result every time, whatever was searched for.',
+    action: 'No action — the next run scrolls the list and retries the other URL form. If every '
+       + 'search reports it, LinkedIn has changed the results markup and the card selectors in '
+       + 'worker/src/portals/linkedin.js need updating.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

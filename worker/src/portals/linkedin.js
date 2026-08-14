@@ -8,6 +8,13 @@ import fs from 'node:fs';
 import { fault } from '../fault.js';
 import path from 'node:path';
 import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
+import { logEvent } from '../logfile.js';
+import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
+import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
+import { newLedger, seal } from '../ledger.js';
+import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
+import { shouldApply, shouldContact, claimOutreach } from '../gate.js';
+import { cleanupDue, withdrawStaleInvites } from '../invites.js';
 
 /**
  * Gap between one search and the next.
@@ -18,14 +25,6 @@ import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
  * work of the six-search cap, at a twentieth of the old request rate.
  */
 const SEARCH_GAP_MS = 120_000;
-import { logEvent } from '../logfile.js';
-import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
-import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
-import { newLedger, seal } from '../ledger.js';
-import { sendConnectionRequests, checkAcceptances, sendApprovedMessages, sendFollowUps } from './outreach.js';
-import { shouldApply, shouldContact, claimOutreach } from '../gate.js';
-import { cleanupDue, withdrawStaleInvites } from '../invites.js';
-
 // Seniority is filtered here because LinkedIn's own filters don't reliably exclude it. The
 // COMPATIBILITY decision does not live in this file — `gate.js → shouldApply` owns it, so
 // LinkedIn and Indeed cannot drift apart. (This used to carry a FIT_THRESHOLD of 25 on keyword
@@ -35,22 +34,60 @@ const SENIOR_RE = /\b(senior|sr\.?|lead|principal|staff|architect|manager|direct
 // LinkedIn pages at 25 results and offsets with `start`. Reading only page 1 capped every
 // search at 25 regardless of how many matches existed.
 
-function searchUrl(keyword, location, start = 0, maxAgeDays = 0) {
+/**
+ * The search URL, in either of the two forms LinkedIn serves.
+ *
+ * Which one works is NOT stable, so this builds both and the caller checks which survived.
+ * The evidence for that, from two consecutive days of the run log:
+ *
+ *   2026-08-13  /jobs/search/  redirected 234 times to /jobs/search-results?skipRedirect=true,
+ *               and the redirect dropped `location`. v154 moved to /jobs/search-results/ for
+ *               exactly this reason.
+ *   2026-08-14  /jobs/search-results/ was itself rewritten by LinkedIn's own SPA — 73 of 92
+ *               landings had `location` and `sortBy` stripped — while every /jobs/search/
+ *               navigation kept them. Zero redirects that day.
+ *
+ * Same code, opposite outcome, one day apart. So "pick the right URL" is not a decision that
+ * can be made once in the source; it has to be made per run, from what the page actually does.
+ * Hard-coding either form guarantees a nationwide search on the day LinkedIn flips back — which
+ * is what a whole run of 72 searches finding 4 distinct jobs looked like.
+ */
+function searchUrl(keyword, location, start = 0, maxAgeDays = 0, form = 'search-results') {
   const p = new URLSearchParams({ keywords: keyword, f_AL: 'true', sortBy: 'DD' }); // f_AL = Easy Apply only
   if (location && location.toLowerCase() !== 'remote') p.set('location', location);
   else p.set('f_WT', '2'); // remote
   if (start > 0) p.set('start', String(start));
   // f_TPR=r<seconds> — "posted within". Keeps months-old, almost certainly filled postings out.
   if (maxAgeDays > 0) p.set('f_TPR', `r${Math.round(maxAgeDays * 86400)}`);
-  // /jobs/search-results/, not /jobs/search/.
-  //
-  // LinkedIn moved the results page. A run produced 545 redirects of
-  //     /jobs/search/?...  ->  /jobs/search-results?skipRedirect=true&...
-  // and the redirect DROPS query parameters on the way — the `location` filter among them, so
-  // even the searches that survived were not the search we asked for. Every one of 110 searches
-  // reported "0 Easy-Apply jobs" while the pages returned HTTP 200 with a live session and real
-  // jobs on them. Requesting the destination directly keeps the parameters intact.
-  return `https://www.linkedin.com/jobs/search-results/?${p.toString()}`;
+  return `https://www.linkedin.com/jobs/${form}/?${p.toString()}`;
+}
+
+/**
+ * Did the location filter SURVIVE the landing?
+ *
+ * This is the check whose absence cost a whole run. Every search asked for a city, LinkedIn
+ * dropped it, and the worker searched the entire country 72 times without noticing — the URL it
+ * asked for and the URL it got were never compared. Eleven searches across four keywords and
+ * six cities returned four distinct job ids in total, each found ten or eleven times over.
+ *
+ * Exported so it can be tested against real captured URLs rather than asserted about.
+ */
+export function locationKept(landedUrl, location) {
+  const url = String(landedUrl || '');
+  // Remote is expressed as a work-type flag, not a place.
+  if (!location || location.toLowerCase() === 'remote') return /[?&]f_WT=2\b/.test(url);
+  // Compare loosely: LinkedIn re-encodes ("Bengaluru" may come back percent-encoded, or as
+  // "Bengaluru, Karnataka, India"), and a strict equality check would report a working filter
+  // as broken — the same false alarm in the opposite direction.
+  const want = location.toLowerCase().replace(/[^a-z]/g, '');
+  // decodeURIComponent THROWS on a lone '%' — and a URL from a live redirect is not guaranteed
+  // to be well-formed. This runs on every single search, so an exception here would take down
+  // the phase it exists to protect. Fall back to the raw string: a percent-encoded city still
+  // matches once the non-letters are stripped, so the check degrades rather than fails.
+  let got;
+  try { got = decodeURIComponent(url); } catch { got = url; }
+  got = got.toLowerCase().replace(/[^a-z]/g, '');
+  return want.length > 2 && got.includes(want);
 }
 
 /**
@@ -94,9 +131,43 @@ const CARD_SELECTOR =
  */
 const CARD_SELECTOR_ANY = `${CARD_SELECTOR}, a[href*="/jobs/view/"]`;
 
+/**
+ * Wait for the results LIST, and make it render.
+ *
+ * The old version waited for the first match of CARD_SELECTOR_ANY and stopped. That selector
+ * also matches the detail pane's own job link, and LinkedIn auto-selects a job on landing — so
+ * it was satisfied by the ONE job in the pane, roughly three seconds after navigation, before
+ * the list had rendered anything. Every search then reported "1 Easy-Apply job". Waiting for
+ * "a job link" is not the same as waiting for "the list of jobs", and the difference was 1
+ * result instead of 25.
+ *
+ * LinkedIn virtualises the list: rows materialise as they scroll into view. So this scrolls the
+ * results rail to force them in, and settles when the count stops growing rather than after a
+ * fixed sleep — a fixed sleep is either too short on a slow load or wasted time on a fast one.
+ */
 async function waitForResults(page) {
   await page.waitForSelector(CARD_SELECTOR_ANY, { timeout: 18000 }).catch(() => {});
-  await page.waitForTimeout(1200).catch(() => {});
+  let last = -1;
+  for (let i = 0; i < 8; i++) {
+    const n = await page.evaluate((sel) => {
+      // Scroll the rail that actually holds the results, not the window — the list is its own
+      // scroll container and scrolling the page moves nothing.
+      const rail = document.querySelector(
+        '.jobs-search-results-list, .scaffold-layout__list, [class*="jobs-search-results"]');
+      if (rail) rail.scrollBy(0, rail.clientHeight || 600);
+      else window.scrollBy(0, 600);
+      return document.querySelectorAll(sel).length;
+    }, CARD_SELECTOR_ANY).catch(() => 0);
+    if (n > 0 && n === last) break;     // settled — the list stopped growing
+    last = n;
+    await page.waitForTimeout(700).catch(() => {});
+  }
+  // Back to the top so the first card is the first result, not wherever the scroll ended.
+  await page.evaluate(() => {
+    const rail = document.querySelector(
+      '.jobs-search-results-list, .scaffold-layout__list, [class*="jobs-search-results"]');
+    if (rail) rail.scrollTo(0, 0); else window.scrollTo(0, 0);
+  }).catch(() => {});
 }
 
 async function collectJobCards(page) {
@@ -549,20 +620,57 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       // seconds, promising a recovery that could not happen because nothing ever threw.
       //
       // index.js already knows how to relaunch and retry a block; it just never heard about it.
-      const firstOk = await page.goto(searchUrl(keyword, location, 0, maxAgeDays),
-        { waitUntil: 'domcontentloaded' })
-        .then(() => true)
-        .catch((e) => {
-          logEvent('search', { outcome: 'goto-failed', keyword, location, page: 0,
-            error: String(e && e.message).slice(0, 200) });
-          return false;
-        });
-      if (!firstOk && !(await pageAlive(page))) {
-        throw new Error('Target page, context or browser has been closed');
-      }
-      await waitForResults(page);
+      // Run the search, then CHECK WHAT WE ACTUALLY GOT — and try the other URL form if the
+      // first one was rewritten out from under us.
+      //
+      // Neither form is reliably correct (see searchUrl). The run of 2026-08-14 asked for six
+      // cities and got a nationwide search every time because LinkedIn's SPA stripped
+      // `location` after landing, and nothing compared the URL requested with the URL reached.
+      // Seventy-two searches produced four distinct jobs. Verification is the fix; picking a
+      // different favourite URL would just move the day it breaks.
+      let cards = [];
+      let landed = '';
+      let usedForm = null;
+      let filterKept = false;
+      for (const form of ['search-results', 'search']) {
+        const ok = await page.goto(searchUrl(keyword, location, 0, maxAgeDays, form),
+          { waitUntil: 'domcontentloaded' })
+          .then(() => true)
+          .catch((e) => {
+            logEvent('search', { outcome: 'goto-failed', keyword, location, page: 0, form,
+              error: String(e && e.message).slice(0, 200) });
+            return false;
+          });
+        // A search that cannot navigate is not a search with no results. After the browser died
+        // mid-run, 70 consecutive searches printed "0 Easy-Apply jobs" and the run announced
+        // "every search was exhausted" without having navigated once.
+        if (!ok && !(await pageAlive(page))) {
+          throw new Error('Target page, context or browser has been closed');
+        }
+        await waitForResults(page);
 
-      const cards = await collectJobCards(page);
+        landed = page.url();
+        filterKept = locationKept(landed, location);
+        cards = await collectJobCards(page);
+        // The auto-selected job in the detail pane is NOT a search result. LinkedIn opens one on
+        // landing, its link matches the card selector, and for a whole run that single job was
+        // the entire "result set" — the same job id found eleven times across eleven different
+        // searches. If the list gave us nothing but the job already open, the list did not load.
+        const paneId = (landed.match(/currentJobId=(\d+)/) || [])[1] || null;
+        const onlyThePane = cards.length === 1 && paneId && cards[0].id === paneId;
+
+        logEvent('search', { outcome: 'attempt', keyword, location, form, landed,
+          filterKept, cards: cards.length, onlyThePane });
+
+        usedForm = form;
+        if (filterKept && !onlyThePane) break;   // this form worked; stop trying
+        if (form === 'search') {
+          // Both forms failed the same check. Say which one, and what it means, rather than
+          // reporting a small number of results as though the search had simply gone quiet.
+          if (!filterKept) fault('SEARCH_FILTER_DROPPED', { keyword, location, landed });
+          else if (onlyThePane) fault('SEARCH_LIST_NOT_READ', { keyword, location, landed, paneId });
+        }
+      }
       // Walk further result pages. collectJobCards already collapses reposts, so the stop
       // condition is "this page added nothing new", the same rule Indeed uses.
       const seenIds = new Set(cards.map((c) => c.id));
@@ -574,7 +682,9 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         // exhausted" and finished, having never navigated again. Not one authwall redirect in the
         // whole run: the session was fine, the browser was gone. Fail loudly so the dead-browser
         // handler in index.js relaunches and retries the block.
-        const searchOk = await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays),
+        // Same form that worked for page 1 — switching mid-search would re-introduce the very
+        // rewrite the loop above just worked around.
+        const searchOk = await page.goto(searchUrl(keyword, location, pg * 25, maxAgeDays, usedForm),
           { waitUntil: 'domcontentloaded' })
           .then(() => true)
           .catch((e) => {
@@ -590,7 +700,6 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
         if (more.length === 0) break;
         for (const c of more) { seenIds.add(c.id); cards.push(c); }
       }
-      const landed = page.url();
       const needsLogin = /\/login|\/authwall|signup/i.test(landed);
       await api.event({ runId: state.runId, portal: 'linkedin', type: 'info',
         detail: cards.length > 0
