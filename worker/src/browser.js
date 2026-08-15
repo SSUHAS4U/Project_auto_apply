@@ -141,6 +141,20 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
   const { ensureBrowser } = await import('./browser-setup.js');
   const exe = await ensureBrowser(log).catch(() => null);
   if (exe) {
+    // TRY CAMOUFOX SEVERAL TIMES BEFORE GIVING UP ON IT.
+    //
+    // One failed attempt used to fall straight through to Chrome — and Chrome uses a DIFFERENT
+    // PROFILE DIRECTORY, so every saved sign-in silently disappears. The run of 2026-08-15
+    // shows the whole chain in five lines: strays killed at 03:58:05, Camoufox refused to start
+    // at 03:58:10 with "Target page, context or browser has been closed", Chrome took over on
+    // .profile, found no session, declared the portals signed out and opened a login window.
+    // The credentials were saved the entire time — in .profile-ff, the profile the run had just
+    // walked away from. That is why it "keeps opening browsers and never signs in".
+    //
+    // The failure is a profile lock, not a broken browser: Firefox does not release the lock on
+    // .profile-ff the instant the previous process is killed, and the first launch lands inside
+    // that window. Waiting and retrying costs a few seconds; falling back costs the session.
+    for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       fs.mkdirSync(ffDir, { recursive: true });
       const before = await browserPids().catch(() => []);
@@ -164,6 +178,16 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
       startHeartbeat(ctx, hardened);
       return { ctx, page: hardened };
     } catch (e) {
+      if (attempt < 3) {
+        // Almost always the profile lock from the process we just killed. Wait longer each
+        // time — 3s, then 6s — rather than switching profiles and losing the sign-in.
+        log(`  · automation browser busy (attempt ${attempt} of 3) — waiting for the profile `
+          + 'to be released…');
+        logEvent('lifecycle', { event: 'camoufox launch retry', attempt,
+          error: String(e && e.message).slice(0, 160) });
+        await sleep(attempt * 3000);
+        continue;
+      }
       // Falling back to Chrome switches PROFILE DIRECTORY as well as browser: Camoufox keeps
       // its session in .profile-ff, Chrome in .profile. A sign-in done in one is invisible to
       // the other, so a run that launches Camoufox after you signed in through the Chrome
@@ -173,6 +197,11 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
       log(`  ! Bundled browser failed to start (${String(e.message).slice(0, 120)})`);
       log('  ! Falling back to Chrome — NOTE this uses a SEPARATE profile, so portals signed');
       log('    in under the bundled browser will show as signed out until it starts again.');
+      log('    If you are asked to sign in again after this line, that is why — the saved');
+      log('    session still exists, it just lives in the other profile.');
+      logEvent('lifecycle', { event: 'fell back to chrome — session profile changed',
+        error: String(e && e.message).slice(0, 200) });
+    }
     }
   }
   const opts = {

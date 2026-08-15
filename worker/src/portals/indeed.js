@@ -791,14 +791,67 @@ async function indeedApply(page, api, profile, state, ctx, jk) {
   if (!btn) return 'external';
 
   state.action = 'Indeed Apply…';
-  const [maybeNew] = await Promise.all([
-    ctx.waitForEvent('page', { timeout: 6000 }).catch(() => null),
-    btn.click({ timeout: 4000 }).catch(() => {}),
-  ]);
-  const applyPage = maybeNew || page; // the flow may open in a new tab
+  const before = new Set(ctx.pages());
+  await btn.click({ timeout: 4000 }).catch(() => {});
+
+  // FIND THE APPLICATION WINDOW. This is what you were watching go wrong.
+  //
+  // The old code raced `ctx.waitForEvent('page')` against the click with a 6-second timeout and
+  // fell back to `page` when it expired. Indeed opens the application in a SEPARATE WINDOW that
+  // often takes longer than that to appear — so the window opened, we never attached to it, and
+  // we spent twelve steps driving the SEARCH page instead. The log proves it: the flow "ended"
+  // at https://in.indeed.com/jobs offering "Find jobs | Pay | Remote | Distance | Job type",
+  // which is search chrome, while the real application sat in a window we had walked away from.
+  // And because we never held a handle to it, we never closed it — so every job left another
+  // window open on screen, which is exactly what you saw piling up.
+  //
+  // Poll instead of racing: up to 20 seconds, for a page that is NEW, or for this page having
+  // been navigated into the apply flow. Indeed serves it from smartapply / m5.apply, and both
+  // the new-window and same-window shapes are covered.
+  const isApplyUrl = (u) => /smartapply|m5\.apply|\/applystart|indeedapply|\/apply\b/i.test(String(u || ''));
+  let applyPage = null;
+  for (let i = 0; i < 20 && !applyPage; i++) {
+    for (const p of ctx.pages()) {
+      if (p.isClosed && p.isClosed()) continue;
+      if (!before.has(p)) { applyPage = p; break; }                    // a window that is new
+      if (p === page && isApplyUrl(p.url())) { applyPage = p; break; } // flow took over this page
+    }
+    if (!applyPage) await sleep(1000);
+  }
+  if (!applyPage) applyPage = page;
   await humanDelay(1800, 3200);
+  logEvent('job', { portal: 'indeed', step: 'apply-window',
+    separateWindow: applyPage !== page, url: applyPage.url() });
   let lastUrl = applyPage.url();
   let lastButtons = [];
+
+  // EVERY exit closes the application window.
+  //
+  // Three of the returns below are early ones — paused, blocked, unanswerable question — and
+  // none of them closed it. Only the submit and the run-out-of-steps paths did. So a run that
+  // paused on twenty jobs left twenty application windows open, each holding a tab, memory and
+  // a share of the browser's stability. That is both the pile of windows on screen and a very
+  // plausible contributor to the browser dying: this is a persistent context, and nothing was
+  // ever reclaiming those pages.
+  //
+  // A finally block cannot be added around a function that returns from inside a loop without
+  // restructuring it, so the loop body is wrapped and the cleanup happens once, here.
+  try {
+    return await applySteps();
+  } finally {
+    if (applyPage !== page && applyPage.isClosed && !applyPage.isClosed()) {
+      await applyPage.close().catch(() => {});
+    }
+    // Sweep anything else the flow spawned — Indeed sometimes opens an interstitial of its own.
+    // The job page and the main page stay; everything past them is ours to reclaim.
+    for (const p of ctx.pages()) {
+      if (p === page || p === applyPage) continue;
+      if (p.isClosed && p.isClosed()) continue;
+      if (!before.has(p)) await p.close().catch(() => {});
+    }
+  }
+
+  async function applySteps() {
 
   for (let step = 0; step < 12; step++) {
     if (state.paused) { state.attentionReason = 'the run was paused'; return 'attention'; }
@@ -843,7 +896,6 @@ async function indeedApply(page, api, profile, state, ctx, jk) {
       await submit.click({ timeout: 4000 }).catch(() => {});
       await humanDelay(1500, 2600);
       const done = await applyPage.$('text=/application submitted|your application has been submitted/i');
-      if (applyPage !== page) await applyPage.close().catch(() => {});
       return done ? 'applied' : 'applied';
     }
     const cont = await applyPage.$('button:has-text("Continue"), button[aria-label*="Continue"], button:has-text("Next")');
@@ -856,7 +908,6 @@ async function indeedApply(page, api, profile, state, ctx, jk) {
         .replace(/\s+/g, ' ').trim())).filter(Boolean).slice(0, 12)).catch(() => []);
     break;
   }
-  if (applyPage !== page) await applyPage.close().catch(() => {});
   // The catch-all. Reaching here means the flow ran out of steps without submitting and without
   // any earlier branch explaining why — so say THAT, rather than printing a bare "needs your
   // answer" that sends the owner looking for a screening question that may not exist. Five of
@@ -869,4 +920,5 @@ async function indeedApply(page, api, profile, state, ctx, jk) {
   // something we do not match". The buttons that WERE there settle it in one line.
   fault('INDEED_NO_SUBMIT_STEP', { url: lastUrl, buttons: lastButtons });
   return 'attention';
+  }
 }

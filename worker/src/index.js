@@ -130,6 +130,15 @@ async function main() {
   // like being blocked by the portal. An orphan left by a crash or a previous run poisons the
   // first browser of the next run, so a restart only helps if the strays go first.
   await killStrayBrowsers({ log: console.log });
+  // LET THE PROFILE LOCK GO before the first launch.
+  //
+  // taskkill returns as soon as the kill is signalled, not when the process has finished dying,
+  // and Firefox releases its lock on .profile-ff only then. On 2026-08-15 the strays were killed
+  // at 03:58:05 and Camoufox refused to start at 03:58:10 — straight into the Chrome fallback,
+  // which uses a different profile directory and therefore has none of the saved sign-ins. The
+  // whole "it keeps opening browsers and asking me to log in again" came from these four
+  // seconds. launchBrowser retries now as well; this makes the first attempt likely to succeed.
+  await sleep(3000);
 
   const signedInMarker = path.join(APP_DIR, '.signed-in');
   let background = fs.existsSync(signedInMarker);
