@@ -16,7 +16,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { Api } from './api.js';
-import { launchBrowser, startPausePoller, sleep, APP_DIR, closeBrowser, killStrayBrowsers } from './browser.js';
+import { launchBrowser, startPausePoller, sleep, APP_DIR, closeBrowser, killStrayBrowsers,
+  RECYCLE_SIGNAL } from './browser.js';
 import { runLinkedIn } from './portals/linkedin.js';
 import { runIndeed } from './portals/indeed.js';
 import {
@@ -326,7 +327,8 @@ async function main() {
       // a retry hands Easy Apply another full 90 minutes and the outreach flows never run —
       // which is exactly why post scan, recruiter email and connections had never executed.
       let res;
-      for (let attempt = 1; ; attempt++) {
+      let recycles = 0;
+      for (let attempt = 1; ; ) {
       try {
         res = await adapter(page, api, order.plan, state, ctx);
         break;
@@ -335,7 +337,16 @@ async function main() {
         // window is closed. Every later ctx.newPage() then throws "Target page, context or
         // browser has been closed" and the whole block was abandoned on the spot, an hour of
         // work thrown away over a recoverable fault. Reopen and give the block one more go.
-        if (!isDeadBrowser(e) || attempt >= 3) throw e;
+        // A RECYCLE is not a failure. The block asks for a fresh browser when memory passes
+        // the limit, and this is the same machinery a death uses — relaunch, keep `state`, carry
+        // on where it left off. It must not count against the death budget, or a long block
+        // would exhaust its three attempts on planned recycles and then have none left for a
+        // real crash.
+        const recycling = String(e && e.message) === RECYCLE_SIGNAL;
+        if (recycling) recycles++;
+        if (!recycling && (!isDeadBrowser(e) || attempt >= 3)) throw e;
+        if (recycling && recycles > 12) throw e;   // something is wrong if it needs more
+        if (!recycling) attempt++;
         console.log('\n  ⟳ the automation browser closed mid-run — reopening and CONTINUING '
           + `this block (attempt ${attempt + 1} of 3)…`);
         logEvent('lifecycle', { event: 'browser died mid-block — continuing', attempt,

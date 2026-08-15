@@ -7,7 +7,8 @@
 import fs from 'node:fs';
 import { fault } from '../fault.js';
 import path from 'node:path';
-import { humanDelay, sleep, botChallengeCount, APP_DIR } from '../browser.js';
+import { humanDelay, sleep, botChallengeCount, APP_DIR, browserMemoryMB,
+  BROWSER_MEMORY_LIMIT_MB, RECYCLE_SIGNAL } from '../browser.js';
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
@@ -1045,6 +1046,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           logJobHeader(title || 'Role', company || '', gate.label);
           beginJob(); // reset per-job de-duplication of the field rows below
           state.blockedQuestions = null;
+          await recycleIfBloated(state);
           const result = await easyApply(page, api, profile, state);
           if (result === 'applied') {
             applied++;
@@ -1086,6 +1088,11 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
               detail: 'Easy Apply form did not open for this job — open it and apply manually' });
           }
         } catch (e) {
+          // A recycle request and a dead browser are not failed jobs — both must reach index.js,
+          // which relaunches and continues the block. Counted as a failed job here, the recycle
+          // never happens and the browser keeps growing to the point it exists to prevent.
+          const msg = String((e && e.message) || e);
+          if (msg === RECYCLE_SIGNAL || /target page, context or browser has been closed/i.test(msg)) throw e;
           tally.failed++;
           logResult('failed', String(e.message || e).slice(0, 80));
           // apply_failed (with the job identity) — a REAL per-job failure, so the dashboard's
@@ -1144,6 +1151,15 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       try {
         await fn(flowPlan);
       } catch (e) {
+        // Same rule one level up: a flow that ends because the browser needs recycling must
+        // not be reported as "the flow ended early" and quietly skipped — the block would then
+        // walk through post scan, email and connections in seconds, each swallowing the same
+        // signal, and finish having done none of them.
+        const msg = String((e && e.message) || e);
+        if (msg === RECYCLE_SIGNAL || /target page, context or browser has been closed/i.test(msg)) {
+          api.flow = null;
+          throw e;
+        }
         console.log(`     ${label} ended: ${String(e).slice(0, 140)}`);
         await api.event({ runId: state.runId, portal: 'linkedin', flow: key, type: 'info',
           detail: `${label} ended early: ${String(e).slice(0, 140)}` });
@@ -1676,6 +1692,31 @@ async function scanHiringPosts(page, api, plan, state, dedicated = false, resume
 
 /** Walk LinkedIn's multi-step Easy Apply modal. Returns applied|external|attention|none. */
 let easyApplyDiagShown = false;
+/**
+ * Ask for a fresh browser when memory passes the limit.
+ *
+ * Measured, not guessed: an abandoned application window costs ~204 MB, the machine has ~5 GB
+ * free, and ~25 of them exhaust it — which is about 50 minutes of work and exactly the window in
+ * which the browser has been dying. Closing the windows (which now happens on every path) is
+ * necessary but not sufficient: after closing twelve, 1.7 GB of the 2.4 GB never came back.
+ * Firefox keeps it, so the only way to give it back is to restart the browser.
+ *
+ * Raised BETWEEN jobs, never inside one — index.js catches it, relaunches, and re-enters the
+ * block with `state` intact, so the phase budget and the search position carry over.
+ */
+async function recycleIfBloated(state) {
+  const mb = await browserMemoryMB().catch(() => 0);
+  if (!mb) return;                                   // unmeasurable platform — never block on it
+  state.lastBrowserMB = mb;
+  if (mb < BROWSER_MEMORY_LIMIT_MB) return;
+  logEvent('lifecycle', { event: 'recycle requested', memoryMB: mb,
+    limitMB: BROWSER_MEMORY_LIMIT_MB });
+  console.log(`
+     ♻ the automation browser is using ${(mb / 1024).toFixed(1)} GB — `
+    + 'restarting it before it runs the machine out of memory.');
+  throw new Error(RECYCLE_SIGNAL);
+}
+
 async function easyApply(page, api, profile, state) {
   // The search is Easy-Apply-only (f_AL=true), so the detail pane WILL have an Easy Apply
   // button once it finishes loading. The pane loads async after the card click, so poll for

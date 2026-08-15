@@ -133,6 +133,51 @@ export async function killStrayBrowsers({ log = () => {} } = {}) {
   }
 }
 
+/**
+ * Total resident memory of every automation browser process, in MB.
+ *
+ * Measured on this machine, and the numbers are why this function exists:
+ *
+ *   baseline (browser + 1 page)  ..............   491 MB across  7 processes
+ *   per abandoned application window  .........   204 MB and 1.3 processes
+ *   24 abandoned windows (one real run)  ......  ~4.9 GB on top of the baseline
+ *   free RAM available  .......................  ~5 GB
+ *
+ * So a run reaches the end of the machine's memory at about 25 leaked windows — which is
+ * roughly 50 minutes of work at two minutes a job, and squarely inside the 20-to-60-minute
+ * window in which the browser has been dying. Idleness was ruled out separately: two Camoufox
+ * instances left alone for 14 minutes, one pinged and one untouched, both survived.
+ *
+ * Closing the windows is not enough on its own. After closing all twelve, memory settled at
+ * 2257 MB against a 491 MB baseline — 1.7 GB never came back. Firefox does not return it, so
+ * the browser has to be recycled as well as tidied.
+ */
+export async function browserMemoryMB() {
+  const { execFile } = await import('node:child_process');
+  const run = (cmd, args) => new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { timeout: 8000 }, (err, stdout) => resolve(String(stdout || '')));
+    } catch { resolve(''); }
+  });
+  if (process.platform !== 'win32') return 0;   // only Windows is measured here
+  const out = await run('tasklist', ['/FI', 'IMAGENAME eq camoufox.exe', '/NH', '/FO', 'CSV']);
+  const kb = [...out.matchAll(/"([\d,]+) K"/g)]
+    .reduce((sum, m) => sum + Number(m[1].replace(/,/g, '')), 0);
+  return Math.round(kb / 1024);
+}
+
+/**
+ * How much memory is allowed before the browser is recycled.
+ *
+ * 2500 MB: five times the idle baseline, and half the free memory measured on this machine, so
+ * the recycle happens while there is still room to start the replacement. Waiting for the
+ * failure means recycling with no memory left to do it with.
+ */
+export const BROWSER_MEMORY_LIMIT_MB = 2500;
+
+/** The signal a block raises to ask for a fresh browser. Recognised by index.js. */
+export const RECYCLE_SIGNAL = 'jobpilot: recycle the browser (memory)';
+
 export async function launchBrowser({ headless = false, log = console.log } = {}) {
   const userDataDir = path.join(APP_DIR, '.profile'); // persisted logins live here
   fs.mkdirSync(userDataDir, { recursive: true });

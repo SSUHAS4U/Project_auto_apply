@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import { fault } from '../fault.js';
 import { logEvent } from '../logfile.js';
 import path from 'node:path';
-import { humanDelay, sleep, APP_DIR } from '../browser.js';
+import { humanDelay, sleep, APP_DIR, browserMemoryMB, BROWSER_MEMORY_LIMIT_MB,
+  RECYCLE_SIGNAL } from '../browser.js';
 import { logJobHeader, logSkipped, logResult, beginJob, setLedger } from '../log.js';
 import { newLedger, seal } from '../ledger.js';
 import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
@@ -513,6 +514,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
           logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
+          await recycleIfBloated(state);
           const result = await indeedApply(jobPage, api, profile, state, ctx, jk);
           // Pass the REASON through, not just the outcome. This called logResult('attention')
           // with nothing attached, so the terminal printed a bare "Paused — needs your answer"
@@ -572,6 +574,14 @@ export async function runIndeed(page, api, plan, state, ctx) {
               url: `https://${host}/viewjob?jk=${jk}`, detail: 'no Indeed Apply button found — apply manually' });
           }
         } catch (e) {
+          // A RECYCLE REQUEST IS NOT A FAILED JOB. This catch swallows everything so one bad
+          // posting cannot end the block — correct for a posting, fatal for the recycle signal,
+          // which has to reach index.js to be acted on. Swallowed here it would have been
+          // counted as a failed job and the browser would have gone on growing to the point
+          // this exists to prevent. The same applies to a dead browser: index.js relaunches and
+          // continues the block, and it can only do that if the error reaches it.
+          const msg = String((e && e.message) || e);
+          if (msg === RECYCLE_SIGNAL || /target page, context or browser has been closed/i.test(msg)) throw e;
           tally.failed++;
           await api.event({ runId: state.runId, portal: 'indeed', type: 'error', detail: String(e).slice(0, 160) });
         } finally {
@@ -782,6 +792,31 @@ async function applyPageState(page) {
 // Exported for testing. The apply flow is the part that has never worked, and driving the
 // whole of runIndeed to reach it takes minutes per assertion — slow enough that it was
 // never actually done, which is how the new-window bug survived 140 passing tests.
+/**
+ * Ask for a fresh browser when memory passes the limit.
+ *
+ * Measured, not guessed: an abandoned application window costs ~204 MB, the machine has ~5 GB
+ * free, and ~25 of them exhaust it — which is about 50 minutes of work and exactly the window in
+ * which the browser has been dying. Closing the windows (which now happens on every path) is
+ * necessary but not sufficient: after closing twelve, 1.7 GB of the 2.4 GB never came back.
+ * Firefox keeps it, so the only way to give it back is to restart the browser.
+ *
+ * Raised BETWEEN jobs, never inside one — index.js catches it, relaunches, and re-enters the
+ * block with `state` intact, so the phase budget and the search position carry over.
+ */
+async function recycleIfBloated(state) {
+  const mb = await browserMemoryMB().catch(() => 0);
+  if (!mb) return;                                   // unmeasurable platform — never block on it
+  state.lastBrowserMB = mb;
+  if (mb < BROWSER_MEMORY_LIMIT_MB) return;
+  logEvent('lifecycle', { event: 'recycle requested', memoryMB: mb,
+    limitMB: BROWSER_MEMORY_LIMIT_MB });
+  console.log(`
+     ♻ the automation browser is using ${(mb / 1024).toFixed(1)} GB — `
+    + 'restarting it before it runs the machine out of memory.');
+  throw new Error(RECYCLE_SIGNAL);
+}
+
 export async function indeedApply(page, api, profile, state, ctx, jk) {
   // The pane FIRST. Without this, "no Indeed Apply button on this job" was being decided
   // against the search page's own chrome — see ensureJobPane for what that actually looked
