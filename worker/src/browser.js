@@ -3,6 +3,7 @@ import { chromium, firefox } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { logEvent } from './logfile.js';
+import { fault } from './fault.js';
 
 // When packaged as a single .exe (pkg), the code lives in a virtual snapshot — the profile
 // and config must live next to the actual executable. In dev (run from the worker folder
@@ -178,14 +179,21 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
       startHeartbeat(ctx, hardened);
       return { ctx, page: hardened };
     } catch (e) {
-      if (attempt < 3) {
-        // Almost always the profile lock from the process we just killed. Wait longer each
-        // time — 3s, then 6s — rather than switching profiles and losing the sign-in.
-        log(`  · automation browser busy (attempt ${attempt} of 3) — waiting for the profile `
+      // SIX attempts, and NEVER a fallback. See below for why the fallback is gone entirely.
+      if (attempt < 6) {
+        // Almost always the profile lock from the process we just killed. Before waiting, make
+        // sure nothing is still holding it — a survivor of the taskkill is the usual reason a
+        // retry fails as often as the first attempt did.
+        const survivors = await browserPids().catch(() => []);
+        if (survivors.length) {
+          logEvent('lifecycle', { event: 'killing lock holders before retry', pids: survivors });
+          await killPids(survivors);
+        }
+        log(`  · automation browser busy (attempt ${attempt} of 6) — waiting for the profile `
           + 'to be released…');
         logEvent('lifecycle', { event: 'camoufox launch retry', attempt,
-          error: String(e && e.message).slice(0, 160) });
-        await sleep(attempt * 3000);
+          survivors: survivors.length, error: String(e && e.message).slice(0, 160) });
+        await sleep(attempt * 2000);
         continue;
       }
       // Falling back to Chrome switches PROFILE DIRECTORY as well as browser: Camoufox keeps
@@ -194,16 +202,36 @@ export async function launchBrowser({ headless = false, log = console.log } = {}
       // fallback reports "not signed in" against a session that genuinely exists — it is just
       // in the other folder. Say so loudly; a silent fallback makes that indistinguishable
       // from a login that was never saved.
-      log(`  ! Bundled browser failed to start (${String(e.message).slice(0, 120)})`);
-      log('  ! Falling back to Chrome — NOTE this uses a SEPARATE profile, so portals signed');
-      log('    in under the bundled browser will show as signed out until it starts again.');
-      log('    If you are asked to sign in again after this line, that is why — the saved');
-      log('    session still exists, it just lives in the other profile.');
-      logEvent('lifecycle', { event: 'fell back to chrome — session profile changed',
-        error: String(e && e.message).slice(0, 200) });
+      // NO FALLBACK TO CHROME WHEN CAMOUFOX EXISTS. This is the important line in the file.
+      //
+      // Chrome uses .profile; Camoufox uses .profile-ff. They are different browsers with
+      // incompatible profile formats, so switching does not "degrade gracefully" — it throws
+      // away every saved sign-in and makes the app announce that you are logged out of accounts
+      // you are logged into. That is not a fallback, it is a different product with none of
+      // your data, and it silently changed the browser fingerprint the job boards check as well.
+      //
+      // Chrome remains the bootstrap for one case only, handled above: Camoufox could not be
+      // DOWNLOADED at all (first run, no network). If the binary exists and will not start,
+      // that is a local, fixable condition — a lock, a half-written profile — and the honest
+      // response is to say so and stop, not to quietly become a different browser.
+      log(`
+  ✋ The automation browser would not start after 6 attempts.`);
+      log(`     Last error: ${String(e.message).slice(0, 140)}`);
+      log('     Your sign-ins are safe — they live in the browser profile, not in the app.');
+      log('     Quit JobPilot from the tray and open it again. If it persists, delete');
+      log(`     ${ffDir} and sign in once more.`);
+      logEvent('lifecycle', { event: 'camoufox launch failed — refusing to switch profiles',
+        attempts: 6, ffDir, error: String(e && e.message).slice(0, 200) });
+      fault('BROWSER_WILL_NOT_START', { ffDir, error: String(e && e.message).slice(0, 200) });
+      throw new Error(`the automation browser would not start: ${String(e.message).slice(0, 120)}`);
     }
     }
   }
+  // Only reached when Camoufox could not be obtained at all — the genuine bootstrap case.
+  log('\n  ⓘ The bundled automation browser is not available, so Chrome is being used instead.');
+  log('     Chrome keeps its sign-ins in a SEPARATE profile, so you will be asked to sign in');
+  log('     once here. This is the first-run path; it should not happen twice.');
+  logEvent('lifecycle', { event: 'chrome bootstrap — camoufox unavailable' });
   const opts = {
     headless,
     // A real window, not a scripted 1280x800 box — a fixed odd viewport is itself a signal.

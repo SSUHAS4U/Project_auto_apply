@@ -135,6 +135,16 @@ export const FAULTS = {
        + 'confirmation wording and the matcher in worker/src/portals/indeed.js needs it.',
     owner: false,
   },
+  BROWSER_WILL_NOT_START: {
+    what: 'The automation browser would not start, so the run could not begin.',
+    why: 'Usually the previous browser process is still holding a lock on the profile folder. '
+       + 'JobPilot deliberately does NOT switch to Chrome here: Chrome keeps its sign-ins in a '
+       + 'different profile, so switching would report you as logged out of accounts you are '
+       + 'logged into — which is exactly what used to happen.',
+    action: 'Quit JobPilot from the tray (not just the window) and open it again. If it happens '
+       + 'twice in a row, delete the .profile-ff folder named in this record and sign in once.',
+    owner: true,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',
