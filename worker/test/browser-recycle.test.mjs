@@ -20,7 +20,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { RECYCLE_SIGNAL, BROWSER_MEMORY_LIMIT_MB } from '../src/browser.js';
+import { RECYCLE_SIGNAL, BROWSER_MEMORY_LIMIT_MB, FREE_MEMORY_FLOOR_MB,
+  freeMemoryMB } from '../src/browser.js';
 
 const SRC = (f) => fs.readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
 
@@ -82,4 +83,32 @@ test('the signal is a distinct string, not a substring of a real error', () => {
   // and a change to the wording cannot silently stop recycling either.
   assert.match(RECYCLE_SIGNAL, /^jobpilot:/);
   assert.ok(RECYCLE_SIGNAL.length > 20);
+});
+
+test('a small browser on a busy machine does NOT trigger an endless recycle loop', () => {
+  // The free-memory floor exists for the case a fixed browser limit cannot see: the MACHINE
+  // running out because of everything else that is open. But if the browser is small, restarting
+  // it frees nothing and the run would recycle on every single job forever. Both portals gate
+  // the floor behind the browser actually being worth recycling.
+  const src = (f) => fs.readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+  for (const f of ['portals/indeed.js', 'portals/linkedin.js']) {
+    const body = src(f).slice(src(f).indexOf('async function recycleIfBloated'));
+    assert.match(body.slice(0, 1400), /worthRecycling/,
+      `${f}: the free-memory floor is not gated on the browser being the cause`);
+  }
+});
+
+test('the floor leaves room to actually start the replacement', () => {
+  // A launch needs roughly the 491 MB idle baseline. Recycling at less than that is recycling
+  // with no memory to recycle into — Camoufox failed to start in this suite at 2.17 GB resident
+  // with "gBrowser never populated", which is exactly that failure.
+  assert.ok(FREE_MEMORY_FLOOR_MB >= 800,
+    `${FREE_MEMORY_FLOOR_MB} MB is below the memory a launch needs`);
+  assert.ok(FREE_MEMORY_FLOOR_MB < BROWSER_MEMORY_LIMIT_MB,
+    'the floor must trip before the browser limit on a memory-starved machine');
+});
+
+test('free memory reads a real number', () => {
+  const mb = freeMemoryMB();
+  assert.ok(Number.isFinite(mb) && mb > 0, `freeMemoryMB() returned ${mb}`);
 });

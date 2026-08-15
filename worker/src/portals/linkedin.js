@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import { fault } from '../fault.js';
 import path from 'node:path';
 import { humanDelay, sleep, botChallengeCount, APP_DIR, browserMemoryMB,
-  BROWSER_MEMORY_LIMIT_MB, RECYCLE_SIGNAL } from '../browser.js';
+  BROWSER_MEMORY_LIMIT_MB,
+  FREE_MEMORY_FLOOR_MB, freeMemoryMB, RECYCLE_SIGNAL } from '../browser.js';
 import { logEvent } from '../logfile.js';
 import { fillForm, fillChoices, fillDropdowns, observeResume } from '../fill.js';
 import { logSearch, logJobHeader, logSkipped, logResult, logSummary, beginJob, setLedger } from '../log.js';
@@ -1707,13 +1708,22 @@ let easyApplyDiagShown = false;
 async function recycleIfBloated(state) {
   const mb = await browserMemoryMB().catch(() => 0);
   if (!mb) return;                                   // unmeasurable platform — never block on it
+  const free = freeMemoryMB();
   state.lastBrowserMB = mb;
-  if (mb < BROWSER_MEMORY_LIMIT_MB) return;
-  logEvent('lifecycle', { event: 'recycle requested', memoryMB: mb,
-    limitMB: BROWSER_MEMORY_LIMIT_MB });
+
+  // Recycling only helps if the browser is the one holding the memory. When it is small and the
+  // machine is still short, the pressure is something else on the desktop, and restarting our
+  // browser would achieve nothing except a loop of restarts on every job.
+  const worthRecycling = mb > 800;
+  const tooBig = mb >= BROWSER_MEMORY_LIMIT_MB;
+  const tooLittleLeft = free <= FREE_MEMORY_FLOOR_MB && worthRecycling;
+  if (!tooBig && !tooLittleLeft) return;
+
+  logEvent('lifecycle', { event: 'recycle requested', memoryMB: mb, freeMB: free,
+    reason: tooBig ? 'browser over limit' : 'machine low on memory' });
   console.log(`
-     ♻ the automation browser is using ${(mb / 1024).toFixed(1)} GB — `
-    + 'restarting it before it runs the machine out of memory.');
+     ♻ the automation browser is using ${(mb / 1024).toFixed(1)} GB and `
+    + `${(free / 1024).toFixed(1)} GB is free — restarting it before there is no room to.`);
   throw new Error(RECYCLE_SIGNAL);
 }
 

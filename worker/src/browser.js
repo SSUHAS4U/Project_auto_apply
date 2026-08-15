@@ -2,6 +2,7 @@
 import { chromium, firefox } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { logEvent } from './logfile.js';
 import { fault } from './fault.js';
 
@@ -167,13 +168,31 @@ export async function browserMemoryMB() {
 }
 
 /**
- * How much memory is allowed before the browser is recycled.
+ * When to recycle. TWO conditions, because one number cannot describe both failures.
  *
- * 2500 MB: five times the idle baseline, and half the free memory measured on this machine, so
- * the recycle happens while there is still room to start the replacement. Waiting for the
- * failure means recycling with no memory left to do it with.
+ * `BROWSER_MEMORY_LIMIT_MB` catches the browser growing: 2500 MB is five times the idle
+ * baseline of 491 MB, and about twelve leaked windows at the measured 204 MB apiece.
+ *
+ * `FREE_MEMORY_FLOOR_MB` catches the MACHINE running out, which the first number cannot see.
+ * 2500 was chosen against ~5 GB free; a later reading on the same machine showed 3.7 GB, and
+ * whatever else is open moves that number all day. What actually matters is not how big the
+ * browser is, it is whether there is still room to START THE REPLACEMENT — and a launch needs
+ * roughly the 491 MB baseline. Below 1200 MB free, a relaunch is not reliable: Camoufox failed
+ * to start in this project's own test suite while 2.17 GB of browsers were resident, with
+ * "RenderCompositorSWGL failed mapping default framebuffer" and "gBrowser never populated".
+ * That is the same failure seen at 03:58 on 2026-08-15, and it is what recycling too late
+ * looks like: no memory left to recover with.
  */
 export const BROWSER_MEMORY_LIMIT_MB = 2500;
+export const FREE_MEMORY_FLOOR_MB = 1200;
+
+/**
+ * Free physical memory, MB. `os.freemem()` rather than shelling out — it is instant, and this
+ * is checked between every job.
+ */
+export function freeMemoryMB() {
+  return Math.round(os.freemem() / (1024 * 1024));
+}
 
 /** The signal a block raises to ask for a fresh browser. Recognised by index.js. */
 export const RECYCLE_SIGNAL = 'jobpilot: recycle the browser (memory)';
