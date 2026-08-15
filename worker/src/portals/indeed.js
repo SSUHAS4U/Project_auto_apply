@@ -779,7 +779,10 @@ async function applyPageState(page) {
   return { state: last ? 'unreadable' : 'unreadable', sig: last };
 }
 
-async function indeedApply(page, api, profile, state, ctx, jk) {
+// Exported for testing. The apply flow is the part that has never worked, and driving the
+// whole of runIndeed to reach it takes minutes per assertion — slow enough that it was
+// never actually done, which is how the new-window bug survived 140 passing tests.
+export async function indeedApply(page, api, profile, state, ctx, jk) {
   // The pane FIRST. Without this, "no Indeed Apply button on this job" was being decided
   // against the search page's own chrome — see ensureJobPane for what that actually looked
   // like. A missing pane is not an employer-site listing, and must not be recorded as one.
@@ -891,12 +894,40 @@ async function indeedApply(page, api, profile, state, ctx, jk) {
       return 'attention';
     }
 
-    const submit = await applyPage.$('button:has-text("Submit application"), button[type="submit"]:has-text("Submit")');
+    // Wider than `button:has-text("Submit application")`. Indeed labels the final control
+    // several ways across its flows — "Submit application", "Submit your application", a bare
+    // "Submit", and on some steps an <input type=submit> rather than a button. The old selector
+    // required either the exact phrase or type=submit AND the word Submit, so anything else
+    // fell through to the Continue matcher, failed that too, and ended the flow as "no submit
+    // step" — which is what 11 of one run's 24 pauses were.
+    const submit = await applyPage.$(
+      'button:has-text("Submit application"), button:has-text("Submit your application"), '
+      + 'button[type="submit"]:has-text("Submit"), input[type="submit"], '
+      + '[data-testid*="submit" i], button[aria-label*="Submit" i]');
     if (submit) {
       await submit.click({ timeout: 4000 }).catch(() => {});
       await humanDelay(1500, 2600);
-      const done = await applyPage.$('text=/application submitted|your application has been submitted/i');
-      return done ? 'applied' : 'applied';
+      // WAIT for the confirmation rather than glancing once. Indeed navigates to it, and a
+      // single check 1.5s after the click regularly runs before the page has arrived.
+      const done = await applyPage.waitForSelector(
+        'text=/application submitted|your application has been submitted|applied on/i',
+        { timeout: 12000 }).catch(() => null);
+      if (done) return 'applied';
+      // `return done ? 'applied' : 'applied'` — both branches were 'applied', so the check was
+      // decorative: the flow claimed success whether or not Indeed ever confirmed it. Nothing
+      // had reached this line yet (Indeed has submitted nothing), but the moment the window
+      // handling works it would have started reporting unverified sends as applications, and
+      // the count the owner reads would have been fiction.
+      //
+      // The click HAS happened, so the application may well be in. Reporting 'attention' would
+      // send it again next run. So: still 'applied', but recorded as unconfirmed, which keeps
+      // the number honest and reviewable instead of silently wrong.
+      fault('INDEED_SUBMIT_UNCONFIRMED', {
+        url: applyPage.url(),
+        text: await applyPage.evaluate(() => (document.body?.innerText || '')
+          .replace(/\s+/g, ' ').trim().slice(0, 180)).catch(() => ''),
+      });
+      return 'applied';
     }
     const cont = await applyPage.$('button:has-text("Continue"), button[aria-label*="Continue"], button:has-text("Next")');
     if (cont) { await cont.click({ timeout: 4000 }).catch(() => {}); await humanDelay(1200, 2200); continue; }

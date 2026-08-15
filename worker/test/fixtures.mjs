@@ -48,7 +48,7 @@ export function indeedSearch({ count = 15, startKey = 0, query = 'java developer
 
 /** An Indeed job page. `apply: 'indeed' | 'external' | 'none'` picks which button it offers. */
 export function indeedJob({ jk = 'jk000000', title = 'Java Developer', company = 'Acme',
-                            apply = 'indeed', description } = {}) {
+                            apply = 'indeed', description, applyWindow = false } = {}) {
   const desc = description ?? (
     'We are looking for a Java backend developer to build and maintain REST APIs using '
     + 'Spring Boot, PostgreSQL and Docker. You will work with React on the frontend, write '
@@ -57,9 +57,22 @@ export function indeedJob({ jk = 'jk000000', title = 'Java Developer', company =
   // The real Apply button navigates into the smartapply flow. A fixture whose button does
   // nothing would make every job look like it needed manual attention — a harness that differs
   // from the real page produces confident, wrong results.
+  // `window.open`, not `location.href`.
+  //
+  // Real Indeed opens the application in a SEPARATE WINDOW. This fixture navigated the same
+  // page, so the adapter's new-window handling was never exercised by any test — and that is
+  // precisely where it failed in production: it raced a 6s timeout for the new page, missed it,
+  // and spent twelve steps driving the search page while the real application sat in a window
+  // beside it. A harness that differs from the real page produces confident, wrong results, and
+  // this is the exact case that rule exists for.
+  //
+  // `applyWindow: false` keeps the old same-page shape, because Indeed serves both.
   const button = apply === 'indeed'
-    ? `<button id="indeedApplyButton" class="ia-IndeedApplyButton"
-         onclick="location.href='/smartapply?jk=${jk}&step=1'">Apply now</button>`
+    ? (applyWindow
+      ? `<button id="indeedApplyButton" class="ia-IndeedApplyButton"
+           onclick="window.open('/smartapply?jk=${jk}&step=1', '_blank')">Apply now</button>`
+      : `<button id="indeedApplyButton" class="ia-IndeedApplyButton"
+           onclick="location.href='/smartapply?jk=${jk}&step=1'">Apply now</button>`)
     : apply === 'external'
       ? '<a role="button" href="https://acme.example/careers">Apply on company site</a>'
       : '<button>Save this job</button>';
@@ -80,7 +93,7 @@ export function indeedJob({ jk = 'jk000000', title = 'Java Developer', company =
  *  step 3 → the confirmation the adapter looks for
  */
 export function indeedApplyStep({ step = 1, jk = 'jk000000' } = {}) {
-  if (step >= 3) {
+  if (step >= 4) {
     return page('Application submitted - Indeed',
       '<h1>Your application has been submitted</h1>');
   }
@@ -91,8 +104,23 @@ export function indeedApplyStep({ step = 1, jk = 'jk000000' } = {}) {
         <button type="button" onclick="location.href='/smartapply?jk=${jk}&step=2'">Continue</button>
       </form>`);
   }
+  // THE RESUME STEP — the screen photographed sitting open and untouched while the adapter
+  // drove the search page. Indeed already holds the resume and offers it selected; there is
+  // nothing to upload, only a Continue to press. If the adapter ever tries to upload here, the
+  // file input below will hold a file and the test says so.
+  if (step === 2) {
+    return page('Add or update your resume - Indeed', `
+      <h1>Add or update your resume</h1>
+      <div class="resume-card">
+        <input type="radio" name="resume" id="saved" checked>
+        <label for="saved">Suhas_Resume.pdf</label>
+        <span class="file-name">Suhas_Resume.pdf</span>
+      </div>
+      <input type="file" id="upload" style="width:1px;height:1px">
+      <button type="button" onclick="location.href='/smartapply?jk=${jk}&step=3'">Continue</button>`);
+  }
   return page('Apply - Indeed', `
-    <form onsubmit="location.href='/smartapply?jk=${jk}&step=3';return false;">
+    <form onsubmit="location.href='/smartapply?jk=${jk}&step=4';return false;">
       <button type="submit">Submit application</button>
     </form>`);
 }

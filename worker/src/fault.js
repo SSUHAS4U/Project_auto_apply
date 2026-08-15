@@ -125,6 +125,16 @@ export const FAULTS = {
        + 'scanHiringPosts in worker/src/portals/linkedin.js, not something the run can fix.',
     owner: false,
   },
+  INDEED_SUBMIT_UNCONFIRMED: {
+    what: 'The Submit button was pressed but Indeed never showed a confirmation.',
+    why: 'The application was most likely sent — the click went through — but the confirmation '
+       + 'page did not appear within 12 seconds, so it cannot be stated as fact. Counting it as '
+       + 'not-applied would send the same application again on the next run.',
+    action: 'No action — it is counted as applied. Check "Applied jobs" on Indeed if you want '
+       + 'certainty for this one. If every application reports it, Indeed has changed its '
+       + 'confirmation wording and the matcher in worker/src/portals/indeed.js needs it.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',
