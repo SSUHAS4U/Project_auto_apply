@@ -153,18 +153,34 @@ export async function killStrayBrowsers({ log = () => {} } = {}) {
  * 2257 MB against a 491 MB baseline — 1.7 GB never came back. Firefox does not return it, so
  * the browser has to be recycled as well as tidied.
  */
-export async function browserMemoryMB() {
+export async function browserMemoryMB(ctx) {
+  if (process.platform !== 'win32') return 0;   // only Windows is measured here
   const { execFile } = await import('node:child_process');
   const run = (cmd, args) => new Promise((resolve) => {
     try {
       execFile(cmd, args, { timeout: 8000 }, (err, stdout) => resolve(String(stdout || '')));
     } catch { resolve(''); }
   });
-  if (process.platform !== 'win32') return 0;   // only Windows is measured here
   const out = await run('tasklist', ['/FI', 'IMAGENAME eq camoufox.exe', '/NH', '/FO', 'CSV']);
-  const kb = [...out.matchAll(/"([\d,]+) K"/g)]
-    .reduce((sum, m) => sum + Number(m[1].replace(/,/g, '')), 0);
-  return Math.round(kb / 1024);
+  // Pid AND memory from the same row, so the two can be matched up.
+  const rows = [...out.matchAll(/"camoufox\.exe","(\d+)"[^\r\n]*?"([\d,]+) K"/g)]
+    .map((m) => ({ pid: Number(m[1]), kb: Number(m[2].replace(/,/g, '')) }));
+
+  // ONLY THE BROWSER WE OWN.
+  //
+  // Summing every camoufox on the machine was wrong in both directions. In the test suite it
+  // counted other tests' browsers and tripped the recycle in the middle of unrelated cases —
+  // 22 failures, all of them this. In production it would do the same for a second worker, or
+  // for the browser the desktop app opened for a sign-in: we would restart OUR browser because
+  // somebody else's was large, over and over, and free nothing each time.
+  //
+  // The owned pids are recorded at launch. Without them (an older context, or the snapshot
+  // failed) the honest answer is 0 — "unmeasurable" — rather than a machine-wide number that
+  // would recycle for the wrong reason. `recycleIfBloated` treats 0 as "do not act".
+  const mine = ctx ? OWNED_PIDS.get(ctx) : null;
+  const counted = mine && mine.length ? rows.filter((r) => mine.includes(r.pid)) : [];
+  if (!counted.length) return 0;
+  return Math.round(counted.reduce((s, r) => s + r.kb, 0) / 1024);
 }
 
 /**

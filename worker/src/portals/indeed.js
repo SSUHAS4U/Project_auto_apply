@@ -514,7 +514,7 @@ export async function runIndeed(page, api, plan, state, ctx) {
 
           logJobHeader(post.title || 'Role', post.company || '', gate.label);
           beginJob();
-          await recycleIfBloated(state);
+          await recycleIfBloated(state, ctx);
           const result = await indeedApply(jobPage, api, profile, state, ctx, jk);
           // Pass the REASON through, not just the outcome. This called logResult('attention')
           // with nothing attached, so the terminal printed a bare "Paused — needs your answer"
@@ -804,8 +804,10 @@ async function applyPageState(page) {
  * Raised BETWEEN jobs, never inside one — index.js catches it, relaunches, and re-enters the
  * block with `state` intact, so the phase budget and the search position carry over.
  */
-async function recycleIfBloated(state) {
-  const mb = await browserMemoryMB().catch(() => 0);
+async function recycleIfBloated(state, ctx) {
+  // Scoped to the browser this run owns — see browserMemoryMB. 0 means it could
+  // not be measured, and an unmeasurable number must never trigger a restart.
+  const mb = await browserMemoryMB(ctx).catch(() => 0);
   if (!mb) return;                                   // unmeasurable platform — never block on it
   const free = freeMemoryMB();
   state.lastBrowserMB = mb;

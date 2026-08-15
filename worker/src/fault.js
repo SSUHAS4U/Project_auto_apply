@@ -141,8 +141,9 @@ export const FAULTS = {
        + 'JobPilot deliberately does NOT switch to Chrome here: Chrome keeps its sign-ins in a '
        + 'different profile, so switching would report you as logged out of accounts you are '
        + 'logged into — which is exactly what used to happen.',
-    action: 'Quit JobPilot from the tray (not just the window) and open it again. If it happens '
-       + 'twice in a row, delete the .profile-ff folder named in this record and sign in once.',
+    action: 'Right-click JobPilot in the Windows system tray and choose Quit, then open the app '
+       + 'again — closing the window is not enough. If it happens twice in a row, delete the '
+       + 'folder named in `ffDir` in this record, then sign in once on the Connections page.',
     owner: true,
   },
   QUESTION_UNANSWERABLE: {

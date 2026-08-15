@@ -216,9 +216,31 @@ export async function launch({ cookies = [] } = {}) {
   // Each run gets a throwaway profile directory so tests never inherit each other's state.
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobpilot-harness-'));
   const engine = camoufox ? firefox : chromium;
-  const ctx = await engine.launchPersistentContext(profileDir, {
+  // RETRY THE LAUNCH, exactly as src/browser.js now does.
+  //
+  // A full suite run launches ~40 browsers back to back, and Camoufox intermittently exits with
+  // code 1 before Juggler is listening — "Failed to launch the browser process", no assertion,
+  // no useful log line. One run failed a single test that way while passing it standalone in
+  // 6 seconds. A suite that fails at random is a suite nobody trusts, and the response to a red
+  // run becomes "run it again" instead of "read it".
+  //
+  // This is not merely a test convenience: it is the same failure the owner's machine hits at
+  // startup when memory is tight, which is why production retries six times. The harness has to
+  // behave like the thing it is testing, or it teaches the wrong lesson in both directions.
+  const launchOnce = () => engine.launchPersistentContext(profileDir, {
     executablePath, headless: true, viewport: null,
   });
+  let ctx = null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 4 && !ctx; attempt++) {
+    try {
+      ctx = await launchOnce();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 4) await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
+  }
+  if (!ctx) throw lastErr;
   if (cookies.length) await ctx.addCookies(cookies);
   // Persistent contexts have no separate browser handle; close the context to close the browser.
   return {

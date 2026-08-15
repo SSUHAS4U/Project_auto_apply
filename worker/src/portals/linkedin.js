@@ -1047,7 +1047,7 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
           logJobHeader(title || 'Role', company || '', gate.label);
           beginJob(); // reset per-job de-duplication of the field rows below
           state.blockedQuestions = null;
-          await recycleIfBloated(state);
+          await recycleIfBloated(state, ctx);
           const result = await easyApply(page, api, profile, state);
           if (result === 'applied') {
             applied++;
@@ -1705,8 +1705,10 @@ let easyApplyDiagShown = false;
  * Raised BETWEEN jobs, never inside one — index.js catches it, relaunches, and re-enters the
  * block with `state` intact, so the phase budget and the search position carry over.
  */
-async function recycleIfBloated(state) {
-  const mb = await browserMemoryMB().catch(() => 0);
+async function recycleIfBloated(state, ctx) {
+  // Scoped to the browser this run owns — see browserMemoryMB. 0 means it could
+  // not be measured, and an unmeasurable number must never trigger a restart.
+  const mb = await browserMemoryMB(ctx).catch(() => 0);
   if (!mb) return;                                   // unmeasurable platform — never block on it
   const free = freeMemoryMB();
   state.lastBrowserMB = mb;
