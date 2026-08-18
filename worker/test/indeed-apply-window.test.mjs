@@ -124,3 +124,38 @@ test('a paused run closes the application window before it stops', async () => {
       'a paused run left the application window open — one per paused job');
   } finally { await browser.close(); }
 });
+
+test('the "Easily apply" BADGE on a result card is never clicked as an Apply button', async () => {
+  // This cost 42 jobs in one run. Indeed prints "Easily apply" on every result card in the rail
+  // beside the open job. The matcher accepted that phrase and the search walked the whole
+  // document, so the nearest CARD was found long before the panel's real button — and clicking
+  // a card navigates the search, drops `vjk`, and takes the job away. Every later symptom
+  // ("no submit step", search chrome in the button dump) was about the wrong page.
+  const { ctx, browser } = await launch();
+  const page = ctx.pages()[0] || await ctx.newPage();
+  try {
+    await new FakeSite()
+      .add(/[?&]vjk=/, () => `<html><body>
+        <div class="jobsearch-LeftPane">
+          <div class="job_seen_beacon">
+            <h2>Some other job</h2>
+            <button>Easily apply</button>
+          </div>
+        </div>
+        <div class="jobsearch-RightPane">
+          <h2 class="jobsearch-JobInfoHeader-title">Java Developer</h2>
+          <div id="jobDescriptionText">Spring Boot, PostgreSQL, Docker, REST APIs, and tests.</div>
+        </div></body></html>`)
+      .install(ctx);
+    await page.goto('https://in.indeed.com/jobs?q=java&vjk=jk1');
+    const log = captureLog();
+    const state = makeState();
+    const result = await indeedApply(page, new FakeApi(), PROFILE, state, ctx, 'jk1');
+    log.restore();
+    // The panel has no apply control at all, so the honest answer is "external" — NOT a click on
+    // the badge in the rail next door.
+    assert.equal(result, 'external',
+      `the result-card badge was treated as an Apply button (got "${result}")\n${log.text()}`);
+    assert.ok(page.url().includes('jk1'), 'the click navigated away from the job');
+  } finally { await browser.close(); }
+});

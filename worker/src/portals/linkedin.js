@@ -1140,7 +1140,27 @@ export async function runLinkedIn(page, api, plan, state, ctx) {
       const cfg = flows[key] || {};
       const label = cfg.label || key;
       if (cfg.on === false) { console.log(`\n  ⏭  ${label} — switched off in Schedule`); return; }
-      if (state.stopped || state.paused || remaining() <= 0) return;
+      // A FLOW THAT DOES NOT RUN MUST SAY WHY. This line used to `return` in silence.
+      //
+      // Connections is the flow that actually SENDS messages and connection requests, and it is
+      // last in the order — after post scan (60m) and recruiter emails (30m). Across four days
+      // of logs it never printed a header at all: not "switched off", not "no time left",
+      // nothing. So the owner saw "4 queued to message" and no message ever went out, with
+      // no line anywhere explaining the gap. Zero messages and zero connection requests have
+      // been sent in the lifetime of these logs, and this silent return is why nobody could
+      // see it.
+      if (state.stopped || state.paused || remaining() <= 0) {
+        const why = state.stopped ? 'the run was stopped'
+          : state.paused ? 'the run is paused'
+          : `the ${blockMin}-minute block ran out of time before this flow started`;
+        console.log(`
+  ⏭  ${label} — did not run: ${why}`);
+        logEvent('flow', { flow: key, skipped: why, remainingMs: remaining() });
+        if (remaining() <= 0) fault('FLOW_STARVED', { flow: key, label, blockMin });
+        await api.event({ runId: state.runId, portal: 'linkedin', flow: key, type: 'info',
+          detail: `${label} did not run — ${why}` }).catch(() => {});
+        return;
+      }
       // Never let one flow eat the whole block: its budget, capped by what's left overall.
       const budgetMs = Math.min((cfg.mins ?? 30) * 60_000, remaining());
       if (budgetMs <= 0) { console.log(`\n  ⏭  ${label} — no time left in this block`); return; }

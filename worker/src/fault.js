@@ -146,6 +146,27 @@ export const FAULTS = {
        + 'folder named in `ffDir` in this record, then sign in once on the Connections page.',
     owner: true,
   },
+  INDEED_WRONG_CLICK: {
+    what: 'Pressing Apply moved off the job instead of opening the application form.',
+    why: 'Something that looked like an Apply control was not one. Indeed prints an "Easily '
+       + 'apply" badge on every result card, and clicking a card navigates the search and drops '
+       + 'the job id — so the job being applied to disappears, and every later symptom is about '
+       + 'the wrong page.',
+    action: 'No action — the job is retried next run. If it repeats, `landedOn` in this record '
+       + 'names the page the click led to, which identifies the control that was matched.',
+    owner: false,
+  },
+  FLOW_STARVED: {
+    what: 'A scheduled flow never ran because the block ran out of time before reaching it.',
+    why: 'Flows run in order — Easy Apply, then post scan, then recruiter emails, then '
+       + 'connections — and each takes its budget from what is left. The ones at the end get '
+       + 'nothing when the earlier ones use the whole block. Connections is last, and it is the '
+       + 'flow that actually sends messages and connection requests, so this is why "queued to '
+       + 'message" can never turn into a message sent.',
+    action: 'Open Automation → Schedule and either lengthen the block or cut the minutes given '
+       + 'to Easy Apply, post scan and recruiter emails so the later flows have time left.',
+    owner: true,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

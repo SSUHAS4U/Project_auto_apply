@@ -698,9 +698,33 @@ async function ensureJobPane(page, jk) {
   return false;
 }
 
+/**
+ * The container holding the OPEN JOB, never the results list beside it.
+ *
+ * Everything below is scoped to this. Searching the whole document finds the results rail
+ * first — see the `easily apply` note in the matcher for what that cost.
+ */
+const PANE_SCOPE = '.jobsearch-RightPane, #jobsearch-ViewjobPaneWrapper, '
+  + '[data-testid="jobsearch-RightPane"], .jobsearch-JobComponent, #vjs-container, '
+  + '.fastviewjob, [class*="RightPane"]';
+
 async function findIndeedApplyButton(page) {
-  // Indeed renders the Apply widget in an iframe on many layouts, so search frames too.
-  const roots = [page, ...page.frames().filter((f) => f !== page.mainFrame())];
+  // SCOPED TO THE JOB PANEL. This is the fix for 42 jobs in one run.
+  //
+  // The search used to walk the whole document, which includes the results rail — and every
+  // result card carries an "Easily apply" BADGE, which the matcher below accepted as a button.
+  // So we clicked a result card, the page navigated to a bare /jobs with no `vjk`, the panel
+  // disappeared, and twelve steps later the flow gave up with only search chrome on the page.
+  // The log says it exactly: 42 x INDEED_NO_SUBMIT_STEP, all at
+  //     https://in.indeed.com/jobs   separateWindow=false
+  //     buttons: Skip to main content | Find jobs | Pay | Remote | Distance 1 | Job type
+  // No Apply, no Save, no Report job — because the panel we had just confirmed open had been
+  // navigated away by our own click.
+  //
+  // Falling back to the whole page when the panel cannot be found keeps older layouts working;
+  // the panel is preferred, not required.
+  const scoped = await page.$(PANE_SCOPE).catch(() => null);
+  const roots = [scoped || page, ...page.frames().filter((f) => f !== page.mainFrame())];
   for (const root of roots) {
     const fast = await root.$('#indeedApplyButton, .ia-IndeedApplyButton, [data-testid*="indeedApply"], '
       + 'button[aria-label*="Apply now" i], button[aria-label*="Apply with Indeed" i], '
@@ -720,7 +744,12 @@ async function findIndeedApplyButton(page) {
       // six real job pages, two offered `Apply with Indeed opens in a new tab` and both were
       // reported as employer-site listings and skipped. That single missing phrase is why
       // Indeed submitted nothing while appearing to have no applyable jobs at all.
-      if (/^apply now$|^apply$|easily apply|indeed apply|apply with indeed/.test(label)) {
+      // `easily apply` is NOT here on purpose. It is the badge Indeed prints on result cards
+      // ("Easily apply" under the salary), not a control. Accepting it made every result card
+      // look like an Apply button, and the nearest card is found long before the panel's real
+      // one. Removing it costs nothing: a genuine apply control is labelled "Apply now",
+      // "Apply", or "Apply with Indeed", all of which are still matched.
+      if (/^apply now$|^apply$|^indeed apply$|apply with indeed/.test(label)) {
         if (await h.isVisible().catch(() => false)) return h;
       }
     }
@@ -871,6 +900,19 @@ export async function indeedApply(page, api, profile, state, ctx, jk) {
   await humanDelay(1800, 3200);
   logEvent('job', { portal: 'indeed', step: 'apply-window',
     separateWindow: applyPage !== page, url: applyPage.url() });
+
+  // DID THE CLICK TAKE US AWAY FROM THE JOB? Then it was not the Apply button.
+  //
+  // This is the check that would have caught the "Easily apply" badge in one run instead of
+  // costing 42 jobs. Clicking a result card navigates the search page and drops `vjk`, so the
+  // job we were applying to is simply gone — and every symptom after that (no window, no submit
+  // control, twelve wasted steps, "no submit step") is downstream noise about the wrong page.
+  // Losing the job id is the fact; everything else is a consequence.
+  if (applyPage === page && jk && !page.url().includes(jk)) {
+    fault('INDEED_WRONG_CLICK', { jk, landedOn: page.url() });
+    state.attentionReason = 'clicking Apply moved off the job instead of opening the application';
+    return 'attention';
+  }
   let lastUrl = applyPage.url();
   let lastButtons = [];
 
