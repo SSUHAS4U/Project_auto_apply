@@ -1248,29 +1248,62 @@ const EMAIL_JUNK = /no-?reply|example\.|linkedin\.com|\.png$|\.jpe?g$|\.gif$|sup
  *
  * @returns {Promise<string>} the address, or '' when there is none to find.
  */
+/**
+ * How many profiles this worker process has opened. THE ACCOUNT'S SAFETY BUDGET.
+ *
+ * LinkedIn restricted the owner's account on 2026-08-18 with:
+ *   "We restricted your account because we detected that over time, it has accessed an
+ *    unusually high volume of LinkedIn profile data."
+ *
+ * The logs say exactly what did it. Per day:
+ *
+ *   13 Aug   398 contact-info overlays, 1807 profile page loads
+ *   14 Aug   272 contact-info overlays, 1222 profile page loads
+ *
+ * This function was the whole of it. It opened each post author's profile, then the
+ * `/overlay/contact-info/` panel, then the profile AGAIN — three loads per author — and the
+ * dedicated email flow ran it with `cap = Infinity`. Nobody opens four hundred contact-detail
+ * panels a day by hand; that is not "browsing at pace", it is a signature.
+ *
+ * The cap is per PROCESS, not per run, because the restriction is cumulative — LinkedIn's own
+ * wording is "over time". A per-run cap resets every hour and adds up to the same number.
+ */
+let profilesOpened = 0;
+const PROFILE_BUDGET = 12;
+
 async function emailFromProfile(ctx, authorUrl) {
   if (!ctx || !authorUrl) return '';
+  if (profilesOpened >= PROFILE_BUDGET) {
+    // Silent skipping is what let this reach 398 without anyone noticing.
+    if (profilesOpened === PROFILE_BUDGET) {
+      profilesOpened++;                      // report once, not once per author
+      console.log(`     · profile lookups paused — ${PROFILE_BUDGET} is the safe limit for a `
+        + 'session. The message and connection routes still run.');
+      logEvent('outreach', { event: 'profile budget spent', budget: PROFILE_BUDGET });
+      fault('PROFILE_BUDGET_SPENT', { budget: PROFILE_BUDGET });
+    }
+    return '';
+  }
+  profilesOpened++;
+
   let p = null;
   try {
     p = await ctx.newPage();
+    // ONE page load, and NOT the contact-info overlay.
+    //
+    // `/overlay/contact-info/` is a dedicated endpoint for a panel a person opens deliberately,
+    // one profile at a time. Requesting it in bulk is the single most identifying thing this
+    // app did, and it is the reason the account was restricted. An address published in the
+    // About section or the headline is on the profile page itself, which is a page anyone
+    // viewing a post author would load anyway — so dropping the overlay costs one of the two
+    // places an address can hide and removes the behaviour that got us caught.
     await p.goto(authorUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await humanDelay(900, 1800);
-
-    // 1. The contact panel — where LinkedIn puts an address the person chose to publish.
-    //    Reached by its own URL rather than by clicking "Contact info", because the link's
-    //    label and class both change and the overlay URL has been stable for years.
-    const contactUrl = authorUrl.replace(/\/+$/, '') + '/overlay/contact-info/';
-    await p.goto(contactUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
-    await humanDelay(700, 1400);
-    let text = await p.evaluate(() => (document.body && document.body.innerText) || '').catch(() => '');
-    let hit = (text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e))[0];
-    if (hit) return hit;
-
-    // 2. The profile body — About sections and headlines often carry "reach me at …".
-    await p.goto(authorUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
-    await humanDelay(700, 1400);
-    text = await p.evaluate(() => (document.body && document.body.innerText) || '').catch(() => '');
-    hit = (text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e))[0];
+    await humanDelay(1500, 3000);
+    const text = await p.evaluate(() => (document.body && document.body.innerText) || '').catch(() => '');
+    const hit = (text.match(EMAIL_RE) || []).filter((e) => !EMAIL_JUNK.test(e))[0];
+    // A real gap before the next one. Three profiles a minute is a person catching up on a
+    // feed; twenty is a script, and LinkedIn counts.
+    await humanDelay(8000, 16000);
     return hit || '';
   } catch {
     return '';
@@ -1315,7 +1348,13 @@ function findApplyLink(text) {
 async function scanHiringPosts(page, api, plan, state, dedicated = false, resume = null) {
   // Dedicated outreach phase (after the apply quota) is UNCAPPED on leads — it scans every
   // keyword, scrolls deep, and keeps harvesting until the block's time runs out.
-  const cap = dedicated ? Infinity : 8;
+  // NOT Infinity any more.
+  //
+  // "Uncapped on leads" read as a throughput decision. In practice it meant the email flow kept
+  // opening profiles until the clock ran out — 398 contact-info panels on 13 Aug — and it is
+  // what got the account restricted. A ceiling that exists only in wall-clock time is not a
+  // ceiling; the site counts requests, not minutes.
+  const cap = dedicated ? 40 : 8;
   // 60 scrolls, not 25.
   //
   // With re-reads no longer inflating the count, a pass over one search yields far fewer NEW

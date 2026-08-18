@@ -167,6 +167,16 @@ export const FAULTS = {
        + 'to Easy Apply, post scan and recruiter emails so the later flows have time left.',
     owner: true,
   },
+  PROFILE_BUDGET_SPENT: {
+    what: 'Profile lookups stopped for this session — the safe limit was reached.',
+    why: 'LinkedIn restricts accounts that read a lot of profile data, and it counts over days, '
+       + 'not per run. This app once opened 398 contact-detail panels in a single day and the '
+       + 'account was temporarily restricted for it. The limit exists so that cannot happen '
+       + 'again; it is a protection, not a failure.',
+    action: 'Nothing to do. Messages and connection requests are unaffected — only the extra '
+       + 'step of hunting an email address on a profile stops. It resets when JobPilot restarts.',
+    owner: false,
+  },
   QUESTION_UNANSWERABLE: {
     what: 'A screening question has no answer in the profile or the answer bank.',
     why: 'A question never seen before, and not one the profile implies an answer to.',

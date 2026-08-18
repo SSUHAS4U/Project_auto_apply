@@ -53,10 +53,17 @@ test('the per-flow catch re-throws it too', () => {
   // Post scan, recruiter email and connections each run inside runFlow's own catch. Swallowed
   // there, the block would walk through all three in seconds — each one re-raising and being
   // swallowed again — and finish having done none of them.
+  // Read to the END of runFlow, not a fixed number of characters from its start. The first
+  // version sliced 2200 chars and passed — until FLOW_STARVED added an explanation to the
+  // silent-skip branch, which pushed the catch past the window and failed a test about code
+  // nobody had touched. A test whose result depends on how much commentary sits above the
+  // thing it checks is measuring the wrong property.
   const src = SRC('portals/linkedin.js');
   const i = src.indexOf('const runFlow = async (key, fn)');
   assert.ok(i > 0, 'runFlow not found');
-  const body = src.slice(i, i + 2200);
+  const end = src.indexOf(String.fromCharCode(10) + '    };', i);
+  assert.ok(end > i, 'could not find the end of runFlow');
+  const body = src.slice(i, end);
   assert.match(body, /RECYCLE_SIGNAL/, 'runFlow swallows the recycle request');
 });
 
