@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { startPoll } from '../lib/poll';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentEvent, AgentStatus } from '../types';
@@ -47,9 +48,7 @@ export function DashboardPage() {
       // chart can never disagree. Pull enough to cover the range.
       api.agentEvents(2000).then(setEvents).catch(() => {});
     };
-    pull();
-    const t = setInterval(pull, 6000);
-    return () => clearInterval(t);
+    const stop = startPoll(pull, 30000);    return stop;
   }, []);
 
   const running = !!agent?.activeRun && ['running', 'queued', 'needs_attention'].includes(agent.activeRun.status);

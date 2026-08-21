@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { startPoll } from '../lib/poll';
 import { Link } from 'react-router-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { api } from '../api/client';
@@ -51,7 +52,7 @@ export function RunControls({ portal }: { portal?: 'linkedin' | 'indeed' } = {})
   const [busy, setBusy] = useState(false);
 
   const load = () => api.agentStatus().then(setStatus).catch(() => {});
-  useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
+  useEffect(() => { load(); const stop_t = startPoll(load, 4000); return () => stop_t(); }, []);
 
   const online = status?.workerOnline ?? false;
   const inApp = isDesktopApp();   // starting a run needs the local worker
@@ -163,9 +164,7 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => {
     const pull = () => api.agentEvents(1000).then(setEvents).catch(() => {});
-    pull();
-    const t = setInterval(pull, 8000);
-    return () => clearInterval(t);
+    const stop = startPoll(pull, 30000);    return stop;
   }, []);
 
   // The tiles count activity over the SELECTED range (Day / Week / Month / Year), so the same
@@ -360,8 +359,8 @@ function SessionBanner({ portal }: { portal: 'linkedin' | 'indeed' }) {
       .then((cs) => { if (alive) setConn(cs.find((c) => c.portal === portal) ?? null); })
       .catch(() => { /* leave the last known state rather than flashing a false alarm */ });
     load();
-    const t = setInterval(load, 15000);
-    return () => { alive = false; clearInterval(t); };
+    const stop_t = startPoll(load, 15000);
+    return () => { alive = false; stop_t(); };
   }, [portal]);
 
   if (!conn) return null;
@@ -469,9 +468,7 @@ function FlowBreakdownLive() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => {
     const pull = () => api.agentEvents(1000).then(setEvents).catch(() => {});
-    pull();
-    const t = setInterval(pull, 15000);
-    return () => clearInterval(t);
+    const stop = startPoll(pull, 30000);    return stop;
   }, []);
   return <FlowBreakdown events={events} />;
 }
@@ -525,10 +522,10 @@ export function RunStatusCard({ portal }: { portal: 'linkedin' | 'indeed' }) {
       // Ignore a late reply for the portal we just navigated away from.
       .then((r) => { if (alive && r.portal === portal) { setInfo(r); setFailed(false); } })
       .catch(() => { if (alive) setFailed(true); });
-    pull();
-    const t = setInterval(pull, 5000);
+    
+    const stop_t = startPoll(pull, 5000);
     const t2 = setInterval(() => alive && tick((n) => n + 1), 30000);
-    return () => { alive = false; clearInterval(t); clearInterval(t2); };
+    return () => { alive = false; stop_t(); clearInterval(t2); };
   }, [portal]);
 
   const name = portal === 'linkedin' ? 'LinkedIn' : 'Indeed';
@@ -636,9 +633,7 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
   const [all, setAll] = useState<AgentEvent[]>([]);
   useEffect(() => {
     const pull = () => api.agentEvents(120).then(setAll).catch(() => {});
-    pull();
-    const t = setInterval(pull, 4000);
-    return () => clearInterval(t);
+    const stop = startPoll(pull, 12000);    return stop;
   }, []);
 
   const events = portal ? all.filter((e) => e.portal === portal) : all;

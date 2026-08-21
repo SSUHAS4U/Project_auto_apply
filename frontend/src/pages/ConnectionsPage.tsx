@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { startPoll } from '../lib/poll';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
@@ -49,8 +50,8 @@ export function ConnectionsPage() {
     load();
     api.agentFlows().then(setFlows).catch(() => {});
     api.agentMessageTemplate().then((r) => setTemplate(r.template)).catch(() => {});
-    const t = setInterval(load, 4000); // live: flips to Active seconds after you sign in
-    return () => clearInterval(t);
+    const stop_t = startPoll(load, 4000); // live: flips to Active seconds after you sign in
+    return () => stop_t();
   }, [load]);
 
   const saveTemplate = async () => {

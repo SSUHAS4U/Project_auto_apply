@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { startPoll } from './poll';
 import { api } from '../api/client';
 import { useToast } from './ui';
 
@@ -38,7 +39,7 @@ export function useRunStartToast() {
     };
 
     poll();
-    const t = setInterval(poll, 5000);
-    return () => { alive = false; clearInterval(t); };
+    const stop_t = startPoll(poll, 5000);
+    return () => { alive = false; stop_t(); };
   }, [toast]);
 }

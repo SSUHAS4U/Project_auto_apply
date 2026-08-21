@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { startPoll } from '../lib/poll';
 import { SubNavDock } from './SubNavDock';
 import { useEffect, useState } from 'react';
 import { api, clearJwt, isAdminUI, setAdminUI } from '../api/client';
@@ -109,8 +110,8 @@ export function Layout() {
     const poll = () =>
       api.notifications(true).then((r) => active && setUnread(r.unreadCount)).catch(() => {});
     poll();
-    const t = setInterval(poll, 30000);
-    return () => { active = false; clearInterval(t); };
+    const stop_t = startPoll(poll, 30000);
+    return () => { active = false; stop_t(); };
   }, []);
 
   // Close the mobile drawer on navigation; keep the owning group expanded.
