@@ -30,11 +30,11 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class AiModelConfigTest {
 
-    /** Names verified dead against the live APIs — they must never come back as a default. */
-    private static final List<String> RETIRED = List.of(
-            "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
-            "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768",
-            "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro");
+    /**
+     * Names verified dead against the live APIs. Sourced from the registry the clients actually
+     * consult, so the guard and the runtime can never disagree about what is dead.
+     */
+    private static final java.util.Set<String> RETIRED = RetiredModels.all();
 
     private static final Path YML = Paths.get("src/main/resources/application.yml");
 
@@ -43,7 +43,7 @@ class AiModelConfigTest {
         JobPilotProperties p = new JobPilotProperties();
         for (String m : List.of(p.getGroq().getModel(), p.getGroq().getFastModel(),
                 p.getGemini().getModel(), p.getGemini().getFastModel())) {
-            assertFalse(RETIRED.contains(m),
+            assertFalse(RetiredModels.isRetired(m),
                     "'" + m + "' is a retired model and 404s on every call. "
                     + "Pick a replacement from the provider's live /models listing.");
             assertFalse(m == null || m.isBlank(), "a model default must not be blank");
@@ -71,6 +71,24 @@ class AiModelConfigTest {
         assertEquals(GroqAiClient.DEFAULT_FAST_MODEL, p.getGroq().getFastModel());
         assertEquals(GeminiAiClient.DEFAULT_MODEL, p.getGemini().getModel());
         assertEquals(GeminiAiClient.DEFAULT_FAST_MODEL, p.getGemini().getFastModel());
+    }
+
+    @Test
+    void theRegistryNamesTheModelsThatCausedThisIncident() {
+        // The registry is what lets a stale .env on the VM be ignored rather than obeyed. If
+        // these two ever fall out of it, that stale config silently becomes authoritative again.
+        assertTrue(RETIRED.contains("llama-3.3-70b-versatile"));
+        assertTrue(RETIRED.contains("llama-3.1-8b-instant"));
+    }
+
+    @Test
+    void noCurrentDefaultIsAlsoListedAsRetired() {
+        // A contradiction here would mean the clients substitute a model for itself, or worse,
+        // that we shipped a default we have already proven is dead.
+        for (String m : List.of(GroqAiClient.DEFAULT_MODEL, GroqAiClient.DEFAULT_FAST_MODEL,
+                GeminiAiClient.DEFAULT_MODEL, GeminiAiClient.DEFAULT_FAST_MODEL)) {
+            assertFalse(RETIRED.contains(m), m + " is both the default and marked retired");
+        }
     }
 
     @Test

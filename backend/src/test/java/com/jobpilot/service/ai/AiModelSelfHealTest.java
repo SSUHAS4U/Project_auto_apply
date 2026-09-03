@@ -42,6 +42,18 @@ class AiModelSelfHealTest {
     /** Model names this stub pretends to still host; anything else 404s the way the real API does. */
     private List<String> alive = List.of();
 
+    /**
+     * Stand-ins for the NEXT retirement — plausible names that are not in {@link RetiredModels}.
+     *
+     * The two paths must be tested separately. A name already in the registry is skipped before a
+     * request exists, so it can never exercise the runtime healer; using one here would make
+     * these tests pass while proving nothing about the case they exist for — a provider pulling a
+     * model we have not catalogued yet.
+     */
+    private static final String UNKNOWN = "moonshotai/kimi-k2-instruct";
+    private static final String UNKNOWN_FAST = "llama-4-scout-17b-16e-instruct";
+    private static final String UNKNOWN_GEMINI = "gemini-2.0-flash-exp";
+
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -110,17 +122,17 @@ class AiModelSelfHealTest {
     @Test
     void groqFallsForwardWhenTheConfiguredModelHasBeenRetired() {
         alive = List.of(GroqAiClient.DEFAULT_MODEL);
-        props.getGroq().setModel("llama-3.3-70b-versatile");   // the real retirement
+        props.getGroq().setModel(UNKNOWN);        // a retirement not yet in RetiredModels
         GroqAiClient c = new GroqAiClient(props, RestClient.create());
 
         assertEquals("answered by " + GroqAiClient.DEFAULT_MODEL, c.complete("s", "u", false));
-        assertEquals(List.of("llama-3.3-70b-versatile", GroqAiClient.DEFAULT_MODEL), asked);
+        assertEquals(List.of(UNKNOWN, GroqAiClient.DEFAULT_MODEL), asked);
     }
 
     @Test
     void groqRemembersTheHealSoTheDeadModelIsTriedOnlyOnce() {
         alive = List.of(GroqAiClient.DEFAULT_MODEL);
-        props.getGroq().setModel("llama-3.3-70b-versatile");
+        props.getGroq().setModel(UNKNOWN);
         GroqAiClient c = new GroqAiClient(props, RestClient.create());
 
         c.complete("s", "u", false);
@@ -135,17 +147,17 @@ class AiModelSelfHealTest {
     @Test
     void groqHealsTheFastTierIndependentlyOfTheNormalTier() {
         alive = List.of(GroqAiClient.DEFAULT_FAST_MODEL);
-        props.getGroq().setFastModel("llama-3.1-8b-instant");
+        props.getGroq().setFastModel(UNKNOWN_FAST);
         GroqAiClient c = new GroqAiClient(props, RestClient.create());
 
         assertEquals("answered by " + GroqAiClient.DEFAULT_FAST_MODEL, c.complete("s", "u", true));
-        assertEquals(List.of("llama-3.1-8b-instant", GroqAiClient.DEFAULT_FAST_MODEL), asked);
+        assertEquals(List.of(UNKNOWN_FAST, GroqAiClient.DEFAULT_FAST_MODEL), asked);
     }
 
     @Test
     void groqSurfacesTheFailureWhenEvenTheFallbackIsGone() {
         alive = List.of();                                  // everything 404s
-        props.getGroq().setModel("llama-3.3-70b-versatile");
+        props.getGroq().setModel(UNKNOWN);
         GroqAiClient c = new GroqAiClient(props, RestClient.create());
 
         Exception e = assertThrows(Exception.class, () -> c.complete("s", "u", false));
@@ -164,12 +176,12 @@ class AiModelSelfHealTest {
             respond(ex, 429, "{\"error\":{\"message\":\"Rate limit reached. Please try again in 8.365s\","
                     + "\"code\":\"rate_limit_exceeded\"}}");
         });
-        props.getGroq().setModel("llama-3.3-70b-versatile");
+        props.getGroq().setModel(UNKNOWN);
         GroqAiClient c = new GroqAiClient(props, RestClient.create());
 
         assertThrows(Exception.class, () -> c.complete("s", "u", false));
-        assertEquals(List.of("llama-3.3-70b-versatile"), asked, "a 429 must not trigger a model swap");
-        assertEquals("llama-3.3-70b-versatile", c.model());
+        assertEquals(List.of(UNKNOWN), asked, "a 429 must not trigger a model swap");
+        assertEquals(UNKNOWN, c.model());
     }
 
     @Test
@@ -225,17 +237,80 @@ class AiModelSelfHealTest {
                 "hidden reasoning would consume a 20-token budget entirely: " + bodies.get(0));
     }
 
+    @Test
+    void groqNeverSendsAKnownRetiredModelAtAll() {
+        // The .env on the VM still names the dead model. Falling forward AFTER a 404 works, but
+        // costs a wasted round-trip on the first call after every restart, and until that call
+        // lands the Settings panel displays a model that does not exist. A name already known to
+        // be gone is skipped before the request is built.
+        alive = List.of(GroqAiClient.DEFAULT_MODEL);
+        props.getGroq().setModel("llama-3.3-70b-versatile");   // exactly what the VM .env says
+        GroqAiClient c = new GroqAiClient(props, RestClient.create());
+
+        // The panel reads model() — it must never show the dead name, not even once.
+        assertEquals(GroqAiClient.DEFAULT_MODEL, c.model());
+        assertEquals("answered by " + GroqAiClient.DEFAULT_MODEL, c.complete("s", "u", false));
+        assertEquals(List.of(GroqAiClient.DEFAULT_MODEL), asked,
+                "a known-dead model must cost zero requests, not one per restart");
+    }
+
+    @Test
+    void groqSkipsAKnownRetiredFastModelToo() {
+        alive = List.of(GroqAiClient.DEFAULT_FAST_MODEL);
+        props.getGroq().setFastModel("llama-3.1-8b-instant");  // exactly what the VM .env says
+        GroqAiClient c = new GroqAiClient(props, RestClient.create());
+
+        assertEquals("answered by " + GroqAiClient.DEFAULT_FAST_MODEL, c.complete("s", "u", true));
+        assertEquals(List.of(GroqAiClient.DEFAULT_FAST_MODEL), asked);
+    }
+
+    @Test
+    void groqStillObeysAnUnrecognisedConfiguredModel() {
+        // Only names PROVEN dead are overridden. Anything else is the operator's choice and is
+        // sent as configured — otherwise pinning a model would silently stop working.
+        alive = List.of("qwen/qwen3.8-27b");
+        props.getGroq().setModel("qwen/qwen3.8-27b");
+        GroqAiClient c = new GroqAiClient(props, RestClient.create());
+
+        assertEquals("answered by qwen/qwen3.8-27b", c.complete("s", "u", false));
+        assertEquals(List.of("qwen/qwen3.8-27b"), asked);
+        assertEquals("qwen/qwen3.8-27b", c.model());
+    }
+
     // ---- Gemini -----------------------------------------------------------------------------
 
     @Test
     void geminiFallsForwardWhenTheConfiguredModelIsNotFound() {
         alive = List.of(GeminiAiClient.DEFAULT_MODEL);
-        props.getGemini().setModel("gemini-1.5-flash");        // long retired
+        props.getGemini().setModel(UNKNOWN_GEMINI);   // not yet in RetiredModels
         GeminiAiClient c = new GeminiAiClient(props, RestClient.create());
 
         assertEquals("answered by " + GeminiAiClient.DEFAULT_MODEL, c.complete("s", "u", false));
-        assertEquals(List.of("gemini-1.5-flash", GeminiAiClient.DEFAULT_MODEL), asked);
+        assertEquals(List.of(UNKNOWN_GEMINI, GeminiAiClient.DEFAULT_MODEL), asked);
         assertEquals(GeminiAiClient.DEFAULT_MODEL, c.model());
+    }
+
+    @Test
+    void geminiNeverSendsAKnownRetiredModelAtAll() {
+        alive = List.of(GeminiAiClient.DEFAULT_MODEL);
+        props.getGemini().setModel("gemini-1.5-flash");
+        GeminiAiClient c = new GeminiAiClient(props, RestClient.create());
+
+        assertEquals(GeminiAiClient.DEFAULT_MODEL, c.model());
+        assertEquals("answered by " + GeminiAiClient.DEFAULT_MODEL, c.complete("s", "u", false));
+        assertEquals(List.of(GeminiAiClient.DEFAULT_MODEL), asked);
+    }
+
+    @Test
+    void geminiStillObeysAConfiguredModelThatIsMerelySaturated() {
+        // gemini-2.5-flash exhausts fast on the free tier, but it EXISTS. Overriding it would be
+        // us deciding which model the owner may pin; the rotation's cooldown handles saturation.
+        alive = List.of("gemini-2.5-flash");
+        props.getGemini().setModel("gemini-2.5-flash");
+        GeminiAiClient c = new GeminiAiClient(props, RestClient.create());
+
+        assertEquals("answered by gemini-2.5-flash", c.complete("s", "u", false));
+        assertEquals("gemini-2.5-flash", c.model());
     }
 
     @Test

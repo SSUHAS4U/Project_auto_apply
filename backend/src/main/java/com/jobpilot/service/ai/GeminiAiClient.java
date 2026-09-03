@@ -61,8 +61,18 @@ public class GeminiAiClient implements AiClient {
     @Override
     public String model() { return effective(props.getGemini().getModel(), DEFAULT_MODEL); }
 
+    /** As in the groq client: a known-dead name is skipped before the request is built. */
     private String effective(String configured, String fallback) {
         if (configured == null || configured.isBlank()) return fallback;
+        if (RetiredModels.isRetired(configured) && !configured.equals(fallback)) {
+            if (healed.putIfAbsent(configured, fallback) == null) {
+                log.warn("Gemini model '{}' is a retired model and is being ignored; using '{}' "
+                        + "instead. Set JOBPILOT_GEMINI_MODEL / JOBPILOT_GEMINI_FAST_MODEL in the "
+                        + "backend .env (on the VM, /opt/jobpilot/.env) to stop configuring a model "
+                        + "that no longer exists.", configured, fallback);
+            }
+            return fallback;
+        }
         return healed.getOrDefault(configured, configured);
     }
 

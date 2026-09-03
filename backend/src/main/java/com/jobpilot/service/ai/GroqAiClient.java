@@ -89,10 +89,30 @@ public class GroqAiClient implements AiClient {
     @Override
     public String model() { return effective(props.getGroq().getModel(), DEFAULT_MODEL); }
 
-    /** The name actually sent: the configured one, or its replacement if it has been retired. */
+    /**
+     * The name actually sent: the configured one, or its replacement if it has been retired.
+     *
+     * A name already known to be dead is skipped here, before the request is built, so it never
+     * costs a 404 and never reaches the Settings panel. A retirement we have not seen before
+     * still gets discovered the hard way, by {@link #healFor}, and is remembered from then on.
+     */
     private String effective(String configured, String fallback) {
         if (configured == null || configured.isBlank()) return fallback;
+        if (RetiredModels.isRetired(configured) && !configured.equals(fallback)) {
+            noteKnownRetired(configured, fallback);
+            return fallback;
+        }
         return healed.getOrDefault(configured, configured);
+    }
+
+    /** Record the substitution and say it once — this is read on every Settings poll. */
+    private void noteKnownRetired(String configured, String fallback) {
+        if (healed.putIfAbsent(configured, fallback) == null) {
+            log.warn("Groq model '{}' is a retired model and is being ignored; using '{}' instead. "
+                    + "Set JOBPILOT_GROQ_MODEL / JOBPILOT_GROQ_FAST_MODEL in the backend .env "
+                    + "(on the VM, /opt/jobpilot/.env) to stop configuring a model that no longer "
+                    + "exists.", configured, fallback);
+        }
     }
 
     @Override
