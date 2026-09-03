@@ -23,13 +23,16 @@ public interface AiClient {
     /**
      * Single-turn completion with an explicit output budget.
      *
-     * This exists because free tiers bill the RESERVATION, not the usage. Groq's on-demand tier
-     * allows 12,000 tokens per minute and counts `max_tokens` against it in full: with the
-     * configured 4,000 (sized for cover letters) a one-line JSON verdict costs a third of the
-     * whole minute's budget, so roughly three job evaluations per minute succeed and everything
-     * after that is a 429. Measured against the live API:
+     * This exists because Groq's free tier used to bill the RESERVATION, not the usage: it
+     * allowed 12,000 tokens per minute and counted `max_tokens` against it in full, so the
+     * configured 4,000 (sized for cover letters) made a one-line JSON verdict cost a third of
+     * the whole minute and 429'd everything after the third evaluation —
      *   "Limit 12000, Used 9139, Requested 4534"
-     * The verdict callers ask for a few hundred tokens instead, which is what they actually use.
+     *
+     * Re-measured 2026-09-03 against the current tier (8,000 TPM): a max_tokens of 6,000 moved
+     * x-ratelimit-remaining-tokens by ~150, i.e. by what the call USED. The reservation is no
+     * longer charged. The ceiling is kept anyway — it still bounds a runaway answer, and it is
+     * what keeps a reasoning model's hidden thinking in proportion to the task.
      *
      * @param maxTokens output ceiling, or null for the provider's configured default.
      */

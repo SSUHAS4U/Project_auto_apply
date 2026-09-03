@@ -97,16 +97,23 @@ jobpilot:
     daily-limit: ${JOBPILOT_AI_DAILY_LIMIT:0}   # 0 = unlimited (free Groq/Gemini self-limit)
   groq:
     api-key: ${JOBPILOT_GROQ_API_KEY:}
-    model: ${JOBPILOT_GROQ_MODEL:llama-3.3-70b-versatile}
-    fast-model: ${JOBPILOT_GROQ_FAST_MODEL:llama-3.1-8b-instant}
+    # The llama-3.x names were RETIRED by Groq — they now 404 (model_not_found), which took
+    # every AI feature down at once. Check the live catalogue before changing these:
+    #   curl -H "Authorization: Bearer $KEY" https://api.groq.com/openai/v1/models
+    model: ${JOBPILOT_GROQ_MODEL:openai/gpt-oss-120b}
+    fast-model: ${JOBPILOT_GROQ_FAST_MODEL:openai/gpt-oss-20b}
     url: ${JOBPILOT_GROQ_URL:https://api.groq.com/openai/v1/chat/completions}
-    # Reserved output tokens per request. Free tier is 6000 tokens/min, and Groq counts
-    # this reservation against that budget — so a big value 413s every call. Raise it if
-    # you upgrade your Groq tier.
+    # Output ceiling per request. The on-demand tier is 8000 tokens/min per model and bills
+    # what a request USES, not what it reserves (measured via x-ratelimit-remaining-tokens),
+    # so this no longer throttles throughput the way it did on the old llama tier.
     max-tokens: ${JOBPILOT_GROQ_MAX_TOKENS:4000}
   gemini:
     api-key: ${JOBPILOT_GEMINI_API_KEY:}
-    model: ${JOBPILOT_GEMINI_MODEL:gemini-2.5-flash}
+    # Two DIFFERENT model names on purpose: each name has its own free-tier quota bucket, so
+    # splitting normal vs fast work across two doubles the usable free throughput. 2.5-flash
+    # is the contended one — it exhausts (RESOURCE_EXHAUSTED) after ~10 calls on a free key.
+    model: ${JOBPILOT_GEMINI_MODEL:gemini-3.5-flash}
+    fast-model: ${JOBPILOT_GEMINI_FAST_MODEL:gemini-3.1-flash-lite}
   adzuna:
     app-id: ${JOBPILOT_ADZUNA_APP_ID:}
     app-key: ${JOBPILOT_ADZUNA_APP_KEY:}

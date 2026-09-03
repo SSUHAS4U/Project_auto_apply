@@ -70,10 +70,11 @@ public class JobPilotProperties {
     @Data
     public static class Groq {
         private String apiKey = "";
-        private String model = "llama-3.3-70b-versatile";
-        private String fastModel = "llama-3.1-8b-instant";
+        /** Both llama defaults were retired by Groq (404 model_not_found) — see the groq client. */
+        private String model = "openai/gpt-oss-120b";
+        private String fastModel = "openai/gpt-oss-20b";
         private String url = "https://api.groq.com/openai/v1/chat/completions";
-        /** Reserved output tokens. Free tier = 6000 TPM, so keep this well under it. */
+        /** Output ceiling per answer. Measured free tier = 8000 TPM per model, billed on use. */
         private int maxTokens = 4000;
     }
 
@@ -100,7 +101,12 @@ public class JobPilotProperties {
     @Data
     public static class Gemini {
         private String apiKey = "";
-        private String model = "gemini-2.5-flash"; // 1.5-flash was retired (404 on v1beta)
+        /** 2.5-flash still resolves, but its free-tier bucket is exhausted in ~10 calls. */
+        private String model = "gemini-3.5-flash";
+        /** A separate model name means a separate free quota bucket — see the gemini client. */
+        private String fastModel = "gemini-3.1-flash-lite";
+        /** Overridable so the decommission self-heal can be tested against a local stub. */
+        private String baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/";
     }
 
     /** Careerjet public search API (free, India locale). Needs an affiliate id (affid). */

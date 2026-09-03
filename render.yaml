@@ -46,19 +46,21 @@ services:
         value: "25"
       # AI Providers
       - key: JOBPILOT_AI_PROVIDER
-        value: "groq"
+        value: "auto"
       - key: JOBPILOT_AI_DAILY_LIMIT
         value: "80"
       - key: JOBPILOT_GROQ_API_KEY
         sync: false
       - key: JOBPILOT_GROQ_MODEL
-        value: "llama-3.3-70b-versatile"
+        value: "openai/gpt-oss-120b"
       - key: JOBPILOT_GROQ_FAST_MODEL
-        value: "llama-3.1-8b-instant"
+        value: "openai/gpt-oss-20b"
       - key: JOBPILOT_GEMINI_API_KEY
         sync: false
       - key: JOBPILOT_GEMINI_MODEL
-        value: "gemini-2.5-flash"
+        value: "gemini-3.5-flash"
+      - key: JOBPILOT_GEMINI_FAST_MODEL
+        value: "gemini-3.1-flash-lite"
       # Connectors
       - key: JOBPILOT_ADZUNA_APP_ID
         sync: false

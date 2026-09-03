@@ -108,14 +108,21 @@ public class AiService {
         return fallbackChain(false).stream().map(AiClient::name).toList();
     }
 
-    /** Live test: run a 1-token completion against a specific provider. */
+    /**
+     * Live test: run a tiny completion against a specific provider.
+     *
+     * Deliberately the NORMAL model, not the fast one. Each provider now runs two different
+     * models, and on Gemini each model name has its own free-tier quota — so testing the fast
+     * model could report a green tick while the model this panel names is exhausted or retired.
+     * A test that can pass while the product is broken is worse than no test.
+     */
     public Map<String, Object> test(String name) {
         AiClient c = clients.get(name);
         if (c == null) return Map.of("provider", name, "ok", false, "error", "unknown provider");
         if (!c.isConfigured()) return Map.of("provider", name, "ok", false, "error", "not configured (missing key)");
         try {
             long t0 = System.currentTimeMillis();
-            String r = c.complete("You are a test.", "Reply with the single word: ok", true);
+            String r = c.complete("You are a test.", "Reply with the single word: ok", false, 64);
             return Map.of("provider", name, "ok", true,
                     "ms", System.currentTimeMillis() - t0, "sample", r.length() > 40 ? r.substring(0, 40) : r);
         } catch (Exception e) {
@@ -156,9 +163,10 @@ public class AiService {
     /**
      * As above, with an explicit output-token ceiling.
      *
-     * Short-JSON callers (the fit/verdict gates) must not reserve a cover-letter-sized budget:
-     * free tiers count the reservation against the per-minute limit, so a 4,000-token
-     * reservation caps job evaluation at ~3 per minute and 429s the rest. See
+     * Short-JSON callers (the fit/verdict gates) ask for a few hundred tokens rather than a
+     * cover-letter-sized budget. Groq's free tier used to charge the reservation, which capped
+     * job evaluation at ~3 per minute; it no longer does, but the ceiling still bounds a runaway
+     * answer and keeps a reasoning model's hidden thinking in proportion to the task. See
      * {@link AiClient#complete(String, String, boolean, Integer)}.
      */
     public String complete(String system, String user, boolean fast, boolean cacheable, Integer maxTokens) {
