@@ -74,7 +74,7 @@ function SavedAnswers() {
                       <div className="row" style={{ gap: 4, flexShrink: 0 }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => startEdit(it)} title="Edit"><Icon name="pen" size={13} /></button>
                         <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
-                          style={{ color: 'var(--danger,#ef4444)' }} title="Delete"><Icon name="trash" size={13} /></button>
+                          style={{ color: 'var(--danger)' }} title="Delete"><Icon name="trash" size={13} /></button>
                       </div>
                     </div>
                     <div className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{it.answer}</div>
@@ -730,7 +730,7 @@ function DocumentsVault() {
                 </div>
                 <div className="row" style={{ gap: 6, flexShrink: 0 }}>
                   <button className="btn btn-sm" onClick={() => { setPwFor(d); setPw(''); }}><Icon name="download" size={13} /> Download</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} style={{ color: 'var(--danger,#ef4444)' }}><Icon name="trash" size={13} /></button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} style={{ color: 'var(--danger)' }}><Icon name="trash" size={13} /></button>
                 </div>
               </div>
             ))}

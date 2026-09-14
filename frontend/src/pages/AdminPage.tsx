@@ -89,7 +89,7 @@ export function AdminPage() {
                       {u.isAdmin
                         ? <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'USER')}>Revoke admin</button>
                         : <button className="btn btn-sm" disabled={busy === u.id} onClick={() => setRole(u, 'ADMIN')}>Grant admin</button>}
-                      <button className="btn btn-ghost btn-sm" disabled={busy === u.id} onClick={() => remove(u)} style={{ color: 'var(--danger,#ef4444)' }}>Delete</button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy === u.id} onClick={() => remove(u)} style={{ color: 'var(--danger)' }}>Delete</button>
                     </>
                   )}
                 </div>
@@ -169,7 +169,7 @@ function SecretsManager() {
                   </button>
                   {s.source === 'saved' && (
                     <button className="btn btn-ghost btn-sm" disabled={busy === s.name} onClick={() => remove(s)}
-                      style={{ color: 'var(--danger,#ef4444)' }} title="Delete saved value"><Icon name="trash" size={14} /></button>
+                      style={{ color: 'var(--danger)' }} title="Delete saved value"><Icon name="trash" size={14} /></button>
                   )}
                 </div>
               </div>

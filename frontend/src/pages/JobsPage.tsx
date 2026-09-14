@@ -408,7 +408,7 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [m?.log?.length]);
 
-  const statusColor = m?.status === 'error' ? 'var(--danger,#ef4444)' : m?.running ? 'var(--accent)' : 'var(--muted)';
+  const statusColor = m?.status === 'error' ? 'var(--danger)' : m?.running ? 'var(--accent)' : 'var(--muted)';
   const mem = m?.memory;
   return (
     <Modal title="Ingest metrics" onClose={onClose} wide
@@ -448,7 +448,7 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
             <div>
               <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>Heap memory</div>
               <div style={{ height: 8, background: 'var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(100, mem.usedPct)}%`, height: '100%', background: mem.usedPct > 85 ? 'var(--danger,#ef4444)' : 'var(--accent)' }} />
+                <div style={{ width: `${Math.min(100, mem.usedPct)}%`, height: '100%', background: mem.usedPct > 85 ? 'var(--danger)' : 'var(--accent)' }} />
               </div>
             </div>
           )}

@@ -133,7 +133,7 @@ export function SavedJobsPage() {
                         : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
                       <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
                       <button className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} title="Edit details"><Icon name="pen" size={13} /></button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger,#ef4444)', marginLeft: 'auto' }}><Icon name="trash" size={13} /> Delete</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger)', marginLeft: 'auto' }}><Icon name="trash" size={13} /> Delete</button>
                     </div>
                   </>
                 )}

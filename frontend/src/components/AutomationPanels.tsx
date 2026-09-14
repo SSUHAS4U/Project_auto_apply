@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { startPoll } from '../lib/poll';
+import { countJobs } from '../lib/metrics';
 import { Link } from 'react-router-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { api } from '../api/client';
@@ -18,19 +19,29 @@ import { isDesktopApp } from '../lib/desktop';
  * There is ONE automation (the daily scheduled worker); these are just its views.
  */
 
+/**
+ * The glyph beside an activity line.
+ *
+ * These were twelve hardcoded hex values, one per event type — and they were the DARK theme's
+ * values, frozen, so in light mode they were the wrong contrast as well as the wrong idea.
+ * Colour is semantic here now (docs/UI_SPEC.md): green for a good outcome, amber for something
+ * needing a human, red for a failure, neutral for the ordinary steps of the pipeline. Scanning
+ * a post is not a different KIND of event from identifying a job, so they do not get different
+ * colours.
+ */
 const EVENT_ICON: Record<string, { name: string; color: string }> = {
-  post_analysed: { name: 'search', color: '#60a5fa' },
-  job_identified: { name: 'target', color: '#818cf8' },
-  relevant: { name: 'sparkles', color: '#fbbf24' },
-  applied: { name: 'send', color: '#34d399' },
-  easy_apply: { name: 'bolt', color: '#818cf8' },
-  manual_apply: { name: 'alert', color: '#fbbf24' },
-  connection_sent: { name: 'link', color: '#60a5fa' },
-  message_sent: { name: 'send', color: '#a78bfa' },
-  email_sent: { name: 'mail', color: '#34d399' },
-  reply_received: { name: 'mail', color: '#2dd4bf' },
-  error: { name: 'alert', color: '#f87171' },
-  info: { name: 'circle', color: '#7d8595' },
+  post_analysed: { name: 'search', color: 'var(--text-faint)' },
+  job_identified: { name: 'target', color: 'var(--text-faint)' },
+  relevant: { name: 'sparkles', color: 'var(--text-faint)' },
+  applied: { name: 'send', color: 'var(--green)' },
+  easy_apply: { name: 'bolt', color: 'var(--green)' },
+  manual_apply: { name: 'alert', color: 'var(--amber)' },
+  connection_sent: { name: 'link', color: 'var(--text-faint)' },
+  message_sent: { name: 'send', color: 'var(--text-faint)' },
+  email_sent: { name: 'mail', color: 'var(--text-faint)' },
+  reply_received: { name: 'mail', color: 'var(--green)' },
+  error: { name: 'alert', color: 'var(--danger)' },
+  info: { name: 'circle', color: 'var(--text-faint)' },
 };
 
 // Semantic tone → CSS var, for the stat tiles (a real value lights up in its tone; zero stays muted).
@@ -208,23 +219,16 @@ export function PortalMetrics({ only }: { only?: 'linkedin' | 'indeed' } = {}) {
          { label: 'Manual needed', tone: 'amber', types: ['manual_apply'] },
          { label: 'Failed', tone: 'red', types: ['apply_failed'] }];
 
-    // Count DISTINCT JOBS, not events. The same job appears in every city search, so counting
-    // raw events multiplied everything (7 jobs across 6 cities read as 40+). Dedupe by job
-    // identity — its URL, else title+company — so each tile is "how many jobs", which is what
-    // the labels claim and what makes the numbers reconcile with the applied list.
-    const jobKey = (e: AgentEvent) => (e.url || '').trim()
-      || ((e.title || '') + '|' + (e.company || '')).toLowerCase().trim();
-    const count = (c: Cell) => {
-      const seen = new Set<string>();
-      let n = 0;
-      for (const e of list(c.types)) {
-        if (c.types.includes('manual_apply') && done.has(e.url || e.id)) continue;
-        const k = jobKey(e);
-        if (k && k !== '|') { if (seen.has(k)) continue; seen.add(k); }
-        n++;
-      }
-      return n;
-    };
+    // Count DISTINCT JOBS, not events — the same job appears in every city search, so raw
+    // event counts multiplied everything (7 jobs across 6 cities read as 40+).
+    //
+    // This used to be a LOCAL copy of jobKey plus its own de-dupe loop. It was correct, but a
+    // second implementation of "how we count" is precisely what let the dashboard tiles and the
+    // dashboard chart drift into showing 2 and 8 for the same metric. One helper, one
+    // definition, everywhere — the dismissed-manual rule rides along as a skip predicate.
+    const count = (c: Cell) => countJobs(ev, c.types, {
+      skip: (e) => c.types.includes('manual_apply') && done.has(e.url || e.id),
+    });
     const selectedCell = sel?.portal === portal ? cells.find((c) => c.label === sel.label) : null;
 
     return (
@@ -646,7 +650,7 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
         const ei = EVENT_ICON[e.type] ?? EVENT_ICON.info;
         return (
           <div key={e.id} className="row card-pad" style={{ gap: 10, alignItems: 'flex-start', borderBottom: '1px solid var(--border)' }}>
-            <span className="ev-ico" style={{ color: ei.color, background: ei.color + '1f' }}><Icon name={ei.name} size={15} /></span>
+            <span className="ev-ico" style={{ color: ei.color, background: `color-mix(in srgb, ${ei.color} 14%, transparent)` }}><Icon name={ei.name} size={15} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13 }}>
                 {e.title ? <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{e.title}</a> : <b>{e.type.replace('_', ' ')}</b>}

@@ -210,7 +210,7 @@ function ScreeningQuestions({ portal }: { portal: 'linkedin' | 'indeed' }) {
                         <Icon name="pen" size={13} /> Edit
                       </button>
                       <button className="btn btn-ghost btn-sm" disabled={busy === it.id} onClick={() => remove(it)}
-                        style={{ color: 'var(--danger,#ef4444)' }} title="Delete">
+                        style={{ color: 'var(--danger)' }} title="Delete">
                         <Icon name="trash" size={13} /> Delete
                       </button>
                     </>

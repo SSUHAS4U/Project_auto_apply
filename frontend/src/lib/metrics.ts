@@ -26,22 +26,35 @@ export const jobKey = (e: AgentEvent) => (e.url || '').trim()
  * matter how many searches surfaced it; action events with no job identity (email_sent,
  * connection_sent, reply_received…) are counted individually, which is correct for them.
  */
-export function countJobs(events: AgentEvent[], types: string[]): number {
-  // "Posts analysed" is not one-event-per-post: the worker emits ONE event per keyword whose
-  // detail reads "scanned N hiring post(s) for …". Counting those events showed 6 (the number
-  // of keyword batches) when 150 posts had actually been read — so sum the N instead. The
-  // worker writes a PER-KEYWORD count for exactly this reason.
+export function countJobs(
+  events: AgentEvent[],
+  types: string[],
+  opts: { skip?: (e: AgentEvent) => boolean } = {},
+): number {
+  // "Posts analysed" is not one-event-per-post. The worker emits TWO different post_analysed
+  // events, and that is what made this number wrong:
+  //
+  //   per KEYWORD  detail "scanned N hiring post(s) for …"  — N is every post read
+  //   per POST     detail "<author> — <topic> (85% sure)"   — one for a post that became a lead
+  //
+  // The per-post events are a SUBSET of what the keyword total already counted (linkedin.js
+  // increments `analysedHere` for every post, then reports it in the keyword summary). Adding
+  // 1 for each of them — which is what the old `: 1` fallback did — counted those posts twice
+  // and inflated the headline figure. Only the keyword summaries carry a real count; anything
+  // without one contributes NOTHING rather than an invented 1.
   if (types.length === 1 && types[0] === 'post_analysed') {
     return events.reduce((sum, e) => {
       if (e.type !== 'post_analysed') return sum;
+      if (opts.skip?.(e)) return sum;
       const m = /scanned\s+(\d+)/i.exec(e.detail || '');
-      return sum + (m ? Number(m[1]) : 1);
+      return sum + (m ? Number(m[1]) : 0);
     }, 0);
   }
   const seen = new Set<string>();
   let n = 0;
   for (const e of events) {
     if (!types.includes(e.type)) continue;
+    if (opts.skip?.(e)) continue;
     const k = jobKey(e);
     if (k && k !== '|') { if (seen.has(k)) continue; seen.add(k); }
     n++;

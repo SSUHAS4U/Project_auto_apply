@@ -1273,7 +1273,13 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .toast.error { border-left-color: var(--red); }
 .toast.success { border-left-color: var(--green); }
 @keyframes slideIn { from { transform: translateY(12px); opacity: 0; } }
-.chip { background: var(--accent-soft); color: var(--accent-hi); border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em; line-height: 1.3; display: inline-flex; gap: 6px; align-items: center; border: 1px solid transparent; }
+/* A label, so it is NEUTRAL.
+   It used to wear the accent, which meant every row of Recent actions — every event type, every
+   source, every status — competed with the one real call to action on the page. Per
+   docs/UI_SPEC.md the accent is brand/CTA only and never a data colour. A chip that genuinely
+   marks something branded opts in with .chip.accent. */
+.chip { background: var(--bg-elev); color: var(--text-dim); border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em; line-height: 1.3; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border); }
+.chip.accent { background: var(--accent-soft); color: var(--accent-hi); border-color: transparent; }
 .filter-chip { display: inline-flex; align-items: center; gap: 7px; background: var(--accent-soft); color: var(--accent-hi); border: 1px solid rgba(99,102,241,.3); border-radius: 999px; padding: 4px 5px 4px 11px; font-size: 12px; font-weight: 600; }
 .filter-chip-x { background: rgba(99,102,241,.18); border: none; color: var(--accent-hi); width: 18px; height: 18px; border-radius: 50%; cursor: pointer; font-size: 10px; display: grid; place-items: center; transition: background .15s; }
 .filter-chip-x:hover { background: var(--accent); color: #fff; }
