@@ -21,7 +21,6 @@ import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { EMPTY, POPULATED, ROUTES } from './fixtures.mjs';
 
@@ -61,24 +60,25 @@ before(async () => {
     unavailable = 'no Chrome available to this runner';
     return;
   }
-  server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
-    cwd: path.resolve(here, '..'), shell: true, stdio: ['ignore', 'pipe', 'pipe'],
+  // Vite runs IN THIS PROCESS via its own API rather than as a spawned command.
+  //
+  // The spawned version hung four CI runs, the longest for five hours: `shell: true` made the
+  // child a /bin/sh wrapper, so killing it left vite alive, holding the port and an open stdio
+  // pipe, and `node --test` could never exit. A hung pipeline is worse than the missing check
+  // this suite exists to provide. In-process there is nothing to orphan and close() is exact.
+  const { createServer } = await import('vite');
+  server = await createServer({
+    root: path.resolve(here, '..'),
+    logLevel: 'error',
+    server: { port: PORT, strictPort: true },
   });
-  await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('vite did not start in 60s')), 60000);
-    server.stdout.on('data', (d) => { if (/ready in/i.test(String(d))) { clearTimeout(t); resolve(); } });
-    server.on('error', reject);
-  });
+  await server.listen();
   browser = await chromium.launch({ channel: 'chrome' });
 }, { timeout: 180000 });
 
 after(async () => {
   await browser?.close();
-  if (server && !server.killed) {
-    // The shell wrapper means killing the child leaves vite itself running on Windows.
-    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(server.pid), '/f', '/t'], { stdio: 'ignore' });
-    else server.kill('SIGTERM');
-  }
+  await server?.close();
 });
 
 /** Render one route at one size in one theme, and measure what escapes the viewport. */
