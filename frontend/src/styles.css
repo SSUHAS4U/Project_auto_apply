@@ -23,6 +23,10 @@
   --btn-bg: #1b1e27;
   --btn-bg-hover: #262a36;
   --sidebar-w: 240px;
+  /* Height of the mobile top bar. 0 on desktop, where the bar does not exist. Anything
+     positioned against the top of the viewport on mobile must offset by this or it renders
+     underneath the header. */
+  --topbar-h: 0px;
   --radius: 14px;
   --radius-sm: 10px;
   --radius-lg: 20px;
@@ -1493,6 +1497,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .only-mobile { display: grid !important; grid-template-columns: minmax(0, 1fr); }
 
   /* Sticky top bar — fixed height + no-wrap so it can never grow tall on mobile. */
+  .app { --topbar-h: 56px; }
   .topbar {
     display: flex; align-items: center; gap: 11px; position: sticky; top: 0; z-index: 45;
     min-height: 56px; padding: 10px 16px;
@@ -1649,10 +1654,18 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .ov-seg { display: flex; }
   .ov-divider { display: none; }
   .ov-files {
-    position: fixed; z-index: 40; inset: 0 auto 0 0; width: min(78vw, 300px);
+    /* Starts BELOW the header and sits ABOVE it in the stack.
+       `inset: 0 ...` put the drawer's top edge at the very top of the viewport, behind a
+       56px sticky topbar that also outranked it (z-index 45 vs 40) — so the first file in
+       the list, the one you are trying to read, was cut in half by the header. */
+    /* Under the header in the stack, and offset below it in position. Both matter: the
+       offset is what puts the file list in view, and staying UNDER the topbar means the few
+       pixels where the two still meet are painted by the header rather than by the drawer. */
+    position: fixed; z-index: 44; inset: var(--topbar-h) auto 0 0; width: min(78vw, 300px);
     transform: translateX(-105%); transition: transform .18s ease; box-shadow: 8px 0 30px rgba(0,0,0,.35);
   }
   .ov-files.open { transform: none; }
+  .ov-scrim { top: var(--topbar-h); z-index: 43; }
   .ov-edit.hide, .ov-view.hide { display: none; }
   .ov-view { flex: 1 !important; width: auto !important; }
   .ov-top { padding: 8px 10px; }
