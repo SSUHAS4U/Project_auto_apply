@@ -22,12 +22,20 @@ const EVENT_LABEL: Record<string, string> = {
   error: 'Issue', info: 'Update',
 };
 // Status chip per event type (HireDue-style "SUCCESS / PENDING" markers on tile recents).
+/**
+ * Colour here is SEMANTIC, not categorical. Six tones across sixteen pills made a metric look
+ * meaningfully different from its neighbour when it was not — see docs/UI_SPEC.md. Green now
+ * means a good terminal outcome, red means a real problem, and every intermediate step of the
+ * pipeline is neutral, because "sent" and "scanned" are progress, not verdicts.
+ */
 const EVENT_STATUS: Record<string, { label: string; tone: string }> = {
-  applied: { label: 'success', tone: 'green' }, easy_apply: { label: 'success', tone: 'green' },
-  email_sent: { label: 'sent', tone: 'green' }, message_sent: { label: 'sent', tone: 'purple' },
-  connection_sent: { label: 'pending', tone: 'blue' }, reply_received: { label: 'reply', tone: 'green' },
-  relevant: { label: 'relevant', tone: 'amber' }, job_identified: { label: 'new', tone: 'indigo' },
-  post_analysed: { label: 'scanned', tone: 'slate' }, error: { label: 'issue', tone: 'red' },
+  applied: { label: 'applied', tone: 'green' }, easy_apply: { label: 'applied', tone: 'green' },
+  reply_received: { label: 'reply', tone: 'green' },
+  error: { label: 'issue', tone: 'red' },
+  email_sent: { label: 'sent', tone: 'slate' }, message_sent: { label: 'sent', tone: 'slate' },
+  connection_sent: { label: 'pending', tone: 'slate' },
+  relevant: { label: 'relevant', tone: 'slate' }, job_identified: { label: 'new', tone: 'slate' },
+  post_analysed: { label: 'scanned', tone: 'slate' },
 };
 
 const PERIODS: { key: string; label: string }[] = [
@@ -65,14 +73,14 @@ export function DashboardPage() {
   // "Jobs identified" here equals what the chart sums. (Was raw event counts → 100 jobs read
   // as 710 because the same job appears in every city search.)
   const tiles = [
-    { key: 'posts', label: 'Posts analysed', types: ['post_analysed'], color: '#5b5bd6' },
-    { key: 'target', label: 'Jobs identified', types: ['job_identified'], color: '#2563eb' },
-    { key: 'star', label: 'Relevant jobs', types: ['relevant'], color: '#d97706' },
-    { key: 'send', label: 'Applied', types: ['applied', 'easy_apply'], color: '#16a34a' },
-    { key: 'link', label: 'Connections sent', types: ['connection_sent'], color: '#7c3aed' },
-    { key: 'chat', label: 'Messages sent', types: ['message_sent'], color: '#0891b2' },
-    { key: 'mail', label: 'Emails sent', types: ['email_sent'], color: '#db2777' },
-    { key: 'reply', label: 'Replies received', types: ['reply_received'], color: '#16a34a' },
+    { key: 'posts', label: 'Posts analysed', types: ['post_analysed'] },
+    { key: 'target', label: 'Jobs identified', types: ['job_identified'] },
+    { key: 'star', label: 'Relevant jobs', types: ['relevant'] },
+    { key: 'send', label: 'Applied', types: ['applied', 'easy_apply'] },
+    { key: 'link', label: 'Connections sent', types: ['connection_sent'] },
+    { key: 'chat', label: 'Messages sent', types: ['message_sent'] },
+    { key: 'mail', label: 'Emails sent', types: ['email_sent'] },
+    { key: 'reply', label: 'Replies received', types: ['reply_received'] },
   ].map((t) => ({ ...t, value: countJobs(scoped, t.types) }));
 
   // Recent action per metric type (scoped), for the mini-lists on each tile.
@@ -120,9 +128,9 @@ export function DashboardPage() {
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div className="faint" style={{ fontSize: 11.5, letterSpacing: '.04em', textTransform: 'uppercase' }}>{t.label}</div>
-                  <div data-tilevalue style={{ fontWeight: 750, marginTop: 4, letterSpacing: '-.02em', lineHeight: 1 }}>{t.value}</div>
+                  <div data-tilevalue style={{ fontWeight: 750, marginTop: 4, letterSpacing: '-.02em', lineHeight: 1 }}>{t.value.toLocaleString()}</div>
                 </div>
-                <StatIcon name={t.key} color={t.color} />
+                <StatIcon name={t.key} />
               </div>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>Recent</div>

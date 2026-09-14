@@ -114,14 +114,14 @@ export const POPULATED = {
   // "scanned N" in its detail, so that one carries a deliberately large N.
   '/api/agent/events': [
     ...Array.from({ length: 40 }, (_, i) => ({
-      id: 'pa' + i, createdAt: new Date(Date.now() - i * 60000).toISOString(), type: 'post_analysed',
+      id: 'pa' + i, createdAt: new Date(Date.now() - i * 36e5 * 11).toISOString(), type: 'post_analysed',
       portal: 'linkedin', title: LONG_TITLE, company: LONG_CO,
       detail: `scanned ${9000 + i} hiring post(s) for "java backend developer hyderabad"`,
     })),
     ...['job_identified', 'relevant', 'applied', 'connection_sent', 'message_sent',
       'email_sent', 'reply_received'].flatMap((type, t) =>
       Array.from({ length: 220 }, (_, i) => ({
-        id: `${type}-${i}`, createdAt: new Date(Date.now() - i * 60000).toISOString(), type,
+        id: `${type}-${i}`, createdAt: new Date(Date.now() - i * 36e5 * 11).toISOString(), type,
         jobId: `job-${t}-${i}`, portal: i % 2 ? 'linkedin' : 'indeed',
         title: LONG_TITLE, company: i % 3 === 0 ? NOBREAK : LONG_CO, detail: 'd'.repeat(120),
       }))),

@@ -15,9 +15,16 @@ const STAT_ICONS: Record<string, ReactNode> = {
   alert: <><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z" /></>,
 };
 
-export function StatIcon({ name, color }: { name: string; color: string }) {
+/**
+ * The small glyph on a metric tile.
+ *
+ * It used to take a raw hex and tint itself with it — eight different colours across eight tiles,
+ * none of which meant anything: a metric is not "more purple" than another. Per docs/UI_SPEC.md
+ * colour is semantic only, so this is now quiet chrome and the NUMBER carries the tile.
+ */
+export function StatIcon({ name }: { name: string }) {
   return (
-    <span style={{ width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center', background: color + '18', color, flex: 'none' }}>
+    <span className="stat-ico">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {STAT_ICONS[name] ?? STAT_ICONS.posts}
       </svg>

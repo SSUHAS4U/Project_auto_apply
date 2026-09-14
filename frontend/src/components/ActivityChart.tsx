@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AgentEvent } from '../types';
+import { countJobs } from '../lib/metrics';
 
 /**
  * Smooth, stock-style multi-line activity chart. Hand-rolled SVG (no chart library) so it
@@ -77,9 +78,13 @@ export function ActivityChart({ events, portal, range: rangeProp }:
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<number | null>(null);
 
+  const scopedEvents = useMemo(
+    () => (portal ? events.filter((e) => e.portal === portal) : events),
+    [events, portal]);
+
   const { series, buckets } = useMemo(() => {
     const bks = buildBuckets(range);
-    const evs = portal ? events.filter((e) => e.portal === portal) : events;
+    const evs = scopedEvents;
     const data = SERIES.map((s) => {
       const sets = bks.map(() => new Set<string>());
       for (const e of evs) {
@@ -91,7 +96,7 @@ export function ActivityChart({ events, portal, range: rangeProp }:
       return { ...s, values: sets.map((set) => set.size) };
     });
     return { series: data, buckets: bks };
-  }, [events, portal, range]);
+  }, [scopedEvents, range]);
 
   const W = 920, H = 240, padL = 30, padR = 14, padTop = 14, padBot = 30;
   const innerW = W - padL - padR, innerH = H - padTop - padBot;
@@ -116,7 +121,12 @@ export function ActivityChart({ events, portal, range: rangeProp }:
         <div className="ac-legend">
           {series.map((s) => {
             const off = hidden.has(s.key);
-            const total = s.values.reduce((a, b) => a + b, 0);
+            // The LINE is a per-bucket distinct count, which is what a trend should show. The
+            // legend number is not: summing those buckets counts a job once per month it was
+            // seen in, so the chart claimed 8 where the tile beside it said 2 — two different
+            // numbers for the same metric, on the same screen. The legend is a window total,
+            // so it uses the same window-wide helper the tiles use and the two now agree.
+            const total = countJobs(scopedEvents, s.types);
             return (
               <button key={s.key} className={`ac-chip ${off ? 'off' : ''}`} onClick={() => toggle(s.key)}>
                 <span className="ac-dot" style={{ background: s.color }} />
