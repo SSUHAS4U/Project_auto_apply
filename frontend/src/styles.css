@@ -105,7 +105,37 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* Layout ------------------------------------------------------------------ */
-.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+/* Collapsed: the nav column goes to zero and the page gets the full window. Driving it from
+   --sidebar-w means every rule measured against the sidebar (the dock's centre line, the
+   content column) follows automatically instead of needing its own collapsed variant. */
+.app.railed {
+  --sidebar-w: 0px;
+  /* ONE column, not a 0px one plus the main one. `display: none` takes the sidebar out of
+     grid flow entirely, so auto-placement put <main> into the 0px track and the page
+     collapsed to the width of its own padding — 64px on a 1920px screen. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.app.railed .sidebar { display: none; }
+.rail-toggle {
+  position: absolute; top: 26px; right: 10px; z-index: 2;
+  width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card);
+  color: var(--text-faint); cursor: pointer; transition: color .15s, border-color .15s;
+}
+.rail-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+.rail-open {
+  position: fixed; top: 22px; left: 12px; z-index: 70;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+  color: var(--text-dim); cursor: pointer; box-shadow: var(--shadow-sm);
+}
+.rail-open:hover { color: var(--text); border-color: var(--accent); }
+/* Below the layout breakpoint the sidebar is already a drawer, so there is nothing to rail. */
+@media (max-width: 900px) {
+  .rail-toggle, .rail-open { display: none; }
+  .app.railed { --sidebar-w: 0px; }
+}
 .sidebar {
   border-right: 1px solid var(--border);
   background: var(--bg-elev);
@@ -275,8 +305,8 @@ button:focus:not(:focus-visible) { outline: none; }
 .dash-tiles .card { padding: 20px; min-height: 132px; display: flex; flex-direction: column; }
 .dash-tiles .stat-value, .dash-tiles [data-tilevalue] { font-size: 34px; }
 @media (max-width: 1100px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 1000px) { .dash-cols { grid-template-columns: 1fr; } }
-@media (max-width: 480px) { .dash-tiles { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .dash-cols { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .dash-tiles { grid-template-columns: minmax(0, 1fr); } }
 
 /* Mobile top bar + drawer scrim (hidden on desktop) */
 .topbar { display: none; }
@@ -446,7 +476,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 
 /* Connections board -------------------------------------------------------- */
 .conn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 720px) { .conn-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .conn-grid { grid-template-columns: minmax(0, 1fr); } }
 .conn-card { padding: 20px; display: flex; flex-direction: column; }
 .conn-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 .conn-top { display: flex; gap: 13px; align-items: center; margin-bottom: 16px; }
@@ -589,7 +619,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .pf-code-n { font-size: 12.5px; font-weight: 650; color: var(--text-dim); }
 .pf-code-na { font-size: 11.5px; color: var(--text-faint); font-style: italic; }
 @media (max-width: 700px) {
-  .pf-code { grid-template-columns: 1fr; gap: 6px; }
+  .pf-code { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .pf-code-n { font-weight: 600; }
   .pf-code-na { display: none; }
 }
@@ -624,10 +654,10 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .dpk-title { flex: 1; padding: 6px; font: inherit; font-size: 13px; font-weight: 700; color: var(--text);
   background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
 .dpk-title:hover { background: var(--bg-card-hover); }
-.dpk-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
+.dpk-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-bottom: 4px; }
 .dpk-dow span { text-align: center; font-size: 10px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--text-faint); }
-.dpk-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dpk-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .dpk-day { height: 32px; display: grid; place-items: center; font: inherit; font-size: 12.5px; font-weight: 500;
   color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px;
   cursor: pointer; font-variant-numeric: tabular-nums; transition: background .12s ease; }
@@ -635,7 +665,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .dpk-day.out { color: var(--text-faint); opacity: .55; }
 .dpk-day.today { border-color: color-mix(in srgb, var(--accent) 45%, transparent); font-weight: 700; }
 .dpk-day.sel { background: var(--accent); color: #fff; font-weight: 700; border-color: transparent; }
-.dpk-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.dpk-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .dpk-mon { padding: 10px 0; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text);
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
 .dpk-mon:hover { border-color: var(--accent); background: var(--accent-soft); }
@@ -709,7 +739,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   .pf-ring-n { font-size: 14px; }
   .pf-ring-n span { font-size: 8.5px; }
   .pf-ring-l { font-size: 7px; letter-spacing: .06em; margin-top: 1px; }
-  .pf-grid { grid-template-columns: 1fr; gap: 14px; }
+  .pf-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .pf-nav { padding: 4px; gap: 2px; }
   .pf-nav-item { padding: 9px 12px; font-size: 12.5px; }
   /* Save bar stacks so the button never overlaps its own status text. */
@@ -722,14 +752,14 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
    A two-column grid in a dialog, every control labelled with a one-line note where
    the behaviour isn't obvious. Previously these sat unlabelled in a row across the
    page, so it was guesswork which box did what. */
-.fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+.fgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 18px; }
 .filt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .filt-wide { grid-column: 1 / -1; }
 .filt-l { font-size: 12px; font-weight: 650; color: var(--text-dim); letter-spacing: .01em; }
 .filt-l .faint { font-weight: 400; }
 .filt-h { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
 .filt .input, .filt .tsel { min-height: 40px; }
-@media (max-width: 620px) { .fgrid { grid-template-columns: 1fr; gap: 14px; } }
+@media (max-width: 620px) { .fgrid { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
 
 /* ============================================================================
    JOB CARD v2 — one card used everywhere (Jobs board, Daily picks, Scout,
@@ -928,7 +958,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .sched-card.off { opacity: .6; }
 .sched-head { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
 .sched-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 640px) { .sched-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .sched-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
 /* Job-profile sub-section headings ------------------------------------------ */
 .jp-subhead { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin: 20px 0 10px; }
@@ -1062,7 +1092,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
 /* Dashboard quick-actions grid ------------------------------------------- */
-.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.quick-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .quick-btn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -1355,8 +1385,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .section-title { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; margin: 0 0 14px; color: var(--text); }
 .section-title .si { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent-hi); display: grid; place-items: center; font-size: 14px; }
 .section-sub { font-size: 12px; color: var(--text-faint); font-weight: 400; margin-left: auto; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.grid3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 .grid2 .full, .grid3 .full { grid-column: 1 / -1; }
 /* A vertical stack of cards.
    `display: grid` with no explicit columns puts everything in ONE implicit column sized
@@ -1370,8 +1400,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .check-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); margin: 10px 0 4px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .repeat-row .rh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.kv-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
-.detail-grid { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 13px; }
+.kv-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-bottom: 8px; }
+.detail-grid { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px 14px; font-size: 13px; }
 .detail-grid dt { color: var(--text-dim); }
 .detail-grid dd { margin: 0; }
 .job-desc { max-height: 320px; overflow: auto; white-space: pre-wrap; line-height: 1.6; font-size: 13px; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 12px; }
@@ -1455,12 +1485,12 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .only-desktop { display: block; }
 
 @media (max-width: 860px) {
-  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
   /* auto 1fr: the top bar keeps its natural height; main fills the rest. Without this
      the grid stretches BOTH rows when the page is short, blowing up the header. */
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-content: start; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; align-content: start; }
   .only-desktop { display: none !important; }
-  .only-mobile { display: grid !important; grid-template-columns: 1fr; }
+  .only-mobile { display: grid !important; grid-template-columns: minmax(0, 1fr); }
 
   /* Sticky top bar — fixed height + no-wrap so it can never grow tall on mobile. */
   .topbar {
@@ -1493,8 +1523,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .main { padding: 18px 16px 80px; }
   .page-title { font-size: 21px; }
   .page-head { gap: 12px; }
-  .board { grid-template-columns: 1fr; }
-  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .stat-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .modal { width: 100%; max-height: 92dvh; }
   .modal-foot { flex-wrap: wrap; }
   .modal-foot .btn { flex: 1 1 auto; justify-content: center; min-width: 0; }
@@ -1505,7 +1535,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .tab { white-space: nowrap; }
   .chat-wrap { height: calc(100dvh - 200px); }
   .chat-row, .chat-jobs { max-width: 100%; }
-  .kv-row { grid-template-columns: 1fr 1fr auto; }
+  .kv-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
 
   /* Model switcher: the trigger sits at the left on mobile, so the menu must grow
      RIGHTWARD (left:0) — anchoring it to right:0 pushed it off the left edge. */
@@ -1514,8 +1544,8 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 }
 
 @media (max-width: 480px) {
-  .stat-grid { grid-template-columns: 1fr; }
-  .detail-grid { grid-template-columns: 100px 1fr; }
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
+  .detail-grid { grid-template-columns: 100px minmax(0, 1fr); }
 }
 
 /* Resume builder — Overleaf-style workbench ------------------------------- */
@@ -1761,7 +1791,7 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .set-cycle { font-size: 13px; }
 
 @media (max-width: 560px) {
-  .set-grid { grid-template-columns: 1fr; }
+  .set-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---- Search preview -------------------------------------------------------

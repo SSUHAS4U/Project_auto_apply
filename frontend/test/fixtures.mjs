@@ -30,6 +30,9 @@ export const EMPTY = {
     pendingApprovals: 0, liveAction: null, liveUpdatedAt: null,
     metricsToday: { applied: 0, contacted: 0, scanned: 0, skipped: 0, failed: 0 },
   },
+  // Timestamps are relative to NOW: the dashboard scopes every tile to a time window, so a
+  // hard-coded date silently falls outside it and every metric reads 0 — which is how these
+  // tiles came to be laid out only ever containing a single digit.
   '/api/agent/events': [],
   '/api/agent/flows': {},
   '/api/agent/connections': [],
@@ -105,10 +108,24 @@ export const POPULATED = {
     type: 'resume', filename: 'resume' + i + '.pdf', contentType: 'application/pdf',
     sizeBytes: 248000, createdAt: '2026-08-01T09:00:00Z',
   })),
-  '/api/agent/events': Array.from({ length: 12 }, (_, i) => ({
-    id: 'e' + i, at: '2026-09-14T0' + (i % 9) + ':00:00Z', type: 'job_identified',
-    portal: 'linkedin', title: LONG_TITLE, company: LONG_CO, detail: 'd'.repeat(120),
-  })),
+  // Volume, not a token sample. The dashboard tiles COUNT these, so a handful of identical
+  // events produced single-digit metrics and the tiles were never laid out with a real number
+  // in them — which is exactly the case that overflows. 'post_analysed' is summed from the
+  // "scanned N" in its detail, so that one carries a deliberately large N.
+  '/api/agent/events': [
+    ...Array.from({ length: 40 }, (_, i) => ({
+      id: 'pa' + i, createdAt: new Date(Date.now() - i * 60000).toISOString(), type: 'post_analysed',
+      portal: 'linkedin', title: LONG_TITLE, company: LONG_CO,
+      detail: `scanned ${9000 + i} hiring post(s) for "java backend developer hyderabad"`,
+    })),
+    ...['job_identified', 'relevant', 'applied', 'connection_sent', 'message_sent',
+      'email_sent', 'reply_received'].flatMap((type, t) =>
+      Array.from({ length: 220 }, (_, i) => ({
+        id: `${type}-${i}`, createdAt: new Date(Date.now() - i * 60000).toISOString(), type,
+        jobId: `job-${t}-${i}`, portal: i % 2 ? 'linkedin' : 'indeed',
+        title: LONG_TITLE, company: i % 3 === 0 ? NOBREAK : LONG_CO, detail: 'd'.repeat(120),
+      }))),
+  ],
   '/api/admin/users': Array.from({ length: 5 }, (_, i) => ({
     id: 'u' + i, email: 'averylongemailaddress.forthisuser' + i + '@' + NOBREAK.toLowerCase() + '.com',
     fullName: 'Candidate Number ' + i, role: i === 0 ? 'ADMIN' : 'USER', createdAt: '2026-01-0' + (i + 1),

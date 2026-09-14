@@ -63,6 +63,11 @@ const NAV: NavEntry[] = [
 export function Layout() {
   const [unread, setUnread] = useState(0);
   const [drawer, setDrawer] = useState(false);
+  // Collapsing the sidebar hands the whole window to the page. It is also how you CHECK the
+  // page: with the nav out of the way, a centred column is centred against the window and
+  // any drift is obvious by eye rather than only under a ruler.
+  const [railed, setRailed] = useState(() => localStorage.getItem('jobpilot_rail') === '1');
+  useEffect(() => { localStorage.setItem('jobpilot_rail', railed ? '1' : '0'); }, [railed]);
   // Desktop only: the web dashboard is always whatever was last deployed, so a version there
   // would say nothing. In the app it is the one fact that makes a bug report actionable.
   const [appVersion, setAppVersion] = useState<string>('');
@@ -120,6 +125,10 @@ export function Layout() {
   const sidebar = (
     <aside className={`sidebar ${drawer ? 'open' : ''}`}>
       <div className="brand">
+        <button className="rail-toggle" onClick={() => setRailed(true)}
+          title="Collapse sidebar" aria-label="Collapse sidebar">
+          <Icon name="chevron" size={15} style={{ transform: 'rotate(180deg)' }} />
+        </button>
         <Logo />
         <div>
           <div className="brand-name">JobPilot</div>
@@ -190,7 +199,7 @@ export function Layout() {
   );
 
   return (
-    <div className="app">
+    <div className={`app ${railed ? 'railed' : ''}`}>
       {/* Mobile top bar */}
       <header className="topbar">
         <button className="hamburger" aria-label="Menu" onClick={() => setDrawer((d) => !d)}>
@@ -206,6 +215,12 @@ export function Layout() {
       </header>
 
       {sidebar}
+      {railed && (
+        <button className="rail-open" onClick={() => setRailed(false)}
+          title="Show sidebar" aria-label="Show sidebar">
+          <Icon name="chevron" size={15} />
+        </button>
+      )}
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
 
       <main className="main">
