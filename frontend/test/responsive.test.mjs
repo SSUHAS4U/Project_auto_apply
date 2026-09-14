@@ -28,17 +28,16 @@ import { EMPTY, POPULATED, ROUTES } from './fixtures.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-// This suite needs a real browser, and it borrows playwright-core from the worker package
-// rather than adding a second copy. CI installs only frontend/ dependencies and has no Chrome
-// channel, so the prerequisites are DETECTED and the suite skips with a reason — breaking the
-// pipeline over a missing browser would teach everyone to ignore it. Run it locally with
-// `npm test` after `npm --prefix ../worker ci`.
+// This suite needs a real browser. playwright-core is a devDependency of this package so the
+// test is self-contained, and the browser itself is whatever Chrome the machine already has —
+// no download step. If neither is present the suite SKIPS with a reason rather than failing:
+// breaking the pipeline over a missing browser teaches everyone to ignore the pipeline.
 let chromium = null;
 let unavailable = null;
 try {
-  ({ chromium } = require(path.resolve(here, '../../worker/node_modules/playwright-core')));
+  ({ chromium } = require('playwright-core'));
 } catch (e) {
-  unavailable = 'playwright-core not installed (run: npm --prefix ../worker ci)';
+  unavailable = 'playwright-core not installed (run: npm ci)';
 }
 
 const PORT = 5179;

@@ -40,5 +40,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # The responsive suite drives a real Chrome. It SKIPS when none is present rather
+      # than failing the build, so without this step a missing browser would look exactly
+      # like a pass — assert the browser exists, and a skip can only mean a genuinely
+      # unequipped runner.
+      - name: Chrome is available to the responsive suite
+        run: google-chrome --version
       - run: npm test
       - run: npm run build
