@@ -21,15 +21,6 @@
   new MutationObserver(injectWhenReady).observe(document.body, { childList: true, subtree: true });
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
-    if (msg.type === 'FILL') {
-      if (!JP.isEnabled()) { sendResponse({ ok: false, error: 'JobPilot is turned off — flip the toggle in the popup.' }); return; }
-      JP.getProfile(msg.force).then((profile) => {
-        const { filled, total, report } = JP.fillTextInputs(profile);
-        JP.showBadge(`JobPilot · filled ${filled} of ${total} — review & submit`);
-        sendResponse({ ok: true, filled, total, report, site: 'naukri' });
-      }).catch((e) => sendResponse({ ok: false, error: e.message }));
-      return true;
-    }
     if (msg.type === 'SAVE_CURRENT') {
       JP.saveJob({ ...extract(), sourceSite: 'naukri' })
         .then((data) => sendResponse({ ok: true, data }))

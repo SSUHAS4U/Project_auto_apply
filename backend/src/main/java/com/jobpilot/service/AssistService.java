@@ -230,6 +230,12 @@ public class AssistService {
             given. You get EVERY question on the page at once, with the control type and, for
             choice controls, the exact options the page offers. Return STRICT JSON.
 
+            Some fields carry a "surrounding text:" line — the markup around the control, used
+            when the page labels it badly or not at all. When a question is marked
+            [LABEL UNCERTAIN], read the surrounding text and work out what is really being
+            asked before answering. If neither tells you what the field wants, OMIT that id
+            entirely: a blank the candidate notices is better than a confident wrong answer.
+
             THINK ABOUT WHAT EACH QUESTION IS ASKING, THEN FIND IT IN THE BACKGROUND.
             Match on MEANING, never on wording — no two application forms word anything the
             same way. "Which institution did you graduate from", "Name of your alma mater",
@@ -339,10 +345,16 @@ public class AssistService {
 
         StringBuilder list = new StringBuilder();
         for (Map<String, Object> f : pending) {
+            String label = txt(f.get("label"));
+            boolean unsure = isWeakLabel(f);
             list.append("- id=").append(txt(f.get("id")))
                     .append(" | control=").append(txt(f.get("kind")))
                     .append(txt(f.get("required")).equals("true") ? " | REQUIRED" : "")
-                    .append(" | question: ").append(txt(f.get("label")));
+                    .append(" | question: ").append(label.isBlank() ? "(the page gives no label)" : label);
+            if (unsure) list.append("  [LABEL UNCERTAIN — trust the surrounding text below over it]");
+            String ctx = txt(f.get("context"));
+            if (!ctx.isBlank()) list.append("
+    surrounding text: ").append(ctx);
             List<String> opts = optionsOf(f);
             if (!opts.isEmpty()) {
                 list.append("\n    options: ");
@@ -451,6 +463,20 @@ public class AssistService {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Did the extension have to guess this label?
+     *
+     * It reports a confidence with every field: 1.0 for an explicit {@code label[for]}, down to
+     * 0.35 for a humanised attribute name. Below 0.7 the label is a guess, and the model is told
+     * to prefer the surrounding text — the difference between answering the wrong question
+     * confidently and recovering from a bad guess.
+     */
+    private static boolean isWeakLabel(Map<String, Object> field) {
+        Object c = field.get("confidence");
+        if (c instanceof Number n) return n.doubleValue() < 0.7;
+        try { return Double.parseDouble(txt(c)) < 0.7; } catch (RuntimeException e) { return txt(field.get("label")).isBlank(); }
+    }
+
     private static List<String> optionsOf(Map<String, Object> field) {
         Object o = field.get("options");
         if (!(o instanceof List<?> l)) return List.of();

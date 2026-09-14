@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Assistant",
-  "version": "0.9.24",
+  "version": "0.9.25",
   "description": "Autofill job forms (Google/MS Forms, ATS) and save listings to your JobPilot tracker. You always review & submit.",
   "permissions": [
     "storage",
@@ -45,53 +45,24 @@
   "content_scripts": [
     {
       "matches": [
-        "https://docs.google.com/forms/*",
-        "https://forms.gle/*"
+        "<all_urls>"
       ],
       "js": [
         "content/common/smartFill.js",
         "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
-        "content/sites/googleForms.js"
+        "content/common/formEngine.js",
+        "content/common/fillRunner.js",
+        "content/common/assistEngine.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [
-        "https://forms.office.com/*",
-        "https://forms.cloud.microsoft/*",
-        "https://forms.microsoft.com/*"
+        "https://*.linkedin.com/jobs/*"
       ],
       "js": [
-        "content/common/smartFill.js",
-        "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
-        "content/sites/msForms.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://*.linkedin.com/jobs/*",
-        "https://*.linkedin.com/jobs/view/*"
-      ],
-      "js": [
-        "content/common/smartFill.js",
-        "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
         "content/sites/linkedin.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://*.naukri.com/*"
-      ],
-      "js": [
-        "content/common/smartFill.js",
-        "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
-        "content/sites/naukri.js"
       ],
       "run_at": "document_idle"
     },
@@ -100,26 +71,17 @@
         "https://*.indeed.com/*"
       ],
       "js": [
-        "content/common/smartFill.js",
-        "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
         "content/sites/indeed.js"
       ],
       "run_at": "document_idle"
     },
     {
       "matches": [
-        "<all_urls>"
+        "https://*.naukri.com/*"
       ],
       "js": [
-        "content/common/smartFill.js",
-        "content/common/fieldEngine.js",
-        "content/common/assistEngine.js",
-        "content/sites/workday.js",
-        "content/sites/generic.js"
+        "content/sites/naukri.js"
       ],
-      "all_frames": true,
-      "match_about_blank": true,
       "run_at": "document_idle"
     }
   ],

@@ -33,8 +33,16 @@
 
   function setValue(el, value) {
     try { el.focus(); } catch (_) { /* detached */ }
-    const set = nativeSetter(el);
-    if (set) set.call(el, value); else el.value = value;
+    // An OWN `value` accessor means the widget keeps its state in a closure and the prototype
+    // setter would write straight past it, leaving the widget empty while the DOM looks filled.
+    // React installs no such accessor (it tracks separately), so it still takes the branch below.
+    const own = Object.getOwnPropertyDescriptor(el, 'value');
+    if (own && typeof own.set === 'function') {
+      own.set.call(el, value);
+    } else {
+      const set = nativeSetter(el);
+      if (set) set.call(el, value); else el.value = value;
+    }
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
