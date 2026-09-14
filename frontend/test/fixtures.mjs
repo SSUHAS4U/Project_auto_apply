@@ -46,6 +46,7 @@ export const EMPTY = {
   '/api/scout/jobs': [],
   '/api/saved-jobs': [],
   '/api/resumes': [],
+  '/api/documents': [],
   '/api/jobs': page0,
   '/api/applications': [],
   '/api/metrics/ingest': { running: false, totalJobs: 0, lastRun: null, nextRun: null },

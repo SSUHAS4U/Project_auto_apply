@@ -91,10 +91,19 @@ async function measure(route, [w, h], theme, fixtures) {
     // before the parser has created <html>.
     localStorage.setItem('jobpilot_theme', t);
   }, [theme]);
+  const unmapped = new Set();
   await ctx.route(`${API}/**`, (r) => {
     const p = r.request().url().replace(API, '').split('?')[0];
-    const body = Object.prototype.hasOwnProperty.call(fixtures, p) ? fixtures[p] : {};
-    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const known = Object.prototype.hasOwnProperty.call(fixtures, p);
+    // An endpoint with no fixture used to get `{}`. That is a guess, and a wrong guess breaks
+    // the page in a way that looks like anything BUT a missing fixture: `.find is not a
+    // function` surfacing as Vite's error overlay, whose <pre> then reads as a layout defect.
+    // Record it and fail the test by name instead.
+    if (!known && r.request().method() === 'GET') unmapped.add(p);
+    return r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(known ? fixtures[p] : {}),
+    });
   });
   const page = await ctx.newPage();
   const errors = [];
@@ -103,7 +112,13 @@ async function measure(route, [w, h], theme, fixtures) {
   await page.goto(BASE + route, { waitUntil: 'networkidle', timeout: 25000 });
   await page.waitForTimeout(300);
 
-  const m = await page.evaluate(() => {
+  const m = await page.evaluate(MEASURE_FN);
+  await ctx.close();
+  return { ...m, errors, unmapped: [...unmapped] };
+}
+
+/** Runs inside the page. Shared by both passes so they cannot drift apart. */
+const MEASURE_FN = () => {
     const de = document.documentElement;
     const vw = de.clientWidth;
     const cs = (el) => getComputedStyle(el);
@@ -127,17 +142,29 @@ async function measure(route, [w, h], theme, fixtures) {
           right: Math.round(r.right) });
       }
     }
+    // An overlay taller than the viewport with nothing scrollable in it strands its own
+    // buttons off-screen — the vertical twin of horizontal overflow.
+    const trapped = [];
+    for (const ov of document.querySelectorAll('.modal, .drawer, [role="dialog"]')) {
+      const r = ov.getBoundingClientRect();
+      if (r.height <= de.clientHeight + 2) continue;
+      const own = cs(ov).overflowY;
+      if (own === 'auto' || own === 'scroll') continue;
+      const inner = [...ov.querySelectorAll('*')].some((c) => {
+        const o = cs(c).overflowY;
+        return (o === 'auto' || o === 'scroll') && c.scrollHeight > c.clientHeight;
+      });
+      if (!inner) trapped.push(`${(ov.className || '').toString().split(/\s+/)[0] || ov.tagName} is ${Math.round(r.height)}px tall in a ${de.clientHeight}px viewport`);
+    }
+
     return {
       pageOverflow: de.scrollWidth - vw,
       vw,
       escaping: out.map(({ tag, cls, right }) => `<${tag}${cls ? '.' + cls : ''}> right=${right}`),
+      trapped,
       bodyText: (document.body.innerText || '').trim().length,
     };
-  });
-
-  await ctx.close();
-  return { ...m, errors };
-}
+};
 
 function run(label, fixtures) {
   describe(label, () => {
@@ -155,6 +182,7 @@ function run(label, fixtures) {
             if (r.pageOverflow > 1) problems.push(`${at}: page scrolls ${r.pageOverflow}px sideways`);
             for (const e of r.escaping) problems.push(`${at}: ${e} escapes viewport ${r.vw}`);
             if (r.errors.length) problems.push(`${at}: JS error — ${r.errors[0]}`);
+            for (const u of r.unmapped) problems.push(`${at}: no fixture for ${u} — add it to fixtures.mjs`);
           }
         }
         assert.deepEqual(problems, [], `${name}:\n  ` + problems.join('\n  '));
@@ -165,3 +193,80 @@ function run(label, fixtures) {
 
 run('empty state', EMPTY);
 run('populated — longest values a field can hold', POPULATED);
+
+/**
+ * The states a page only reaches once you touch it.
+ *
+ * A resting-state check misses everything behind an interaction, and those are the states that
+ * matter most on a phone: the drawer is the only navigation there, and a tab panel can hold
+ * content the default panel does not. Run at 360 — the width where an overlay has the least
+ * room and therefore the most to go wrong.
+ *
+ * This pass also watches for an overlay TALLER than the viewport with nothing to scroll it,
+ * which strands its own buttons off-screen: the vertical twin of the overflow bug this file
+ * was written for, and just as unusable.
+ */
+describe('interactive states at 360', () => {
+  for (const [route, name] of ROUTES) {
+    test(`${name}: drawer and tab panels fit`, async (t) => {
+      if (unavailable) return t.skip(unavailable);
+      const ctx = await browser.newContext({ viewport: { width: 360, height: 740 } });
+      await ctx.addInitScript(() => {
+        localStorage.setItem('jobpilot_jwt', 'test.jwt.token');
+        localStorage.setItem('jobpilot_is_admin', '1');
+        localStorage.setItem('jobpilot_theme', 'light');
+      });
+      await ctx.route(`${API}/**`, (r) => {
+        const p = r.request().url().replace(API, '').split('?')[0];
+        const known = Object.prototype.hasOwnProperty.call(POPULATED, p);
+        return r.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify(known ? POPULATED[p] : {}),
+        });
+      });
+      const page = await ctx.newPage();
+      const problems = [];
+      // Vite renders a runtime error as an overlay rather than throwing to the page, so without
+      // this the error surfaces only as that overlay's <pre> — which then reads as a layout
+      // defect instead of the broken fixture it actually is.
+      page.on('pageerror', (e) => problems.push('JS error — ' + String(e.message).slice(0, 120)));
+
+      try {
+        await page.goto(BASE + route, { waitUntil: 'networkidle', timeout: 25000 });
+        await page.waitForTimeout(250);
+
+        const check = async (state) => {
+          const m = await page.evaluate(MEASURE_FN);
+          if (m.pageOverflow > 1) problems.push(`${state}: page scrolls ${m.pageOverflow}px sideways`);
+          for (const e of m.escaping) problems.push(`${state}: ${e}`);
+          for (const x of m.trapped) problems.push(`${state}: unscrollable overlay ${x}`);
+        };
+
+        const burger = page.locator('.hamburger');
+        if (await burger.count() && await burger.first().isVisible()) {
+          await burger.first().click();
+          await page.waitForTimeout(320);
+          await check('drawer open');
+          await page.keyboard.press('Escape');
+          const scrim = page.locator('.scrim');
+          if (await scrim.count()) await scrim.first().click({ force: true }).catch(() => {});
+          await page.waitForTimeout(200);
+        }
+
+        const tabs = page.locator('.tab, .pf-nav-item');
+        const n = Math.min(await tabs.count(), 6);
+        for (let i = 0; i < n; i++) {
+          const tab = tabs.nth(i);
+          if (!(await tab.isVisible().catch(() => false))) continue;
+          const label = ((await tab.innerText().catch(() => '')) || '').trim().slice(0, 20);
+          await tab.click({ timeout: 3000 }).catch(() => {});
+          await page.waitForTimeout(260);
+          await check(`tab "${label}"`);
+        }
+      } finally {
+        await ctx.close();
+      }
+      assert.deepEqual(problems, [], `${name} at 360:\n  ` + problems.join('\n  '));
+    }, { timeout: 120000 });
+  }
+});
