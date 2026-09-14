@@ -122,7 +122,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // fieldType tells the backend what control it's answering into
           // (date/tel/url/email/number/textarea/dropdown) so the format matches.
           const data = await apiFetch('/api/assist/answer', {
-            method: 'POST', body: JSON.stringify({ question: msg.question, fieldType: msg.fieldType }),
+            method: 'POST',
+            body: JSON.stringify({
+              question: msg.question,
+              fieldType: msg.fieldType,
+              // The field's surroundings and how much the DOM derivation is trusted. Without
+              // these a mis-read question was answered confidently and there was nothing in
+              // the request that could have revealed the mistake.
+              context: msg.context || '',
+              confidence: msg.confidence == null ? '' : String(msg.confidence),
+            }),
           });
           sendResponse({ ok: true, data });
           break;

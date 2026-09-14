@@ -25,7 +25,8 @@ public class AssistController {
 
     @PostMapping("/answer")
     public Map<String, Object> answer(@RequestBody Map<String, String> body) {
-        return assist.answer(body.get("question"), body.get("fieldType"));
+        return assist.answer(body.get("question"), body.get("fieldType"),
+                body.get("context"), body.get("confidence"));
     }
 
     /** Name fields the DOM couldn't label: {fields:[{key,context}]} → {labels:{key:label}}. */

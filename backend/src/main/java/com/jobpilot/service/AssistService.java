@@ -353,8 +353,7 @@ public class AssistService {
                     .append(" | question: ").append(label.isBlank() ? "(the page gives no label)" : label);
             if (unsure) list.append("  [LABEL UNCERTAIN — trust the surrounding text below over it]");
             String ctx = txt(f.get("context"));
-            if (!ctx.isBlank()) list.append("
-    surrounding text: ").append(ctx);
+            if (!ctx.isBlank()) list.append("\n    surrounding text: ").append(ctx);
             List<String> opts = optionsOf(f);
             if (!opts.isEmpty()) {
                 list.append("\n    options: ");
@@ -588,10 +587,38 @@ public class AssistService {
     }
 
     public Map<String, Object> answer(String question, String fieldType) {
-        if (question == null || question.isBlank()) {
+        return answer(question, fieldType, null, null);
+    }
+
+    /**
+     * Answer one field.
+     *
+     * @param context    the markup around the control, for when the page labels it badly or not
+     *                   at all. The extension used to send only the question, so a label it had
+     *                   mis-derived produced a confident wrong answer with nothing in the
+     *                   request that could have revealed the mistake.
+     * @param confidence how far the extension trusts the label it derived, 0..1. An explicit
+     *                   {@code label[for]} is 1.0; a humanised attribute name is 0.35.
+     */
+    public Map<String, Object> answer(String question, String fieldType,
+                                      String context, String confidence) {
+        String asked = question == null ? "" : question.trim();
+        String ctx = context == null ? "" : context.trim();
+        if (asked.isBlank() && ctx.isBlank()) {
             throw new IllegalArgumentException("question is required");
         }
         UUID userId = UserContext.require();
+
+        // Every shortcut below matches on the WORDING of the question — the saved-answer key,
+        // the profile field map, the salary and factual regexes. Running them against a label
+        // the extension is not confident about is exactly how a stored value lands in the wrong
+        // box: a field mis-labelled "Name" gets the candidate's name typed into it whatever it
+        // actually asks for. When the label is a guess, skip the wording matches entirely and
+        // let the model read the surroundings instead.
+        if (asked.isBlank() || isWeakConfidence(confidence)) {
+            return generateWithContext(asked, fieldType, ctx, userId);
+        }
+
         String key = normalize(question);
 
         // Before the model: a question the profile already answers must not depend on a quota.
@@ -681,12 +708,58 @@ public class AssistService {
         String prompt = "Candidate background:\n" + fullProfileContext(p)
                 + qaBankContext(userId)
                 + "\n\nApplication question: " + question.trim()
+                + (ctx.isBlank() ? "" : "\nSurrounding text on the page: " + ctx)
                 + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
                 + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
                 + "\n\nAnswer:";
         String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
         String shaped = sanitizeNumberAnswer(question, enforceShape(generated, shape), p);
         return Map.of("answer", shaped, "source", "ai");
+    }
+
+    /** Below 0.7 the extension's label came from a placeholder or an attribute name — a guess. */
+    private static boolean isWeakConfidence(String confidence) {
+        if (confidence == null || confidence.isBlank()) return false;   // not reported: assume ok
+        try {
+            return Double.parseDouble(confidence.trim()) < 0.7;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Answer a field whose label we could not read, or could not trust.
+     *
+     * The model gets the markup around the control and is told plainly that the label is
+     * unreliable. It is also told to return nothing rather than guess: an empty box the
+     * candidate notices beats a confident wrong answer submitted to a real employer.
+     */
+    private Map<String, Object> generateWithContext(String question, String fieldType,
+                                                    String ctx, UUID userId) {
+        if (!ai.isEnabled()) {
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "no AI provider is configured — set one in Settings");
+        }
+        Profile p = profiles.get();
+        Shape shape = shapeOf(question, fieldType);
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(userId)
+                + "\n\nA field on an application form. The page labels it badly, so the label "
+                + "below may be wrong or missing — work out what is being asked from the "
+                + "surrounding markup, and prefer it over the label."
+                + "\nLabel as read (UNRELIABLE): " + (question.isBlank() ? "(none)" : question)
+                + "\nSurrounding text: " + ctx
+                + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
+                + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
+                + "\n\nIf the surrounding text does not make the question clear, reply with"
+                + " exactly UNKNOWN. Otherwise give only the answer."
+                + "\n\nAnswer:";
+        String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
+        if (generated.isBlank() || "UNKNOWN".equalsIgnoreCase(generated.strip())) {
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "this field has no readable label — answer it once and press Save");
+        }
+        return Map.of("answer", enforceShape(generated, shape), "source", "ai");
     }
 
     /**

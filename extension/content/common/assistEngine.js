@@ -122,60 +122,40 @@
     return '';
   }
 
+  /**
+   * The question this control is asking.
+   *
+   * Delegates to the form engine's scoped labeller. The cascade that used to live here ended in
+   * `el.closest('li, fieldset, .form-group, .field, div, section')` followed by "take the first
+   * heading inside" — and because `div` matches almost immediately, any wrapper holding several
+   * fields handed every one of them the same label. That is the whole of "the AI answer reads
+   * the wrong question, sometimes". The engine stops widening the moment a second control comes
+   * into scope, so the same text can no longer be attributed to fields it does not belong to.
+   *
+   * Returns '' when nothing trustworthy is derivable. That is deliberate: a blank question is
+   * answerable from {@link questionContext}, whereas a confidently wrong one is not.
+   */
   function deriveQuestion(el) {
-    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    const strip = (s) => clean(s).replace(/\s*\*\s*$/, '').replace(/\s*Required question\s*$/i, '').trim();
+    const Form = window.JobPilotForm;
+    if (!Form) return '';
+    try {
+      return Form.deriveLabel(el, Form.labelScope(el)).text || '';
+    } catch (_) {
+      return '';
+    }
+  }
 
-    // 1. The enclosing question block. Google Forms uses [role=listitem]; MICROSOFT Forms uses
-    //    [data-automation-id="questionItem"] and gives the input a generic "Enter your answer"
-    //    aria-label — so the real question ("Your Name", "Your Email ID") lives in the block's
-    //    title, and reading that MUST come before the aria-label fallback below. Without this
-    //    branch every Microsoft Forms field came out labelled by its control type.
-    const item = el.closest && el.closest(
-      '[role="listitem"], .freebirdFormviewerComponentsQuestionBaseRoot, [data-automation-id="questionItem"]');
-    if (item) {
-      const head = item.querySelector('[role="heading"], .M7eMe, '
-        + '.freebirdFormviewerComponentsQuestionBaseTitle, [data-automation-id="questionTitle"]');
-      if (head && strip(head.textContent).length > 1) return strip(head.textContent).slice(0, 500);
-      // No explicit title element (common on Microsoft Forms): take the first real text inside
-      // the block that isn't an option label or the input's own placeholder.
-      const t = firstBlockQuestion(item, el, clean);
-      if (t && strip(t).length > 1) return strip(t).slice(0, 500);
-    }
-    // 2. aria-label — but ignore the generic placeholder ones.
-    const al = el.getAttribute && el.getAttribute('aria-label');
-    if (al && !GENERIC_LABEL.test(clean(al))) return strip(al);
-    // 3. aria-labelledby → referenced element.
-    const lb = el.getAttribute && el.getAttribute('aria-labelledby');
-    if (lb) {
-      const ref = document.getElementById(lb);
-      if (ref && strip(ref.textContent).length > 4) return strip(ref.textContent).slice(0, 500);
-    }
-    // 4. <label for=id> or wrapping label.
-    if (el.id) {
-      const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (lbl && strip(lbl.textContent).length > 4) return strip(lbl.textContent).slice(0, 500);
-    }
-    const wrap = el.closest && el.closest('label');
-    if (wrap && strip(wrap.textContent).length > 4) return strip(wrap.textContent).slice(0, 500);
-    // 4.5 Table grids: column header + row + section (must beat the container scan —
-    //     a <div> above the table would give EVERY cell the same section heading).
-    const tl = tableLabel(el);
-    if (tl) return strip(tl).slice(0, 500);
-    // 5. A heading/label/legend in a nearby container.
-    const box = el.closest && el.closest('li, fieldset, .form-group, .field, div, section');
-    if (box) {
-      const head = box.querySelector('[role="heading"], h1, h2, h3, h4, label, legend, [class*="title"], [class*="question"]');
-      if (head && strip(head.textContent).length > 8) return strip(head.textContent).slice(0, 500);
-    }
-    // 6. Last resorts.
-    const prev = el.previousElementSibling;
-    if (prev && strip(prev.textContent).length > 8) return strip(prev.textContent).slice(0, 500);
-    if (el.placeholder && !GENERIC_LABEL.test(clean(el.placeholder))) return strip(el.placeholder);
-    // A machine name ("field_9702_1_1") is worse than no label — the AI labeler
-    // reads the field's surroundings instead.
-    const nm = clean(el.name || '');
-    return JUNK_NAME.test(nm) ? '' : nm;
+  /** The question plus what the backend needs to recover from a bad one. */
+  function questionContext(el) {
+    const Form = window.JobPilotForm;
+    if (!Form) return { question: '', context: '', confidence: 0 };
+    let scope = null;
+    try { scope = Form.labelScope(el); } catch (_) { /* detached */ }
+    let d = { text: '', confidence: 0 };
+    try { d = Form.deriveLabel(el, scope); } catch (_) { /* ignore */ }
+    let context = '';
+    try { context = Form.contextOf(el, scope); } catch (_) { /* ignore */ }
+    return { question: d.text || '', context, confidence: d.confidence || 0 };
   }
 
   function readValue(el) {
@@ -436,7 +416,11 @@
       : (el.tagName === 'TEXTAREA' ? 'textarea' : 'text');
     const isDrop = el.tagName === 'INPUT' && smart && (smart.isCustomDropdown(el) || isCombobox(el));
 
-    const r = await msg('ASSIST_ANSWER', { question, fieldType: isDrop ? 'dropdown' : type });
+    const qc = questionContext(el);
+    const r = await msg('ASSIST_ANSWER', {
+      question, fieldType: isDrop ? 'dropdown' : type,
+      context: qc.context, confidence: qc.confidence,
+    });
     const answer = r && r.answer;
     if (!answer || !String(answer).trim()) { note.textContent = 'nothing in your profile for this'; return; }
 
@@ -456,7 +440,9 @@
   // Everything the pill can act on — question fields PLUS selects, custom dropdowns
   // and value-typed inputs (date / tel / url / email / number) that have a label.
   function isPillTarget(el) {
-    if (!el || el.disabled || el.offsetParent === null) return false;
+    if (!el || el.disabled) return false;
+    const Form = window.JobPilotForm;
+    if (Form && !Form.isVisible(el)) return false;
     if (el.tagName === 'SELECT') return true;
     // Available on ANY labelled field again — restricting it to long questions removed the
     // ability to save a Q&A on ordinary fields. It's unobtrusive now because it starts as a
@@ -530,18 +516,18 @@
   // Sites that are clearly NOT job applications — never inject the ✨/Save buttons here.
   const DENY_HOSTS = /(^|\.)(chat\.openai|chatgpt|claude\.ai|gemini\.google|bard\.google|copilot\.microsoft|bing|perplexity|you|poe|phind|google|duckduckgo|youtube|x|twitter|facebook|instagram|reddit|whatsapp|telegram|discord|slack|notion|figma|stackoverflow|github|gitlab)\.com/i;
   // Sites that ARE application/recruiting forms — always allow.
-  const ALLOW_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkday|workday|icims\.com|smartrecruiters|bamboohr|taleo|successfactors|jobvite|workable|recruitee|teamtailor|breezy\.hr|naukri\.com|indeed\.com|linkedin\.com|wellfound\.com|instahyre|hirist|cutshort|forms\.office\.com|forms\.cloud\.microsoft|forms\.microsoft\.com|forms\.gle|docs\.google\.com|careers\.microsoft\.com|careers\.google\.com|phenompeople|phenom\.com|eightfold\.ai|avature\.net|oraclecloud\.com|darwinbox|zohorecruit|keka\.com|ripplehire|turbohire|jobs\.siemens|jobs\.sap|hcltech\.com|freshers\.)/i;
 
+  /**
+   * Where the pill may appear: anywhere except the handful of sites where it would be noise.
+   *
+   * This used to require the hostname to match an allow-list of known ATS platforms, or the URL
+   * to contain "apply"/"career"/… — so a company careers page on its own domain, or any ATS not
+   * in the regex, offered nothing. There is no finite list of the places a job form can live,
+   * so there is no list to keep up to date. Only the deny-list remains, and it exists to keep
+   * the pill out of chat apps and search engines rather than to decide what a form is.
+   */
   function looksLikeApplicationForm() {
-    const host = location.hostname;
-    if (ALLOW_HOSTS.test(host)) return true;
-    if (DENY_HOSTS.test(host)) return false;
-    // Generic page: only treat it as an application if the URL/title says so AND it has a form.
-    const hay = (location.href + ' ' + document.title).toLowerCase();
-    const jobby = /(apply|application|career|job|recruit|vacancy|opening|hiring|candidate|position|fresher|placement)/.test(hay);
-    const hasUpload = !!document.querySelector('input[type="file"]');
-    const fields = document.querySelectorAll('form textarea, form input[type="text"], form input[type="email"], [role="listitem"]').length;
-    return (jobby && (hasUpload || fields >= 3));
+    return !DENY_HOSTS.test(location.hostname);
   }
 
   // The pill is delegated (focusin), so a one-time install covers dynamic forms too.
