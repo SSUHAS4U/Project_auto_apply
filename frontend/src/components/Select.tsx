@@ -36,18 +36,32 @@ export function Select({ value, options, onChange, ariaLabel, style, className }
     const place = () => {
       const r = ref.current!.getBoundingClientRect();
       const vh = document.documentElement.clientHeight;
+      const vw = document.documentElement.clientWidth;
       const need = Math.min(options.length * 38 + 12, 260);
       const below = vh - r.bottom - 8;
       const drop: 'down' | 'up' = below < need && r.top > below ? 'up' : 'down';
+      // The menu is often WIDER than the button that opens it — options do not wrap, and a
+      // resume filename is long. Pinning it to the button's left edge then pushed it past the
+      // right edge of the window, where the list was simply unreadable. Clamp it into the
+      // viewport, measuring the menu's real width once it exists.
+      const mw = menuRef.current ? menuRef.current.offsetWidth : r.width;
+      const left = Math.max(8, Math.min(r.left, vw - mw - 8));
       setPos({
         top: drop === 'down' ? r.bottom + 6 : Math.max(6, r.top - need - 6),
-        left: r.left, width: r.width, drop,
+        left, width: r.width, drop,
       });
     };
     place();
+    // Re-place on the next frame: the first run happens before the menu is in the DOM, so its
+    // true width is not measurable yet and the clamp above would use the button's width.
+    const raf = requestAnimationFrame(place);
     window.addEventListener('scroll', place, true);
     window.addEventListener('resize', place);
-    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
   }, [open, options.length]);
   const current = options.find((o) => o.value === value);
 
@@ -81,7 +95,7 @@ export function Select({ value, options, onChange, ariaLabel, style, className }
               className={`tsel-opt ${o.value === value ? 'active' : ''}`}
               onClick={() => { onChange(o.value); setOpen(false); }}>
               <span className="tsel-check">{o.value === value && <Icon name="check" size={13} />}</span>
-              <span>{o.label}</span>
+              <span className="tsel-opt-l" title={o.label}>{o.label}</span>
             </button>
           ))}
         </div>, document.body)}

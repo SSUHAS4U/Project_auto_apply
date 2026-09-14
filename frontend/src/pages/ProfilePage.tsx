@@ -52,7 +52,7 @@ function SavedAnswers() {
             Nothing saved yet. On an application form, click the extension's <b>Save</b> under a question to keep its answer here.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div className="stack">
             {items.map((it) => (
               <div key={it.id} className="repeat-row" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {editing === it.id ? (
@@ -616,7 +616,7 @@ function Marksheets() {
 
   return (
     <Section ico="shield" title="Marksheets" sub="encrypted in your document vault · PDF or image">
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div className="stack">
         {SLOTS.map((s) => {
           const doc = (docs ?? []).find((d) => d.type === s.type);
           return (
@@ -721,7 +721,7 @@ function DocumentsVault() {
       {docs === null ? <div className="empty"><span className="spinner" /></div>
         : docs.length === 0 ? <div className="faint" style={{ fontSize: 13 }}>No documents yet. Upload certificates, transcripts, ID proofs, etc.</div>
         : (
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div className="stack" style={{ gap: 8 }}>
             {docs.map((d) => (
               <div key={d.id} className="repeat-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                 <div style={{ minWidth: 0 }}>

@@ -371,12 +371,17 @@ button:focus:not(:focus-visible) { outline: none; }
    ancestor, which is why the options were cut off inside the Filters dialog. */
 .tsel-menu { position: fixed; z-index: 2147483000; min-width: 100%;
   background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  /* A resume filename is longer than the control that lists it, so the menu grows past its
+     button. Cap it at the window and ellipsise the labels: a truncated name you can read and
+     hover beats a full one rendered off-screen. */
+  max-width: calc(100vw - 16px);
   box-shadow: var(--shadow); padding: 5px; display: flex; flex-direction: column; gap: 2px;
   max-height: 280px; overflow-y: auto; animation: tselIn .13s ease; }
 @keyframes tselIn { from { opacity: 0; transform: translateY(-4px); } }
 .tsel-opt { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
   background: transparent; border: none; color: var(--text-dim); padding: 8px 9px; border-radius: 7px;
   font-size: 13px; font-weight: 500; white-space: nowrap; }
+.tsel-opt-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tsel-opt:hover { background: var(--bg-elev); color: var(--text); }
 .tsel-opt.active { color: var(--accent-hi); background: var(--accent-soft); }
 .tsel-check { width: 14px; flex: none; display: inline-flex; color: var(--accent-hi); }
@@ -507,17 +512,12 @@ tbody tr:hover { background: var(--bg-card-hover); }
    ========================================================================== */
 .pf { max-width: 1100px; margin: 0 auto; }
 
-/* True centring against the SCREEN, not just the content column.
-   The 240px sidebar offsets the content column, so a container centred inside it always sits
-   exactly 120px (half the sidebar) right of the viewport's centre line — which reads as
-   "stuck to the right". Shifting left by that 120px fixes it, but then the container must be
-   narrow enough that its left edge still clears the sidebar: it needs a 256px gap each side,
-   hence the 512px budget. Width therefore adapts to the window and the form lands dead centre
-   at every size. Only while the sidebar is actually on screen. */
-@media (min-width: 1080px) {
-  .pf { width: min(1100px, calc(100vw - 512px)); max-width: none;
-    position: relative; right: 120px; }
-}
+/* Centred in the CONTENT COLUMN, like every other page — not against the whole window.
+   A previous version shifted this container 120px left so it would sit on the viewport's
+   centre line, counting the sidebar as part of the space to centre within. That is the wrong
+   frame: the sidebar is chrome, not content, and offsetting against it left Profile visibly
+   out of line with Settings, Jobs and everything else, hugging the left edge with a wide gap
+   on the right. The content column is the frame; `margin: 0 auto` inside it is the whole rule. */
 
 /* --- header card: identity + completeness ring --- */
 .pf-head { display: flex; align-items: center; gap: 20px; padding: 22px 24px; margin-bottom: 18px;
@@ -684,7 +684,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .pf-sug:disabled { opacity: .55; cursor: default; }
 
 /* --- sticky save bar: a long form must never hide its primary action --- */
-.pf-save { position: sticky; bottom: 14px; z-index: 20; display: flex; align-items: center; gap: 12px;
+/* Clears the floating sub-nav dock.
+   The dock is fixed at bottom:26px and is 58px tall (42px items + 8px padding either side),
+   so it occupies 26-84px from the bottom edge — and it has z-index 60 against this bar's 20.
+   At bottom:14px the two simply sat on top of each other, with the dock covering the Save
+   button: the primary action on the page, unreachable behind a navigation control. */
+.pf-save { position: sticky; bottom: 96px; z-index: 20; display: flex; align-items: center; gap: 12px;
   margin-top: 20px; padding: 12px 16px; border-radius: var(--radius);
   background: var(--bg-card); border: 1px solid var(--border-strong); box-shadow: var(--shadow); }
 .pf-save-t { font-size: 12.5px; color: var(--text-dim); }
@@ -1161,7 +1166,8 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .run-stat { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
 .run-stat b { color: var(--text); }
 /* Inline metadata item (icon + text) used across job/application cards. */
-.meta-item { display: inline-flex; align-items: center; gap: 5px; }
+/* Holds a filename or a URL, so it must be allowed to shrink and break. */
+.meta-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
 .meta-item svg { flex: none; opacity: .75; }
 
 /* Misc -------------------------------------------------------------------- */
@@ -1352,7 +1358,15 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 .grid2 .full, .grid3 .full { grid-column: 1 / -1; }
-.repeat-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px; margin-bottom: 10px; background: var(--bg-elev); }
+/* A vertical stack of cards.
+   `display: grid` with no explicit columns puts everything in ONE implicit column sized
+   `auto`, which resolves to MAX-CONTENT. So a single long filename inside one row makes every
+   row in the stack that wide, and the page scrolls sideways — and no amount of `min-width: 0`
+   on the children helps, because the column itself was never constrained. minmax(0, 1fr) is
+   the whole fix. Measured on Profile → Resume: rows were a fixed 725px at every viewport from
+   360 to 900. */
+.stack { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+.repeat-row { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px; margin-bottom: 10px; background: var(--bg-elev); }
 .check-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); margin: 10px 0 4px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .repeat-row .rh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }

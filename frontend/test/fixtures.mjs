@@ -118,6 +118,19 @@ export const POPULATED = {
     lastRun: { at: '2026-09-14T05:00:00Z', updated: '1,284', inserted: 312, status: 'ok' },
     nextRun: '2026-09-15T05:00:00Z',
   },
+  // Real certificate filenames, which is what the page actually has to lay out. These were
+  // empty in the first version of this fixture, so every Profile test passed while the live
+  // page pushed its document cards past the right edge.
+  '/api/documents': [
+    { id: 'd1', name: 'AWS Certified Solutions Architect - Associate certificate - SuhasS.pdf',
+      type: 'certificate', filename: 'aws-saa.pdf', contentType: 'application/pdf', sizeBytes: 117760, createdAt: '2026-06-24T09:00:00Z' },
+    { id: 'd2', name: 'AWS Certified Developer - Associate certificate - SuhasS-2026.pdf',
+      type: 'certificate', filename: 'aws-dva.pdf', contentType: 'application/pdf', sizeBytes: 33790, createdAt: '2026-06-24T09:00:00Z' },
+    { id: 'd3', name: 'AWS Certified Cloud Practitioner certificate.pdf',
+      type: 'certificate', filename: 'aws-ccp.pdf', contentType: 'application/pdf', sizeBytes: 30720, createdAt: '2026-06-24T09:00:00Z' },
+    { id: 'd4', name: NOBREAK + '-transcript-final.pdf',
+      type: 'transcript', filename: 't.pdf', contentType: 'application/pdf', sizeBytes: 812000, createdAt: '2026-05-01T09:00:00Z' },
+  ],
   '/api/profile': {
     fullName: 'S Suhas', email: 'dev@example.com', phone: '+91 90000 00000',
     headline: 'Senior Java Backend Engineer — Spring Boot, Kafka, GCP, Kubernetes, Microservices',
@@ -127,7 +140,12 @@ export const POPULATED = {
     experience: [{ company: LONG_CO, title: LONG_TITLE, from: '2023-01', to: 'Present', description: 'e'.repeat(300) }],
     education: [{ school: 'Jawaharlal Nehru Technological University Hyderabad', degree: 'B.Tech Computer Science', from: '2019', to: '2023' }],
     projects: [{ name: NOBREAK, description: 'p'.repeat(250), url: 'https://e.com' }],
-    achievements: [], certifications: [],
+    achievements: [{ title: 'Runner-up, Smart India Hackathon 2022 (Nationals)', description: 'a'.repeat(160) }],
+    certifications: [
+      { name: 'AWS Certified Solutions Architect - Associate', issuer: 'Amazon Web Services', year: '2026', url: 'https://example.com/verify/aws-saa-0001' },
+      { name: 'AWS Certified Developer - Associate', issuer: 'Amazon Web Services', year: '2026', url: 'https://example.com/verify/aws-dva-0002' },
+      { name: 'Oracle Certified Professional, Java SE 17 Developer', issuer: 'Oracle', year: '2025', url: 'https://example.com/verify/ocp' },
+    ],
   },
 };
 
