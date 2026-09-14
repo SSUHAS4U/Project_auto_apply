@@ -50,10 +50,18 @@ export function ApplicationsPage() {
       </div>
 
       <div className="stat-grid">
-        <div className="card stat"><div className="stat-label">Tracked</div><div className="stat-value">{apps.length}</div></div>
-        <div className="card stat"><div className="stat-label">Applied</div><div className="stat-value accent">{counts['applied'] ?? 0}</div></div>
-        <div className="card stat"><div className="stat-label">Interviewing</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{counts['interviewing'] ?? 0}</div></div>
-        <div className="card stat"><div className="stat-label">Offers</div><div className="stat-value" style={{ color: 'var(--green)' }}>{counts['offer'] ?? 0}</div></div>
+        {/* Four counts, one treatment. These were four different colours — neutral, accent,
+            amber and green — which made "Applied" compete with the page's real actions and
+            rendered a zero in warning amber. Only an OFFER is a semantic outcome, and it only
+            earns its colour when there is one to report. */}
+        <div className="card stat"><div className="stat-label">Tracked</div><div className="stat-value">{apps.length.toLocaleString()}</div></div>
+        <div className="card stat"><div className="stat-label">Applied</div><div className="stat-value">{(counts['applied'] ?? 0).toLocaleString()}</div></div>
+        <div className="card stat"><div className="stat-label">Interviewing</div><div className="stat-value">{(counts['interviewing'] ?? 0).toLocaleString()}</div></div>
+        <div className="card stat"><div className="stat-label">Offers</div>
+          <div className="stat-value" style={counts['offer'] ? { color: 'var(--green)' } : undefined}>
+            {(counts['offer'] ?? 0).toLocaleString()}
+          </div>
+        </div>
       </div>
 
       <div className="tabs">
@@ -85,7 +93,7 @@ export function ApplicationsPage() {
                         <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setSelected(a)}>{title(a)}</div>
                         <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
                       </td>
-                      <td className="muted">{a.job?.location ?? '—'}</td>
+                      <td className="muted cell-clip" title={a.job?.location ?? ''}>{a.job?.location ?? '—'}</td>
                       <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
                       <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
                       <td>

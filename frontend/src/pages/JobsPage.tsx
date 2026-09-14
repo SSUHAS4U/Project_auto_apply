@@ -235,8 +235,8 @@ export function JobsPage() {
       </div>
 
       <div className="stat-grid">
-        <div className="card stat"><div className="stat-label">Jobs in view</div><div className="stat-value">{stats.total}</div></div>
-        <div className="card stat"><div className="stat-label">Email-apply</div><div className="stat-value accent">{stats.emails}</div></div>
+        <div className="card stat"><div className="stat-label">Jobs in view</div><div className="stat-value">{stats.total.toLocaleString()}</div></div>
+        <div className="card stat"><div className="stat-label">Email-apply</div><div className="stat-value">{stats.emails.toLocaleString()}</div></div>
         <div className="card stat"><div className="stat-label">Avg match (page)</div><div className="stat-value">{stats.avg}</div></div>
       </div>
 
@@ -478,10 +478,14 @@ function MetricsModal({ m, running, onClose }: { m: IngestMetrics | null; runnin
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
+// `accent` is accepted and deliberately ignored: a metric is data, and the accent is reserved
+// for the one call to action on the screen (docs/UI_SPEC.md).
+function Stat({ label, value }: { label: string; value: number | string; accent?: boolean }) {
   return (
     <div className="card card-pad" style={{ padding: 12 }}>
-      <div style={{ fontSize: 20, fontWeight: 700, color: accent ? 'var(--accent)' : undefined }}>{value}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </div>
       <div className="faint" style={{ fontSize: 12 }}>{label}</div>
     </div>
   );

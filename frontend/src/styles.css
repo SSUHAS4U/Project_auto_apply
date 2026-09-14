@@ -27,6 +27,19 @@
      positioned against the top of the viewport on mobile must offset by this or it renders
      underneath the header. */
   --topbar-h: 0px;
+
+  /* Spacing scale. Card surfaces used to sit at 18, 20 and 22px — three values, none of them
+     on any scale, which is what makes a layout read as "roughly aligned" rather than designed.
+     Everything below is a step on one ladder. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  /* The one card padding. Comfortable density; compact surfaces use --sp-4. */
+  --pad-card: var(--sp-5);
   --radius: 14px;
   --radius-sm: 10px;
   --radius-lg: 20px;
@@ -306,7 +319,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .dash-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
 /* Even 4-up rows (8 tiles = 4 + 4). Equal-width columns so every card is the same size. */
 .dash-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
-.dash-tiles .card { padding: 20px; min-height: 132px; display: flex; flex-direction: column; }
+.dash-tiles .card { padding: var(--pad-card); min-height: 132px; display: flex; flex-direction: column; }
 .dash-tiles .stat-value, .dash-tiles [data-tilevalue] { font-size: 34px; }
 @media (max-width: 1100px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1000px) { .dash-cols { grid-template-columns: minmax(0, 1fr); } }
@@ -365,13 +378,13 @@ button:focus:not(:focus-visible) { outline: none; }
   border-radius: var(--radius); box-shadow: var(--shadow-sm);
   transition: border-color .16s ease, box-shadow .16s ease;
 }
-.card-pad { padding: 22px 24px; }
+.card-pad { padding: var(--pad-card); }
 /* Clickable cards: unmistakable hover/active feedback (fixes "can't tell what's selected"). */
 .card-click { cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
 .card-click:hover { border-color: var(--accent); box-shadow: var(--shadow); }
 .card-click.open { border-color: var(--accent); box-shadow: var(--glow); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 22px; }
-.stat { padding: 18px 20px; position: relative; overflow: hidden; }
+.stat { padding: var(--sp-4) var(--sp-5); position: relative; overflow: hidden; }
 .stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 .stat-label { font-size: 11.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
 /* Quiet chrome. The tile's content is its number; the glyph only says which metric. */
@@ -431,6 +444,10 @@ label.field .input, label.field .select, label.field textarea { color: var(--tex
 textarea.input { width: 100%; resize: vertical; font-family: inherit; line-height: 1.5; }
 
 /* Table ------------------------------------------------------------------- */
+/* A long location was wrapping to six lines and making every row 120px tall. One line with an
+   ellipsis, the full value on hover — the table is a scan surface, not a place to read an
+   address. */
+.cell-clip { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: var(--radius); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
@@ -481,14 +498,14 @@ tbody tr:hover { background: var(--bg-card-hover); }
 /* Modal ------------------------------------------------------------------- */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 50; padding: 20px; }
 .modal { background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: var(--radius); width: min(640px, 100%); max-height: 88vh; overflow: auto; box-shadow: var(--shadow); }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-card); }
-.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-card); }
+.modal-body { padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
 .modal-foot { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: var(--bg-card); }
 
 /* Connections board -------------------------------------------------------- */
 .conn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 @media (max-width: 720px) { .conn-grid { grid-template-columns: minmax(0, 1fr); } }
-.conn-card { padding: 20px; display: flex; flex-direction: column; }
+.conn-card { padding: var(--pad-card); display: flex; flex-direction: column; }
 .conn-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 .conn-top { display: flex; gap: 13px; align-items: center; margin-bottom: 16px; }
 .conn-logo {
@@ -781,7 +798,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .jc2 { display: flex; align-items: stretch; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 16px; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
 .jc2:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
-.jc2-main { flex: 1; min-width: 0; padding: 16px 18px; display: flex; flex-direction: column; gap: 11px; }
+/* The side column (score + two buttons + a link) is taller than the title/company/meta block
+   beside it, and the card stretches both. With the footer pinned by margin-top:auto, the
+   leftover ~65px collected into one hole in the middle of every card. Centring the column
+   spreads it above and below instead, where it reads as padding rather than a gap. */
+.jc2-main { flex: 1; min-width: 0; padding: var(--sp-4) 18px; display: flex; flex-direction: column;
+  justify-content: center; gap: 11px; }
 
 .jc2-head { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
 .jc2-id { flex: 1; min-width: 0; }
@@ -809,7 +831,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .jc2-more { font-size: 11.5px; font-weight: 600; color: var(--text-faint); }
 .jc2-divider { width: 1px; height: 14px; background: var(--border-strong); margin: 0 2px; }
 
-.jc2-foot { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 2px; }
+.jc2-foot { display: flex; align-items: center; gap: 10px; padding-top: 2px; }
 .jc2-src { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint);
   border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; }
