@@ -35,13 +35,16 @@ public class DiagnosticsController {
     private final AgentEventRepository events;
     private final AgentService agent;
     private final AppUserRepository users;
+    private final com.jobpilot.config.SecretsGuard secrets;
 
     public DiagnosticsController(AgentRunRepository runs, AgentEventRepository events,
-                                 AgentService agent, AppUserRepository users) {
+                                 AgentService agent, AppUserRepository users,
+                                 com.jobpilot.config.SecretsGuard secrets) {
         this.runs = runs;
         this.events = events;
         this.agent = agent;
         this.users = users;
+        this.secrets = secrets;
     }
 
     /** The owner — this is a single-operator deployment, so the first account is the subject. */
@@ -57,6 +60,28 @@ public class DiagnosticsController {
         return users.findAll().stream()
                 .map(AppUser::getId).filter(Objects::nonNull)
                 .min(Comparator.comparing(UUID::toString)).orElse(null);
+    }
+
+    /**
+     * Is this deployment running on a secret that is published in this repository?
+     *
+     * Reports NAMES ONLY, never values — the names are already public (they are in
+     * SecretsGuard), so this leaks nothing, while the values are the whole point of the guard.
+     *
+     * Under /api/ingest-diag so the existing machine-token rule covers it: readable by the
+     * operator, not by the internet, and it can change nothing.
+     */
+    @GetMapping("/api/ingest-diag/config")
+    public Map<String, Object> configDiagnostics() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        java.util.List<String> published = secrets.findings();
+        out.put("usingPublishedDefaults", !published.isEmpty());
+        out.put("which", published);
+        out.put("enforcing", secrets.isEnforcing());
+        out.put("action", published.isEmpty()
+                ? "none — this host sets its own secrets"
+                : "set these on the host (/opt/jobpilot/.env) and restart: " + published);
+        return out;
     }
 
     /**
