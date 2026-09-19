@@ -110,7 +110,7 @@ public class GroqAiClient implements AiClient {
         if (healed.putIfAbsent(configured, fallback) == null) {
             log.warn("Groq model '{}' is a retired model and is being ignored; using '{}' instead. "
                     + "Set JOBPILOT_GROQ_MODEL / JOBPILOT_GROQ_FAST_MODEL in the backend .env "
-                    + "(on the VM, /opt/jobpilot/.env) to stop configuring a model that no longer "
+                    + "(on the VM, ~/jobpilot/.env — the file its docker-compose.yml loads) to stop configuring a model that no longer "
                     + "exists.", configured, fallback);
         }
     }
@@ -155,7 +155,7 @@ public class GroqAiClient implements AiClient {
         log.error("Groq model '{}' has been retired by Groq (404 model_not_found). "
                 + "Falling forward to '{}' for the rest of this process. "
                 + "To make it permanent, set JOBPILOT_GROQ_MODEL / JOBPILOT_GROQ_FAST_MODEL in the "
-                + "backend .env (on the VM, /opt/jobpilot/.env) to a model listed by "
+                + "backend .env (on the VM, ~/jobpilot/.env — the file its docker-compose.yml loads) to a model listed by "
                 + "GET https://api.groq.com/openai/v1/models, then restart the backend.",
                 configured, fallback);
         return fallback;

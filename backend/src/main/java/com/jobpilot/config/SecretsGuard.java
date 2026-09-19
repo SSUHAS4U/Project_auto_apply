@@ -41,7 +41,7 @@ import java.util.List;
  *
  * <h2>How to satisfy it</h2>
  *
- * Set real values on the host — for this deployment, {@code /opt/jobpilot/.env}:
+ * Set real values on the host — for this deployment, {@code ~/jobpilot/.env}:
  *
  * <pre>
  *   JOBPILOT_JWT_SECRET=$(openssl rand -base64 48)
@@ -147,7 +147,7 @@ public class SecretsGuard {
                 "\n\n*** REFUSING TO SERVE: this deployment is using secrets published in a "
                         + "public repository ***\n\n");
         for (String p : published) msg.append("  - ").append(p).append('\n');
-        msg.append("\nSet real values on the host (this deployment: /opt/jobpilot/.env):\n")
+        msg.append("\nSet real values on the host (this deployment: ~/jobpilot/.env):\n")
            .append("  JOBPILOT_JWT_SECRET=$(openssl rand -base64 48)\n")
            .append("  JOBPILOT_API_TOKEN=$(openssl rand -hex 24)\n")
            .append("\nThen restart. Rotating the JWT secret signs everyone out, which is the\n")

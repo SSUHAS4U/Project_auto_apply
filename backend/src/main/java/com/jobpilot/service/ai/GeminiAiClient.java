@@ -68,7 +68,7 @@ public class GeminiAiClient implements AiClient {
             if (healed.putIfAbsent(configured, fallback) == null) {
                 log.warn("Gemini model '{}' is a retired model and is being ignored; using '{}' "
                         + "instead. Set JOBPILOT_GEMINI_MODEL / JOBPILOT_GEMINI_FAST_MODEL in the "
-                        + "backend .env (on the VM, /opt/jobpilot/.env) to stop configuring a model "
+                        + "backend .env (on the VM, ~/jobpilot/.env — the file its docker-compose.yml loads) to stop configuring a model "
                         + "that no longer exists.", configured, fallback);
             }
             return fallback;
@@ -97,7 +97,7 @@ public class GeminiAiClient implements AiClient {
             log.error("Gemini model '{}' is not available on this API version/key (404). "
                     + "Falling forward to '{}' for the rest of this process. To make it permanent, "
                     + "set JOBPILOT_GEMINI_MODEL / JOBPILOT_GEMINI_FAST_MODEL in the backend .env "
-                    + "(on the VM, /opt/jobpilot/.env) to a model listed by "
+                    + "(on the VM, ~/jobpilot/.env — the file its docker-compose.yml loads) to a model listed by "
                     + "GET {}?key=... , then restart the backend.", configured, fallback, base());
             return send(fallback, system, user, budget);
         }

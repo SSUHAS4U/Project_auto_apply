@@ -80,7 +80,7 @@ public class DiagnosticsController {
         out.put("enforcing", secrets.isEnforcing());
         out.put("action", published.isEmpty()
                 ? "none — this host sets its own secrets"
-                : "set these on the host (/opt/jobpilot/.env) and restart: " + published);
+                : "set these on the host (~/jobpilot/.env) and restart: " + published);
         return out;
     }
 

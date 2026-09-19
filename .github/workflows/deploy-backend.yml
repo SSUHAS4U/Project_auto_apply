@@ -55,21 +55,32 @@ jobs:
           command_timeout: 10m
           script: |
             set -e
-            ENVFILE=/opt/jobpilot/.env
+            COMPOSE_DIR=~/jobpilot
 
-            # PRE-FLIGHT: is that the file compose actually reads?
+            # WHICH FILE DOES COMPOSE ACTUALLY READ? Ask the compose file, do not assume.
             #
-            # Everything below writes secrets into $ENVFILE, and the backend now REFUSES to
-            # start in production without them. If compose reads a different file, the writes
-            # land somewhere nobody loads and the refusal becomes an outage caused by the very
-            # step meant to prevent one. Check first and say so plainly.
-            if ! sudo grep -q "$ENVFILE" ~/jobpilot/docker-compose.yml; then
-              echo "::error::~/jobpilot/docker-compose.yml does not reference $ENVFILE."
-              echo "::error::Its env_file lines are:"
-              sudo grep -n -A2 'env_file' ~/jobpilot/docker-compose.yml || echo "  (none found)"
-              echo "::error::Point ENVFILE at the file compose loads, then re-run. Nothing was changed."
+            # The first version of this hardcoded /opt/jobpilot/.env, which is the path the
+            # application's own error messages had been printing for months. It is wrong:
+            # compose declares `env_file: .env`, resolved RELATIVE TO THE COMPOSE FILE, so the
+            # real path is ~/jobpilot/.env. Everything below writes secrets the backend now
+            # refuses to start without, so writing them to a file nobody loads would have
+            # turned this safeguard into the outage it exists to prevent.
+            #
+            # Deriving it means the next person who moves the file gets a working deploy
+            # instead of a confident wrong answer.
+            ENVREL=$(sudo grep -m1 -oE '^[[:space:]]*env_file:[[:space:]]*\S+' \
+                       "$COMPOSE_DIR/docker-compose.yml" | awk '{print $2}' || true)
+            if [ -z "$ENVREL" ]; then
+              echo "::error::No env_file declared in $COMPOSE_DIR/docker-compose.yml, so there is"
+              echo "::error::nowhere to put the secrets the backend requires. Nothing was changed."
+              sudo grep -n -B2 -A4 'env_file' "$COMPOSE_DIR/docker-compose.yml" || true
               exit 1
             fi
+            case "$ENVREL" in
+              /*) ENVFILE="$ENVREL" ;;
+              *)  ENVFILE="$COMPOSE_DIR/$ENVREL" ;;
+            esac
+            echo "compose loads its environment from: $ENVFILE"
             sudo touch "$ENVFILE"
 
             # ---- SECRETS BOOTSTRAP -------------------------------------------------------

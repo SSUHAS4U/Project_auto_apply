@@ -115,7 +115,7 @@ public final class JwtSecretResolver {
 
     private static String problem(String what, String why) {
         return "\n\n*** REFUSING TO START ***\n\n  " + what + "\n  " + why
-                + "\n\nSet one on the host (this deployment: /opt/jobpilot/.env):\n"
+                + "\n\nSet one on the host (this deployment: ~/jobpilot/.env):\n"
                 + "  JOBPILOT_JWT_SECRET=$(openssl rand -base64 48)\n\n"
                 + "Then restart. Everyone signs in again, which is the point if the previous\n"
                 + "key was weak or public.\n";
