@@ -4,7 +4,7 @@ A file-by-file map of what owns what, the invariants any rewrite must keep, and 
 modes that have actually happened. Read this before changing anything. If it is wrong, fix it in
 the same commit as the change that made it wrong.
 
-`AUTOMATION.md` is the incident log — *why* things are the way they are. This file is the map —
+`docs/AUTOMATION.md` is the incident log — *why* things are the way they are. This file is the map —
 *what things are*. Neither replaces the other.
 
 ---
@@ -192,7 +192,7 @@ its cells are omitted. Both behaviours are asserted separately.
 
 - The extension fill core is a keyword dictionary, not an engine. §3 lists why that fails.
 - The frontend has no design-token layer; responsiveness is per-component and inconsistent.
-- `AUTOMATION.md` is gitignored, so the incident history is local-only.
+- `docs/AUTOMATION.md` is gitignored, so the incident history is local-only.
 - `engine/` exposes 24 endpoints and the dashboard calls 4. See `docs/adr/ADR-001`.
 - **Render verification exists but is not wired into `ci.yml`.** `frontend/test/responsive.test.mjs`
   drives real Chrome at 360/768/1280 in both themes; nothing runs it automatically.

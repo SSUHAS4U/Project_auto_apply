@@ -3,7 +3,7 @@
 // This replaces the keyword-dictionary filler. The old design matched a derived label against a
 // fixed ~40-entry synonym list and wrote only to text inputs; a label phrased outside the list
 // was left empty with no fallback, and selects/radios/checkboxes/comboboxes — most of a Workday
-// form — were never touched at all. See ARCHITECTURE.md §3.
+// form — were never touched at all. See docs/ARCHITECTURE.md §3.
 //
 // The design here has no per-site branching. It works the same way everywhere:
 //

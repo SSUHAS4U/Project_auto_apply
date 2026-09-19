@@ -60,28 +60,46 @@ jobs:
             sudo docker image prune -f
             echo "Containers: $(sudo docker compose ps --format '{{.Name}} {{.Status}}')"
 
-            # VERIFY BY THE ARTEFACT, NOT THE STATUS.
-            #
-            # This step used to end at the line above — it echoed "Up 8 seconds" and reported
-            # success. Container uptime says the process was started, NOT that the application
-            # is serving: a Spring context that dies on a bad migration leaves a container that
-            # is technically up while every request 502s. On 2026-09-19 that produced a green
-            # deploy over a backend that was down, and the only way to see the cause was to
-            # add this step. A deploy that cannot fail is not a deploy check.
-            echo "Waiting for /health to actually answer…"
-            ok=0
-            for i in $(seq 1 30); do
-              code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:8080/health || echo 000)
-              echo "  [$i] /health -> $code"
-              if [ "$code" = "200" ]; then ok=1; break; fi
-              sleep 5
-            done
+      # VERIFY BY THE ARTEFACT, NOT THE STATUS.
+      #
+      # The rollout step above used to be the whole job: it echoed "Up 8 seconds" and reported
+      # success on that. Container uptime says a process started, NOT that the application
+      # serves — a Spring context that dies on a bad config leaves a container that is
+      # technically up while every request 502s. On 2026-09-19 that produced a green deploy
+      # over a backend that was down for half an hour.
+      #
+      # Checked from the RUNNER against the public URL, not from inside the VM against
+      # 127.0.0.1:8080. The first attempt did the latter and got connection-refused on a
+      # perfectly healthy backend: the VM's compose keeps the backend on the docker network
+      # behind Caddy and never publishes 8080 to the host. Hitting the public URL also tests
+      # what a user actually touches — Caddy, TLS and routing included.
+      - name: Wait for the backend to actually serve
+        run: |
+          : "${BACKEND_URL:?BACKEND_URL secret is not set on this repository}"
+          for i in $(seq 1 36); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$BACKEND_URL/health" || echo 000)
+            echo "[$i] $BACKEND_URL/health -> $code"
+            if [ "$code" = "200" ]; then echo "backend is serving"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::backend did not serve /health within 180s of rollout"
+          exit 1
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
 
-            if [ "$ok" != "1" ]; then
-              echo "::error::backend did not serve /health within 150s — dumping logs"
-              echo "----------------------------- backend logs -----------------------------"
-              sudo docker compose logs --tail 200 backend || sudo docker compose logs --tail 200
-              echo "------------------------------------------------------------------------"
-              exit 1
-            fi
-            echo "✅ backend is serving"
+      # Only on failure, and only then — the logs are the first thing anyone needs and the
+      # last thing anyone can get after the job ends.
+      - name: Dump backend logs (only if it never came up)
+        if: failure()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            cd ~/jobpilot
+            echo "--------------------------- container state ---------------------------"
+            sudo docker compose ps
+            echo "----------------------------- backend logs ----------------------------"
+            sudo docker compose logs --tail 200 backend || sudo docker compose logs --tail 200

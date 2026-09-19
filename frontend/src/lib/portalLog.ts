@@ -4,7 +4,7 @@
  * There is one worker process and therefore one stream, but it is not an undifferentiated
  * blob: the worker announces each block with `▶ LINKEDIN — starting` and closes it with
  * `<Portal> block complete` followed by the tally. Because blocks are strictly serial (one
- * page, one `state`, one portal at a time — see AUTOMATION.md §10) those markers partition the
+ * page, one `state`, one portal at a time — see docs/AUTOMATION.md §10) those markers partition the
  * stream exactly, with no ambiguity and nothing to guess at.
  *
  * Lines outside any block (startup, the browser launching, connection errors) belong to
