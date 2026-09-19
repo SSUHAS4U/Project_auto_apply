@@ -61,8 +61,13 @@ public class SecretsGuard {
 
     private static final Logger log = LoggerFactory.getLogger(SecretsGuard.class);
 
-    /** Values published in this repository. Anything here is public knowledge, not a secret. */
-    private static final String DEFAULT_JWT = "change-me-jobpilot-dev-jwt-secret";
+    /**
+     * The published machine-token default. Public knowledge, not a secret.
+     *
+     * The JWT secret is NOT checked here any more — JwtSecretResolver owns that policy and
+     * refuses to produce a signing key at all, which is strictly earlier and stronger than a
+     * post-startup check. One owner per secret; two would drift.
+     */
     private static final String DEFAULT_API_TOKEN = "dev-token";
 
     private final JobPilotProperties props;
@@ -70,11 +75,10 @@ public class SecretsGuard {
     /**
      * Whether a published default is fatal or merely reported.
      *
-     * Defaults to FALSE for one deploy only. The guard cannot safely start enforcing against a
-     * host whose configuration nobody has read: if this deployment were already on the
-     * published key, switching straight to fail-closed would take the backend down to tell us
-     * something we could have asked. So the first deploy reports, the finding is read through
-     * the diagnostics endpoint, and this flips to true immediately after.
+     * Defaulted to FALSE for exactly one deploy, to find out what production was actually
+     * running on without risking an outage to ask. The answer came back — the machine token
+     * was already strong, only the JWT secret was the published one — so this is TRUE now.
+     * Set it false only to diagnose, never to live with.
      */
     private final boolean enforce;
 
@@ -82,7 +86,7 @@ public class SecretsGuard {
                         @org.springframework.beans.factory.annotation.Value(
                                 "${spring.datasource.url:}") String datasourceUrl,
                         @org.springframework.beans.factory.annotation.Value(
-                                "${jobpilot.security.enforce-secrets:false}") boolean enforce) {
+                                "${jobpilot.security.enforce-secrets:true}") boolean enforce) {
         this.props = props;
         this.datasourceUrl = datasourceUrl == null ? "" : datasourceUrl;
         this.enforce = enforce;
@@ -123,10 +127,6 @@ public class SecretsGuard {
     @EventListener(ApplicationReadyEvent.class)
     public void check() {
         List<String> published = new ArrayList<>();
-        if (DEFAULT_JWT.equals(props.getJwt().getSecret())) {
-            published.add("JOBPILOT_JWT_SECRET — sessions are forgeable by anyone who can read "
-                    + "this repository; every user-authenticated route is affected");
-        }
         if (DEFAULT_API_TOKEN.equals(props.getApiToken())) {
             published.add("JOBPILOT_API_TOKEN — the machine surface (ingest, daily, digest, "
                     + "sources) accepts a token published in this repository");

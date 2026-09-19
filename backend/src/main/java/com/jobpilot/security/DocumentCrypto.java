@@ -24,11 +24,40 @@ public class DocumentCrypto {
     private final SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
 
-    public DocumentCrypto(JobPilotProperties props) {
-        // Prefer a dedicated key; fall back to the JWT secret so encryption always works.
-        String secret = props.getDocKey() != null && !props.getDocKey().isBlank()
-                ? props.getDocKey()
-                : props.getJwt().getSecret();
+    /**
+     * The key never changes silently, because a changed key is destroyed data.
+     *
+     * This falls back to the JWT secret when no dedicated key is set — which made rotating the
+     * JWT secret a silent data-loss event: every document already on disk was encrypted under
+     * the old derivation and nothing would decrypt them again. AES-GCM fails authentication
+     * rather than returning garbage, so the loss would surface as "download broken", not as a
+     * crypto error anyone would connect to a secret rotation.
+     *
+     * Production therefore requires JOBPILOT_DOC_KEY to be set EXPLICITLY. On an existing
+     * deployment it must be set to whatever key the stored documents were encrypted under
+     * before the JWT secret is rotated — see the bootstrap step in deploy-backend.yml, which
+     * does exactly that, in that order.
+     */
+    public DocumentCrypto(JobPilotProperties props,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${spring.datasource.url:}") String datasourceUrl) {
+        boolean haveDocKey = props.getDocKey() != null && !props.getDocKey().isBlank();
+        if (!haveDocKey && com.jobpilot.security.JwtSecretResolver.isProduction(datasourceUrl)) {
+            throw new IllegalStateException("""
+
+                    *** REFUSING TO START ***
+
+                      JOBPILOT_DOC_KEY is not set, so document encryption falls back to the
+                      JWT secret. Rotating that secret then destroys every stored document,
+                      irreversibly — AES-GCM fails authentication rather than returning
+                      garbage, so it surfaces as "download broken", not as a crypto error
+                      anyone would connect to a secret rotation.
+
+                      On an EXISTING deployment set it to the key the documents were already
+                      encrypted under, NEVER a fresh random value.
+                    """);
+        }
+        String secret = haveDocKey ? props.getDocKey() : props.getJwt().getSecret();
         try {
             byte[] k = MessageDigest.getInstance("SHA-256")
                     .digest(("jobpilot-doc::" + secret).getBytes(StandardCharsets.UTF_8));

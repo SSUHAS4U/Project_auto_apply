@@ -15,7 +15,13 @@ public class JobPilotProperties {
     private String apiToken = "dev-token";
     /** Email auto-granted ADMIN on register/login (the app owner). */
     private String adminEmail = "ssuhas4u@gmail.com";
-    /** Master key for at-rest document encryption (falls back to the JWT secret if blank). */
+    /**
+     * Master key for at-rest document encryption.
+     *
+     * Falls back to the JWT secret when blank, which is why rotating the JWT secret WITHOUT
+     * setting this first makes every stored document permanently undecryptable. Production
+     * requires it explicitly — see {@link com.jobpilot.security.DocumentCrypto}.
+     */
     private String docKey = "";
     private List<String> corsOrigins = List.of("http://localhost:5173");
     private int ingestConcurrency = 3;
@@ -28,8 +34,14 @@ public class JobPilotProperties {
 
     @Data
     public static class Jwt {
-        /** HMAC secret for signing auth tokens. Set a strong value in production. */
-        private String secret = "change-me-jobpilot-dev-jwt-secret";
+        /**
+         * HMAC secret for signing auth tokens.
+         *
+         * Empty by default ON PURPOSE — a published default IS the vulnerability, and this
+         * repository is public. Unset means a random per-process key locally and a refusal to
+         * start in production. See {@link com.jobpilot.security.JwtSecretResolver}.
+         */
+        private String secret = "";
         private long ttlSeconds = 60L * 60 * 24 * 30; // 30 days
     }
 

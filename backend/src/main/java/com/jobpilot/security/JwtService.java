@@ -7,7 +7,6 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -20,12 +19,14 @@ public class JwtService {
     private final SecretKey key;
     private final long ttlSeconds;
 
-    public JwtService(JobPilotProperties props) {
-        String secret = props.getJwt().getSecret();
-        // Pad short secrets so HS256 always has >=256 bits of key material.
-        byte[] bytes = (secret + "jobpilot-jwt-padding-0000000000000000000000000000")
-                .getBytes(StandardCharsets.UTF_8);
-        this.key = Keys.hmacShaKeyFor(java.util.Arrays.copyOf(bytes, 32));
+    public JwtService(JobPilotProperties props,
+                      @org.springframework.beans.factory.annotation.Value(
+                              "${spring.datasource.url:}") String datasourceUrl) {
+        // Policy lives in JwtSecretResolver, not here: this class signs and verifies, it does
+        // not decide what is safe to sign with. The resolver refuses to return a key at all
+        // when production would otherwise sign with something weak or publicly known.
+        this.key = Keys.hmacShaKeyFor(
+                JwtSecretResolver.resolveKey(props.getJwt().getSecret(), datasourceUrl));
         this.ttlSeconds = props.getJwt().getTtlSeconds();
     }
 

@@ -25,10 +25,12 @@ class SecretsGuardTest {
     }
 
     @Test
-    void refusesToServeOnARemoteDatabaseWithThePublishedJwtSecret() {
+    void theJwtSecretIsNotThisClassesJob() {
+        // JwtSecretResolver refuses to produce a signing key at all, which happens earlier
+        // than this check and is stronger. Two owners for one secret would drift.
         SecretsGuard g = new SecretsGuard(props(PUBLISHED_JWT, "a-real-token"), REMOTE_DB, true);
-        IllegalStateException e = assertThrows(IllegalStateException.class, g::check);
-        assertTrue(e.getMessage().contains("published default"), e.getMessage());
+        assertDoesNotThrow(g::check);
+        assertTrue(g.findings().isEmpty(), "should report only on the machine token");
     }
 
     @Test
@@ -58,7 +60,7 @@ class SecretsGuardTest {
         // process is allowed to start, otherwise the first deploy tells us nothing.
         SecretsGuard g = new SecretsGuard(props(PUBLISHED_JWT, "dev-token"), REMOTE_DB, false);
         assertDoesNotThrow(g::check);
-        assertEquals(java.util.List.of("JOBPILOT_JWT_SECRET", "JOBPILOT_API_TOKEN"), g.findings());
+        assertEquals(java.util.List.of("JOBPILOT_API_TOKEN"), g.findings());
         assertFalse(g.isEnforcing());
     }
 
@@ -67,7 +69,6 @@ class SecretsGuardTest {
         SecretsGuard g = new SecretsGuard(props(PUBLISHED_JWT, "dev-token"), REMOTE_DB, false);
         g.check();
         for (String f : g.findings()) {
-            assertFalse(f.contains(PUBLISHED_JWT), "a finding leaked the secret value: " + f);
             assertFalse(f.contains("dev-token"), "a finding leaked the token value: " + f);
         }
     }

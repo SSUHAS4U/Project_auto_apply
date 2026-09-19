@@ -55,7 +55,11 @@ jobpilot:
   api-token: ${JOBPILOT_API_TOKEN:dev-token}
   doc-key: ${JOBPILOT_DOC_KEY:}
   jwt:
-    secret: ${JOBPILOT_JWT_SECRET:change-me-jobpilot-dev-jwt-secret}
+    # NO DEFAULT ON PURPOSE. This repository is public, so any literal here is a key anyone
+    # can read — and an unset variable in production meant exactly that until 2026-09-19.
+    # Unset now means: a random per-process key locally, and a refusal to start in production.
+    # See security/JwtSecretResolver.
+    secret: ${JOBPILOT_JWT_SECRET:}
     ttl-seconds: ${JOBPILOT_JWT_TTL_SECONDS:2592000}
   cors-origins: ${JOBPILOT_CORS_ORIGINS:http://localhost:5173}
   ingest-concurrency: ${JOBPILOT_INGEST_CONCURRENCY:3}

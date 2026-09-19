@@ -54,6 +54,58 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           command_timeout: 10m
           script: |
+            set -e
+            ENVFILE=/opt/jobpilot/.env
+
+            # PRE-FLIGHT: is that the file compose actually reads?
+            #
+            # Everything below writes secrets into $ENVFILE, and the backend now REFUSES to
+            # start in production without them. If compose reads a different file, the writes
+            # land somewhere nobody loads and the refusal becomes an outage caused by the very
+            # step meant to prevent one. Check first and say so plainly.
+            if ! sudo grep -q "$ENVFILE" ~/jobpilot/docker-compose.yml; then
+              echo "::error::~/jobpilot/docker-compose.yml does not reference $ENVFILE."
+              echo "::error::Its env_file lines are:"
+              sudo grep -n -A2 'env_file' ~/jobpilot/docker-compose.yml || echo "  (none found)"
+              echo "::error::Point ENVFILE at the file compose loads, then re-run. Nothing was changed."
+              exit 1
+            fi
+            sudo touch "$ENVFILE"
+
+            # ---- SECRETS BOOTSTRAP -------------------------------------------------------
+            #
+            # Until 2026-09-19 neither of these was set, so the backend fell back to defaults
+            # published in this PUBLIC repository: every session was signed with a key anyone
+            # could read, and every stored document was encrypted under a key derived from it.
+            # Confirmed live, not theorised.
+            #
+            # ORDER IS LOAD-BEARING. The document key is pinned FIRST, to the value the stored
+            # documents were actually encrypted under. Rotating the JWT secret first would
+            # change what DocumentCrypto falls back to and silently destroy every résumé and
+            # certificate on the instance — AES-GCM would fail authentication, surfacing as
+            # "download broken" rather than as anything connected to a secret rotation.
+            #
+            # Both writes are idempotent: an existing value is never overwritten, so this is
+            # safe on every deploy and does not re-key anything that is already correct.
+
+            # 1. Pin the document key to the historical value, preserving decryptability.
+            #    This key is WEAK — it is in the repository — but it is the key the data is
+            #    under, and keeping data readable comes before improving the key. Re-keying is
+            #    a migration (decrypt-with-old, encrypt-with-new), not a config change.
+            if ! sudo grep -q '^JOBPILOT_DOC_KEY=' "$ENVFILE"; then
+              echo 'JOBPILOT_DOC_KEY=change-me-jobpilot-dev-jwt-secret' | sudo tee -a "$ENVFILE" >/dev/null
+              echo "bootstrap: pinned JOBPILOT_DOC_KEY to the historical key (documents stay readable)"
+            fi
+
+            # 2. NOW rotate the session key. Generated on the host, never printed, never in CI
+            #    logs and never in this repository. Invalidates existing sessions, which is the
+            #    point: every one of them was signed with a published key.
+            if ! sudo grep -q '^JOBPILOT_JWT_SECRET=' "$ENVFILE"; then
+              printf 'JOBPILOT_JWT_SECRET=%s\n' "$(openssl rand -base64 48)" | sudo tee -a "$ENVFILE" >/dev/null
+              echo "bootstrap: generated a strong JOBPILOT_JWT_SECRET (everyone signs in again)"
+            fi
+            # ------------------------------------------------------------------------------
+
             cd ~/jobpilot
             sudo docker compose pull
             sudo docker compose up -d
