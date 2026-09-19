@@ -194,5 +194,5 @@ its cells are omitted. Both behaviours are asserted separately.
 - The frontend has no design-token layer; responsiveness is per-component and inconsistent.
 - `docs/AUTOMATION.md` is gitignored, so the incident history is local-only.
 - `engine/` exposes 24 endpoints and the dashboard calls 4. See `docs/adr/ADR-001`.
-- **Render verification exists but is not wired into `ci.yml`.** `frontend/test/responsive.test.mjs`
-  drives real Chrome at 360/768/1280 in both themes; nothing runs it automatically.
+- 31% of the HTTP surface has no caller — 53 of 173 endpoints. See `docs/adr/ADR-002`.
+- `service/` is 8,224 lines in one flat package defined as "everything that isn'''t a run".

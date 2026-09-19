@@ -47,23 +47,42 @@ jobs:
           echo "trigger HTTP $code"; cat /tmp/start.json || true; echo
           test "$code" = "200"
 
-          # Poll for up to 20 minutes. A transient poll failure is not fatal — only the
-          # backend reporting a finished-with-error state, or the timeout, fails the job.
-          for i in $(seq 1 80); do
+          # A run already in progress is the HEALTHY case for a backup trigger — the
+          # server-side scheduler got there first. Nothing to wait for.
+          if jq -e '.status == "busy"' /tmp/start.json >/dev/null 2>&1; then
+            echo "A run was already in progress (server scheduler). Nothing to do."
+            exit 0
+          fi
+
+          # Poll for up to 25 minutes. A measured run takes ~864s (14.4 min) across 101
+          # sources, so the window is the run plus comfortable margin. A transient poll
+          # failure is not fatal — only a finished-with-error state, or the timeout, fails.
+          #
+          # `jq -e '.running == false'`, NOT `jq -r '.running // empty'`.
+          #
+          # jq's `//` treats `false` exactly like null or missing, so `.running // empty` on
+          # {"running": false} yields EMPTY, not "false". The first version of this loop
+          # compared that empty string to "false", never matched, and polled until it timed
+          # out — while the backend had finished perfectly well. It failed at 21m26s against
+          # a run that completed in 14m24s, printing "running…" over an idle snapshot the
+          # whole time. An explicit comparison has no falsy trap.
+          for i in $(seq 1 100); do
             sleep 15
             s=$(curl -sS --max-time 30 "$BACKEND_URL/api/ingest/status" -H "X-Api-Token: $API_TOKEN" || echo '{}')
-            running=$(echo "$s" | jq -r '.running // empty')
-            status=$(echo "$s" | jq -r '.status // "unknown"')
-            if [ "$running" = "false" ]; then
+            if echo "$s" | jq -e '.running == false' >/dev/null 2>&1; then
+              status=$(echo "$s" | jq -r '.status')
               echo "finished: status=$status"
-              echo "$s" | jq -r '"inserted=\(.inserted) updated=\(.updated) fetched=\(.fetched) totalJobs=\(.totalJobs)"'
-              test "$status" != "error"
-              exit $?
+              echo "$s" | jq -r '"  inserted=\(.inserted) updated=\(.updated) fetched=\(.fetched) totalJobs=\(.totalJobs) durationSec=\(.lastRun.durationSec // "?")"'
+              if [ "$status" = "error" ]; then
+                echo "::error::ingest finished with status=error"
+                exit 1
+              fi
+              exit 0
             fi
-            echo "[$i] running… $(echo "$s" | jq -r '"\(.sourcesDone)/\(.sources) sources, +\(.inserted) new"')"
+            echo "[$i] running… $(echo "$s" | jq -r '"\(.sourcesDone // 0)/\(.sources // 0) sources, +\(.inserted // 0) new"')"
           done
 
-          echo "::error::ingest did not finish within 20 minutes"
+          echo "::error::ingest did not finish within 25 minutes"
           exit 1
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}

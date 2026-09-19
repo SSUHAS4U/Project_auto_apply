@@ -38,10 +38,14 @@ jobs:
             exit 0
           fi
 
-          for i in $(seq 1 100); do
+          # `jq -e '.running == false'`, NOT `jq -r '.running // empty'` — jq's `//` treats
+          # `false` like null, so the latter yields an empty string and the comparison never
+          # matches. That bug made the ingest workflow poll until timeout over a run that had
+          # already finished; the same expression was here.
+          for i in $(seq 1 120); do
             sleep 15
             s=$(curl -sS --max-time 30 "$BACKEND_URL/api/daily/run/status" -H "X-Api-Token: $API_TOKEN" || echo '{}')
-            if [ "$(echo "$s" | jq -r '.running // empty')" = "false" ]; then
+            if echo "$s" | jq -e '.running == false' >/dev/null 2>&1; then
               last=$(echo "$s" | jq -r '.last // "unknown"')
               echo "finished: $last"
               case "$last" in *failed*|*error*) echo "::error::daily run reported: $last"; exit 1;; esac
@@ -50,7 +54,7 @@ jobs:
             echo "[$i] $(echo "$s" | jq -r '.last // "running…"')"
           done
 
-          echo "::error::daily run did not finish within 25 minutes"
+          echo "::error::daily run did not finish within 30 minutes"
           exit 1
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
