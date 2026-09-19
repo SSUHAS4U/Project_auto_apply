@@ -5,6 +5,8 @@ import { StatusSelect } from '../components/StatusSelect';
 import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
+import { JobCardV2 } from '../components/JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 
 const STATUSES: ApplicationStatus[] = ['interested', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'];
 
@@ -16,6 +18,14 @@ export function ApplicationsPage() {
   const [filter, setFilterState] = useState<ApplicationStatus | 'all'>(
     () => (localStorage.getItem('jobpilot_app_filter') as ApplicationStatus | 'all') || 'all');
   const setFilter = (f: ApplicationStatus | 'all') => { localStorage.setItem('jobpilot_app_filter', f); setFilterState(f); };
+  const skills = useProfileSkills();
+  // Cards by default, table on request — the same control the Jobs board uses, so the two
+  // job surfaces behave identically. The table earns its place here rather than on the board:
+  // a tracker is the one screen where scanning status and dates DOWN a column beats reading
+  // cards across. Remembered per browser, like the board's.
+  const [view, setView] = useState<'table' | 'cards'>(
+    () => (localStorage.getItem('jobpilot_apps_view') as 'table' | 'cards') || 'cards');
+  const chooseView = (v: 'table' | 'cards') => { localStorage.setItem('jobpilot_apps_view', v); setView(v); };
 
   const load = () => {
     setLoading(true);
@@ -72,74 +82,89 @@ export function ApplicationsPage() {
         ))}
       </div>
 
+      {/* One primary control row, matching the Jobs board exactly. */}
+      <div className="row" style={{ gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="faint" style={{ fontSize: 12.5 }}>
+          {rows.length} application{rows.length === 1 ? '' : 's'}{filter === 'all' ? '' : ` · ${filter}`}
+        </span>
+        <div className="segmented" style={{ marginLeft: 'auto' }}>
+          <button className={view === 'cards' ? 'on' : ''} onClick={() => chooseView('cards')} title="Card view">▦</button>
+          <button className={view === 'table' ? 'on' : ''} onClick={() => chooseView('table')} title="Table view">≣</button>
+        </div>
+      </div>
+
       {loading ? <div className="empty"><span className="spinner" /></div>
         : rows.length === 0 ? (
           <div className="card card-pad empty"><div className="big"><Icon name="clipboard" size={34} /></div>No applications in this view. Track a job from the Jobs or Daily picks page.</div>
+        ) : view === 'cards' ? (
+          /* The SAME card the board, Daily picks, Scout and Saved jobs use. This replaces a
+             desktop-only table plus a SEPARATE mobile card that had already drifted from it —
+             the mobile one showed a bare score chip where the board showed a fit panel. One
+             card means that class of drift cannot recur. */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {rows.map((a) => (
+              <JobCardV2 key={a.id}
+                title={title(a)}
+                company={a.job?.company}
+                location={a.job?.location}
+                remote={a.job?.remote}
+                description={a.job?.description}
+                url={a.job?.url}
+                source={a.job?.source}
+                score={a.job?.matchScore}
+                salaryText={a.job?.salaryText}
+                postedLabel={a.appliedAt ? `applied ${fmtDate(a.appliedAt)}` : `updated ${fmtDate(a.updatedAt)}`}
+                skills={skills}
+                onOpen={() => setSelected(a)}
+                /* A manually-entered application has no linked job at all — no posting, no
+                   facts to derive. Omit them rather than assert "Not mentioned" about a
+                   listing that was never fetched. */
+                sparse={!a.job?.description}
+                extras={a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : undefined}
+                actions={<>
+                  {/* The status control is the one interactive element on a tracker card —
+                      changing where an application stands IS the job of this screen. */}
+                  <StatusSelect value={a.status} onChange={(st) => move(a, st)} />
+                  <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
+                </>} />
+            ))}
+          </div>
         ) : (
-          <>
-            {/* Desktop: table */}
-            <div className="table-wrap only-desktop">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Role</th><th>Location</th><th>Match</th><th>Apply</th>
-                    <th>Status</th><th>Method</th><th>Applied</th><th>Updated</th><th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((a) => (
-                    <tr key={a.id}>
-                      <td>
-                        <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setSelected(a)}>{title(a)}</div>
-                        <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
-                      </td>
-                      <td className="muted cell-clip" title={a.job?.location ?? ''}>{a.job?.location ?? '—'}</td>
-                      <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
-                      <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
-                      <td>
-                        <StatusSelect value={a.status} onChange={(s) => move(a, s)} />
-                      </td>
-                      <td className="muted">{a.method ?? '—'}</td>
-                      <td className="muted">{a.appliedAt ? fmtDate(a.appliedAt) : '—'}</td>
-                      <td className="muted">{fmtDate(a.updatedAt)}</td>
-                      <td>
-                        <div className="cell-actions">
-                          <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
-                          {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗</a>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile: cards */}
-            <div className="only-mobile" style={{ gap: 12 }}>
-              {rows.map((a) => (
-                <div key={a.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="job-title" onClick={() => setSelected(a)} style={{ cursor: 'pointer' }}>{title(a)}</div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th><th>Location</th><th>Match</th><th>Apply</th>
+                  <th>Status</th><th>Method</th><th>Applied</th><th>Updated</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((a) => (
+                  <tr key={a.id}>
+                    <td>
+                      <div className="job-title" style={{ cursor: 'pointer' }} onClick={() => setSelected(a)}>{title(a)}</div>
                       <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
-                    </div>
-                    {typeof a.job?.matchScore === 'number' && <span className="chip">{a.job.matchScore}</span>}
-                  </div>
-                  <div className="row" style={{ gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--muted)' }}>
-                    {a.job?.location && <span className="meta-item"><Icon name="compass" size={13} /> {a.job.location}</span>}
-                    {a.job?.applyType && <ApplyBadge type={a.job.applyType} />}
-                    {a.appliedAt && <span className="meta-item"><Icon name="mail" size={13} /> {fmtDate(a.appliedAt)}</span>}
-                    <span className="meta-item"><Icon name="refresh" size={13} /> {fmtDate(a.updatedAt)}</span>
-                  </div>
-                  <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <StatusSelect value={a.status} onChange={(s) => move(a, s)} />
-                    <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
-                    {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗ Open</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+                    </td>
+                    <td className="muted cell-clip" title={a.job?.location ?? ''}>{a.job?.location ?? '—'}</td>
+                    <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
+                    <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
+                    <td>
+                      <StatusSelect value={a.status} onChange={(st) => move(a, st)} />
+                    </td>
+                    <td className="muted">{a.method ?? '—'}</td>
+                    <td className="muted">{a.appliedAt ? fmtDate(a.appliedAt) : '—'}</td>
+                    <td className="muted">{fmtDate(a.updatedAt)}</td>
+                    <td>
+                      <div className="cell-actions">
+                        <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
+                        {a.job?.url && <a className="btn btn-ghost btn-sm" href={a.job.url} target="_blank" rel="noreferrer">↗</a>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
       {selected && <ApplicationModal app={selected} onClose={() => setSelected(null)} onChanged={load} />}

@@ -5,14 +5,19 @@ import { Icon } from '../components/Icon';
 import { JobCardV2 } from '../components/JobCardV2';
 import { useProfileSkills } from '../lib/useProfileSkills';
 
-const SITE_META: Record<string, { label: string; color: string }> = {
-  linkedin: { label: 'LinkedIn', color: '#0a66c2' },
-  naukri: { label: 'Naukri', color: '#2557a7' },
-  indeed: { label: 'Indeed', color: '#7a5af8' },
-  google: { label: 'Google', color: '#34a853' },
-  jooble: { label: 'Jooble', color: '#8a3ffc' },
-  careerjet: { label: 'Careerjet', color: '#f97316' },
-  other: { label: 'Web', color: '#64748b' },
+/**
+ * The sources a scouted listing can actually carry.
+ *
+ * "Google" was in this list with no connector behind it, and Naukri/Indeed were here because
+ * the aggregators were believed to deep-link to them. They do not — Jooble returns its own
+ * redirect and names the real board separately, which is now what fills this filter. A
+ * dropdown entry that can never match anything is a broken filter, not a feature.
+ */
+const SITE_META: Record<string, { label: string }> = {
+  linkedin: { label: 'LinkedIn' },
+  jooble: { label: 'Jooble' },
+  careerjet: { label: 'Careerjet' },
+  other: { label: 'Other boards' },
 };
 
 export function ScoutPage() {
@@ -56,6 +61,10 @@ export function ScoutPage() {
   const filtered = useMemo(() => jobs.filter((j) =>
     (!site || j.sourceSite === site) && (!withContacts || j.emails || j.phones)), [jobs, site, withContacts]);
 
+  const presentSites = useMemo(
+    () => Array.from(new Set(jobs.map((j) => j.sourceSite).filter(Boolean) as string[])).sort(),
+    [jobs]);
+
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast('Copied', 'success'); };
 
   return (
@@ -65,8 +74,9 @@ export function ScoutPage() {
           <h1 className="page-title">Scout <span className="chip">auto · hourly</span></h1>
           <div className="page-sub">
             Fresh listings found automatically every hour, using keywords scanned from your whole
-            profile (role, experience level, skills) across LinkedIn, Naukri, Indeed &amp; the web —
-            with any contact details mined from the posting.
+            profile (role, experience level, skills) — from LinkedIn&apos;s public search (direct
+            links) and the Jooble aggregator (a long tail of smaller boards) — with any contact
+            details mined from the posting.
           </div>
         </div>
         <button className="btn btn-primary" onClick={runNow} disabled={running}>
@@ -75,9 +85,11 @@ export function ScoutPage() {
       </div>
 
       <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <select className="select" style={{ width: 160 }} value={site} onChange={(e) => setSite(e.target.value)}>
+        {/* Built from the sources PRESENT in the results, falling back to the known set, so
+            the filter can never offer an option that matches nothing. */}
+        <select className="select" style={{ width: 170 }} value={site} onChange={(e) => setSite(e.target.value)}>
           <option value="">All sources</option>
-          {Object.entries(SITE_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+          {presentSites.map((k) => <option key={k} value={k}>{SITE_META[k]?.label ?? k}</option>)}
         </select>
         <label className="row" style={{ gap: 6, fontSize: 13, cursor: 'pointer' }}>
           <input type="checkbox" checked={withContacts} onChange={(e) => setWithContacts(e.target.checked)} />

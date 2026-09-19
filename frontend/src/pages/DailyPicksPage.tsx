@@ -11,6 +11,7 @@ export function DailyPicksPage() {
   const [briefing, setBriefing] = useState('');
   const [generatedAt, setGeneratedAt] = useState<string | undefined>();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [curated, setCurated] = useState(true);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const skills = useProfileSkills();
@@ -18,7 +19,7 @@ export function DailyPicksPage() {
   const load = () => {
     setLoading(true);
     api.dailyPicks()
-      .then((r) => { setBriefing(r.briefing); setGeneratedAt(r.generatedAt); setJobs(r.jobs); })
+      .then((r) => { setBriefing(r.briefing); setGeneratedAt(r.generatedAt); setJobs(r.jobs); setCurated(r.curated !== false); })
       .catch((e) => toast(e.message, 'error'))
       .finally(() => setLoading(false));
   };
@@ -48,9 +49,16 @@ export function DailyPicksPage() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Daily picks <span className="chip">AI-curated</span></h1>
+          {/* The badge reports what is ACTUALLY on screen. Until now this page claimed
+              "AI-curated" unconditionally while serving a plain board query — the curated set
+              was computed daily and never read. It only says curated when it is. */}
+          <h1 className="page-title">Daily picks{' '}
+            <span className="chip">{curated ? 'AI-curated' : 'from the board'}</span>
+          </h1>
           <div className="page-sub">
-            Reviewed separately from the main board. Verify each role, then apply yourself.
+            {curated
+              ? 'Ranked for you by the daily run. Verify each role, then apply yourself.'
+              : 'Today’s run hasn’t produced picks yet — showing the board’s best matches meanwhile.'}
             {generatedAt && <> · updated {fmtDate(generatedAt)}</>}
           </div>
         </div>

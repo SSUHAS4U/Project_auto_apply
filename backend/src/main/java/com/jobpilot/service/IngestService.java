@@ -163,14 +163,30 @@ public class IngestService {
 
     private List<FetchParams> queriesFor(JobConnector c) {
         if ("careerjet".equals(c.source())) {
-            List<String> qs = props.getCareerjet().getQueries();
-            if (qs == null || qs.isEmpty()) return List.of();
-            return qs.stream()
-                    .map(q -> FetchParams.builder().query(q.trim())
-                            .where(props.getCareerjet().getWhere()).build())
-                    .collect(Collectors.toList());
+            return keywordQueries(props.getCareerjet().getQueries(), props.getCareerjet().getWhere());
+        }
+        if ("jooble".equals(c.source())) {
+            // These keywords have been configured in production the whole time, waiting for a
+            // connector that did not exist. One query per keyword, exactly as Careerjet works.
+            return keywordQueries(props.getJooble().getKeywords(), props.getJooble().getWhere());
         }
         return List.of(FetchParams.builder().build());
+    }
+
+    /**
+     * One fetch per configured keyword.
+     *
+     * Quotes are stripped because these lists arrive from an env file where the whole value is
+     * often wrapped in them — leaving the quote on turns the first keyword into
+     * {@code "software developer fresher} and searches for a phrase no board contains.
+     */
+    private List<FetchParams> keywordQueries(List<String> queries, String where) {
+        if (queries == null || queries.isEmpty()) return List.of();
+        return queries.stream()
+                .map(q -> q == null ? "" : q.trim().replaceAll("^[\"']|[\"']$", "").trim())
+                .filter(q -> !q.isEmpty())
+                .map(q -> FetchParams.builder().query(q).where(where).build())
+                .collect(Collectors.toList());
     }
 
     /** Recompute match_score + region for ALL stored jobs with the current profile. */

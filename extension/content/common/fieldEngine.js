@@ -310,9 +310,53 @@
     });
   }
 
+  /**
+   * The posting text, for the dashboard's job card.
+   *
+   * Prefers the employer's own JSON-LD description, then the page's job-description block,
+   * and finally the main content area. Capped: a listing page can be very long and the card
+   * only needs enough to derive facts and score a match.
+   */
+  function pageDescription() {
+    try {
+      for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+        let data; try { data = JSON.parse(s.textContent); } catch (_) { continue; }
+        const nodes = Array.isArray(data) ? data : (data['@graph'] || [data]);
+        for (const n of nodes) {
+          const t = n && n['@type'];
+          const isJob = t === 'JobPosting' || (Array.isArray(t) && t.includes('JobPosting'));
+          if (isJob && n.description) {
+            const tpl = document.createElement('template');
+            tpl.innerHTML = String(n.description);
+            const txt = (tpl.content.textContent || '').replace(/\s+/g, ' ').trim();
+            if (txt) return txt.slice(0, 8000);
+          }
+        }
+      }
+      const box = document.querySelector(
+        '[class*="job-description" i], [class*="jobDescription" i], [data-automation-id="jobPostingDescription"], '
+        + '#jobDescriptionText, .show-more-less-html__markup, main, article, [role="main"]') || document.body;
+      return ((box.innerText || box.textContent || '').replace(/\s+/g, ' ').trim()).slice(0, 8000);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
+   * Every save funnels through here — the site adapters' Save button, their SAVE_CURRENT
+   * handler, and the popup. So the description is attached HERE rather than in each adapter:
+   * three per-site extractors would be three places to forget it, and the LinkedIn, Naukri
+   * and Indeed extractors had all forgotten it for as long as they have existed. An adapter
+   * that already supplies its own description keeps it.
+   */
   function saveJob(payload) {
+    const enriched = { ...payload };
+    if (!enriched.description) {
+      const d = pageDescription();
+      if (d) enriched.description = d;
+    }
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: 'SAVE_JOB', payload }, (resp) => {
+      chrome.runtime.sendMessage({ type: 'SAVE_JOB', payload: enriched }, (resp) => {
         if (!resp) return reject(new Error('extension background not reachable'));
         resp.ok ? resolve(resp.data) : reject(new Error(resp.error));
       });

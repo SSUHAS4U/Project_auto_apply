@@ -29,6 +29,13 @@ export interface JobSummary {
   applyEmail?: string;
   matchScore?: number;
   remote?: boolean;
+  // Projected since 2026-09-19 so the tracker can render the SAME card as the board. These
+  // were always on the Job row; the DTO simply dropped them, which left the tracker with
+  // nothing to derive facts or a skill match from.
+  description?: string;
+  source?: string;
+  salaryText?: string;
+  postedAt?: string;
 }
 
 export interface Application {
@@ -167,6 +174,10 @@ export interface SavedJob {
   sourceSite?: string;
   promotedJobId?: string;
   createdAt: string;
+  // Captured by the extension since 2026-09-19. Absent on anything saved before that — the
+  // card renders those compactly rather than printing "Not mentioned" for every fact.
+  description?: string;
+  matchScore?: number;
 }
 
 export interface Notification {

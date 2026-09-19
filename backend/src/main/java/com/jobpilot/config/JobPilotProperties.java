@@ -57,6 +57,7 @@ public class JobPilotProperties {
     private Gemini gemini = new Gemini();
     private Careerjet careerjet = new Careerjet();
     private IndianApi indianApi = new IndianApi();
+    private Jooble jooble = new Jooble();
 
     @Data
     public static class Ai {
@@ -123,5 +124,21 @@ public class JobPilotProperties {
     public static class IndianApi {
         private String apiKey = "";
         private String url = "https://jobs.indianapi.in/jobs";
+    }
+
+    /**
+     * Jooble search API — free key, POSTed to https://jooble.org/api/{key}.
+     *
+     * Note what it is and is not. Jooble returns `link` as a jooble.org/jdp/… redirect, never
+     * a direct posting URL, and its `source` field names the board a listing really came from
+     * (decentrajobs.com, jobs.dish.com, ceipal.com …). It is a volume source with an origin
+     * label — it is NOT a route to Naukri/Indeed/LinkedIn postings, whatever the old Scout
+     * comment claimed. Verified against the live API on 2026-09-19.
+     */
+    @Data
+    public static class Jooble {
+        private String key = "";
+        private String where = "India";
+        private List<String> keywords = List.of();
     }
 }

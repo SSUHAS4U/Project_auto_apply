@@ -128,6 +128,10 @@ jobpilot:
     locale: ${JOBPILOT_CAREERJET_LOCALE:en_IN}
     where: ${JOBPILOT_CAREERJET_WHERE:India}
     queries: ${JOBPILOT_CAREERJET_QUERIES:software engineer,java developer,full stack developer,react developer,python developer,junior software engineer}
+  jooble:
+    key: ${JOBPILOT_JOOBLE_KEY:}
+    where: ${JOBPILOT_JOOBLE_WHERE:India}
+    keywords: ${JOBPILOT_JOOBLE_KEYWORDS:}
   indian-api:
     api-key: ${JOBPILOT_INDIANAPI_KEY:}
     url: ${JOBPILOT_INDIANAPI_URL:https://jobs.indianapi.in/jobs}

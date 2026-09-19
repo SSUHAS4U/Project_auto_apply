@@ -84,16 +84,49 @@ const JOBS = [
 export const POPULATED = {
   ...EMPTY,
   '/api/jobs': { items: JOBS, page: 0, size: 20, total: 1284, totalPages: 65 },
-  '/api/applications': ['applied', 'interview', 'offer', 'rejected', 'saved'].map((st, i) => ({
-    id: 'a' + i, jobId: 'j' + i, status: st, method: 'email',
-    appliedAt: '2026-08-2' + i + 'T09:00:00Z', createdAt: '2026-08-20T09:00:00Z',
-    updatedAt: '2026-09-01T09:00:00Z', notes: 'y'.repeat(180),
-    job: { id: 'j' + i, title: LONG_TITLE, company: i === 1 ? NOBREAK : LONG_CO, location: LONG_LOC, url: 'https://e.com/' + i },
-  })),
-  '/api/saved-jobs': JOBS.slice(0, 6).map((j, i) => ({
-    id: 's' + i, title: j.title, company: j.company, location: j.location,
-    url: j.url, sourceSite: 'linkedin', createdAt: '2026-08-30T09:00:00Z',
-  })),
+  // The tracker renders the SAME card as the board, so its fixture has to carry what that
+  // card reads — description, source, salaryText, postedAt — plus the states that break it:
+  // a zero score, an ABSENT score, and a manual entry with no linked job at all.
+  '/api/applications': [
+    ...['applied', 'interviewing', 'offer', 'rejected', 'withdrawn'].map((st, i) => ({
+      id: 'a' + i, jobId: 'j' + i, status: st, method: 'email',
+      appliedAt: '2026-08-2' + i + 'T09:00:00Z', createdAt: '2026-08-20T09:00:00Z',
+      updatedAt: '2026-09-01T09:00:00Z', notes: 'y'.repeat(180),
+      job: {
+        id: 'j' + i, title: LONG_TITLE, company: i === 1 ? NOBREAK : LONG_CO, location: LONG_LOC,
+        url: 'https://e.com/' + i, applyType: 'ats', remote: i % 2 === 0,
+        // i === 2 has a ZERO score (must render the panel, not hide it as falsy);
+        // i === 3 has NO score at all (must hide the panel).
+        matchScore: i === 3 ? undefined : (i === 2 ? 0 : 90 - i * 7),
+        description: 'x'.repeat(400) + ' Java Spring Boot Kubernetes',
+        source: 'greenhouse', salaryText: '₹18,00,000 - ₹32,00,000 a year',
+        postedAt: '2026-09-01T10:00:00Z',
+      },
+    })),
+    // Manual entry: no linked job whatsoever. The card must degrade, not throw.
+    { id: 'a-manual', status: 'interested', method: 'manual',
+      createdAt: '2026-08-20T09:00:00Z', updatedAt: '2026-09-02T09:00:00Z', job: null },
+  ],
+  // Saved jobs deliberately mix the two shapes that now coexist in a real database.
+  '/api/saved-jobs': [
+    // Post-2026-09-19: the extension captured a description, so the card is FULL.
+    ...JOBS.slice(0, 3).map((j, i) => ({
+      id: 's' + i, title: j.title, company: j.company, location: j.location,
+      url: j.url, sourceSite: 'linkedin', createdAt: '2026-08-30T09:00:00Z',
+      description: 'x'.repeat(400) + ' Java Spring Boot React', matchScore: 88 - i * 9,
+      promotedJobId: i === 0 ? 'j0' : undefined,
+    })),
+    // Pre-migration rows: no description, no score. These must render SPARSE — the whole
+    // reason the card has that mode. Includes the real-world junk titles the weak extractor
+    // produced ("IBM" as both title and company, "Single Position").
+    { id: 's-old-1', title: 'IBM', company: 'IBM', url: 'https://careers.ibm.com/job/1',
+      sourceSite: 'careers.ibm.com', createdAt: '2026-07-14T09:00:00Z', promotedJobId: undefined },
+    { id: 's-old-2', title: 'Single Position', company: 'apply', url: 'https://apply.careers.microsoft.com/x',
+      sourceSite: 'apply.careers.microsoft.com', createdAt: '2026-06-24T09:00:00Z', promotedJobId: 'j9' },
+    { id: 's-old-3', title: NOBREAK + NOBREAK, company: NOBREAK, location: LONG_LOC,
+      url: 'https://e.com/verylong', sourceSite: NOBREAK.toLowerCase() + '.com',
+      createdAt: '2026-06-23T09:00:00Z' },
+  ],
   '/api/notifications': {
     items: Array.from({ length: 6 }, (_, i) => ({
       id: 'n' + i, type: 'run_finished', title: LONG_TITLE, body: 'z'.repeat(200),
@@ -101,8 +134,14 @@ export const POPULATED = {
     })),
     unreadCount: 3,
   },
-  '/api/scout/jobs': JOBS.slice(0, 8).map((j, i) => ({ ...j, id: 'sc' + i, score: 90 - i })),
-  '/api/daily/picks': { briefing: 'w'.repeat(500), generatedAt: '2026-09-14T06:00:00Z', jobs: JOBS.slice(0, 5) },
+  // sourceSite drives the source filter, which is now built from what is PRESENT rather than
+  // a hardcoded list — so the fixture carries a realistic spread including a Jooble origin.
+  '/api/scout/jobs': JOBS.slice(0, 8).map((j, i) => ({
+    ...j, id: 'sc' + i, score: 90 - i, matchScore: 90 - i, snippet: 'x'.repeat(220),
+    sourceSite: ['linkedin', 'jooble', 'decentrajobs.com', 'careerjet'][i % 4],
+    fetchedAt: '2026-09-14T06:00:00Z',
+  })),
+  '/api/daily/picks': { briefing: 'w'.repeat(500), generatedAt: '2026-09-14T06:00:00Z', curated: true, jobs: JOBS.slice(0, 5) },
   '/api/resumes': Array.from({ length: 4 }, (_, i) => ({
     id: 'r' + i, name: 'Suhas_Backend_Java_SpringBoot_Resume_v' + (i + 1) + '_final_FINAL.pdf',
     type: 'resume', filename: 'resume' + i + '.pdf', contentType: 'application/pdf',

@@ -32,6 +32,12 @@ public class ProfileService {
         });
     }
 
+    /** Every profile — for cron contexts that must do per-user work with no logged-in user. */
+    @Transactional(readOnly = true)
+    public java.util.List<Profile> allProfiles() {
+        return repo.findAll();
+    }
+
     /** The owner/first profile — for cron/ingest contexts that have no logged-in user. */
     @Transactional(readOnly = true)
     public Profile getOwner() {

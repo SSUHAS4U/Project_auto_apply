@@ -1417,11 +1417,31 @@
             title: (n.title || '').toString().trim(),
             company: orgName(n.hiringOrganization).toString().trim(),
             location: locOf(n.jobLocation),
+            // JobPosting.description is HTML by spec. Strip it through a detached element so
+            // the tags never reach the card, and nothing is parsed into the live document.
+            description: stripHtml(n.description),
           };
         }
       }
     }
     return null;
+  }
+
+  /**
+   * HTML → plain text, without touching the live document.
+   *
+   * Uses textContent on a detached element rather than innerText: innerText forces layout and
+   * only works for attached nodes, and a template's content never executes anything it holds.
+   */
+  function stripHtml(html) {
+    if (!html) return '';
+    try {
+      const t = document.createElement('template');
+      t.innerHTML = String(html);
+      return (t.content.textContent || '').replace(/\s+/g, ' ').trim();
+    } catch (_) {
+      return String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
   }
 
   const hostWord = () => location.hostname.replace(/^www\./, '').split('.')[0];
@@ -1451,8 +1471,25 @@
       } catch (_) { /* keep heuristics */ }
     }
     if (!company) company = hostWord();
+
+    // The posting text. This used to be dropped on the floor — `raw: null` and nothing else —
+    // which meant a saved listing reached the dashboard as a title, a company and a URL. The
+    // Saved page therefore could not use the same card as the job board: that card derives
+    // employment type, experience level and the matched/missing skill split FROM this text,
+    // and scores the listing against the profile with it. We already extract it for the AI
+    // fallback a few lines up, so it cost nothing to collect and everything to omit.
+    //
+    // JSON-LD wins when present: it is the employer's own description rather than a scrape of
+    // the whole page furniture.
+    let description = '';
+    try {
+      description = (ld && ld.description) ? String(ld.description) : extractJobText();
+      description = description.replace(/\s+/g, ' ').trim().slice(0, 8000);
+    } catch (_) { description = ''; }
+
     return { title: (title || '').slice(0, 200), company: company.slice(0, 120), location: loc.slice(0, 120),
-      url: location.href, sourceSite: sourceLabel(), raw: null };
+      url: location.href, sourceSite: sourceLabel(), raw: null,
+      description: description || null };
   }
 
   // Where this save came from — form platforms get an explicit "…form" label so the

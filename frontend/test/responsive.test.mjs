@@ -195,6 +195,154 @@ run('empty state', EMPTY);
 run('populated — longest values a field can hold', POPULATED);
 
 /**
+ * One job card, everywhere a job is shown.
+ *
+ * The board, Daily picks and Scout already shared JobCardV2. Saved jobs had its own card and
+ * the tracker had a desktop TABLE plus a separate mobile card — and those two had already
+ * drifted: the mobile one showed a bare score chip where the board showed a fit panel. That is
+ * the failure this asserts against. Without a test, "they all use the same card" is a claim
+ * that decays the first time someone is in a hurry.
+ */
+describe('one job card on every job surface', () => {
+  const CARD_SURFACES = [
+    ['/jobs', 'Job board'],
+    ['/daily', 'Daily picks'],
+    ['/scout', 'Scout'],
+    ['/applications', 'Applications'],
+    ['/saved', 'Saved jobs'],
+  ];
+
+  for (const [route, name] of CARD_SURFACES) {
+    test(`${name} renders the shared card`, async (t) => {
+      if (unavailable) return t.skip(unavailable);
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await ctx.addInitScript(() => {
+        localStorage.setItem('jobpilot_jwt', 'test.jwt.token');
+        localStorage.setItem('jobpilot_is_admin', '1');
+        localStorage.setItem('jobpilot_theme', 'light');
+        // Both card-capable surfaces default to cards; be explicit so a stale preference in
+        // a future harness cannot silently turn this into a table test that always passes.
+        localStorage.setItem('jobpilot_jobs_view', 'cards');
+        localStorage.setItem('jobpilot_apps_view', 'cards');
+      });
+      await ctx.route(`${API}/**`, (r) => {
+        const p = r.request().url().replace(API, '').split('?')[0];
+        const known = Object.prototype.hasOwnProperty.call(POPULATED, p);
+        return r.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify(known ? POPULATED[p] : {}),
+        });
+      });
+      const page = await ctx.newPage();
+      await page.goto(BASE + route, { waitUntil: 'networkidle', timeout: 25000 });
+      await page.waitForTimeout(300);
+      const cards = await page.locator('.jc2').count();
+      await ctx.close();
+      assert.ok(cards > 0, `${name} (${route}) rendered ${cards} .jc2 cards — it is not using the shared job card`);
+    }, { timeout: 120000 });
+  }
+
+  /**
+   * A listing captured before the extension collected descriptions has no facts to state.
+   * Those rows must render SHORTER, not four cells of "Not mentioned" — the honest rendering
+   * of "never gathered" is absence, not a denial.
+   */
+  test('a saved job with no description renders sparse, not "Not mentioned"', async (t) => {
+    if (unavailable) return t.skip(unavailable);
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await ctx.addInitScript(() => {
+      localStorage.setItem('jobpilot_jwt', 'test.jwt.token');
+      localStorage.setItem('jobpilot_is_admin', '1');
+      localStorage.setItem('jobpilot_theme', 'light');
+    });
+    await ctx.route(`${API}/**`, (r) => {
+      const p = r.request().url().replace(API, '').split('?')[0];
+      const known = Object.prototype.hasOwnProperty.call(POPULATED, p);
+      return r.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(known ? POPULATED[p] : {}),
+      });
+    });
+    const page = await ctx.newPage();
+    await page.goto(BASE + '/saved', { waitUntil: 'networkidle', timeout: 25000 });
+    await page.waitForTimeout(300);
+
+    // The fixture deliberately mixes both shapes, and they must behave DIFFERENTLY:
+    //
+    //   modern row  — has a description, so a fact the posting never stated is a true
+    //                 "Not mentioned". Those cells SHOULD be there.
+    //   legacy row  — has no description at all, so there is nothing to state or not state.
+    //                 Asserting "Not mentioned" about a posting we never read is a lie.
+    //
+    // Scoped per card for exactly that reason: counting `.na` across the whole page conflates
+    // the two and passes or fails for the wrong reason.
+    const cards = await page.locator('.jc2').count();
+
+    const legacy = page.locator('.jc2', { hasText: 'Single Position' }).first();
+    const legacyNa = await legacy.locator('.na').count();
+    const legacyMeta = await legacy.locator('.jc2-meta').count();
+
+    // A modern row keeps the full treatment — this is what proves `sparse` is targeted
+    // rather than quietly switched on for the whole page.
+    const modern = page.locator('.jc2').first();
+    const modernFacts = await modern.locator('.jc2-meta span').count();
+    const modernFit = await modern.locator('.fitpanel').count();
+    await ctx.close();
+
+    assert.ok(cards >= 6, `expected the mixed fixture to render at least 6 cards, got ${cards}`);
+    assert.equal(legacyNa, 0,
+      `a pre-migration saved job showed ${legacyNa} "Not mentioned" cells — it has no description, so it must render sparse`);
+    assert.equal(legacyMeta, 0,
+      'a pre-migration saved job with no facts at all must drop the meta row entirely, not leave an empty one');
+    assert.ok(modernFacts > 0,
+      'a saved job WITH a description must still show its facts — sparse must not leak onto modern rows');
+    assert.equal(modernFit, 1,
+      'a scored saved job must show the same fit panel as the board');
+  }, { timeout: 120000 });
+});
+
+/**
+ * Where the job surfaces live in the menu.
+ *
+ * Cheap, and it catches a NAV edit that half-lands — the sidebar and the dock derive from the
+ * same array, so a wrong edit moves both and neither complains.
+ */
+describe('navigation groups the job surfaces', () => {
+  test('Applications is inside Jobs, not a top-level module', async (t) => {
+    if (unavailable) return t.skip(unavailable);
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await ctx.addInitScript(() => {
+      localStorage.setItem('jobpilot_jwt', 'test.jwt.token');
+      localStorage.setItem('jobpilot_is_admin', '1');
+      localStorage.setItem('jobpilot_theme', 'light');
+      localStorage.setItem('jobpilot_rail', '0');
+    });
+    await ctx.route(`${API}/**`, (r) => {
+      const p = r.request().url().replace(API, '').split('?')[0];
+      const known = Object.prototype.hasOwnProperty.call(POPULATED, p);
+      return r.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(known ? POPULATED[p] : {}),
+      });
+    });
+    const page = await ctx.newPage();
+    await page.goto(BASE + '/jobs', { waitUntil: 'networkidle', timeout: 25000 });
+    await page.waitForTimeout(400);
+
+    const topLevel = await page.locator('.sidebar .nav-parent').allInnerTexts();
+    const dock = await page.locator('.dock .dock-item').evaluateAll(
+      (els) => els.map((e) => e.getAttribute('aria-label')));
+    await ctx.close();
+
+    const tops = topLevel.map((t2) => t2.trim());
+    assert.ok(!tops.includes('Applications'),
+      `"Applications" is still a top-level module: ${JSON.stringify(tops)}`);
+    assert.deepEqual(dock, ['Job board', 'Daily picks', 'Scout', 'Applications', 'Saved jobs'],
+      `Jobs dock is in the wrong order or missing an entry: ${JSON.stringify(dock)}`);
+  }, { timeout: 120000 });
+});
+
+/**
  * The states a page only reaches once you touch it.
  *
  * A resting-state check misses everything behind an interaction, and those are the states that

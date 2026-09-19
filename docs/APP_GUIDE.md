@@ -1,7 +1,7 @@
 # JobPilot — Full Application Guide
 
 Everything about the app in one place: what each screen does, how matching works, the AI
-features, the extension, and how to run it. (For setup/deploy details see [docs/SETUP.md](docs/SETUP.md);
+features, the extension, and how to run it. (For setup/deploy details see [SETUP.md](SETUP.md);
 for the API see [docs/API.md](docs/API.md).)
 
 ---
@@ -15,7 +15,7 @@ shortlist. Runs locally for ₹0.
 ## 2. Starting it
 ```powershell
 # from d:\Project_auto_apply
-powershell -ExecutionPolicy Bypass -File start.ps1
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
 ```
 Backend → http://localhost:8080 · Dashboard → http://localhost:5173 · token from your `.env` file.
 The backend uses an in-process Postgres (no Docker needed); data persists in `backend/.embedded-pg`.
@@ -85,7 +85,7 @@ your `JOBPILOT_API_TOKEN` from `.env` → **Test connection**.
 
 ## 8. Daily automation
 `POST /api/daily/run` (09:00 IST in-app, or GitHub Action / Windows Task Scheduler — see
-[scripts/README.md](scripts/README.md)) fetches latest jobs → AI-curates Daily Picks → digest email →
+[scripts/README.md](../scripts/README.md)) fetches latest jobs → AI-curates Daily Picks → digest email →
 purges jobs older than 7 days (untracked only) to keep the DB lean.
 
 ## 9. Performance notes
@@ -95,7 +95,7 @@ purges jobs older than 7 days (untracked only) to keep the DB lean.
 
 ## 10. What you provide (already wired in `backend/.env`, git-ignored)
 Gmail app password, Adzuna app_id/key, Jooble key, Groq key, Gemini key.
-See [README.md](README.md) for the credential list and [docs/SETUP.md](docs/SETUP.md) for how to get them.
+See [README.md](../README.md) for the credential list and [SETUP.md](SETUP.md) for how to get them.
 
 ## 11. Known limitations / honest notes
 - "Auto apply" is fully automatic **only** for email-type jobs; everything else is autofill + your click.

@@ -201,7 +201,10 @@ export const api = {
   digest: () => req<{ count: number; sent: boolean }>('/api/digest', { method: 'POST' }),
 
   dailyRun: () => req<{ status: string; message: string }>('/api/daily/run', { method: 'POST' }),
-  dailyPicks: () => req<{ briefing: string; generatedAt?: string; jobs: Job[] }>('/api/daily/picks'),
+  // `curated` distinguishes the AI-ranked set the daily run produced from the plain board
+  // query served as a fallback. The page says which it is showing rather than claiming a
+  // curation pass that never ran.
+  dailyPicks: () => req<{ briefing: string; generatedAt?: string; curated?: boolean; jobs: Job[] }>('/api/daily/picks'),
   opsStatus: () => req<{ running: boolean; last: string }>('/api/ops/status'),
 
   // Ingest metrics — summary is for everyone (top of board); detailed is admin-only.

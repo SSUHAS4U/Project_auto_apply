@@ -27,6 +27,20 @@ public class JobService {
         return repo.findById(id).orElseThrow(() -> new NotFoundException("job not found: " + id));
     }
 
+    /**
+     * Resolve many jobs at once, keyed by id.
+     *
+     * Returned as a map rather than a list because the caller (daily picks) needs to restore
+     * its OWN order afterwards — findAllById makes no promise about the order it returns, and
+     * a job that has since been purged simply will not be in the map.
+     */
+    public java.util.Map<UUID, Job> findAllById(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return java.util.Map.of();
+        java.util.Map<UUID, Job> out = new java.util.LinkedHashMap<>();
+        for (Job j : repo.findAllById(ids)) out.put(j.getId(), j);
+        return out;
+    }
+
     /** Free-text search over title/company/description+location for the assistant. */
     public List<Job> keywordSearch(String text, int limit) {
         String[] words = text == null ? new String[0]

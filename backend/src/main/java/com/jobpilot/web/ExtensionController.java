@@ -55,7 +55,7 @@ public class ExtensionController {
     @PostMapping("/saved-job")
     public SavedJob savedJob(@RequestBody SavedJobRequest req) {
         return savedJobs.capture(req.title(), req.company(), req.location(),
-                req.url(), req.sourceSite(), req.raw());
+                req.url(), req.sourceSite(), req.raw(), req.description());
     }
 
     /**

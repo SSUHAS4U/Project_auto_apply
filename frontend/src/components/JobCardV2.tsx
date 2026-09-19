@@ -27,6 +27,16 @@ export interface JobCardV2Props {
   actions?: ReactNode;          // primary buttons (Apply / Track / …)
   extras?: ReactNode;           // icon buttons next to the source pill
   onOpen?: () => void;
+  /**
+   * Omit facts the listing has no data for, instead of printing "Not mentioned".
+   *
+   * The default (false) is right for a board listing: the posting existed, we read it, and it
+   * did not state a salary — "Not mentioned" is a true statement about the posting. It is
+   * wrong for a listing captured before the extension collected descriptions, where the data
+   * was never gathered at all. There the honest rendering is a shorter card, not four cells
+   * apologising. Saved jobs pass this; nothing else does.
+   */
+  sparse?: boolean;
 }
 
 const MAX_TAGS = 4;
@@ -45,11 +55,11 @@ function fitTone(score?: number, verdict?: string): { tone: string; label: strin
   return { tone: 'red', label: 'Weak fit' };
 }
 
-/** A fact cell that degrades to an explicit "Not mentioned". */
-function Fact({ ico, value }: { ico: string; value: string | null }) {
-  return value
-    ? <span><Icon name={ico} size={13} /> {value}</span>
-    : <span className="na"><Icon name={ico} size={13} /> Not mentioned</span>;
+/** A fact cell that degrades to an explicit "Not mentioned" — or to nothing, when sparse. */
+function Fact({ ico, value, sparse }: { ico: string; value: string | null; sparse?: boolean }) {
+  if (value) return <span><Icon name={ico} size={13} /> {value}</span>;
+  if (sparse) return null;
+  return <span className="na"><Icon name={ico} size={13} /> Not mentioned</span>;
 }
 
 export function JobCardV2(p: JobCardV2Props) {
@@ -84,12 +94,16 @@ export function JobCardV2(p: JobCardV2Props) {
           </div>
         </div>
 
-        <div className="jc2-meta">
-          <Fact ico="target" value={place ?? null} />
-          <Fact ico="clipboard" value={facts.employment} />
-          <Fact ico="bolt" value={p.salaryText ?? null} />
-          <Fact ico="clock" value={facts.experience} />
-        </div>
+        {/* When sparse and nothing is known, the row itself goes — an empty flex row still
+            carries its gap and leaves a hole where the facts should be. */}
+        {(!p.sparse || place || facts.employment || p.salaryText || facts.experience) && (
+          <div className="jc2-meta">
+            <Fact ico="target" value={place ?? null} sparse={p.sparse} />
+            <Fact ico="clipboard" value={facts.employment} sparse={p.sparse} />
+            <Fact ico="bolt" value={p.salaryText ?? null} sparse={p.sparse} />
+            <Fact ico="clock" value={facts.experience} sparse={p.sparse} />
+          </div>
+        )}
 
         {(matched.length > 0 || missing.length > 0) && (
           <div className="jc2-tags">

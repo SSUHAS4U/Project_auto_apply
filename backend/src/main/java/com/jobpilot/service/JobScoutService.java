@@ -31,12 +31,22 @@ import java.util.regex.Pattern;
 
 /**
  * The automated job scout. Runs hourly (see DailyScheduler) and fills the
- * dashboard's "Scout" section with refined, resume-relevant listings from
- * LinkedIn / Naukri / Indeed — found through FREE, keyless channels only:
+ * dashboard's "Scout" section with refined, resume-relevant listings from free channels:
  *
- *  - LinkedIn's public guest jobs endpoint (direct /jobs/view links, last 3 days);
- *  - Jooble + Careerjet APIs (both free tiers), which aggregate Naukri/Indeed/
- *    LinkedIn postings and deep-link to the originals.
+ *  - LinkedIn's public guest jobs endpoint — keyless, DIRECT linkedin.com/jobs/view
+ *    links, filtered to the last 3 days;
+ *  - Jooble — free key. Aggregates a long tail of smaller boards and returns a
+ *    jooble.org/jdp/… redirect per listing, naming the real origin in a separate field;
+ *  - Careerjet — free publisher id, off until JOBPILOT_CAREERJET_AFFID is set.
+ *
+ * <h2>What this does NOT do</h2>
+ *
+ * It does not deliver Naukri or Indeed postings. The previous version of this comment said
+ * Jooble and Careerjet "aggregate Naukri/Indeed/LinkedIn postings and deep-link to the
+ * originals"; the live Jooble API disproves that — every link is a jooble.org redirect and the
+ * origins are boards like decentrajobs.com and ceipal.com. Naukri's and Indeed's own endpoints
+ * are captcha-gated. Anything in the UI promising those two sources is promising something
+ * this service cannot deliver.
  *
  * Every hit is filtered (tech-role check + resume match score), deduped by URL,
  * and mined for CONTACT DETAILS (emails/phones in the listing text) so the user
@@ -52,6 +62,25 @@ public class JobScoutService {
 
     @org.springframework.beans.factory.annotation.Value("${jobpilot.scout.retention-days:7}")
     private int retentionDays;
+
+    /** How many of the keyword list LinkedIn is searched for per run. */
+    @org.springframework.beans.factory.annotation.Value("${jobpilot.scout.linkedin-keywords-per-run:4}")
+    private int linkedinKeywordsPerRun;
+
+    /**
+     * The aggregator channels Scout expects to have.
+     *
+     * Declared rather than discovered, so a channel whose connector class is MISSING still
+     * reports itself. Looking these up purely from the bean list is what hid Jooble: the loop
+     * could only ever see connectors that existed, so an absent one produced no bean, no
+     * branch, no error and no mention in the channels report.
+     */
+    private static final List<String> AGGREGATOR_CHANNELS = List.of("jooble", "careerjet");
+
+    /** What an operator has to DO about an unconfigured channel — not merely that it is off. */
+    private static final Map<String, String> NOT_CONFIGURED = Map.of(
+            "jooble", "not configured — set JOBPILOT_JOOBLE_KEY",
+            "careerjet", "not configured — set JOBPILOT_CAREERJET_AFFID (free publisher id from careerjet.com/partners)");
 
     private static final Pattern EMAIL =
             Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}");
@@ -76,8 +105,13 @@ public class JobScoutService {
         this.http = http;
     }
 
-    /** One scout run. @return summary counts per source/channel + totals. */
-    @Transactional
+    /**
+     * One scout run. @return summary counts per source/channel + totals.
+     *
+     * NOT @Transactional: this method is mostly outbound HTTP — a LinkedIn guest search per
+     * keyword, then an aggregator call per keyword per channel. Holding a database connection
+     * open across all of that, idle, was pure contention. Each upsert manages its own.
+     */
     public Map<String, Object> run() {
         Profile profile = profileRepo.findFirstByOrderByUpdatedAtAsc().orElse(null);
         List<String> keywords = keywords(profile);
@@ -94,10 +128,19 @@ public class JobScoutService {
         found += li.size();
         kept += upsertAll(li, profile, keywords, bySite);
 
-        // 2. Jooble + Careerjet — aggregate Naukri/Indeed/LinkedIn and deep-link out.
-        for (JobConnector c : connectors) {
-            if (!("jooble".equals(c.source()) || "careerjet".equals(c.source()))) continue;
-            if (!c.isConfigured()) { channels.put(c.source(), "not configured"); continue; }
+        // 2. Aggregator channels.
+        //
+        // These were looked up by name against the bean list, which meant a channel with NO
+        // connector class (Jooble, for years) was not merely broken — it was invisible, because
+        // a bean that does not exist cannot report that it is missing. The expected set is
+        // declared here instead, so a channel is always accounted for: working, unconfigured,
+        // or absent.
+        Map<String, JobConnector> byName = connectors.stream()
+                .collect(java.util.stream.Collectors.toMap(JobConnector::source, c -> c, (a, b) -> a));
+        for (String name : AGGREGATOR_CHANNELS) {
+            JobConnector c = byName.get(name);
+            if (c == null) { channels.put(name, "unavailable: no connector for this source"); continue; }
+            if (!c.isConfigured()) { channels.put(name, NOT_CONFIGURED.getOrDefault(name, "not configured")); continue; }
             int chFound = 0;
             String err = null;
             for (String kw : keywords) {
@@ -149,15 +192,21 @@ public class JobScoutService {
     /**
      * LinkedIn's public guest jobs endpoint — the same one the logged-out /jobs page calls.
      * Free, keyless, direct linkedin.com/jobs/view links, filtered to the last 3 days.
-     * Two keywords per run (rotating by hour through the list) keeps request volume polite;
-     * over a day every keyword gets searched several times. Naukri and Indeed postings
-     * arrive through the Jooble/Careerjet aggregators (their public APIs are captcha-gated).
+     *
+     * The rotation advances by hour so consecutive runs search different keywords rather than
+     * re-fetching the same head of the list. At the previous fixed 2 per run, covering an
+     * 8-keyword list took four hourly runs; the default of 4 covers it in two and still only
+     * makes four polite guest requests an hour.
+     *
+     * Naukri and Indeed do NOT arrive here, and do not arrive through Jooble either — see the
+     * class javadoc. Their own endpoints are captcha-gated.
      */
     private List<ScoutedJob> fromLinkedIn(List<String> keywords, Map<String, String> channels) {
         List<ScoutedJob> out = new ArrayList<>();
         int hour = java.time.LocalTime.now().getHour();
         String err = null;
-        for (int i = 0; i < Math.min(2, keywords.size()); i++) {
+        int take = Math.min(Math.max(1, linkedinKeywordsPerRun), keywords.size());
+        for (int i = 0; i < take; i++) {
             String kw = keywords.get((hour + i) % keywords.size());
             try {
                 String html = http.get().uri(uri -> uri
@@ -220,9 +269,27 @@ public class JobScoutService {
         s.setLocation(r.getLocation());
         s.setUrl(r.getUrl() == null ? "" : r.getUrl());
         s.setSnippet(clean(r.getDescription()));
-        s.setSourceSite(hostSite(r.getUrl()));
+        // Origin BEFORE host. Jooble hands back a jooble.org/jdp/… redirect for every result,
+        // so deriving the site from the URL labels all of them "jooble" and tells the reader
+        // nothing. The connector carries the real board (decentrajobs.com, ceipal.com, …) in
+        // sourceJobId; prefer it, and fall back to the host when a connector has no origin.
+        s.setSourceSite(originSite(r.getSourceJobId(), r.getUrl()));
         if (r.getPostedAt() != null) s.setPostedHint(r.getPostedAt().toString());
         return s;
+    }
+
+    /** A connector-declared origin, normalised, else the URL's own host. */
+    static String originSite(String origin, String url) {
+        if (origin != null && !origin.isBlank()) {
+            String o = origin.toLowerCase(Locale.ROOT).trim()
+                    .replaceFirst("^https?://", "").replaceFirst("^www\\.", "");
+            int slash = o.indexOf('/');
+            if (slash > 0) o = o.substring(0, slash);
+            // A known site keeps its canonical key so the UI filter still groups it.
+            String known = hostSite("https://" + o);
+            return "other".equals(known) ? o : known;
+        }
+        return hostSite(url);
     }
 
     // ---- refine + persist -------------------------------------------------------

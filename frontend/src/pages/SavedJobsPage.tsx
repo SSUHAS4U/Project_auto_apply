@@ -4,6 +4,8 @@ import type { SavedJob } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
+import { JobCardV2 } from '../components/JobCardV2';
+import { useProfileSkills } from '../lib/useProfileSkills';
 
 export function SavedJobsPage() {
   const toast = useToast();
@@ -12,6 +14,7 @@ export function SavedJobsPage() {
   const [guide, setGuide] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ title: string; company: string; location: string }>({ title: '', company: '', location: '' });
+  const skills = useProfileSkills();
 
   const load = () => {
     setLoading(true);
@@ -97,47 +100,50 @@ export function SavedJobsPage() {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 14 }}>
-            {saved.map((s) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {saved.map((s) => editId === s.id ? (
+              /* Edit stays a form, not a card. The card is a way to READ a listing; editing
+                 it is a different mode, and dressing a form up as a card made it ambiguous
+                 which of the two you were looking at. */
               <div key={s.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {editId === s.id ? (
-                  <>
-                    <label className="field" style={{ fontSize: 12 }}>Job title
-                      <input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Software Engineer Intern" />
-                    </label>
-                    <label className="field" style={{ fontSize: 12 }}>Company
-                      <input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} placeholder="Microsoft" />
-                    </label>
-                    <label className="field" style={{ fontSize: 12 }}>Location
-                      <input className="input" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="India · Remote" />
-                    </label>
-                    <div className="row" style={{ gap: 8, marginTop: 4 }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => saveEdit(s)}>Save</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <a href={s.url} target="_blank" rel="noreferrer" className="job-title" style={{ fontSize: 15 }}>{s.title ?? 'Untitled listing'}</a>
-                      <span className="chip meta-item" title={s.sourceSite ?? 'web'}>
-                        <Icon name={/form/.test(s.sourceSite ?? '') ? 'pen' : 'compass'} size={12} />
-                        {/form/.test(s.sourceSite ?? '') ? `via form · ${s.sourceSite}` : (s.sourceSite ?? 'web')}
-                      </span>
-                    </div>
-                    <div className="muted" style={{ fontSize: 13 }}>{s.company ?? '—'}{s.location ? ` · ${s.location}` : ''}</div>
-                    <div className="faint" style={{ fontSize: 12 }}>Captured {fmtDate(s.createdAt)}</div>
-                    <div className="row" style={{ marginTop: 'auto', paddingTop: 8, gap: 8 }}>
-                      {s.promotedJobId
-                        ? <span className="badge badge-ats meta-item"><Icon name="check" size={12} /> Promoted</span>
-                        : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
-                      <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
-                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} title="Edit details"><Icon name="pen" size={13} /></button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => remove(s)} style={{ color: 'var(--danger)', marginLeft: 'auto' }}><Icon name="trash" size={13} /> Delete</button>
-                    </div>
-                  </>
-                )}
+                <label className="field" style={{ fontSize: 12 }}>Job title
+                  <input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Software Engineer Intern" />
+                </label>
+                <label className="field" style={{ fontSize: 12 }}>Company
+                  <input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} placeholder="Microsoft" />
+                </label>
+                <label className="field" style={{ fontSize: 12 }}>Location
+                  <input className="input" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="India · Remote" />
+                </label>
+                <div className="row" style={{ gap: 8, marginTop: 4 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => saveEdit(s)}>Save</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
+                </div>
               </div>
+            ) : (
+              <JobCardV2 key={s.id}
+                title={s.title ?? 'Untitled listing'}
+                company={s.company}
+                location={s.location}
+                description={s.description}
+                url={s.url}
+                source={s.sourceSite ?? 'web'}
+                score={s.matchScore}
+                postedLabel={`captured ${fmtDate(s.createdAt)}`}
+                skills={skills}
+                /* Anything saved before the extension collected descriptions has no facts to
+                   show. Omit them rather than print "Not mentioned" four times. */
+                sparse={!s.description}
+                extras={<>
+                  <button className="jc2-act" onClick={() => startEdit(s)} title="Edit details"><Icon name="pen" size={14} /></button>
+                  <button className="jc2-act" onClick={() => remove(s)} title="Delete saved listing"><Icon name="trash" size={14} /></button>
+                </>}
+                actions={<>
+                  {s.promotedJobId
+                    ? <span className="badge badge-ats meta-item"><Icon name="check" size={12} /> Promoted</span>
+                    : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
+                  <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
+                </>} />
             ))}
           </div>
         )}

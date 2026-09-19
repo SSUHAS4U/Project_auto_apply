@@ -29,11 +29,18 @@ const NAV: NavEntry[] = [
     ],
   },
   {
+    // Everything that IS a job now lives here, in the order you meet a job: find it on the
+    // board, see what was picked for you, see what was scouted, then what you applied to and
+    // what you kept. Applications and Saved jobs used to be a separate top-level module, which
+    // split "jobs" across two places in the menu and made the tracker feel unrelated to the
+    // board it is fed by.
     label: 'Jobs', ico: 'compass',
     children: [
       { to: '/jobs', label: 'Job board', ico: 'compass' },
       { to: '/daily', label: 'Daily picks', ico: 'sun' },
       { to: '/scout', label: 'Scout', ico: 'search' },
+      { to: '/applications', label: 'Applications', ico: 'clipboard' },
+      { to: '/saved', label: 'Saved jobs', ico: 'bookmark' },
     ],
   },
   {
@@ -41,13 +48,6 @@ const NAV: NavEntry[] = [
     children: [
       { to: '/resumes', label: 'Resumes', ico: 'file' },
       { to: '/compose', label: 'Compose & send', ico: 'pen' },
-    ],
-  },
-  {
-    label: 'Applications', ico: 'clipboard',
-    children: [
-      { to: '/applications', label: 'Tracker', ico: 'clipboard' },
-      { to: '/saved', label: 'Saved jobs', ico: 'bookmark' },
     ],
   },
   {

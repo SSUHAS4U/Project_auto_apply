@@ -1,6 +1,7 @@
 name: daily
 
-# One scheduled call: fetch latest jobs + AI-curated top picks + digest email.
+# The full daily pipeline: ingest, curate each user's picks, send the digest, purge stale jobs.
+# Backup only — the backend runs this itself via JOBPILOT_DAILY_CRON.
 # Repo secrets required: BACKEND_URL, API_TOKEN.
 on:
   schedule:
@@ -11,14 +12,46 @@ jobs:
   daily:
     runs-on: ubuntu-latest
     steps:
-      - name: POST /api/daily/run/sync
+      - name: Fail fast if the secrets are not set
         run: |
-          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
-            --retry 5 --retry-all-errors --retry-delay 15 --max-time 240 \
-            -X POST "$BACKEND_URL/api/daily/run/sync" \
-            -H "X-Api-Token: $API_TOKEN")
-          echo "HTTP $code"; cat /tmp/out.json || true
+          : "${BACKEND_URL:?BACKEND_URL secret is not set on this repository}"
+          : "${API_TOKEN:?API_TOKEN secret is not set on this repository}"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+
+      - name: Trigger the daily run, then poll until it finishes
+        # The daily pipeline STARTS with a full ingest, so it is strictly longer than the
+        # ingest job — the old 240s --max-time on the synchronous endpoint never stood a
+        # chance. Trigger and poll instead.
+        run: |
+          code=$(curl -sS -o /tmp/start.json -w "%{http_code}" --max-time 60 \
+            --retry 3 --retry-all-errors --retry-delay 10 \
+            -X POST "$BACKEND_URL/api/daily/run" -H "X-Api-Token: $API_TOKEN")
+          echo "trigger HTTP $code"; cat /tmp/start.json || true; echo
           test "$code" = "200"
+
+          # "busy" means the server-side scheduler beat us to it — that is the healthy case
+          # for a backup trigger, not a failure.
+          if jq -e '.status == "busy"' /tmp/start.json >/dev/null 2>&1; then
+            echo "A run was already in progress (server scheduler). Nothing to do."
+            exit 0
+          fi
+
+          for i in $(seq 1 100); do
+            sleep 15
+            s=$(curl -sS --max-time 30 "$BACKEND_URL/api/daily/run/status" -H "X-Api-Token: $API_TOKEN" || echo '{}')
+            if [ "$(echo "$s" | jq -r '.running // empty')" = "false" ]; then
+              last=$(echo "$s" | jq -r '.last // "unknown"')
+              echo "finished: $last"
+              case "$last" in *failed*|*error*) echo "::error::daily run reported: $last"; exit 1;; esac
+              exit 0
+            fi
+            echo "[$i] $(echo "$s" | jq -r '.last // "running…"')"
+          done
+
+          echo "::error::daily run did not finish within 25 minutes"
+          exit 1
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           API_TOKEN: ${{ secrets.API_TOKEN }}

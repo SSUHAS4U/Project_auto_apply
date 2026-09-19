@@ -13,6 +13,14 @@ jobs:
   digest:
     runs-on: ubuntu-latest
     steps:
+      - name: Fail fast if the secrets are not set
+        run: |
+          : "${BACKEND_URL:?BACKEND_URL secret is not set on this repository}"
+          : "${API_TOKEN:?API_TOKEN secret is not set on this repository}"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+
       - name: POST /api/digest
         run: |
           code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \

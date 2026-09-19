@@ -1,10 +1,14 @@
 name: ingest
 
-# BACKUP trigger only. The PRIMARY ingest is now a server-side scheduler in the backend
-# (DailyScheduler, 3x/day) which is reliable as long as the instance is awake. GitHub
-# Actions cron is best-effort and can be delayed/skipped, so this just adds redundancy.
-# The backend's one-at-a-time guard prevents this from colliding with the server run.
+# BACKUP trigger only. The PRIMARY ingest is a server-side scheduler in the backend
+# (DailyScheduler, 3x/day) which is reliable as long as the VM is up. GitHub Actions cron is
+# best-effort and can be delayed or skipped, so this only adds redundancy. The backend's
+# one-at-a-time guard prevents it from colliding with the server run.
+#
 # Repo secrets: BACKEND_URL and API_TOKEN (must match the backend's JOBPILOT_API_TOKEN).
+# Both were MISSING from 2026-06 until 2026-09-19 — they were never recreated after the
+# backend moved off Render — so every scheduled run failed on
+# "curl: (3) URL rejected: No host part in the URL".
 on:
   schedule:
     - cron: '40 1 * * *'    # ~07:10 IST (10 min after the server run, as a catch-up)
@@ -16,14 +20,51 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     steps:
-      - name: Ingest (sync)
+      - name: Fail fast if the secrets are not set
+        # Without this the failure surfaces as a curl URL-parsing error, which reads like a
+        # broken script rather than missing configuration. That mis-signal is exactly why the
+        # real cause went unnoticed for months.
         run: |
-          echo "Triggering ingest on $BACKEND_URL"
-          ic=$(curl -sS -o /tmp/ingest.json -w "%{http_code}" \
-            --retry 6 --retry-all-errors --retry-delay 20 --max-time 300 \
-            -X POST "$BACKEND_URL/api/ingest/sync" -H "X-Api-Token: $API_TOKEN")
-          echo "ingest HTTP $ic"; cat /tmp/ingest.json || true
-          test "$ic" = "200"
+          : "${BACKEND_URL:?BACKEND_URL secret is not set on this repository}"
+          : "${API_TOKEN:?API_TOKEN secret is not set on this repository}"
+          echo "Backend: $BACKEND_URL"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+
+      - name: Trigger ingest, then poll until it finishes
+        # TRIGGER + POLL, never /ingest/sync.
+        #
+        # A full ingest covers ~90 boards and comfortably exceeds curl's --max-time. The old
+        # step POSTed the synchronous endpoint and waited: curl timed out, --retry fired,
+        # and the job eventually failed while the run it had kicked off was still completing
+        # normally on the server. Verified 2026-09-19 — a dispatched run was still in flight
+        # after 10 minutes against a 300s cap.
+        run: |
+          code=$(curl -sS -o /tmp/start.json -w "%{http_code}" --max-time 60 \
+            --retry 3 --retry-all-errors --retry-delay 10 \
+            -X POST "$BACKEND_URL/api/ingest" -H "X-Api-Token: $API_TOKEN")
+          echo "trigger HTTP $code"; cat /tmp/start.json || true; echo
+          test "$code" = "200"
+
+          # Poll for up to 20 minutes. A transient poll failure is not fatal — only the
+          # backend reporting a finished-with-error state, or the timeout, fails the job.
+          for i in $(seq 1 80); do
+            sleep 15
+            s=$(curl -sS --max-time 30 "$BACKEND_URL/api/ingest/status" -H "X-Api-Token: $API_TOKEN" || echo '{}')
+            running=$(echo "$s" | jq -r '.running // empty')
+            status=$(echo "$s" | jq -r '.status // "unknown"')
+            if [ "$running" = "false" ]; then
+              echo "finished: status=$status"
+              echo "$s" | jq -r '"inserted=\(.inserted) updated=\(.updated) fetched=\(.fetched) totalJobs=\(.totalJobs)"'
+              test "$status" != "error"
+              exit $?
+            fi
+            echo "[$i] running… $(echo "$s" | jq -r '"\(.sourcesDone)/\(.sources) sources, +\(.inserted) new"')"
+          done
+
+          echo "::error::ingest did not finish within 20 minutes"
+          exit 1
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           API_TOKEN: ${{ secrets.API_TOKEN }}

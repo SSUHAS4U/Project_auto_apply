@@ -33,7 +33,7 @@ tag. A web refresh cannot update the desktop app. See `CLAUDE.md` → Shipping.
 | `engine/` | 2.8k | The apply / rank / interview / upskill / setup pipelines |
 | `pilot/` | 1.7k | Draft → review → compile-verify document generation |
 | `web/` | 1.4k | REST controllers only. No logic. |
-| `connector/` | 1.3k | Job-board feeds (Adzuna, Careerjet, IndianAPI, …) |
+| `connector/` | 1.3k | Job-board feeds (Careerjet, Jooble, IndianAPI, the keyless aggregators, …) |
 | `domain/` + `repository/` | 1.2k | JPA entities and Spring Data repositories |
 | `security/` | 0.4k | `AuthFilter` (JWT for users, static token for admin, worker tokens), CORS |
 | `config/` | 0.4k | `JobPilotProperties` (all tunables), `WebConfig` (the one shared `RestClient`) |
@@ -162,9 +162,37 @@ scale, then each component moved onto it — not more one-off media queries.
 
 ---
 
-## 7. Honest gaps
+## 7. The one job card
+
+`components/JobCardV2.tsx` is the ONLY job card. It serves the board, Daily picks, Scout, the
+portal panels, the Applications tracker and Saved jobs.
+
+A surface that cannot fill it does not get its own card — it gets its data fixed at the source,
+or it passes `sparse`. That rule exists because the tracker previously had a desktop table AND a
+separate mobile card, and the two had already diverged: the mobile one showed a bare score chip
+where the board showed a fit panel. `responsive.test.mjs` asserts `.jc2` renders on all five job
+surfaces, so a sixth bespoke card fails the build.
+
+`sparse` means "omit a fact we never collected", not "hide a fact the posting didn't state". A
+board listing that states no salary prints *Not mentioned* — that is true about the posting. A
+job saved before the extension captured descriptions has nothing to be true or false about, so
+its cells are omitted. Both behaviours are asserted separately.
+
+### What feeds it
+
+| Surface | Source of the card's data |
+|---|---|
+| Board / Daily picks / Scout | `Job` rows — full |
+| Applications | `ApplicationView.JobSummary` — projects `description`, `source`, `salaryText`, `postedAt`; without those four the tracker had nothing to derive facts from |
+| Saved jobs | `saved_job.description` + `match_score`, captured by the extension since v0.9.26 and scored on capture |
+
+---
+
+## 8. Honest gaps
 
 - The extension fill core is a keyword dictionary, not an engine. §3 lists why that fails.
 - The frontend has no design-token layer; responsiveness is per-component and inconsistent.
-- No automated render verification in CI — UI regressions are caught by eye.
 - `AUTOMATION.md` is gitignored, so the incident history is local-only.
+- `engine/` exposes 24 endpoints and the dashboard calls 4. See `docs/adr/ADR-001`.
+- **Render verification exists but is not wired into `ci.yml`.** `frontend/test/responsive.test.mjs`
+  drives real Chrome at 360/768/1280 in both themes; nothing runs it automatically.

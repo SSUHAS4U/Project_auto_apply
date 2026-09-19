@@ -93,6 +93,22 @@ public class OpsController {
         return ingest.run();
     }
 
+    /**
+     * Ingest progress for the MACHINE token — deliberately under /api/ingest.
+     *
+     * The same snapshot is already served by /api/ops/ingest, but /api/ops is admin-JWT-only,
+     * so a cron job holding the static token had no way to ask whether a run had finished.
+     * That left GitHub Actions only the synchronous endpoint, which is why it called
+     * /api/ingest/sync and sat there: a real ingest across ~90 boards outlives curl's
+     * --max-time, so the call timed out, retried, and the workflow failed while the run it
+     * had started was still going perfectly well on the server. With this, the workflow can
+     * trigger and then poll.
+     */
+    @GetMapping("/ingest/status")
+    public Map<String, Object> ingestStatus() {
+        return progress.snapshot();
+    }
+
     @PostMapping("/digest")
     public Map<String, Object> digest() {
         return digest.run();
@@ -108,6 +124,17 @@ public class OpsController {
     @PostMapping("/daily/run/sync")
     public Map<String, Object> dailySync() {
         return daily.run();
+    }
+
+    /**
+     * Background-run status for the MACHINE token — under /api/daily/run so the cron prefix
+     * already covers it. Same reason as /api/ingest/status: /api/ops/status carries this
+     * today but is admin-JWT-only, which left a cron job with no way to wait for a run it had
+     * started, and therefore no alternative to the synchronous endpoint it kept timing out on.
+     */
+    @GetMapping("/daily/run/status")
+    public Map<String, Object> dailyStatus() {
+        return runner.status();
     }
 
     @GetMapping("/ops/status")
