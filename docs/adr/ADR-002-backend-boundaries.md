@@ -213,4 +213,9 @@ Ordered worst-first. Each is independently shippable.
 8. [ ] **Split `AgentService` (1,611)** along scheduling / runs / outreach.
 9. [ ] **Frontend:** design tokens and one breakpoint scale, then `AutomationPanels.tsx` into
        one file per panel.
-10. [ ] **Guard the render suite's wiring** so a `package.json` edit cannot silently unhook it.
+10. [x] **Guarded the render suite's wiring** — `frontend/test/suite-wiring.test.mjs` asserts
+        the `npm test` glob still reaches it, that `ci.yml` still checks for Chrome before
+        running it (the suite SKIPS without a browser, so that check is what stops a skip
+        passing as a pass), and that every route in `main.tsx` is covered by `ROUTES`.
+        Verified by breaking each of the three conditions in turn and watching exactly the
+        matching assertion fail.
