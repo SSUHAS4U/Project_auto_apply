@@ -54,6 +54,14 @@ server:
 jobpilot:
   api-token: ${JOBPILOT_API_TOKEN:dev-token}
   doc-key: ${JOBPILOT_DOC_KEY:}
+  # The key previous documents/secrets were encrypted under. Kept ONLY until the startup
+  # re-key reports nothing left on it; removing it earlier makes unmigrated rows unreadable.
+  doc-key-previous: ${JOBPILOT_DOC_KEY_PREVIOUS:}
+  security:
+    # A published default secret is fatal in production; see SecretsGuard / JwtSecretResolver.
+    enforce-secrets: ${JOBPILOT_ENFORCE_SECRETS:true}
+    # Sign-up closes once the first account exists. Set true to re-open deliberately.
+    registration-open: ${JOBPILOT_REGISTRATION_OPEN:false}
   jwt:
     # NO DEFAULT ON PURPOSE. This repository is public, so any literal here is a key anyone
     # can read — and an unset variable in production meant exactly that until 2026-09-19.

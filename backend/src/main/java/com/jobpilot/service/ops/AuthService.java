@@ -42,6 +42,10 @@ public class AuthService {
         this.props = props;
     }
 
+    /** Opt-in re-opening of sign-up; see the check in register(). */
+    @org.springframework.beans.factory.annotation.Value("${jobpilot.security.registration-open:false}")
+    private boolean registrationOpen;
+
     private boolean isOwnerEmail(String email) {
         String admin = props.getAdminEmail();
         return admin != null && !admin.isBlank() && admin.trim().equalsIgnoreCase(email);
@@ -57,6 +61,21 @@ public class AuthService {
             throw new IllegalStateException("an account with that email already exists");
         }
         boolean firstUser = users.count() == 0;
+
+        // REGISTRATION IS CLOSED once an account exists.
+        //
+        // This is a single-operator deployment on a public URL, so an open /api/auth/register
+        // let anyone who found it create an account — free storage, free AI quota against the
+        // owner's keys, and a foothold on an authenticated surface. The throttle caps the rate
+        // of that; it does not make it legitimate.
+        //
+        // Gated on "no accounts yet" rather than on a flag alone, so the case the open endpoint
+        // existed for still works: a fresh clone, or this deployment before its first sign-up,
+        // can create the first account with no configuration. After that it takes an explicit
+        // JOBPILOT_REGISTRATION_OPEN=true.
+        if (!firstUser && !registrationOpen) {
+            throw new SecurityException("registration is closed on this deployment");
+        }
 
         AppUser u = new AppUser();
         u.setEmail(e);

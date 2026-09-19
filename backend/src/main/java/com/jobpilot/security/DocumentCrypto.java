@@ -9,6 +9,8 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Arrays;
 
 /**
@@ -19,9 +21,12 @@ import java.util.Arrays;
 @Component
 public class DocumentCrypto {
 
+    private static final Logger log = LoggerFactory.getLogger(DocumentCrypto.class);
+
     private static final int IV_LEN = 12;
     private static final int TAG_BITS = 128;
-    private final SecretKeySpec key;
+    private final SecretKeySpec primary;
+    private final SecretKeySpec previous;
     private final SecureRandom random = new SecureRandom();
 
     /**
@@ -57,14 +62,53 @@ public class DocumentCrypto {
                       encrypted under, NEVER a fresh random value.
                     """);
         }
-        String secret = haveDocKey ? props.getDocKey() : props.getJwt().getSecret();
+        String primarySecret = haveDocKey ? props.getDocKey() : props.getJwt().getSecret();
+        this.primary = aesKey(primarySecret);
+        String prev = props.getDocKeyPrevious();
+        this.previous = (prev == null || prev.isBlank()) ? null : aesKey(prev);
+        if (this.previous != null) {
+            log.info("Document crypto: primary key active, previous key retained for reading "
+                    + "legacy blobs. Remove JOBPILOT_DOC_KEY_PREVIOUS once the re-key has run.");
+        }
+    }
+
+    private static SecretKeySpec aesKey(String secret) {
         try {
-            byte[] k = MessageDigest.getInstance("SHA-256")
-                    .digest(("jobpilot-doc::" + secret).getBytes(StandardCharsets.UTF_8));
-            this.key = new SecretKeySpec(k, "AES");
+            return new SecretKeySpec(MessageDigest.getInstance("SHA-256")
+                    .digest(("jobpilot-doc::" + secret).getBytes(StandardCharsets.UTF_8)), "AES");
         } catch (Exception e) {
             throw new IllegalStateException("failed to init document crypto", e);
         }
+    }
+
+    /**
+     * Marks a blob as written under the CURRENT key.
+     *
+     * Legacy blobs have no marker — they begin directly with a 12-byte IV — so a missing
+     * marker means "encrypted with the previous key". That is what makes rotation safe: the
+     * format itself says which key applies, so a half-migrated table is readable rather than
+     * half-lost. Four bytes that no legacy IV can collide with by accident is cheap insurance;
+     * the alternative is guessing, and a wrong guess on AES-GCM is indistinguishable from
+     * corrupted data.
+     */
+    private static final byte[] MAGIC_V2 = { 'J', 'P', 'K', '2' };
+
+    private static boolean hasMagic(byte[] b) {
+        if (b == null || b.length < MAGIC_V2.length + IV_LEN) return false;
+        for (int i = 0; i < MAGIC_V2.length; i++) {
+            if (b[i] != MAGIC_V2[i]) return false;
+        }
+        return true;
+    }
+
+    /** True when this blob still needs re-encrypting under the current key. */
+    public boolean isLegacy(byte[] stored) {
+        return stored != null && stored.length > 0 && !hasMagic(stored);
+    }
+
+    /** True when a previous key is configured, i.e. a re-key is in progress or possible. */
+    public boolean hasPreviousKey() {
+        return previous != null;
     }
 
     public byte[] encrypt(byte[] plain) {
@@ -72,26 +116,51 @@ public class DocumentCrypto {
             byte[] iv = new byte[IV_LEN];
             random.nextBytes(iv);
             Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-            c.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+            c.init(Cipher.ENCRYPT_MODE, primary, new GCMParameterSpec(TAG_BITS, iv));
             byte[] ct = c.doFinal(plain);
-            byte[] out = new byte[IV_LEN + ct.length];
-            System.arraycopy(iv, 0, out, 0, IV_LEN);
-            System.arraycopy(ct, 0, out, IV_LEN, ct.length);
+            byte[] out = new byte[MAGIC_V2.length + IV_LEN + ct.length];
+            System.arraycopy(MAGIC_V2, 0, out, 0, MAGIC_V2.length);
+            System.arraycopy(iv, 0, out, MAGIC_V2.length, IV_LEN);
+            System.arraycopy(ct, 0, out, MAGIC_V2.length + IV_LEN, ct.length);
             return out;
         } catch (Exception e) {
             throw new IllegalStateException("encryption failed: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * Decrypt under whichever key wrote this blob.
+     *
+     * Both keys are tried rather than trusting the marker alone. The marker says which key
+     * SHOULD apply; trying the other afterwards costs one failed AES operation and rescues a
+     * deployment that was half-rotated, or where the two variables were swapped — states that
+     * would otherwise present as unreadable data with no way back.
+     */
     public byte[] decrypt(byte[] stored) {
+        boolean v2 = hasMagic(stored);
+        int offset = v2 ? MAGIC_V2.length : 0;
+        SecretKeySpec first = v2 ? primary : (previous != null ? previous : primary);
+        SecretKeySpec second = (first == primary) ? previous : primary;
         try {
-            byte[] iv = Arrays.copyOfRange(stored, 0, IV_LEN);
-            byte[] ct = Arrays.copyOfRange(stored, IV_LEN, stored.length);
-            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-            c.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
-            return c.doFinal(ct);
-        } catch (Exception e) {
-            throw new IllegalStateException("decryption failed: " + e.getMessage(), e);
+            return decryptWith(stored, offset, first);
+        } catch (Exception firstFailure) {
+            if (second != null) {
+                try {
+                    return decryptWith(stored, offset, second);
+                } catch (Exception ignored) {
+                    // Fall through to the original failure, which is the more informative one.
+                }
+            }
+            throw new IllegalStateException("decryption failed: " + firstFailure.getMessage(),
+                    firstFailure);
         }
+    }
+
+    private byte[] decryptWith(byte[] stored, int offset, SecretKeySpec k) throws Exception {
+        byte[] iv = Arrays.copyOfRange(stored, offset, offset + IV_LEN);
+        byte[] ct = Arrays.copyOfRange(stored, offset + IV_LEN, stored.length);
+        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(Cipher.DECRYPT_MODE, k, new GCMParameterSpec(TAG_BITS, iv));
+        return c.doFinal(ct);
     }
 }

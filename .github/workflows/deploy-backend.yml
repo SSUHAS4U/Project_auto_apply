@@ -115,6 +115,30 @@ jobs:
               printf 'JOBPILOT_JWT_SECRET=%s\n' "$(openssl rand -base64 48)" | sudo tee -a "$ENVFILE" >/dev/null
               echo "bootstrap: generated a strong JOBPILOT_JWT_SECRET (everyone signs in again)"
             fi
+
+            # 3. Rotate the AT-REST key off the published value — in two variables, not one.
+            #
+            #    This one cannot be a straight swap. The same key encrypts stored documents AND
+            #    the API keys entered in the Admin UI, so replacing it outright makes all of
+            #    them unreadable, and AES-GCM's authentication failure surfaces as "the app
+            #    forgot my keys" rather than as anything pointing at a key change.
+            #
+            #    So the OLD key moves to JOBPILOT_DOC_KEY_PREVIOUS (which is what reads rows
+            #    not yet migrated) and a strong new key becomes primary. DocumentRekeyService
+            #    then re-encrypts each row after startup, verifying every rewrite reads back
+            #    before saving it. Only once it reports nothing left may PREVIOUS be removed.
+            #
+            #    Guarded on the old value specifically: this must run exactly once, and never
+            #    against a deployment that already holds a strong key.
+            if sudo grep -q '^JOBPILOT_DOC_KEY=change-me-jobpilot-dev-jwt-secret$' "$ENVFILE" \
+               && ! sudo grep -q '^JOBPILOT_DOC_KEY_PREVIOUS=' "$ENVFILE"; then
+              printf 'JOBPILOT_DOC_KEY_PREVIOUS=%s\n' 'change-me-jobpilot-dev-jwt-secret' | sudo tee -a "$ENVFILE" >/dev/null
+              # `|` as the delimiter is safe: base64's alphabet is A-Za-z0-9+/= so the
+              # generated key can never contain it, nor the & that sed would expand.
+              sudo sed -i "s|^JOBPILOT_DOC_KEY=change-me-jobpilot-dev-jwt-secret$|JOBPILOT_DOC_KEY=$(openssl rand -base64 48)|" "$ENVFILE"
+              echo "bootstrap: rotated JOBPILOT_DOC_KEY to a strong key; the old one is retained"
+              echo "bootstrap: as JOBPILOT_DOC_KEY_PREVIOUS so the startup re-key can read legacy rows"
+            fi
             # ------------------------------------------------------------------------------
 
             cd ~/jobpilot

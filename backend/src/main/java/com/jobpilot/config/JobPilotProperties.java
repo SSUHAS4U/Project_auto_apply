@@ -23,6 +23,15 @@ public class JobPilotProperties {
      * requires it explicitly — see {@link com.jobpilot.security.DocumentCrypto}.
      */
     private String docKey = "";
+
+    /**
+     * The PREVIOUS document key, kept only so legacy blobs stay readable during a re-key.
+     *
+     * Blobs written before the rotation carry no version marker and are encrypted under this.
+     * Remove it once DocumentRekeyService reports nothing left to migrate — until then,
+     * removing it makes unmigrated documents and stored API keys unreadable.
+     */
+    private String docKeyPrevious = "";
     private List<String> corsOrigins = List.of("http://localhost:5173");
     private int ingestConcurrency = 3;
     private String resumeDir = "./uploads";

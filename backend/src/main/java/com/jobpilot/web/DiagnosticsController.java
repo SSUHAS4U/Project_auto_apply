@@ -36,10 +36,13 @@ public class DiagnosticsController {
     private final AgentService agent;
     private final AppUserRepository users;
     private final com.jobpilot.config.SecretsGuard secrets;
+    private final com.jobpilot.security.DocumentRekeyService rekey;
 
     public DiagnosticsController(AgentRunRepository runs, AgentEventRepository events,
                                  AgentService agent, AppUserRepository users,
-                                 com.jobpilot.config.SecretsGuard secrets) {
+                                 com.jobpilot.config.SecretsGuard secrets,
+                                 com.jobpilot.security.DocumentRekeyService rekey) {
+        this.rekey = rekey;
         this.runs = runs;
         this.events = events;
         this.agent = agent;
@@ -81,6 +84,7 @@ public class DiagnosticsController {
         out.put("action", published.isEmpty()
                 ? "none — this host sets its own secrets"
                 : "set these on the host (~/jobpilot/.env) and restart: " + published);
+        out.put("atRestReKey", rekey.status());
         return out;
     }
 
