@@ -75,8 +75,20 @@ def called_paths():
 
 
 def _norm(s):
-    """Collapse {id} and ${x} so a templated call matches a templated mapping."""
-    return re.sub(r"\{[^}]*\}|\$\{[^}]*\}", "*", s.rstrip("/"))
+    """Collapse {id} and ${x} so a templated call matches a templated mapping.
+
+    The trailing-* strip is not cosmetic. The extension fetches
+    `/api/extension/resume${q}` — a query string spliced on in a template literal — which
+    normalised to "/api/extension/resume*" and therefore never matched the bare mapping
+    "/api/extension/resume". The endpoint was reported as having no caller while
+    background.js called it on every résumé download.
+
+    That is the dangerous direction of error for this tool: a false NEGATIVE invites someone
+    to delete live code. Erring toward "called" is the safe bias, because the output is a list
+    of candidates for a human to check, never a verdict.
+    """
+    s = re.sub(r"\{[^}]*\}|\$\{[^}]*\}", "*", s.rstrip("/"))
+    return re.sub(r"\*+$", "", s).rstrip("/")
 
 
 def main():

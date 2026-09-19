@@ -174,19 +174,43 @@ case" is an endpoint nobody tests and everybody must still secure.
 
 ## Action Items
 
-1. [x] ~~Wire `responsive.test.mjs` into CI~~ — **already wired**; see withdrawn Finding 4.
-2. [ ] **Delete the 19 uncalled `EngineController` endpoints** and any service method left with
-       no caller afterwards. Keep `status`/`profile`/`prefill`/`guided`.
-3. [ ] **Delete `PilotController` entirely** (12/12 uncalled). **Keep `PilotOrchestrator`** — the
-       extension drives it via `ExtensionController`.
-4. [ ] **Delete the 11 uncalled `AgentController` endpoints**, checking each against the worker,
-       which is a client the frontend grep does not cover.
-5. [ ] **Re-run the reachability script; require 0 uncalled** (allow-listing `/health` and
-       `/api/ingest-diag/*` explicitly, with a reason).
-6. [ ] **Split `service`** into `auth/`, `profile/`, `documents/`, `mail/`, `jobs/`, `ops/`.
-       Compiler-checked; no behaviour change.
-7. [ ] **Split `AgentService` (1,611)** along scheduling / runs / outreach.
-8. [ ] **Frontend:** design tokens and one breakpoint scale, then `AutomationPanels.tsx` into one
-       file per panel.
+Ordered worst-first. Each is independently shippable.
 
-Items 1–5 are the architecture work. 6–8 are the follow-through.
+### Done 2026-09-19
+
+1. [x] ~~Wire `responsive.test.mjs` into CI~~ — **already wired**; see withdrawn Finding 4.
+2. [x] **Deleted the 19 uncalled `EngineController` endpoints.** 307 → 162 lines, 24 → 4
+       mappings. The four the dashboard uses (`status`, `profile`, `prefill`, `guided`) stay.
+       **No service was touched** — `/status` still reports scrape, rank and autopilot state,
+       so `EngineScraperService`, `EngineRankService` and `EngineOrchestrator` remain live.
+3. [x] **Deleted `PilotController`** (106 lines, 12/12 uncalled, zero references).
+       **`PilotOrchestrator` kept** — the extension drives it via `ExtensionController`.
+4. [x] **Made the audit repeatable** — `scripts/api-reachability.py`, `--strict` to gate.
+
+**Result: 173 → 141 mapped, 49 → 17 with no caller. 28% dead surface down to 12%.**
+204 backend tests green throughout.
+
+### Not done, deliberately
+
+5. [ ] **The 11 uncalled `AgentController` endpoints.** Stopped here on purpose. Unlike the
+       engine — whose cron has been disabled since its UI was removed — the agent is the LIVE
+       automation system, and these need checking one at a time against the worker and the
+       desktop app before anything is removed. A wrong deletion here breaks the product's
+       main feature. Its own pass, not a tail-end of this one.
+
+       The script already proved it can be wrong in that direction: it reported
+       `/api/extension/resume` as uncalled when `background.js` fetches it on every résumé
+       download, via a template literal the normaliser mangled. Fixed — and a standing reason
+       to treat its output as candidates, never verdicts.
+
+6. [ ] **`OpsController` (3) and `WorkerController` (2).** Likely machine-only or
+       dynamically-built paths, same caution as above.
+
+### Still to do
+
+7. [ ] **Split `service`** into `auth/`, `profile/`, `documents/`, `mail/`, `jobs/`, `ops/`.
+       Compiler-checked; no behaviour change.
+8. [ ] **Split `AgentService` (1,611)** along scheduling / runs / outreach.
+9. [ ] **Frontend:** design tokens and one breakpoint scale, then `AutomationPanels.tsx` into
+       one file per panel.
+10. [ ] **Guard the render suite's wiring** so a `package.json` edit cannot silently unhook it.

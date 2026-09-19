@@ -194,5 +194,7 @@ its cells are omitted. Both behaviours are asserted separately.
 - The frontend has no design-token layer; responsiveness is per-component and inconsistent.
 - `docs/AUTOMATION.md` is gitignored, so the incident history is local-only.
 - `engine/` exposes 24 endpoints and the dashboard calls 4. See `docs/adr/ADR-001`.
-- 31% of the HTTP surface has no caller — 53 of 173 endpoints. See `docs/adr/ADR-002`.
+- 12% of the HTTP surface still has no caller — 17 of 141, all in the LIVE agent/worker/ops
+  subsystems, which is why they were not removed with the rest. See `docs/adr/ADR-002`.
+  Re-measure with `python scripts/api-reachability.py`.
 - `service/` is 8,224 lines in one flat package defined as "everything that isn'''t a run".
