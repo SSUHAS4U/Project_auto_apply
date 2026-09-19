@@ -90,9 +90,16 @@ async function createWindow() {
   });
 
   // External links (job postings etc.) open in the system browser, not inside the app.
+  // DEFAULT DENY. This used to open http(s) externally and `allow` everything else in-app,
+  // so any other scheme — file:, javascript:, a custom protocol handler — would have been
+  // opened inside the shell. Nothing in the bundled dashboard produces such a URL today, so
+  // this closes a door rather than fixing a leak; but "allow unless I recognised it" is the
+  // wrong default for the one place web content asks the shell to open something.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http')) { shell.openExternal(url); return { action: 'deny' }; }
-    return { action: 'allow' };
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
   });
 
   win.loadURL(`http://127.0.0.1:${PORT}/`);

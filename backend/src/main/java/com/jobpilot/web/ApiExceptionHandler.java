@@ -28,6 +28,15 @@ public class ApiExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    /** 429 with Retry-After, so a client can back off instead of hammering harder. */
+    @ExceptionHandler(com.jobpilot.security.LoginThrottle.TooManyAttempts.class)
+    public ResponseEntity<Map<String, Object>> tooMany(
+            com.jobpilot.security.LoginThrottle.TooManyAttempts ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
+                .body(Map.of("error", ex.getMessage(), "status", 429));
+    }
+
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, Object>> forbidden(SecurityException ex) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage());

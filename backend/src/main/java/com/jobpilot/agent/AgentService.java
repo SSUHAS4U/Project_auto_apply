@@ -339,6 +339,16 @@ public class AgentService {
     @Transactional
     public AgentRun setRunStatus(UUID userId, UUID runId, String status, String currentAction) {
         AgentRun r = runs.findById(runId).orElseThrow();
+        // The run must belong to the caller.
+        //
+        // This took a userId, used it for the notification, and never checked it against the
+        // run — so POST /api/agent/run/{id}/stop stopped ANY user's run, and a worker token
+        // bound to one account could drive another account's run through
+        // POST /api/worker/run/{id}/status. setMessageStatus and markMessageSent next door
+        // both make exactly this check; this one was simply missing it.
+        if (r.getUserId() != null && !r.getUserId().equals(userId)) {
+            throw new IllegalStateException("not your run");
+        }
         boolean becameAttention = "needs_attention".equals(status) && !"needs_attention".equals(r.getStatus());
         // Log every transition OUT of a live status, with a stack frame naming the caller.
         //

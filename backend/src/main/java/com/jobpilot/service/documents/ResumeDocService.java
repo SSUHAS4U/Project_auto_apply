@@ -269,12 +269,55 @@ public class ResumeDocService {
         throw new IllegalStateException("LaTeX compile failed" + (err.isBlank() ? "" : ": " + err));
     }
 
-    /** Fetch the redirect target (PDF or compile log), resolving relative paths against the service URL. */
+    /**
+     * The compile result must come from the compile service, over HTTPS, and never from a
+     * private or loopback address.
+     *
+     * Host-match is the real control; the address check is belt and braces for a service whose
+     * own DNS is made to resolve inward. Both are cheap, and the failure is a plain refusal
+     * rather than a fetch nobody sees.
+     */
+    private void requireSameHostAsCompiler(java.net.URI target) {
+        java.net.URI base = java.net.URI.create(compileUrl);
+        String host = target.getHost();
+        if (host == null || !host.equalsIgnoreCase(base.getHost())) {
+            throw new IllegalStateException(
+                    "compile service redirected away from " + base.getHost() + " — refusing to follow");
+        }
+        String scheme = target.getScheme();
+        if (scheme == null || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
+            throw new IllegalStateException("compile service redirected to a non-HTTP scheme — refusing");
+        }
+        try {
+            java.net.InetAddress addr = java.net.InetAddress.getByName(host);
+            if (addr.isLoopbackAddress() || addr.isLinkLocalAddress() || addr.isSiteLocalAddress()
+                    || addr.isAnyLocalAddress() || addr.isMulticastAddress()) {
+                throw new IllegalStateException(
+                        "compile service resolves to an internal address — refusing to follow");
+            }
+        } catch (java.net.UnknownHostException e) {
+            throw new IllegalStateException("compile service host does not resolve: " + host, e);
+        }
+    }
+
+    /**
+     * Fetch the redirect target (PDF or compile log), resolving relative paths against the
+     * service URL.
+     *
+     * The location comes from a THIRD PARTY — it is the Location header the LaTeX compile
+     * service returns — and was followed anywhere it pointed. A compromised or hostile
+     * compile service could therefore aim this at the VM's own loopback, a neighbour on the
+     * private network, or the cloud metadata endpoint, and the bytes came back to the user as
+     * their "compiled PDF". Nobody outside can trigger it and GCP metadata additionally wants
+     * a header this client never sends, so the exposure is small — but the restriction below
+     * is a few lines and removes it entirely.
+     */
     private byte[] fetchCompiled(String location) {
         java.net.URI target = location.startsWith("http")
                 ? java.net.URI.create(location)
                 : java.net.URI.create(compileUrl).resolve(location);
-        try {
+        requireSameHostAsCompiler(target);
+        try { // NOSONAR — target validated immediately above
             return http.get().uri(target).retrieve().body(byte[].class);
         } catch (Exception e) {
             throw new IllegalStateException("could not fetch compile result: " + e.getMessage(), e);
