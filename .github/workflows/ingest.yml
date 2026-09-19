@@ -73,11 +73,25 @@ jobs:
               status=$(echo "$s" | jq -r '.status')
               echo "finished: status=$status"
               echo "$s" | jq -r '"  inserted=\(.inserted) updated=\(.updated) fetched=\(.fetched) totalJobs=\(.totalJobs) durationSec=\(.lastRun.durationSec // "?")"'
-              if [ "$status" = "error" ]; then
-                echo "::error::ingest finished with status=error"
-                exit 1
-              fi
-              exit 0
+
+              # SUCCESS IS status=done, NOT merely "no longer running".
+              #
+              # IngestProgress lives in memory, so a backend restart resets it to `idle` with
+              # zeroed counters. A run killed half way by a deploy therefore looks exactly
+              # like "not running" — and the first version of this check passed on it,
+              # reporting success over an ingest that was interrupted at 12 of 101 sources.
+              # Observed for real on 2026-09-19 when a rollout landed mid-run.
+              case "$status" in
+                done) exit 0 ;;
+                idle)
+                  echo "::error::the run vanished — status is 'idle' with zeroed counters, which"
+                  echo "::error::means the backend restarted mid-ingest (a deploy?) and progress"
+                  echo "::error::was lost. The ingest did NOT complete. Re-run once the rollout settles."
+                  exit 1 ;;
+                *)
+                  echo "::error::ingest finished with status=$status"
+                  exit 1 ;;
+              esac
             fi
             echo "[$i] running… $(echo "$s" | jq -r '"\(.sourcesDone // 0)/\(.sources // 0) sources, +\(.inserted // 0) new"')"
           done
