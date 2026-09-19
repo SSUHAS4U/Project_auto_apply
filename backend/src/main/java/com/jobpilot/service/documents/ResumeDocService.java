@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.jobpilot.service.profile.ProfileService;
+import com.jobpilot.service.NotFoundException;
 
 /**
  * Overleaf-style LaTeX resume manager:
