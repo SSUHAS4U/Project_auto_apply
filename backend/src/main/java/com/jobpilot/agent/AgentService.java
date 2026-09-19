@@ -2,9 +2,9 @@ package com.jobpilot.agent;
 
 import com.jobpilot.domain.Job;
 import com.jobpilot.domain.Profile;
-import com.jobpilot.service.KeywordMatchScorer;
-import com.jobpilot.service.ProfileService;
-import com.jobpilot.service.SettingsService;
+import com.jobpilot.service.jobs.KeywordMatchScorer;
+import com.jobpilot.service.profile.ProfileService;
+import com.jobpilot.service.ops.SettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -42,8 +42,8 @@ public class AgentService {
     private final PortalConnectionRepository connections;
     private final com.jobpilot.service.ai.AiService ai;
     private final com.jobpilot.engine.EngineProfileRepository engineProfiles;
-    private final com.jobpilot.service.NotificationService notifications;
-    private final com.jobpilot.service.MailService mail;
+    private final com.jobpilot.service.ops.NotificationService notifications;
+    private final com.jobpilot.service.mail.MailService mail;
     private final com.jobpilot.repository.ProfileRepository profileRepo;
     private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -64,8 +64,8 @@ public class AgentService {
                         PortalConnectionRepository connections,
                         com.jobpilot.service.ai.AiService ai,
                         com.jobpilot.engine.EngineProfileRepository engineProfiles,
-                        com.jobpilot.service.NotificationService notifications,
-                        com.jobpilot.service.MailService mail,
+                        com.jobpilot.service.ops.NotificationService notifications,
+                        com.jobpilot.service.mail.MailService mail,
                         com.jobpilot.repository.ProfileRepository profileRepo,
                         com.jobpilot.repository.ApplicationRepository applications) {
         this.runs = runs;

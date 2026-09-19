@@ -2,7 +2,7 @@ package com.jobpilot.agent;
 
 import com.jobpilot.domain.Profile;
 import com.jobpilot.security.UserContext;
-import com.jobpilot.service.ProfileService;
+import com.jobpilot.service.profile.ProfileService;
 import com.jobpilot.service.ai.AiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,15 +28,15 @@ public class WorkerController {
     private final AgentService agent;
     private final ProfileService profiles;
     private final AiService ai;
-    private final com.jobpilot.service.AssistService assist;
-    private final com.jobpilot.service.ComposeService compose;
+    private final com.jobpilot.service.assist.AssistService assist;
+    private final com.jobpilot.service.mail.ComposeService compose;
     private final FitService fit;
     private final OutreachGuard guard;
     private final FollowUpService followUps;
 
     public WorkerController(AgentService agent, ProfileService profiles, AiService ai,
-                            com.jobpilot.service.AssistService assist,
-                            com.jobpilot.service.ComposeService compose,
+                            com.jobpilot.service.assist.AssistService assist,
+                            com.jobpilot.service.mail.ComposeService compose,
                             FitService fit, OutreachGuard guard, FollowUpService followUps) {
         this.agent = agent;
         this.profiles = profiles;
@@ -269,7 +269,7 @@ public class WorkerController {
         Profile p = profiles.get();
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("full_name", nz(p.getFullName()));
-        com.jobpilot.service.NameParts np0 = com.jobpilot.service.NameParts.of(p);
+        com.jobpilot.service.profile.NameParts np0 = com.jobpilot.service.profile.NameParts.of(p);
         m.put("first_name", np0.first());
         m.put("middle_name", np0.middle());
         m.put("last_name", np0.last());

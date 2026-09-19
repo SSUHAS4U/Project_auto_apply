@@ -17,14 +17,14 @@ class ExpandQueriesTest {
     private final AgentService agent = new AgentService(
             Mockito.mock(AgentRunRepository.class), Mockito.mock(AgentEventRepository.class),
             Mockito.mock(AgentScheduleRepository.class), Mockito.mock(LiveFrameService.class),
-            Mockito.mock(com.jobpilot.service.SettingsService.class),
-            Mockito.mock(com.jobpilot.service.ProfileService.class),
-            Mockito.mock(com.jobpilot.service.KeywordMatchScorer.class),
+            Mockito.mock(com.jobpilot.service.ops.SettingsService.class),
+            Mockito.mock(com.jobpilot.service.profile.ProfileService.class),
+            Mockito.mock(com.jobpilot.service.jobs.KeywordMatchScorer.class),
             Mockito.mock(PortalContactRepository.class), Mockito.mock(AgentMessageRepository.class),
             Mockito.mock(PortalConnectionRepository.class), Mockito.mock(com.jobpilot.service.ai.AiService.class),
             Mockito.mock(com.jobpilot.engine.EngineProfileRepository.class),
-            Mockito.mock(com.jobpilot.service.NotificationService.class),
-            Mockito.mock(com.jobpilot.service.MailService.class),
+            Mockito.mock(com.jobpilot.service.ops.NotificationService.class),
+            Mockito.mock(com.jobpilot.service.mail.MailService.class),
             Mockito.mock(com.jobpilot.repository.ProfileRepository.class),
             Mockito.mock(com.jobpilot.repository.ApplicationRepository.class));
 

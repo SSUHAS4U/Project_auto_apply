@@ -1,8 +1,8 @@
 package com.jobpilot.config;
 
-import com.jobpilot.service.AtsDiscoveryService;
-import com.jobpilot.service.BackgroundRunner;
-import com.jobpilot.service.DailyService;
+import com.jobpilot.service.jobs.AtsDiscoveryService;
+import com.jobpilot.service.ops.BackgroundRunner;
+import com.jobpilot.service.jobs.DailyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,12 +23,12 @@ public class DailyScheduler {
     private final DailyService daily;
     private final BackgroundRunner runner;
     private final AtsDiscoveryService discovery;
-    private final com.jobpilot.service.JobScoutService scout;
+    private final com.jobpilot.service.jobs.JobScoutService scout;
     private final com.jobpilot.engine.EngineOrchestrator engine;
     private final com.jobpilot.agent.AgentService agent;
 
     public DailyScheduler(DailyService daily, BackgroundRunner runner,
-                          AtsDiscoveryService discovery, com.jobpilot.service.JobScoutService scout,
+                          AtsDiscoveryService discovery, com.jobpilot.service.jobs.JobScoutService scout,
                           com.jobpilot.engine.EngineOrchestrator engine,
                           com.jobpilot.agent.AgentService agent) {
         this.daily = daily;

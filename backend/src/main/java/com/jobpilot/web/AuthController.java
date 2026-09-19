@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.security.UserContext;
-import com.jobpilot.service.AuthService;
+import com.jobpilot.service.ops.AuthService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;

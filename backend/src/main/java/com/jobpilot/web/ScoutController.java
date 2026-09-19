@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.domain.ScoutedJob;
-import com.jobpilot.service.JobScoutService;
+import com.jobpilot.service.jobs.JobScoutService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

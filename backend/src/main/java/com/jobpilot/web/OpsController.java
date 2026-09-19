@@ -1,12 +1,12 @@
 package com.jobpilot.web;
 
 import com.jobpilot.config.JobPilotProperties;
-import com.jobpilot.service.BackgroundRunner;
-import com.jobpilot.service.CleanupService;
-import com.jobpilot.service.DailyService;
-import com.jobpilot.service.DigestService;
-import com.jobpilot.service.IngestProgress;
-import com.jobpilot.service.IngestService;
+import com.jobpilot.service.ops.BackgroundRunner;
+import com.jobpilot.service.jobs.CleanupService;
+import com.jobpilot.service.jobs.DailyService;
+import com.jobpilot.service.mail.DigestService;
+import com.jobpilot.service.jobs.IngestProgress;
+import com.jobpilot.service.jobs.IngestService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,9 +28,9 @@ public class OpsController {
     private final CleanupService cleanup;
     private final BackgroundRunner runner;
     private final IngestProgress progress;
-    private final com.jobpilot.service.MailService mailService;
+    private final com.jobpilot.service.mail.MailService mailService;
     private final JobPilotProperties props;
-    private final com.jobpilot.service.AtsDiscoveryService discovery;
+    private final com.jobpilot.service.jobs.AtsDiscoveryService discovery;
     private final com.jobpilot.repository.AtsSourceRepository atsSources;
 
     @Value("${spring.mail.host:}") private String mailHost;
@@ -40,9 +40,9 @@ public class OpsController {
 
     public OpsController(IngestService ingest, DigestService digest, DailyService daily,
                          CleanupService cleanup, BackgroundRunner runner,
-                         IngestProgress progress, com.jobpilot.service.MailService mailService,
+                         IngestProgress progress, com.jobpilot.service.mail.MailService mailService,
                          JobPilotProperties props,
-                         com.jobpilot.service.AtsDiscoveryService discovery,
+                         com.jobpilot.service.jobs.AtsDiscoveryService discovery,
                          com.jobpilot.repository.AtsSourceRepository atsSources) {
         this.ingest = ingest;
         this.digest = digest;

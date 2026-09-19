@@ -208,8 +208,9 @@ Ordered worst-first. Each is independently shippable.
 
 ### Still to do
 
-7. [ ] **Split `service`** into `auth/`, `profile/`, `documents/`, `mail/`, `jobs/`, `ops/`.
-       Compiler-checked; no behaviour change.
+7. [x] **Split `service`** — done, see [ADR-003](ADR-003-service-package-boundaries.md).
+       Eight packages, boundaries derived from constructor injection rather than from names.
+       Largest went from 8,224 lines to 2,582. 204 tests green, reachability unchanged.
 8. [ ] **Split `AgentService` (1,611)** along scheduling / runs / outreach.
 9. [ ] **Frontend:** design tokens and one breakpoint scale, then `AutomationPanels.tsx` into
        one file per panel.

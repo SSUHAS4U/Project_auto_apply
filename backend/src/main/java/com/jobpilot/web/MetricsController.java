@@ -1,6 +1,6 @@
 package com.jobpilot.web;
 
-import com.jobpilot.service.IngestProgress;
+import com.jobpilot.service.jobs.IngestProgress;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

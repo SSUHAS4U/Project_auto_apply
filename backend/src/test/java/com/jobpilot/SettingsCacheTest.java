@@ -2,7 +2,7 @@ package com.jobpilot;
 
 import com.jobpilot.domain.AppSetting;
 import com.jobpilot.repository.AppSettingRepository;
-import com.jobpilot.service.SettingsService;
+import com.jobpilot.service.ops.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

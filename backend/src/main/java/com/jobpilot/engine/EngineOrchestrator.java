@@ -35,7 +35,7 @@ public class EngineOrchestrator {
     private final EngineApplyService apply;
     private final EngineSetupService setup;
     private final AiService ai;
-    private final com.jobpilot.service.NotificationService notifications;
+    private final com.jobpilot.service.ops.NotificationService notifications;
 
     /** One cycle per user at a time. */
     private final Map<UUID, AtomicBoolean> running = new ConcurrentHashMap<>();
@@ -44,7 +44,7 @@ public class EngineOrchestrator {
                               EngineApplicationRepository apps, EngineScraperService scraper,
                               EngineRankService rank, EngineApplyService apply,
                               EngineSetupService setup, AiService ai,
-                              com.jobpilot.service.NotificationService notifications) {
+                              com.jobpilot.service.ops.NotificationService notifications) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.apps = apps;

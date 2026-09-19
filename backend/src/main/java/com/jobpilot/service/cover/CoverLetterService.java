@@ -2,7 +2,7 @@ package com.jobpilot.service.cover;
 
 import com.jobpilot.domain.Job;
 import com.jobpilot.domain.Profile;
-import com.jobpilot.service.JobDescriptionService;
+import com.jobpilot.service.jobs.JobDescriptionService;
 import com.jobpilot.service.ai.AiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

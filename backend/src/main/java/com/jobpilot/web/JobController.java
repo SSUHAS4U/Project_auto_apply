@@ -2,8 +2,8 @@ package com.jobpilot.web;
 
 import com.jobpilot.domain.Application;
 import com.jobpilot.domain.Job;
-import com.jobpilot.service.ApplicationService;
-import com.jobpilot.service.JobService;
+import com.jobpilot.service.jobs.ApplicationService;
+import com.jobpilot.service.jobs.JobService;
 import com.jobpilot.web.dto.PageResponse;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;

@@ -1,6 +1,6 @@
 package com.jobpilot.web;
 
-import com.jobpilot.service.AssistantService;
+import com.jobpilot.service.assist.AssistantService;
 import com.jobpilot.service.ai.AiService;
 import org.springframework.web.bind.annotation.*;
 

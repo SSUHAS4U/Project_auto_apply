@@ -1,6 +1,6 @@
 package com.jobpilot.agent;
 
-import com.jobpilot.service.SettingsService;
+import com.jobpilot.service.ops.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -37,13 +37,13 @@ class AutoStartTest {
 
         agent = new AgentService(runs, events, Mockito.mock(AgentScheduleRepository.class),
                 Mockito.mock(LiveFrameService.class), settings,
-                Mockito.mock(com.jobpilot.service.ProfileService.class),
-                Mockito.mock(com.jobpilot.service.KeywordMatchScorer.class),
+                Mockito.mock(com.jobpilot.service.profile.ProfileService.class),
+                Mockito.mock(com.jobpilot.service.jobs.KeywordMatchScorer.class),
                 Mockito.mock(PortalContactRepository.class), Mockito.mock(AgentMessageRepository.class),
                 Mockito.mock(PortalConnectionRepository.class), Mockito.mock(com.jobpilot.service.ai.AiService.class),
                 Mockito.mock(com.jobpilot.engine.EngineProfileRepository.class),
-                Mockito.mock(com.jobpilot.service.NotificationService.class),
-                Mockito.mock(com.jobpilot.service.MailService.class),
+                Mockito.mock(com.jobpilot.service.ops.NotificationService.class),
+                Mockito.mock(com.jobpilot.service.mail.MailService.class),
                 Mockito.mock(com.jobpilot.repository.ProfileRepository.class),
                 Mockito.mock(com.jobpilot.repository.ApplicationRepository.class));
 

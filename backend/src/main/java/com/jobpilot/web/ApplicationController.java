@@ -2,7 +2,7 @@ package com.jobpilot.web;
 
 import com.jobpilot.domain.Application;
 import com.jobpilot.domain.ApplicationEvent;
-import com.jobpilot.service.ApplicationService;
+import com.jobpilot.service.jobs.ApplicationService;
 import com.jobpilot.web.dto.CreateApplicationRequest;
 import com.jobpilot.web.dto.UpdateApplicationRequest;
 import org.springframework.web.bind.annotation.*;

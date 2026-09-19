@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.domain.Notification;
-import com.jobpilot.service.NotificationService;
+import com.jobpilot.service.ops.NotificationService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.domain.QaPair;
-import com.jobpilot.service.AssistService;
+import com.jobpilot.service.assist.AssistService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

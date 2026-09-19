@@ -1,6 +1,6 @@
 package com.jobpilot.web;
 
-import com.jobpilot.service.ComposeService;
+import com.jobpilot.service.mail.ComposeService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;

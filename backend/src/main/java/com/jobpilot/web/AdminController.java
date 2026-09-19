@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
-import com.jobpilot.service.AdminService;
-import com.jobpilot.service.SecretService;
+import com.jobpilot.service.ops.AdminService;
+import com.jobpilot.service.ops.SecretService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

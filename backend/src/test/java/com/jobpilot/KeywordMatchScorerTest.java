@@ -2,7 +2,7 @@ package com.jobpilot;
 
 import com.jobpilot.domain.Job;
 import com.jobpilot.domain.Profile;
-import com.jobpilot.service.KeywordMatchScorer;
+import com.jobpilot.service.jobs.KeywordMatchScorer;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class KeywordMatchScorerTest {
 
     private final KeywordMatchScorer scorer =
-            new KeywordMatchScorer(new com.jobpilot.service.NormalizeService());
+            new KeywordMatchScorer(new com.jobpilot.service.jobs.NormalizeService());
 
     private Profile profile() {
         Profile p = new Profile();

@@ -28,7 +28,14 @@ tag. A web refresh cannot update the desktop app. See `CLAUDE.md` → Shipping.
 
 | Package | Lines | Owns |
 |---|---|---|
-| `service/` | 7.9k | Everything that isn't a run: profile, résumés, assist/AI, compose, settings, secrets, mail |
+| `service/jobs/` | 2.6k | Ingest, normalise, score, scout, clean, daily curation, saved & tracked applications |
+| `service/assist/` | 1.7k | The extension's question-answering brain (`AssistService`) and the chat assistant |
+| `service/documents/` | 1.0k | Résumé storage, parsing, analysis, PDF rendering, the document vault |
+| `service/ai/` | 1.0k | The ONLY package allowed to touch a provider client — see the invariant below |
+| `service/mail/` | 0.9k | SMTP + Brevo transports, compose, digest, email-apply |
+| `service/ops/` | 0.6k | Auth, admin, secrets, settings, notifications, the background runner |
+| `service/profile/` | 0.2k | The profile and its derived name parts |
+| `service/cover/` | 0.2k | Cover-letter generation |
 | `agent/` | 4.5k | Scheduling, runs, events, contacts, fit verdicts, follow-ups |
 | `engine/` | 2.8k | The apply / rank / interview / upskill / setup pipelines |
 | `pilot/` | 1.7k | Draft → review → compile-verify document generation |
@@ -197,4 +204,7 @@ its cells are omitted. Both behaviours are asserted separately.
 - 12% of the HTTP surface still has no caller — 17 of 141, all in the LIVE agent/worker/ops
   subsystems, which is why they were not removed with the rest. See `docs/adr/ADR-002`.
   Re-measure with `python scripts/api-reachability.py`.
+- `AgentService` is 1,611 lines and `AssistService` 1,457 — the two remaining god files.
+- The frontend still has no design-token layer: 14 ad-hoc breakpoints in one 2,185-line
+  stylesheet.
 - `service/` is 8,224 lines in one flat package defined as "everything that isn'''t a run".

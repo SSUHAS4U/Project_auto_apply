@@ -1,7 +1,7 @@
 package com.jobpilot;
 
 import com.jobpilot.connector.RawJob;
-import com.jobpilot.service.NormalizeService;
+import com.jobpilot.service.jobs.NormalizeService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

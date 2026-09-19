@@ -1,0 +1,1458 @@
+package com.jobpilot.service.assist;
+
+import com.jobpilot.domain.Job;
+import com.jobpilot.domain.Profile;
+import com.jobpilot.domain.QaPair;
+import com.jobpilot.repository.QaPairRepository;
+import com.jobpilot.security.UserContext;
+import com.jobpilot.service.ai.AiService;
+import com.jobpilot.service.cover.CoverLetterService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+import com.jobpilot.service.profile.NameParts;
+import com.jobpilot.service.profile.ProfileService;
+
+/**
+ * Powers the extension's assisted-apply features: answering free-text application
+ * questions with AI (grounded in the user's profile), a reusable Q&A bank, and
+ * on-demand cover letters.
+ */
+@Service
+public class AssistService {
+
+    private static final String ANSWER_SYSTEM = """
+            You are a career coach helping a candidate answer job-application questions in the
+            BEST HONEST LIGHT. Write a confident first-person answer grounded in the candidate's
+            background below.
+            - GROUND EVERY FACT IN THE BACKGROUND GIVEN. If the answer exists there (notice period,
+              CTC, college, degree, graduation year, DOB, city, links, phone), use that exact value —
+              never guess, round or invent a different one, and never answer "N/A" for something present.
+            - If "Previously approved answers" contains the same question in different words, REUSE
+              those facts and that wording — consistency across applications matters more than novelty.
+            - "Custom answers (user-defined, authoritative)" in the background OVERRIDE your own
+              judgement whenever they apply.
+            - For questions about a skill/tool the candidate may not have explicitly listed
+              (e.g. "describe your exposure to PyTorch", "experience with Kubernetes"), do NOT
+              say they have none. Give a constructive, basic-but-confident answer: connect their
+              real foundation (programming, CS fundamentals, related tools) to the topic and show
+              genuine eagerness and fast-learning. Claim FOUNDATIONAL / working familiarity — not
+              deep expertise — so it stays believable.
+            - Be specific, genuine and concise (2-5 sentences unless more is clearly needed).
+            - MATCH THE ANSWER TO THE QUESTION TYPE — never write an essay where a value fits:
+              * yes/no questions ("Are you willing to relocate?"): "Yes" or "No", plus at most one
+                short supporting clause (and only if the field is a textarea).
+              * link/URL fields: output ONLY the URL from the profile; if the profile has none,
+                output an empty string.
+              * numbers (salary, years, notice-period days, CGPA): the number alone, no sentences.
+              * dates (DOB, available-from): the date alone in YYYY-MM-DD.
+              * short factual fields (city, college, degree): the value alone.
+              * "Answer field type" (when given) is the input control — a value-typed control
+                (date/tel/url/email/number) must NEVER receive prose.
+            - Don't fabricate specific employers, degrees, projects or year counts — keep it about
+              capability and approach. No placeholders, no markdown, no preamble — output ONLY the answer.""";
+
+    private final QaPairRepository qaRepo;
+    private final ProfileService profiles;
+    private final AiService ai;
+    private final CoverLetterService coverLetters;
+
+    public AssistService(QaPairRepository qaRepo, ProfileService profiles,
+                         AiService ai, CoverLetterService coverLetters) {
+        this.qaRepo = qaRepo;
+        this.profiles = profiles;
+        this.ai = ai;
+        this.coverLetters = coverLetters;
+    }
+
+    /** Fields that want a FACT from the profile, not an essay: links, phone, DOB, CTC, … */
+    private static final java.util.regex.Pattern FACTUAL_Q = java.util.regex.Pattern.compile(
+            "linkedin|github|portfolio|website|profile (url|link)|\\burl\\b|\\blink\\b|leetcode|hackerrank|codechef"
+                    + "|phone|mobile|contact number|whatsapp|e-?mail"
+                    + "|date of birth|\\bdob\\b|birth ?date"
+                    + "|notice period|current ctc|expected ctc|\\bctc\\b|current salary|expected salary|compensation"
+                    + "|years? of experience|total experience|\\bpin ?code\\b|postal|zip"
+                    + "|current (city|location)|\\bcity\\b|\\bgender\\b|nationality|\\bcollege\\b|university"
+                    + "|graduation year|passing year|\\bcgpa\\b|\\bgpa\\b|percentage|roll (no|number)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    public Map<String, Object> answer(String question) {
+        return answer(question, null);
+    }
+
+    /**
+     * What SHAPE of answer the question wants. Decided from the question text and the HTML
+     * control before any model runs, because this is the thing the model gets wrong: asked
+     * "College name" it will happily write a five-sentence pitch unless the shape is pinned
+     * down and then enforced on the way out.
+     */
+    enum Shape { VALUE, YES_NO, NUMBER, DATE, URL, ESSAY }
+
+    /** Spelled out for the model, so the shape isn't left to its judgement. */
+    private static final Map<Shape, String> SHAPE_RULE = Map.of(
+            Shape.VALUE, "A SHORT VALUE ONLY — a name, a place, a title. No sentence, no explanation, "
+                    + "under 8 words. Never introduce yourself.",
+            Shape.YES_NO, "Exactly one word: Yes or No. Nothing else.",
+            Shape.NUMBER, "A bare number only — digits, no units, no words.",
+            Shape.DATE, "A date only, formatted YYYY-MM-DD. Nothing else.",
+            Shape.URL, "A single URL only. If the profile has none, output nothing at all.",
+            Shape.ESSAY, "2-5 sentences of first-person prose.");
+
+    private static final java.util.regex.Pattern ESSAY_Q = java.util.regex.Pattern.compile(
+            "why (do|are|would|should)|tell (us|me) about|describe|explain|elaborate|walk (us|me) through"
+                    + "|what (makes|motivates|interests|excites)|cover letter|in your own words"
+                    + "|greatest (strength|weakness)|challenge you|proud of|about yourself"
+                    + "|how (would|do) you (handle|approach|deal)|\\bexperience with\\b|\\bexposure to\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private static final java.util.regex.Pattern YES_NO_Q = java.util.regex.Pattern.compile(
+            "^\\s*(are|is|do|does|did|have|has|can|could|will|would|shall|should|were|was)\\b"
+                    + "|willing to|comfortable with|do you (have|hold|possess|require|need)"
+                    + "|authorized to|eligible to|require sponsorship|any (criminal|prior)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    // Salary/CTC and notice period are deliberately NOT here: "6.5 LPA" and "30 days" are the
+    // answers forms want, and stripping them to a bare number loses the unit.
+    private static final java.util.regex.Pattern NUMBER_Q = java.util.regex.Pattern.compile(
+            // "How much exp do you have in docker" also contains "do you have", which YES_NO_Q
+            // matches. NUMBER_Q is tried first, but it only knew "how many" — so that question
+            // fell through and the model was INSTRUCTED "Exactly one word: Yes or No". It
+            // obeyed, and a years question was answered "Yes" on a real application. The model
+            // understood the question perfectly well; it was told the wrong shape to answer in.
+            // Anything asking HOW MUCH of something is a quantity even when phrased as "do you
+            // have", so these must cover the ways employers actually write it.
+            "how many|how much (exp|experience)|how long have you|number of|years? of experience"
+                    + "|total (it )?exp\\b|yrs?\\.? (of )?exp|years? exp\\b"
+                    + "|\\bcgpa\\b|\\bgpa\\b|percentage|\\bmarks\\b"
+                    + "|\\bage\\b|graduation year|passing year",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    static Shape shapeOf(String question, String fieldType) {
+        // The control type is the strongest signal — a <input type=date> can only take a date.
+        if (fieldType != null) {
+            switch (fieldType) {
+                case "date": return Shape.DATE;
+                case "url": return Shape.URL;
+                case "number": return Shape.NUMBER;
+                case "tel", "email": return Shape.VALUE;
+                default: { /* fall through to the question text */ }
+            }
+        }
+        String q = question == null ? "" : question;
+        // An essay prompt stays an essay even in a one-line box — the user can expand it.
+        if (ESSAY_Q.matcher(q).find()) return Shape.ESSAY;
+        if (java.util.regex.Pattern.compile("linkedin|github|portfolio|website|leetcode|codechef|"
+                + "hackerrank|profile (url|link)|\\burl\\b", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(q).find()) return Shape.URL;
+        if (java.util.regex.Pattern.compile("date of birth|\\bdob\\b|birth ?date|available from|start date",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(q).find()) return Shape.DATE;
+        // NUMBER before YES_NO: "How many years do you have with Java?" opens with a quantity
+        // word but also contains "do you have", which would otherwise make it a yes/no.
+        if (NUMBER_Q.matcher(q).find()) return Shape.NUMBER;
+        if (YES_NO_Q.matcher(q).find()) return Shape.YES_NO;
+        // A "textarea" that asked nothing essay-like is still probably a short answer, but a
+        // long question almost always wants prose.
+        if ("textarea".equals(fieldType) && q.split("\\s+").length > 6) return Shape.ESSAY;
+        return q.split("\\s+").length > 12 ? Shape.ESSAY : Shape.VALUE;
+    }
+
+    /**
+     * The profile value for a question, resolved with plain string matching and NO model call.
+     *
+     * <p>This exists because the AI paths are the unreliable ones: they depend on a strict-JSON
+     * contract and on the model not editorialising. For the handful of questions every form
+     * asks, the answer is sitting in the profile and there is nothing to reason about — going
+     * through a model can only introduce error. Returns null when the question isn't one of
+     * these, or when the profile has no value for it.
+     */
+    private String directValue(String question, Profile p) {
+        String q = normalize(question);
+        if (q.isBlank() || p == null) return null;
+        NameParts n = NameParts.of(p);
+        Map<String, String> links = p.getLinks() == null ? Map.of() : p.getLinks();
+
+        // Longest/most specific patterns first: "first name" must beat a bare "name", and
+        // "current company" must beat "company".
+        if (has(q, "middle name")) return n.middle();
+        if (has(q, "first name", "given name", "forename", "fore name")) return n.first();
+        if (has(q, "last name", "surname", "family name", "sur name")) return n.last();
+        if (has(q, "full name", "your name", "candidate name", "applicant name", "name as per"))
+            return p.getFullName();
+        if (has(q, "father", "guardian")) return p.getFatherName();
+        if (has(q, "email", "e mail")) return p.getEmail();
+        if (has(q, "phone", "mobile", "contact number", "contact no", "whatsapp", "telephone"))
+            return p.getPhone();
+        if (has(q, "date of birth", "dob", "birth date")) return p.getDateOfBirth();
+        if (has(q, "gender")) return p.getGender();
+        if (has(q, "nationality")) return p.getNationality();
+        if (has(q, "marital")) return p.getMaritalStatus();
+        if (has(q, "linkedin")) return links.get("linkedin");
+        if (has(q, "github")) return links.get("github");
+        if (has(q, "leetcode")) return firstNonBlank(p.getLeetcodeUrl(), links.get("leetcode"));
+        if (has(q, "codechef")) return p.getCodechefUrl();
+        if (has(q, "portfolio", "personal website", "personal site")) return links.get("portfolio");
+        if (has(q, "college", "university", "institution", "institute", "alma mater"))
+            return p.getCollege();
+        if (has(q, "notice period")) return p.getNoticePeriod();
+        if (has(q, "current ctc", "present ctc", "current salary", "current compensation", "current package"))
+            return p.getCurrentCtc();
+        if (has(q, "expected ctc", "expected salary", "salary expectation", "expected compensation", "expected package"))
+            return p.getExpectedCtc();
+        if (has(q, "current company", "present company", "current employer", "present employer"))
+            return p.getCurrentCompany();
+        if (has(q, "current title", "current role", "current designation", "present designation"))
+            return p.getCurrentTitle();
+        if (has(q, "postal code", "zip code", "pin code", "pincode")) return p.getPostalCode();
+        // Location on a JOB APPLICATION: use the candidate's PREFERRED work city (the first of
+        // their preferred locations), not their home town. Applying to jobs in Bengaluru/Chennai/
+        // Hyderabad, a candidate presents as available there — so "location (city)" gets Bengaluru,
+        // not Vijayawada. Falls back to the actual city only when no preference is set.
+        if (has(q, "current city", "current location", "location (city)", "preferred location",
+                "job location", "work location", "city")) {
+            if (p.getPreferredLocations() != null && !p.getPreferredLocations().isEmpty())
+                return p.getPreferredLocations().get(0);
+            return firstNonBlank(p.getCity(), p.getLocation());
+        }
+        if (has(q, "state", "province")) return p.getState();
+        if (has(q, "country")) return p.getCountry();
+        if (has(q, "work authorization", "work permit", "authorized to work")) return p.getWorkAuthorization();
+        return null;
+    }
+
+    private static boolean has(String q, String... needles) {
+        for (String n : needles) if (q.contains(n)) return true;
+        return false;
+    }
+
+    private static final String FILL_SYSTEM = """
+            You are filling in a job application for the candidate whose full background is
+            given. You get EVERY question on the page at once, with the control type and, for
+            choice controls, the exact options the page offers. Return STRICT JSON.
+
+            Some fields carry a "surrounding text:" line — the markup around the control, used
+            when the page labels it badly or not at all. When a question is marked
+            [LABEL UNCERTAIN], read the surrounding text and work out what is really being
+            asked before answering. If neither tells you what the field wants, OMIT that id
+            entirely: a blank the candidate notices is better than a confident wrong answer.
+
+            THINK ABOUT WHAT EACH QUESTION IS ASKING, THEN FIND IT IN THE BACKGROUND.
+            Match on MEANING, never on wording — no two application forms word anything the
+            same way. "Which institution did you graduate from", "Name of your alma mater",
+            "School attended", "University/College" and "Where did you study" are all asking
+            for the same stored fact. So are "Present employer" / "Current organisation" /
+            "Who do you work for"; "Contact no." / "Mobile" / "Best number to reach you";
+            "ECTC" / "Expected remuneration" / "Salary expectation"; "Passout year" / "Year of
+            completion"; "Total exp" / "How long have you been working". Apply that same
+            reasoning to ANY phrasing you have not seen before — that is the job.
+
+            Then decide, per question, which of these you are doing, and say so in "source":
+            - "profile"  — the answer is a fact in the background. Use the EXACT stored value.
+                           Never round, reformat or improve it.
+            - "reasoned" — not stored, but a sensible applicant can answer it: conventional
+                           questions ("How did you hear about us" -> a real channel like
+                           LinkedIn; "Willing to relocate" -> Yes unless the background says
+                           otherwise; "Earliest start date" -> from the notice period), open
+                           questions ("Why this role", "Describe a challenge"), and questions
+                           about a tool the candidate hasn't listed — for those, connect their
+                           real foundation to the topic and claim FOUNDATIONAL/working
+                           familiarity with genuine eagerness, never "I have no experience"
+                           and never deep expertise.
+            - "unknown"  — you genuinely cannot answer without inventing a fact about this
+                           person (an employer, a degree, a number, a date they never gave).
+                           Use "" and say why. An honest "unknown" is ALWAYS better than a
+                           plausible invention; a wrong answer gets submitted and cannot be
+                           taken back.
+
+            HARD RULES
+            - For a choice control (select/radio/checkbox/dropdown), "value" MUST be copied
+              character-for-character from that field's "options". Never invent an option,
+              never reword one. Multi-select: join the chosen options with ", ".
+            - Reason about which option FITS: a CGPA of 9.2 belongs in "8 and above"; 1 year
+              of experience belongs in "0-2 years". Pick the bucket the candidate falls into.
+            - Respect the control: type=date -> YYYY-MM-DD; type=number -> digits only;
+              type=url -> a bare URL; short text -> a value, never a sentence; textarea/essay
+              -> 2-5 sentences of first-person prose.
+            - NEVER answer a short field with a self-introduction. "College name" gets
+              "KL University", not "I am a Computer Science graduate from KL University".
+            - Legal/compliance questions (criminal record, sanctions, prior termination)
+              -> answer the standard truthful way for a normal candidate.
+            - "reason" is one short clause saying which stored fact you used, or why you
+              reasoned/couldn't. It is shown to the candidate before they submit.
+
+            Output ONLY:
+            {"answers":[{"id":"<id>","value":"<answer>","source":"profile|reasoned|unknown","reason":"<short>"}]}""";
+
+    /**
+     * Answer EVERY question on a form in one semantic pass.
+     *
+     * <p>The model does the meaning-matching — that is the part no lookup table can do, because
+     * every ATS words the same question differently. Code does the verification, which is the
+     * part a model is bad at: a choice answer must be one of the options the page really
+     * offers, the answer must fit the control, and a "profile" claim must actually correspond
+     * to something in the profile.
+     *
+     * @param fields id / label / kind / options / required, one per question on the page
+     * @return per-id {@code {value, source, reason}} — ids the model skipped are simply absent
+     */
+    public Map<String, Object> fillForm(List<Map<String, Object>> fields) {
+        if (fields == null || fields.isEmpty()) return Map.of("answers", Map.of());
+        UUID userId = UserContext.require();
+        Profile p = profiles.get();
+
+        // The bank wins outright: an answer the user wrote themselves beats anything generated.
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> pending = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            String id = txt(f.get("id"));
+            String label = txt(f.get("label"));
+            if (id.isBlank() || label.isBlank()) continue;
+            Optional<QaPair> saved = qaRepo.findByUserIdAndQuestionKey(userId, normalize(label))
+                    .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
+            if (saved.isPresent()) {
+                out.put(id, Map.of("value", saved.get().getAnswer(), "source", "saved",
+                        "reason", "you saved this answer before"));
+            } else {
+                pending.add(f);
+            }
+        }
+        // Deterministic profile facts BEFORE the model: gender, name, city, links, DOB… A model
+        // asked to choose gender from [Male, Female, …] can pick the wrong one; the profile
+        // already states it. Resolve these with no model call (matched to a real option when the
+        // control is a choice) and only send what's genuinely left to the model.
+        List<Map<String, Object>> undecided = new ArrayList<>();
+        for (Map<String, Object> f : pending) {
+            String id = txt(f.get("id"));
+            String dv = directValue(txt(f.get("label")), p);
+            if (dv != null && !dv.isBlank()) {
+                List<String> opts = optionsOf(f);
+                if (!opts.isEmpty()) {
+                    String opt = matchOption(opts, dv);
+                    if (opt != null) { out.put(id, Map.of("value", opt, "source", "profile", "reason", "from your profile")); continue; }
+                } else {
+                    String shaped = enforceShape(dv, shapeOf(txt(f.get("label")), txt(f.get("kind"))));
+                    if (!shaped.isBlank()) { out.put(id, Map.of("value", shaped, "source", "profile", "reason", "from your profile")); continue; }
+                }
+            }
+            undecided.add(f);
+        }
+        pending = undecided;
+
+        if (pending.isEmpty() || !ai.isEnabled()) {
+            fallbackFill(pending, p, out);
+            return Map.of("answers", out);
+        }
+
+        StringBuilder list = new StringBuilder();
+        for (Map<String, Object> f : pending) {
+            String label = txt(f.get("label"));
+            boolean unsure = isWeakLabel(f);
+            list.append("- id=").append(txt(f.get("id")))
+                    .append(" | control=").append(txt(f.get("kind")))
+                    .append(txt(f.get("required")).equals("true") ? " | REQUIRED" : "")
+                    .append(" | question: ").append(label.isBlank() ? "(the page gives no label)" : label);
+            if (unsure) list.append("  [LABEL UNCERTAIN — trust the surrounding text below over it]");
+            String ctx = txt(f.get("context"));
+            if (!ctx.isBlank()) list.append("\n    surrounding text: ").append(ctx);
+            List<String> opts = optionsOf(f);
+            if (!opts.isEmpty()) {
+                list.append("\n    options: ");
+                for (String o : opts) list.append("[").append(o).append("] ");
+            }
+            list.append("\n");
+        }
+
+        try {
+            String prompt = "CANDIDATE BACKGROUND:\n" + fullProfileContext(p)
+                    + qaBankContext(userId)
+                    + "\n\nFORM FIELDS:\n" + list + "\nJSON:";
+            // Strong model: this single call decides every answer that gets submitted.
+            String raw = ai.complete(FILL_SYSTEM, prompt, false, false);
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            com.fasterxml.jackson.databind.JsonNode arr =
+                    root.has("answers") ? root.get("answers") : root;
+
+            Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+            if (arr.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+                    String id = n.path("id").asText("");
+                    if (!id.isBlank()) byId.put(id, Map.of(
+                            "value", n.path("value").asText(""),
+                            "source", n.path("source").asText("reasoned"),
+                            "reason", n.path("reason").asText("")));
+                }
+            }
+            String profileText = fullProfileContext(p).toLowerCase(Locale.ENGLISH);
+            for (Map<String, Object> f : pending) {
+                String id = txt(f.get("id"));
+                Map<String, Object> a = byId.get(id);
+                if (a == null) continue;
+                Map<String, Object> checked = verifyAnswer(f, a, profileText);
+                if (checked != null) out.put(id, checked);
+            }
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                    .warn("assist/fill-form failed, falling back: {}", e.getMessage());
+        }
+        // Anything the model skipped or that failed verification still gets the literal
+        // profile value where one plainly exists.
+        fallbackFill(pending.stream().filter(f -> !out.containsKey(txt(f.get("id")))).toList(), p, out);
+        return Map.of("answers", out);
+    }
+
+    /**
+     * Check one model answer against reality before it can reach a form.
+     * Returns null when the answer can't be trusted — an empty field the user notices beats a
+     * confident wrong one they don't.
+     */
+    private Map<String, Object> verifyAnswer(Map<String, Object> field, Map<String, Object> a,
+                                             String profileText) {
+        String value = txt(a.get("value")).trim();
+        String source = txt(a.get("source"));
+        String reason = txt(a.get("reason"));
+        if (value.isBlank() || "unknown".equalsIgnoreCase(source)) return null;
+
+        List<String> opts = optionsOf(field);
+        if (!opts.isEmpty()) {
+            // A choice answer must name options the page really has — models paraphrase them.
+            boolean multi = txt(field.get("kind")).contains("checkbox");
+            List<String> picked = new ArrayList<>();
+            for (String part : (multi ? value.split("\\s*,\\s*") : new String[]{value})) {
+                String match = opts.stream().filter(o -> o.equalsIgnoreCase(part.trim())).findFirst()
+                        .orElseGet(() -> opts.stream()
+                                .filter(o -> o.toLowerCase(Locale.ENGLISH).contains(part.trim().toLowerCase(Locale.ENGLISH))
+                                        || part.trim().toLowerCase(Locale.ENGLISH).contains(o.toLowerCase(Locale.ENGLISH)))
+                                .findFirst().orElse(null));
+                if (match != null && !picked.contains(match)) picked.add(match);
+            }
+            if (picked.isEmpty()) return null;   // paraphrased into nothing real — drop it
+            return Map.of("value", String.join(", ", picked), "source", source, "reason", reason);
+        }
+
+        String shaped = enforceShape(value, shapeOf(txt(field.get("label")), txt(field.get("kind"))));
+        if (shaped.isBlank()) return null;
+        // A "profile" claim means the fact is stored. If it isn't anywhere in the profile, the
+        // model derived or invented it — keep the answer but stop calling it a stored fact.
+        if ("profile".equalsIgnoreCase(source)
+                && !profileText.contains(shaped.toLowerCase(Locale.ENGLISH))) {
+            source = "reasoned";
+        }
+        return Map.of("value", shaped, "source", source, "reason", reason);
+    }
+
+    /** Literal profile values for fields the model skipped or got rejected on. */
+    private void fallbackFill(List<Map<String, Object>> fields, Profile p, Map<String, Object> out) {
+        for (Map<String, Object> f : fields) {
+            String id = txt(f.get("id"));
+            if (id.isBlank() || out.containsKey(id)) continue;
+            String v = directValue(txt(f.get("label")), p);
+            if (v == null || v.isBlank()) continue;
+            List<String> opts = optionsOf(f);
+            if (!opts.isEmpty()) {
+                String fv = v;
+                v = opts.stream().filter(o -> o.equalsIgnoreCase(fv)).findFirst()
+                        .orElseGet(() -> opts.stream()
+                                .filter(o -> o.toLowerCase(Locale.ENGLISH).contains(fv.toLowerCase(Locale.ENGLISH)))
+                                .findFirst().orElse(null));
+                if (v == null) continue;
+            }
+            out.put(id, Map.of("value", v, "source", "profile", "reason", "from your profile"));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    /**
+     * Did the extension have to guess this label?
+     *
+     * It reports a confidence with every field: 1.0 for an explicit {@code label[for]}, down to
+     * 0.35 for a humanised attribute name. Below 0.7 the label is a guess, and the model is told
+     * to prefer the surrounding text — the difference between answering the wrong question
+     * confidently and recovering from a bad guess.
+     */
+    private static boolean isWeakLabel(Map<String, Object> field) {
+        Object c = field.get("confidence");
+        if (c instanceof Number n) return n.doubleValue() < 0.7;
+        try { return Double.parseDouble(txt(c)) < 0.7; } catch (RuntimeException e) { return txt(field.get("label")).isBlank(); }
+    }
+
+    private static List<String> optionsOf(Map<String, Object> field) {
+        Object o = field.get("options");
+        if (!(o instanceof List<?> l)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object x : l) if (x != null && !x.toString().isBlank()) out.add(x.toString().trim());
+        return out;
+    }
+
+    /** Null-safe to EMPTY (the other str() maps null->null, which callers here must not see). */
+    private static String txt(Object o) { return o == null ? "" : o.toString(); }
+
+    private static String firstNonBlank(String... vals) {
+        for (String v : vals) if (v != null && !v.isBlank()) return v;
+        return null;
+    }
+
+    /**
+     * Cut a model answer back to the shape the question asked for. Without this a "College
+     * name" field can receive a whole self-introduction — grammatical, grounded, and useless.
+     */
+    private static String enforceShape(String raw, Shape shape) {
+        if (raw == null) return "";
+        String s = raw.trim().replaceAll("^[\"'`]+|[\"'`]+$", "");
+        switch (shape) {
+            case ESSAY:
+                return s;
+            case YES_NO: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("\\b(yes|no)\\b", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(s);
+                return m.find() ? (m.group(1).substring(0, 1).toUpperCase(Locale.ENGLISH)
+                        + m.group(1).substring(1).toLowerCase(Locale.ENGLISH)) : s;
+            }
+            case NUMBER: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("-?\\d+(\\.\\d+)?").matcher(s);
+                return m.find() ? m.group() : s;
+            }
+            case URL: {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("https?://\\S+|(?:www\\.)\\S+").matcher(s);
+                return m.find() ? m.group().replaceAll("[.,;)]+$", "") : (s.contains(" ") ? "" : s);
+            }
+            case DATE:
+                return toIsoDate(s);
+            case VALUE:
+            default: {
+                // A short factual field: keep the first sentence/line only, and drop the
+                // "My college is X" lead-in models add.
+                String one = s.split("\\r?\\n")[0].trim();
+                int stop = one.indexOf(". ");
+                if (stop > 0) one = one.substring(0, stop).trim();
+                one = one.replaceAll("^(?i)(my|the)\\s+[a-z /]{2,30}\\s+(is|was|are)\\s+", "").trim();
+                one = one.replaceAll("[.]$", "").trim();
+                // Still a paragraph? Then the model answered a different question than the one
+                // asked, and salvaging a fragment would paste something confidently wrong into
+                // a "College name" box. Empty is the honest result — the user can type it.
+                return one.split("\\s+").length > 10 ? "" : one;
+            }
+        }
+    }
+
+    /**
+     * Answer a question — saved bank first; then, for factual fields (links, phone, DOB…),
+     * the literal profile value; otherwise a format-aware AI answer. {@code fieldType} is
+     * the HTML control hint (date / tel / url / email / number / textarea / dropdown / text).
+     */
+    @Transactional
+    /**
+     * "How many years of X do you have?" — answered from the profile, with no model call.
+     *
+     * This one question blocked FOURTEEN applications in a single day. Every /answer call that
+     * day failed ("answer failed", 42 of 42), because the answerer is AI-first and the daily
+     * quota was already spent before the run started. A question whose answer is sitting in the
+     * profile should never depend on a model being reachable.
+     *
+     * The rule is the honest one, not the flattering one: if the technology is on the profile,
+     * the candidate's total experience is the answer (a skill cannot predate the career); if it
+     * is not on the profile, the answer is 0. Overstating here is not a bug to trade away — it
+     * is a false statement to an employer.
+     *
+     * @return the answer, or null when this is not a years-of-a-skill question.
+     */
+    private String yearsOfSkillFromProfile(String question, Profile p) {
+        if (p == null || question == null) return null;
+        String q = question.toLowerCase(Locale.ENGLISH);
+        boolean yearsQ = (q.contains("how many year") || q.contains("how much exp")
+                || q.contains("years of experience") || q.contains("yrs of exp")
+                || (q.contains("how long") && q.contains("work")))
+                && !q.contains("total") && !q.contains("overall");
+        if (!yearsQ) return null;
+
+        double total = parseYears(p.getYearsExperience());
+        if (total <= 0) return null;   // nothing to reason from — let the model try
+
+        List<String> skills = p.getSkills() == null ? List.of() : p.getSkills();
+        for (String skill : skills) {
+            if (skill == null || skill.isBlank()) continue;
+            String sk = skill.toLowerCase(Locale.ENGLISH).trim();
+            if (sk.length() < 2) continue;
+            // Whole-word so "go" does not match "django" and "r" does not match everything.
+            if (java.util.regex.Pattern.compile("\\b" + java.util.regex.Pattern.quote(sk) + "\\b")
+                    .matcher(q).find()) {
+                return trimNumber(total);
+            }
+        }
+        // The question named a technology and the profile does not list it. Zero is the truthful
+        // answer, and it is also what keeps the application moving instead of pausing.
+        return "0";
+    }
+
+    public Map<String, Object> answer(String question, String fieldType) {
+        return answer(question, fieldType, null, null);
+    }
+
+    /**
+     * Answer one field.
+     *
+     * @param context    the markup around the control, for when the page labels it badly or not
+     *                   at all. The extension used to send only the question, so a label it had
+     *                   mis-derived produced a confident wrong answer with nothing in the
+     *                   request that could have revealed the mistake.
+     * @param confidence how far the extension trusts the label it derived, 0..1. An explicit
+     *                   {@code label[for]} is 1.0; a humanised attribute name is 0.35.
+     */
+    public Map<String, Object> answer(String question, String fieldType,
+                                      String context, String confidence) {
+        String asked = question == null ? "" : question.trim();
+        String ctx = context == null ? "" : context.trim();
+        if (asked.isBlank() && ctx.isBlank()) {
+            throw new IllegalArgumentException("question is required");
+        }
+        UUID userId = UserContext.require();
+
+        // Every shortcut below matches on the WORDING of the question — the saved-answer key,
+        // the profile field map, the salary and factual regexes. Running them against a label
+        // the extension is not confident about is exactly how a stored value lands in the wrong
+        // box: a field mis-labelled "Name" gets the candidate's name typed into it whatever it
+        // actually asks for. When the label is a guess, skip the wording matches entirely and
+        // let the model read the surroundings instead.
+        if (asked.isBlank() || isWeakConfidence(confidence)) {
+            return generateWithContext(asked, fieldType, ctx, userId);
+        }
+
+        String key = normalize(question);
+
+        // Before the model: a question the profile already answers must not depend on a quota.
+        String fromProfile = yearsOfSkillFromProfile(question, profiles.get());
+        if (fromProfile != null) {
+            return Map.of("answer", fromProfile, "source", "profile");
+        }
+
+        // 1. Exact key match in the bank, whatever produced it — including answers the
+        //    automation worked out itself. See the note on the return below for why auto
+        //    answers are now reused, and what makes that safe.
+        Optional<QaPair> exact = qaRepo.findByUserIdAndQuestionKey(userId, key)
+                .filter(q -> q.getAnswer() != null && !q.getAnswer().isBlank());
+        if (exact.isPresent()) {
+            // An EXACT key match is reused whatever produced it, including an answer the
+            // automation worked out itself ("auto").
+            //
+            // This used to exclude auto answers, because reusing them memorised a wrong one
+            // forever — "expected ctc = 1" kept coming back long after the bug that produced it
+            // was fixed. That was the right call when nothing checked an answer before it was
+            // submitted. It is the wrong call now: it meant every job re-asked the model the
+            // same question, which is most of the AI budget spent re-deriving answers already
+            // known, and the owner asked for the opposite — answer a new question once, store
+            // it, reuse it from the next job onward, within the same run.
+            //
+            // What changed is that the answer guard now inspects the value against the question
+            // before it reaches a form, so a reused answer with the wrong units or magnitude is
+            // refused rather than submitted. Every auto answer is also listed in Autofill
+            // answers marked for review, and an answer the owner edits becomes "saved" and wins
+            // permanently. The fuzzy step below stays owner-only: an exact question is a fact,
+            // a similar one is a guess, and guesses must not compound.
+            return Map.of("answer", exact.get().getAnswer(),
+                    "source", "auto".equals(exact.get().getSource()) ? "auto-reused" : "saved");
+        }
+        // 2. Fuzzy match against your own answers (token overlap) — reuse a similar one.
+        QaPair similar = bestMatch(qaRepo.findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(q -> !"auto".equals(q.getSource())).toList(), key);
+        if (similar != null && similar.getAnswer() != null && !similar.getAnswer().isBlank()) {
+            return Map.of("answer", similar.getAnswer(), "source", "saved");
+        }
+        Profile p = profiles.get();
+        Shape shape = shapeOf(question, fieldType);
+
+        // 2b. Some forms list the choices INSIDE the question text of a plain input:
+        //     "current work mode: 1.remote 2.hybrid 3.onsite" or
+        //     "asset pickup: 1.mumbai 2.bangalore 3.chennai".
+        // There are no radio options for the DOM to hand us, so without this the model answers
+        // "Yes" to a work-mode question, or types the profile city ("Vijayawada") that isn't
+        // even one of the offered cities. Pull the embedded options out and CHOOSE among them.
+        List<String> embedded = embeddedOptions(question);
+        if (!embedded.isEmpty()) {
+            Map<String, Object> c = choose(question, embedded, false);
+            @SuppressWarnings("unchecked")
+            List<String> sel = c.get("selected") instanceof List ? (List<String>) c.get("selected") : List.of();
+            if (!sel.isEmpty()) return Map.of("answer", sel.get(0), "source", "ai");
+        }
+
+        // 3. Straight from the profile, no model involved. Every form asks these, the answer
+        //    is already stored, and a model can only get it wrong.
+        String direct = directValue(question, p);
+        if (direct != null && !direct.isBlank()) {
+            return Map.of("answer", shape == Shape.DATE ? toIsoDate(direct) : direct.trim(),
+                    "source", "profile");
+        }
+
+        // 3b. Salary/rate questions that aren't the standard CTC ("current in-hand MONTHLY
+        //     salary", "expected hourly rate"). DERIVE monthly from the stored CTC — never let
+        //     the model invent one (it produced 33333/66667 from nothing). If there's no CTC to
+        //     derive from, return blank so it's recorded for YOU to set, not guessed.
+        if (SALARY_Q.matcher(question).find()) {
+            String sal = deriveSalary(question, p);
+            if (sal != null) return Map.of("answer", sal, "source", "profile");
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "set your salary once in LinkedIn questions");
+        }
+        // 4. Factual field the direct map doesn't cover: let the AI read it off the profile.
+        boolean typedFactual = fieldType != null
+                && List.of("date", "tel", "url", "email", "number").contains(fieldType);
+        if (typedFactual || FACTUAL_Q.matcher(question).find()) {
+            String v = autofill(List.of(question.trim())).get(question.trim());
+            if (v != null && !v.isBlank()) {
+                return Map.of("answer", enforceShape(v, shape), "source", "profile");
+            }
+        }
+        // 5. Generate — but tell the model the exact shape, and enforce it on the way back.
+        //    Do NOT auto-save — only the user's explicit "Save" adds to the bank.
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(userId)
+                + "\n\nApplication question: " + question.trim()
+                + (ctx.isBlank() ? "" : "\nSurrounding text on the page: " + ctx)
+                + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
+                + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
+                + "\n\nAnswer:";
+        String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
+        String shaped = sanitizeNumberAnswer(question, enforceShape(generated, shape), p);
+        return Map.of("answer", shaped, "source", "ai");
+    }
+
+    /** Below 0.7 the extension's label came from a placeholder or an attribute name — a guess. */
+    private static boolean isWeakConfidence(String confidence) {
+        if (confidence == null || confidence.isBlank()) return false;   // not reported: assume ok
+        try {
+            return Double.parseDouble(confidence.trim()) < 0.7;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Answer a field whose label we could not read, or could not trust.
+     *
+     * The model gets the markup around the control and is told plainly that the label is
+     * unreliable. It is also told to return nothing rather than guess: an empty box the
+     * candidate notices beats a confident wrong answer submitted to a real employer.
+     */
+    private Map<String, Object> generateWithContext(String question, String fieldType,
+                                                    String ctx, UUID userId) {
+        if (!ai.isEnabled()) {
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "no AI provider is configured — set one in Settings");
+        }
+        Profile p = profiles.get();
+        Shape shape = shapeOf(question, fieldType);
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(userId)
+                + "\n\nA field on an application form. The page labels it badly, so the label "
+                + "below may be wrong or missing — work out what is being asked from the "
+                + "surrounding markup, and prefer it over the label."
+                + "\nLabel as read (UNRELIABLE): " + (question.isBlank() ? "(none)" : question)
+                + "\nSurrounding text: " + ctx
+                + (fieldType == null || fieldType.isBlank() ? "" : "\nAnswer field type: " + fieldType)
+                + "\nRequired answer shape: " + SHAPE_RULE.get(shape)
+                + "\n\nIf the surrounding text does not make the question clear, reply with"
+                + " exactly UNKNOWN. Otherwise give only the answer."
+                + "\n\nAnswer:";
+        String generated = ai.complete(ANSWER_SYSTEM, prompt, false, false).trim();
+        if (generated.isBlank() || "UNKNOWN".equalsIgnoreCase(generated.strip())) {
+            return Map.of("answer", "", "needsAttention", true,
+                    "reason", "this field has no readable label — answer it once and press Save");
+        }
+        return Map.of("answer", enforceShape(generated, shape), "source", "ai");
+    }
+
+    /**
+     * Options written into a plain input's question text, e.g. "1.remote 2.hybrid 3.onsite".
+     * Returns them only when there are at least two — otherwise it isn't a choice question.
+     */
+    private static List<String> embeddedOptions(String question) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\\b\\d\\s*[.)]\\s*([A-Za-z][\\w /&+.\\-]*?)(?=\\s*\\d\\s*[.)]|\\s*\\??\\s*$)")
+                .matcher(question == null ? "" : question);
+        List<String> opts = new ArrayList<>();
+        while (m.find()) {
+            String o = m.group(1).trim().replaceAll("[.,;:]+$", "").trim();
+            if (!o.isBlank() && o.length() <= 40) opts.add(o);
+        }
+        return opts.size() >= 2 ? opts : List.of();
+    }
+
+    /**
+     * Keep "how many years of X" answers sane. Asked about a tool the candidate barely knows,
+     * the model — told "a bare number only" — can grab an unrelated number from the profile
+     * context (a PIN, a phone fragment): that is where the "520010 years of Go" came from. A
+     * years-of-a-single-skill answer cannot exceed the candidate's TOTAL experience, so anything
+     * above that (or negative) is replaced with the total, or 1 when the total is unknown.
+     */
+    private static String sanitizeNumberAnswer(String question, String value, Profile p) {
+        if (value == null || value.isBlank()) return value;
+        String q = question == null ? "" : question.toLowerCase(Locale.ENGLISH);
+        boolean yearsQ = q.contains("how many year") || q.contains("years experience")
+                || (q.contains("year") && q.contains("experience"));
+        if (!yearsQ) return value;
+        try {
+            double n = Double.parseDouble(value.trim());
+            double total = parseYears(p == null ? null : p.getYearsExperience());
+            double cap = total > 0 ? total : 40;  // a single skill can't exceed total experience
+            if (n < 0 || n > cap) return total > 0 ? trimNumber(total) : "1";
+        } catch (NumberFormatException ignore) { /* non-numeric — leave it */ }
+        return value;
+    }
+
+    /**
+     * Match a profile value to one of a control's real options. Exact (case-insensitive) FIRST,
+     * so "Male" never falls through to a substring hit on "Female". Returns null if none fits.
+     */
+    private static String matchOption(List<String> options, String value) {
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim();
+        for (String o : options) if (o.trim().equalsIgnoreCase(v)) return o;
+        String vl = v.toLowerCase(Locale.ENGLISH);
+        for (String o : options) {
+            String ol = o.toLowerCase(Locale.ENGLISH).trim();
+            // Word-boundary containment, so "male" can't match inside "female".
+            if (ol.matches(".*\\b" + java.util.regex.Pattern.quote(vl) + "\\b.*")
+                    || vl.matches(".*\\b" + java.util.regex.Pattern.quote(ol) + "\\b.*")) return o;
+        }
+        return null;
+    }
+
+    private static double parseYears(String s) {
+        if (s == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+(\\.\\d+)?").matcher(s);
+        return m.find() ? Double.parseDouble(m.group()) : 0;
+    }
+
+    // Salary / pay / rate / stipend questions. The standard "current CTC" / "expected CTC" are
+    // handled by directValue; this catches the DERIVED variants (monthly, in-hand, hourly).
+    private static final java.util.regex.Pattern SALARY_Q = java.util.regex.Pattern.compile(
+            "salary|\\bctc\\b|compensation|\\bpay\\b|package|remuneration|stipend|\\brate\\b|in.?hand|take.?home",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Monthly (or annual) figure derived from the stored CTC. Returns null when there's nothing
+     * to derive from — the caller then leaves it for the owner instead of inventing a number.
+     */
+    private static String deriveSalary(String question, Profile p) {
+        if (p == null) return null;
+        String q = question.toLowerCase(Locale.ENGLISH);
+        boolean expected = q.contains("expect") || q.contains("desired") || q.contains("demand");
+        String ctc = expected ? p.getExpectedCtc()
+                : (q.contains("current") || q.contains("present") || q.contains("in-hand")
+                   || q.contains("in hand") || q.contains("take home")) ? p.getCurrentCtc()
+                : p.getExpectedCtc();  // a bare "salary" question → what you're asking for
+        double annual = parseCtcToAnnual(ctc);
+        if (annual <= 0) return null;
+        boolean monthly = q.contains("month") || q.contains("in-hand") || q.contains("in hand")
+                || q.contains("take home") || q.contains("per month") || q.contains("/month");
+        return trimNumber(Math.round(monthly ? annual / 12.0 : annual));
+    }
+
+    /** "8 LPA"/"8 lakh"/"800000"/"8" → 800000 (annual ₹). 0 when unparseable. */
+    private static double parseCtcToAnnual(String s) {
+        if (s == null || s.isBlank()) return 0;
+        String t = s.toLowerCase(Locale.ENGLISH).replaceAll("[,₹\\s]", "");
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+(\\.\\d+)?").matcher(t);
+        if (!m.find()) return 0;
+        double n = Double.parseDouble(m.group());
+        if (t.contains("lpa") || t.contains("lakh") || t.contains("lac")) return n * 100_000;
+        if (t.contains("cr")) return n * 10_000_000;
+        if (t.contains("k")) return n * 1_000;
+        // Bare number: the Indian convention "8" means 8 LPA; a big number is already annual.
+        return n < 100 ? n * 100_000 : n;
+    }
+
+    private static String trimNumber(double d) {
+        return d == Math.floor(d) ? String.valueOf((long) d) : String.valueOf(d);
+    }
+
+    /** Best-effort YYYY-MM-DD for <input type=date>; returns the input when unparseable. */
+    private static String toIsoDate(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.matches("\\d{4}-\\d{2}-\\d{2}")) return t;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})").matcher(t);   // dd/mm/yyyy (Indian forms)
+        if (m.find()) {
+            return "%s-%02d-%02d".formatted(m.group(3), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
+        }
+        try {
+            var d = new java.text.SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH).parse(t);
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format(d);
+        } catch (Exception ignored) { /* keep original */ }
+        return t;
+    }
+
+    /**
+     * Pick the best option(s) for a multiple-choice / dropdown / rating question,
+     * grounded in the candidate's profile. Returns option labels exactly as given.
+     */
+    public Map<String, Object> choose(String question, List<String> options, boolean multi) {
+        if (question == null || question.isBlank() || options == null || options.isEmpty()) {
+            throw new IllegalArgumentException("question and options are required");
+        }
+        Profile p = profiles.get();
+
+        // A stored profile fact beats the model. Asked to CHOOSE gender from [Male, Female, …]
+        // the model can pick wrong (it selected "Female" for a male candidate); the profile
+        // already says which, so match that to a real option and skip the model entirely.
+        if (!multi) {
+            String dv = directValue(question, p);
+            String opt = dv == null ? null : matchOption(options, dv);
+            if (opt != null) return Map.of("selected", List.of(opt));
+        }
+
+        StringBuilder opts = new StringBuilder();
+        for (int i = 0; i < options.size(); i++) {
+            opts.append(i + 1).append(". ").append(options.get(i)).append("\n");
+        }
+        String system = """
+                You help a candidate answer multiple-choice / rating questions — like a career coach,
+                but choose the answer a sensible applicant would actually give.
+                - LEGAL / BACKGROUND / COMPLIANCE questions (criminal record, charged, convicted, arrested,
+                  warrant, summons, investigation, sanctions, bankruptcy, litigation, disciplinary action,
+                  conflict of interest, visa overstay): answer the STANDARD TRUTHFUL way — for a normal
+                  candidate this is the clean/negative option (usually "No"). Do NOT lean affirmative here.
+                - SKILL exposure / familiarity / "do you have knowledge of X": prefer the AFFIRMATIVE option
+                  (Yes, or a mid-to-high rating). A software engineer can honestly claim basic working
+                  familiarity with common tech and is a fast learner — avoid "No"/"None" unless impossible.
+                - Rating scales (1-10) for skills: a solid mid-to-high number (around 6-8), never the lowest.
+                - Eligibility facts (location, relocation, start date, work authorization, WFO/on-site):
+                  stay honest and eligibility-friendly (willing to relocate / comfortable with on-site / can start soon).
+                Reply with ONLY the option number(s); separate multiple with commas. Just numbers.""";
+        String prompt = "Candidate background:\n" + fullProfileContext(p)
+                + qaBankContext(UserContext.require())
+                + "\n\nQuestion: " + question.trim()
+                + "\n\nOptions:\n" + opts
+                + "\n" + (multi ? "Select all that apply." : "Select exactly one.")
+                + " Reply with the number(s) only:";
+        // Strong model: picking the wrong option silently submits a wrong answer, and small
+        // models routinely misread negated/compliance wording here.
+        String raw = ai.complete(system, prompt, false, false);
+
+        List<String> selected = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(raw == null ? "" : raw);
+        while (m.find()) {
+            int idx = Integer.parseInt(m.group()) - 1;
+            if (idx >= 0 && idx < options.size() && !selected.contains(options.get(idx))) {
+                selected.add(options.get(idx));
+                if (!multi) break;
+            }
+        }
+        if (selected.isEmpty() && !multi) selected.add(options.get(0)); // safe fallback
+        return Map.of("selected", selected);
+    }
+
+    /**
+     * Map a batch of form-field labels to concrete answers from the candidate's full
+     * profile. Lets the extension fill fields the synonym engine misses (CTC, college,
+     * coding-profile links, etc.) by actually understanding each label.
+     */
+    public Map<String, String> autofill(List<String> fields) {
+        if (fields == null || fields.isEmpty()) return Map.of();
+        Profile p = profiles.get();
+        List<String> clean = fields.stream().filter(f -> f != null && !f.isBlank())
+                .map(String::trim).distinct().limit(40).toList();
+        if (clean.isEmpty()) return Map.of();
+
+        StringBuilder list = new StringBuilder();
+        for (String f : clean) list.append("- ").append(f).append("\n");
+
+        String system = """
+                You fill out job-application form fields from a candidate's profile. You are given
+                the full profile and a list of field labels. Return a JSON object mapping EACH label
+                (verbatim) to the best answer drawn from the profile. Rules:
+                - MAP BY MEANING, not exact wording — every ATS names fields differently. Examples:
+                  "Present employer / Current organisation / Employer name" -> current company;
+                  "Contact no. / Mobile / Phone number / WhatsApp" -> phone;
+                  "Expected remuneration / ECTC / Salary expectation" -> expected CTC;
+                  "Passout year / Year of completion / Graduation year" -> education year;
+                  "Current location / City you reside in / Base location" -> location;
+                  "Total experience / Relevant experience (years)" -> years of experience;
+                  "Designation / Job title / Current role" -> current title. Apply the same
+                  reasoning to ANY label whose sense matches profile data.
+                - Use the literal value for factual fields (CTC as the number, links as the full URL,
+                  notice period, location, etc.).
+                - CONVENTIONAL fields may get the standard sensible answer even when the profile is
+                  silent (these are not inventions): "How did you hear about us/this job" -> "LinkedIn";
+                  "Willing to relocate" -> "Yes"; "Notice period" when absent -> "Immediate";
+                  "Available to start / Earliest start date" -> "Immediately"; "Preferred work mode"
+                  -> "Open to onsite, hybrid or remote"; salutation/"Title" -> from gender if known.
+                - EDUCATION mapping (use the Education section, NOT the headline/summary):
+                  "School / University / College / Institution" -> the school NAME only;
+                  "Degree / Qualification" -> the degree (e.g. Bachelors Degree);
+                  "Field of study / Major / Discipline / Specialization" -> the field (e.g. Computer Science);
+                  graduation "Year" -> the year.
+                - DATE ranges ("From"/"To"/"Start"/"End") -> use the matching Education year or Work
+                  experience From/To; keep the format the field expects (e.g. MM/YYYY or YYYY-MM).
+                - If the Education section is empty, you MAY infer Degree and Field of study from the
+                  headline/summary (e.g. "Computer Science Engineering graduate" -> Degree "Bachelors
+                  Degree", Field of study "Computer Science"). This is reasonable, not invention.
+                - If the profile genuinely has no basis for a field, map it to "" — never invent
+                  employers, schools, names, numbers or dates.
+                - Keep answers short and form-appropriate. Output ONLY the JSON object.""";
+        String prompt = "PROFILE:\n" + fullProfileContext(p) + "\n\nFIELDS:\n" + list + "\nJSON:";
+
+        try {
+            // Strong model: this is the main fill path — a small model both misreads label
+            // intent and breaks the strict-JSON contract, which silently fills fields wrong.
+            String raw = ai.complete(system, prompt, false, false);
+            com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            Map<String, String> out = new LinkedHashMap<>();
+            for (String f : clean) {
+                String v = json.path(f).asText("");
+                if (v != null && !v.isBlank() && !"null".equalsIgnoreCase(v)) out.put(f, v.trim());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    /**
+     * Name form fields a DOM parser couldn't label. Each item carries the control's raw
+     * context (HTML attributes, table column/row headers, preceding page text); the AI
+     * returns the question a human filling the form would read for it.
+     */
+    public Map<String, String> labels(List<Map<String, String>> fields) {
+        if (fields == null || fields.isEmpty() || !ai.isEnabled()) return Map.of();
+        StringBuilder list = new StringBuilder();
+        for (Map<String, String> f : fields) {
+            if (f.get("key") == null) continue;
+            list.append("- key=").append(f.get("key")).append(" :: ")
+                    .append(f.get("context") == null ? "" : f.get("context")).append("\n");
+        }
+        String system = """
+                You label job-application form fields. Each item is one form control with raw
+                context: its HTML attributes, its table column/row headers ("table=SECTION — row
+                — column"), and the page text physically before it ("before=..."). Return STRICT
+                JSON mapping each key (the exact string after "key=") to the QUESTION/LABEL a
+                human filling that control would read — e.g. {"0":"10th — School Name",
+                "1":"Notice period"}. Keep each label under 12 words; include the section/row
+                qualifier when the same column repeats (10th/12th/Graduation). If truly
+                unknowable, map the key to "". Output ONLY the JSON object, nothing else.""";
+        try {
+            // Strong model: labeling accuracy is what the whole fill pipeline hangs on,
+            // and small models too often break the strict-JSON contract here.
+            String raw = ai.complete(system, "FIELDS:\n" + list + "\nJSON:", false, false);
+            com.fasterxml.jackson.databind.JsonNode json =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            // Some models wrap the mapping: {"labels": {...}} — unwrap it.
+            if (json.has("labels") && json.get("labels").isObject()) json = json.get("labels");
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Map<String, String> f : fields) {
+                String k = f.get("key");
+                if (k == null) continue;
+                String v = json.path(k).asText("");
+                if (v != null && !v.isBlank() && !"null".equalsIgnoreCase(v)) out.put(k, v.trim());
+            }
+            if (out.isEmpty()) {
+                org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                        .warn("assist/labels produced no usable labels; raw AI output: {}",
+                                raw == null ? "null" : raw.substring(0, Math.min(300, raw.length())));
+            }
+            return out;
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(AssistService.class)
+                    .warn("assist/labels failed: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Side-panel copilot: interpret a free-form instruction about the current page and
+     * return a structured action — fill a specific field, answer a question to paste, or reply.
+     */
+    public Map<String, Object> command(String instruction, List<String> fields) {
+        if (instruction == null || instruction.isBlank()) throw new IllegalArgumentException("instruction is required");
+        Profile p = profiles.get();
+        String list = fields == null ? "" : fields.stream().filter(f -> f != null && !f.isBlank())
+                .map(String::trim).distinct().limit(60).map(f -> "- " + f).reduce("", (a, b) -> a + b + "\n");
+
+        String system = """
+                You are a form-filling copilot inside a browser side panel. Given the user's
+                instruction, the fields visible on the current page, and the candidate's profile,
+                respond with STRICT JSON only (no prose), choosing ONE action:
+                - Fill a field:    {"action":"fill","field":"<EXACT label from the field list>","value":"<value>"}
+                - Answer to paste: {"action":"answer","question":"<the clean form question>","value":"<concise honest answer>"}
+                - Save a Q&A:      {"action":"save","question":"<the clean form question>","answer":"<answer>"}
+                - Save this job:   {"action":"save_job"}
+                - Plain reply:     {"action":"reply","message":"<short reply>"}
+
+                RULES:
+                - If the user asks to SAVE / ADD / REMEMBER a question for autofill, use "save".
+                  Extract ONLY the clean form question — strip the user's meta words (e.g. "can you
+                  add this to autofill", "save this") and any trailing option list like "Yes No".
+                  Always include your best "answer" too.
+                - For "answer", also include the clean "question" you are answering (no meta words),
+                  so it can be saved cleanly later.
+                - If the user asks to save / scan THE JOB, JD, listing or posting, use "save_job".
+                - Act as a career coach: present the candidate in the best honest light. For skill
+                  questions ("Exposure to PyTorch?") claim basic/foundational familiarity + eagerness,
+                  never a flat "no". Never fabricate employers, degrees or year counts.""";
+        String prompt = "PROFILE:\n" + fullProfileContext(p)
+                + "\n\nFIELDS ON PAGE:\n" + (list.isBlank() ? "(none detected)" : list)
+                + "\nUSER INSTRUCTION: " + instruction.trim() + "\n\nJSON:";
+
+        try {
+            String raw = ai.complete(system, prompt, false, false);
+            com.fasterxml.jackson.databind.JsonNode j = new com.fasterxml.jackson.databind.ObjectMapper().readTree(stripFence(raw));
+            String action = j.path("action").asText("reply");
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("action", action);
+            if (j.has("field")) out.put("field", j.path("field").asText(""));
+            if (j.has("value")) out.put("value", j.path("value").asText(""));
+            if (j.has("question")) out.put("question", j.path("question").asText(""));
+            if (j.has("answer")) out.put("answer", j.path("answer").asText(""));
+            if (j.has("message")) out.put("message", j.path("message").asText(""));
+            // Auto-persist a save action.
+            if ("save".equals(action) && j.has("question") && j.has("answer")) {
+                saveQa(j.path("question").asText(), j.path("answer").asText());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of("action", "reply", "message", "Sorry, I couldn't process that: " + e.getMessage());
+        }
+    }
+
+    /** Extract clean job-posting details from raw page text (used when DOM heuristics are weak). */
+    public Map<String, String> scanJob(String text, String titleHint, String url) {
+        if (!ai.isEnabled() || (text == null && titleHint == null)) return Map.of();
+        String sys = """
+                Extract the JOB POSTING details from the page text. Return STRICT JSON only:
+                {"title":"<job/role title>","company":"<hiring company>","location":"<job location>"}
+                - title is the ROLE (e.g. "Software Engineering Intern"), NOT the website/page name.
+                - company is the employer, NOT the job board / domain.
+                - Use "" for anything not clearly present. Output ONLY the JSON.""";
+        String body = text == null ? "" : text;
+        if (body.length() > 4000) body = body.substring(0, 4000);
+        String prompt = "URL: " + s(url) + "\nPAGE TITLE: " + s(titleHint) + "\n\nPAGE TEXT:\n" + body + "\n\nJSON:";
+        try {
+            com.fasterxml.jackson.databind.JsonNode j = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(stripFence(ai.complete(sys, prompt, true, false)));
+            Map<String, String> out = new LinkedHashMap<>();
+            out.put("title", j.path("title").asText(""));
+            out.put("company", j.path("company").asText(""));
+            out.put("location", j.path("location").asText(""));
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private static String stripFence(String s) {
+        if (s == null) return "{}";
+        String t = s.trim();
+        if (t.startsWith("```")) t = t.replaceAll("(?s)```(json)?", "").trim();
+        int a = t.indexOf('{'), b = t.lastIndexOf('}');
+        return (a >= 0 && b > a) ? t.substring(a, b + 1) : t;
+    }
+
+    private String fullProfileContext(Profile p) {
+        StringBuilder sb = new StringBuilder();
+        line(sb, "Full name", p.getFullName());
+        // Derived when not set explicitly — forms split the name into three boxes far more
+        // often than users bother to fill first/middle/last in.
+        NameParts np = NameParts.of(p);
+        line(sb, "First name", np.first());
+        line(sb, "Middle name", np.middle());
+        line(sb, "Last name", np.last());
+        line(sb, "Email", p.getEmail());
+        line(sb, "Phone", p.getPhone());
+        line(sb, "Alternate phone", p.getAlternatePhone());
+        line(sb, "Date of birth", p.getDateOfBirth());
+        line(sb, "Gender", p.getGender());
+        line(sb, "Nationality", p.getNationality());
+        line(sb, "Marital status", p.getMaritalStatus());
+        line(sb, "Father's name", p.getFatherName());
+        line(sb, "Disability status", p.getDisabilityStatus());
+        line(sb, "Location", p.getLocation());
+        line(sb, "Address / Address line 1", p.getAddress());
+        line(sb, "City", p.getCity());
+        line(sb, "State", p.getState());
+        line(sb, "Country", p.getCountry());
+        line(sb, "Postal code / PIN", p.getPostalCode());
+        line(sb, "Permanent address / Address 2", join(p.getAddress2(), p.getCity2()));
+        line(sb, "Permanent state/country/PIN", join(p.getState2(), p.getCountry2())
+                + (p.getPostalCode2() == null || p.getPostalCode2().isBlank() ? "" : " " + p.getPostalCode2()));
+        if (p.getLanguages() != null && !p.getLanguages().isEmpty())
+            line(sb, "Languages known", String.join(", ", p.getLanguages()));
+        if (p.getPreferredLocations() != null && !p.getPreferredLocations().isEmpty())
+            line(sb, "Preferred work locations", String.join(", ", p.getPreferredLocations()));
+        line(sb, "Summary", p.getSummary());
+        line(sb, "College / University", p.getCollege());
+        line(sb, "Headline", p.getHeadline());
+        line(sb, "Current role", join(p.getCurrentTitle(), p.getCurrentCompany()));
+        line(sb, "Years of experience", str(p.getYearsExperience()));
+        line(sb, "Seniority", p.getSeniority());
+        line(sb, "Current CTC / salary", p.getCurrentCtc());
+        line(sb, "Expected CTC / salary", p.getExpectedCtc());
+        line(sb, "Notice period", p.getNoticePeriod());
+        line(sb, "Available from", p.getAvailableFrom());
+        line(sb, "Work authorization", p.getWorkAuthorization());
+        line(sb, "Willing to relocate", p.getWillingToRelocate() == null ? null : (p.getWillingToRelocate() ? "Yes" : "No"));
+        if (p.getSkills() != null && !p.getSkills().isEmpty()) line(sb, "Skills", String.join(", ", p.getSkills()));
+        if (p.getLinks() != null) p.getLinks().forEach((k, v) -> line(sb, "Link (" + k + ")", v));
+
+        // Job profile + screening extras — LeetCode/CodeChef scores, shifts, machine specs
+        // are standard Indian-form questions; having them here lets autofill answer directly.
+        line(sb, "Desired job titles", p.getDesiredTitles());
+        line(sb, "Experience level sought", p.getExperienceLevel());
+        line(sb, "Job type sought", p.getJobType());
+        line(sb, "Open to working in shifts", p.getOpenToShifts());
+        line(sb, "LeetCode profile URL", p.getLeetcodeUrl());
+        line(sb, "LeetCode score/rating", p.getLeetcodeScore());
+        line(sb, "CodeChef profile URL", p.getCodechefUrl());
+        line(sb, "CodeChef score/rating", p.getCodechefScore());
+        line(sb, "Codeforces profile URL", p.getCodeforcesUrl());
+        line(sb, "Codeforces score/rating", p.getCodeforcesScore());
+        line(sb, "Laptop/PC configuration", p.getLaptopConfig());
+        if (p.getProjects() != null && !p.getProjects().isEmpty()) {
+            sb.append("Projects:\n");
+            for (Map<String, Object> pr : p.getProjects()) {
+                if (s(pr.get("name")).isBlank()) continue;
+                sb.append("  - ").append(s(pr.get("name")));
+                if (!s(pr.get("skills")).isBlank()) sb.append(" | Skills: ").append(s(pr.get("skills")));
+                if (!s(pr.get("demoLink")).isBlank()) sb.append(" | Link: ").append(s(pr.get("demoLink")));
+                String desc = s(pr.get("description"));
+                if (!desc.isBlank()) sb.append(" | ").append(desc.length() > 200 ? desc.substring(0, 200) : desc);
+                sb.append('\n');
+            }
+        }
+        if (p.getAchievements() != null && !p.getAchievements().isEmpty()) {
+            sb.append("Achievements:\n");
+            for (Map<String, Object> a : p.getAchievements()) {
+                if (s(a.get("title")).isBlank()) continue;
+                sb.append("  - ").append(s(a.get("title")));
+                if (!s(a.get("description")).isBlank()) sb.append(" — ").append(s(a.get("description")));
+                sb.append('\n');
+            }
+        }
+
+        // Structured education — so labels like "School or University", "Degree" and
+        // "Field of Study" map to the right value (not the headline/summary).
+        if (p.getEducation() != null && !p.getEducation().isEmpty()) {
+            sb.append("Education:\n");
+            for (Map<String, Object> e : p.getEducation()) {
+                String school = s(e.get("school"));
+                if (school.isBlank() && s(e.get("degree")).isBlank() && s(e.get("field")).isBlank()) continue;
+                sb.append("  - School/University/College name: ").append(school.isBlank() ? "(unspecified)" : school);
+                if (!s(e.get("degree")).isBlank()) sb.append(" | Degree: ").append(s(e.get("degree")));
+                if (!s(e.get("field")).isBlank()) sb.append(" | Field of study / Major / Discipline: ").append(s(e.get("field")));
+                if (!s(e.get("year")).isBlank()) sb.append(" | Year / graduation: ").append(s(e.get("year")));
+                sb.append("\n");
+            }
+        }
+        // Structured experience — for "From/To" dates, company and title fields.
+        if (p.getExperience() != null && !p.getExperience().isEmpty()) {
+            sb.append("Work experience:\n");
+            for (Map<String, Object> e : p.getExperience()) {
+                String company = s(e.get("company"));
+                if (company.isBlank() && s(e.get("title")).isBlank()) continue;
+                sb.append("  - Company: ").append(company.isBlank() ? "(unspecified)" : company);
+                if (!s(e.get("title")).isBlank()) sb.append(" | Title: ").append(s(e.get("title")));
+                if (!s(e.get("start")).isBlank()) sb.append(" | From: ").append(s(e.get("start")));
+                if (!s(e.get("end")).isBlank()) sb.append(" | To: ").append(s(e.get("end")));
+                sb.append("\n");
+            }
+        }
+        // Certifications — with credential number, dates and link where present.
+        if (p.getCertifications() != null && !p.getCertifications().isEmpty()) {
+            sb.append("Certifications:\n");
+            for (Map<String, Object> c : p.getCertifications()) {
+                if (s(c.get("name")).isBlank()) continue;
+                sb.append("  - ").append(s(c.get("name")));
+                if (!s(c.get("issuer")).isBlank()) sb.append(" | Issuer: ").append(s(c.get("issuer")));
+                if (!s(c.get("credentialId")).isBlank()) sb.append(" | Credential/Certificate no: ").append(s(c.get("credentialId")));
+                if (!s(c.get("issued")).isBlank()) sb.append(" | Issued: ").append(s(c.get("issued")));
+                else if (!s(c.get("year")).isBlank()) sb.append(" | Year: ").append(s(c.get("year")));
+                if (!s(c.get("expiry")).isBlank()) sb.append(" | Expires: ").append(s(c.get("expiry")));
+                if (!s(c.get("link")).isBlank()) sb.append(" | Link: ").append(s(c.get("link")));
+                sb.append("\n");
+            }
+        }
+        // The user's own custom answers — these are authoritative for matching labels.
+        if (p.getFieldMap() != null && !p.getFieldMap().isEmpty()) {
+            sb.append("Custom answers (user-defined, authoritative):\n");
+            p.getFieldMap().forEach((k, v) -> {
+                if (k != null && v != null && !k.isBlank() && !v.isBlank())
+                    sb.append("  - ").append(k.trim()).append(": ").append(v.trim()).append("\n");
+            });
+        }
+        return sb.length() == 0 ? "(no profile details)" : sb.toString();
+    }
+
+    private static String s(Object o) { return o == null ? "" : o.toString().trim(); }
+
+    @Transactional
+    public QaPair saveQa(String question, String answer) {
+        if (question == null || question.isBlank() || answer == null || answer.isBlank()) {
+            throw new IllegalArgumentException("question and answer are required");
+        }
+        return save(UserContext.require(), question, answer, "manual");
+    }
+
+    public List<QaPair> listQa() {
+        return qaRepo.findByUserIdOrderByUpdatedAtDesc(UserContext.require());
+    }
+
+    /**
+     * Record a screening question the automation could NOT answer, as a PENDING entry
+     * (blank answer) in the bank. The user fills it once in Profile → Autofill answers;
+     * every later application with the same question is then answered automatically.
+     * Deduped by the normalised question key; never overwrites an answered pair.
+     */
+    @Transactional
+    public QaPair recordPending(UUID userId, String question) {
+        return recordPending(userId, question, null, null);
+    }
+
+    public QaPair recordPending(UUID userId, String question, String answer) {
+        return recordPending(userId, question, answer, null);
+    }
+
+    /**
+     * Record a screening question the automation hit, so it shows up in Profile → Autofill
+     * answers for the owner to keep an answer for. {@code answer} is what the automation used
+     * (or blank if it couldn't answer) — stored so the owner can SEE and CORRECT it. A blank
+     * one is marked "pending" ("needs your answer"); a filled one "auto" (review if you like).
+     * Deduped by the normalised key and NEVER overwritten — once you edit an answer, it wins.
+     */
+    @Transactional
+    public QaPair recordPending(UUID userId, String question, String answer, String portal) {
+        if (question == null || question.isBlank()) throw new IllegalArgumentException("question required");
+        String key = normalize(question);
+        Optional<QaPair> existing = qaRepo.findByUserIdAndQuestionKey(userId, key);
+        if (existing.isPresent()) {
+            // The same question can be met on both portals. Record the first one that asked and
+            // leave it — re-tagging on every encounter would make the attribution meaningless.
+            QaPair q = existing.get();
+            if (q.getPortal() == null && portal != null && !portal.isBlank()) {
+                q.setPortal(portal.trim().toLowerCase());
+                return qaRepo.save(q);
+            }
+            return q;
+        }
+        String a = answer == null ? "" : answer.trim();
+        QaPair q = new QaPair();
+        q.setUserId(userId);
+        q.setQuestion(question.trim());
+        q.setQuestionKey(key);
+        q.setAnswer(a);
+        q.setSource(a.isBlank() ? "pending" : "auto");
+        if (portal != null && !portal.isBlank()) q.setPortal(portal.trim().toLowerCase());
+        return qaRepo.save(q);
+    }
+
+    @Transactional
+    public void deleteQa(UUID id) {
+        UUID userId = UserContext.require();
+        qaRepo.findById(id).filter(q -> userId.equals(q.getUserId())).ifPresent(qaRepo::delete);
+    }
+
+    @Transactional
+    public QaPair updateQa(UUID id, String question, String answer) {
+        UUID userId = UserContext.require();
+        QaPair q = qaRepo.findById(id).filter(x -> userId.equals(x.getUserId()))
+                .orElseThrow(() -> new IllegalArgumentException("saved answer not found"));
+        if (question != null && !question.isBlank()) { q.setQuestion(question.trim()); q.setQuestionKey(normalize(question)); }
+        if (answer != null && !answer.isBlank()) q.setAnswer(answer.trim());
+        // You edited it → it's now YOUR answer, and answer() will reuse it verbatim from now on.
+        // (Answers the automation guessed stay "auto" and are NOT reused — see answer().)
+        q.setSource("manual");
+        q.setUpdatedAt(Instant.now());
+        return qaRepo.save(q);
+    }
+
+    /** Generate a cover letter for an arbitrary listing the extension is looking at. */
+    public String coverLetter(String company, String role, String jobText) {
+        Profile p = profiles.get();
+        Job job = new Job();
+        job.setCompany(company == null || company.isBlank() ? "the company" : company.trim());
+        job.setTitle(role == null || role.isBlank() ? "this role" : role.trim());
+        job.setDescription(jobText == null ? "" : jobText.trim());
+        return coverLetters.generate(job, p);
+    }
+
+    // ---- internals ----
+
+    private QaPair save(UUID userId, String question, String answer, String source) {
+        String key = normalize(question);
+        QaPair q = qaRepo.findByUserIdAndQuestionKey(userId, key).orElseGet(QaPair::new);
+        q.setUserId(userId);
+        q.setQuestion(question.trim());
+        q.setQuestionKey(key);
+        q.setAnswer(answer.trim());
+        if (q.getId() == null) q.setSource(source);
+        q.setUpdatedAt(Instant.now());
+        return qaRepo.save(q);
+    }
+
+    private static String normalize(String s) {
+        return s.toLowerCase().replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    /** Returns a stored Q&A whose question tokens overlap the asked one strongly (Jaccard >= 0.6). */
+    private QaPair bestMatch(List<QaPair> bank, String key) {
+        Set<String> want = tokens(key);
+        if (want.isEmpty()) return null;
+        QaPair best = null;
+        double bestScore = 0.6;
+        for (QaPair q : bank) {
+            Set<String> have = tokens(q.getQuestionKey());
+            if (have.isEmpty()) continue;
+            Set<String> inter = new HashSet<>(want);
+            inter.retainAll(have);
+            Set<String> union = new HashSet<>(want);
+            union.addAll(have);
+            double j = (double) inter.size() / union.size();
+            if (j > bestScore) { bestScore = j; best = q; }
+        }
+        return best;
+    }
+
+    private static Set<String> tokens(String key) {
+        return Arrays.stream(key.split(" ")).filter(t -> t.length() > 2).collect(Collectors.toSet());
+    }
+
+    /**
+     * The candidate's own previously-approved answers, handed to the model as authoritative
+     * examples. This is how the assistant GROWS: every answer the user saves teaches it the
+     * facts and the voice to reuse when the next form asks the same thing in different words.
+     * Capped (and each answer truncated) so a large bank can't crowd out the profile.
+     */
+    private String qaBankContext(UUID userId) {
+        List<QaPair> bank = qaRepo.findByUserIdOrderByUpdatedAtDesc(userId);
+        if (bank == null || bank.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\n\nPreviously approved answers by this candidate "
+                + "(AUTHORITATIVE — when the question matches one of these in meaning, reuse the same "
+                + "facts and voice rather than inventing a new answer):\n");
+        int n = 0;
+        for (QaPair q : bank) {
+            String a = q.getAnswer();
+            if (a == null || a.isBlank() || q.getQuestion() == null || q.getQuestion().isBlank()) continue;
+            if (a.length() > 300) a = a.substring(0, 300) + "…";
+            sb.append("  - Q: ").append(q.getQuestion().trim())
+                    .append("\n    A: ").append(a.trim()).append("\n");
+            if (++n >= 20) break;
+        }
+        return n == 0 ? "" : sb.toString();
+    }
+
+    private static void line(StringBuilder sb, String label, String val) {
+        if (val != null && !val.isBlank()) sb.append("- ").append(label).append(": ").append(val).append("\n");
+    }
+
+    private static String join(String a, String b) {
+        if (a == null || a.isBlank()) return b;
+        if (b == null || b.isBlank()) return a;
+        return a + " at " + b;
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : String.valueOf(o);
+    }
+}

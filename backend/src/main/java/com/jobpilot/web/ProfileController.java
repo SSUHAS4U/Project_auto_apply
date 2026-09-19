@@ -1,8 +1,8 @@
 package com.jobpilot.web;
 
 import com.jobpilot.domain.Profile;
-import com.jobpilot.service.ProfileService;
-import com.jobpilot.service.ResumeAnalysisService;
+import com.jobpilot.service.profile.ProfileService;
+import com.jobpilot.service.documents.ResumeAnalysisService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 

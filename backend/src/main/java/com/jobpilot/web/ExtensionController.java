@@ -2,8 +2,8 @@ package com.jobpilot.web;
 
 import com.jobpilot.domain.Profile;
 import com.jobpilot.domain.SavedJob;
-import com.jobpilot.service.ProfileService;
-import com.jobpilot.service.SavedJobService;
+import com.jobpilot.service.profile.ProfileService;
+import com.jobpilot.service.jobs.SavedJobService;
 import com.jobpilot.web.dto.SavedJobRequest;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +16,11 @@ public class ExtensionController {
 
     private final SavedJobService savedJobs;
     private final ProfileService profile;
-    private final com.jobpilot.service.ResumeDocService resumeDocs;
+    private final com.jobpilot.service.documents.ResumeDocService resumeDocs;
     private final com.jobpilot.pilot.PilotOrchestrator pilot;
 
     public ExtensionController(SavedJobService savedJobs, ProfileService profile,
-                               com.jobpilot.service.ResumeDocService resumeDocs,
+                               com.jobpilot.service.documents.ResumeDocService resumeDocs,
                                com.jobpilot.pilot.PilotOrchestrator pilot) {
         this.savedJobs = savedJobs;
         this.profile = profile;
@@ -104,7 +104,7 @@ public class ExtensionController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("full_name", p.getFullName());
         // Derived when the user hasn't set them — most forms want the name in three boxes.
-        com.jobpilot.service.NameParts np = com.jobpilot.service.NameParts.of(p);
+        com.jobpilot.service.profile.NameParts np = com.jobpilot.service.profile.NameParts.of(p);
         out.put("first_name", np.first());
         out.put("middle_name", np.middle());
         out.put("last_name", np.last());

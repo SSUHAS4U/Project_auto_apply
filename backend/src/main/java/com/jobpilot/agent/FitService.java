@@ -1,8 +1,8 @@
 package com.jobpilot.agent;
 
 import com.jobpilot.domain.Profile;
-import com.jobpilot.service.KeywordMatchScorer;
-import com.jobpilot.service.ProfileService;
+import com.jobpilot.service.jobs.KeywordMatchScorer;
+import com.jobpilot.service.profile.ProfileService;
 import com.jobpilot.service.ai.AiService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

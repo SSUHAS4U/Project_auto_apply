@@ -2,7 +2,7 @@ package com.jobpilot.web;
 
 import com.jobpilot.domain.Job;
 import com.jobpilot.domain.SavedJob;
-import com.jobpilot.service.SavedJobService;
+import com.jobpilot.service.jobs.SavedJobService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

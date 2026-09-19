@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.jobpilot.service.MailAttachment;
-import com.jobpilot.service.MailService;
+import com.jobpilot.service.mail.MailAttachment;
+import com.jobpilot.service.mail.MailService;
 import com.jobpilot.service.ai.AiService;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -41,11 +41,11 @@ public class EngineApplyService {
     private final EngineScraperService scraper;
     private final AiService ai;
     private final MailService mail;
-    private final com.jobpilot.service.SettingsService settings;
-    private final com.jobpilot.service.ResumeDocService resumeDocs;         // tailor base résumé + compileLatex
+    private final com.jobpilot.service.ops.SettingsService settings;
+    private final com.jobpilot.service.documents.ResumeDocService resumeDocs;         // tailor base résumé + compileLatex
     private final com.jobpilot.service.cover.CoverLetterService coverLetters; // reuse the app's cover-letter service
     private final com.jobpilot.repository.ProfileRepository profileRepo;      // app Profile by userId (for cover letter)
-    private final com.jobpilot.service.NotificationService notifications;     // bell: package ready / failed
+    private final com.jobpilot.service.ops.NotificationService notifications;     // bell: package ready / failed
     private final ObjectMapper mapper = new ObjectMapper();
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "engine-apply");
@@ -56,11 +56,11 @@ public class EngineApplyService {
     public EngineApplyService(EngineApplicationRepository apps, EngineJobRepository jobs,
                               EngineSetupService setup, EngineScraperService scraper,
                               AiService ai, MailService mail,
-                              com.jobpilot.service.SettingsService settings,
-                              com.jobpilot.service.ResumeDocService resumeDocs,
+                              com.jobpilot.service.ops.SettingsService settings,
+                              com.jobpilot.service.documents.ResumeDocService resumeDocs,
                               com.jobpilot.service.cover.CoverLetterService coverLetters,
                               com.jobpilot.repository.ProfileRepository profileRepo,
-                              com.jobpilot.service.NotificationService notifications) {
+                              com.jobpilot.service.ops.NotificationService notifications) {
         this.apps = apps;
         this.jobs = jobs;
         this.setup = setup;

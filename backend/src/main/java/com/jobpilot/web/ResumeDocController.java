@@ -1,7 +1,7 @@
 package com.jobpilot.web;
 
 import com.jobpilot.domain.ResumeDoc;
-import com.jobpilot.service.ResumeDocService;
+import com.jobpilot.service.documents.ResumeDocService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

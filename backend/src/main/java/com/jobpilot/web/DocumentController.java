@@ -1,6 +1,6 @@
 package com.jobpilot.web;
 
-import com.jobpilot.service.DocumentService;
+import com.jobpilot.service.documents.DocumentService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;

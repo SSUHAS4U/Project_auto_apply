@@ -1,7 +1,7 @@
 package com.jobpilot.service.ai;
 
 import com.jobpilot.config.JobPilotProperties;
-import com.jobpilot.service.SettingsService;
+import com.jobpilot.service.ops.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

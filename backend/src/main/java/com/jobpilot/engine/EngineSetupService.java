@@ -1,6 +1,6 @@
 package com.jobpilot.engine;
 
-import com.jobpilot.service.ProfileService;
+import com.jobpilot.service.profile.ProfileService;
 import com.jobpilot.service.ai.AiService;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
