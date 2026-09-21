@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, isAdminUI, type JobFilters, type IngestSummary, type IngestMetrics } from '../api/client';
 import type { Job } from '../types';
-import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
+import { ApplyBadge, fmtDate, useToast } from '../lib/ui';
+import { MiniFit } from '../components/FitScale';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { JobCardV2 } from '../components/JobCardV2';
@@ -344,11 +345,11 @@ export function JobsPage() {
                 postedLabel={fmtDate(j.postedAt ?? j.fetchedAt)}
                 skills={skills}
                 onOpen={() => setDetailJob(j)}
-                extras={<ApplyBadge type={j.applyType} />}
+                tag={<ApplyBadge type={j.applyType} />}
                 actions={<>
-                  {j.applyType === 'email' && <button className="btn btn-primary btn-sm" onClick={() => setApplyJob(j)}>Apply</button>}
-                  <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setDetailJob(j)}>Details</button>
+                  <button className="btn btn-ghost" onClick={() => setDetailJob(j)}>Details</button>
+                  <button className="btn" onClick={() => track(j)}>Track</button>
+                  {j.applyType === 'email' && <button className="btn btn-primary" onClick={() => setApplyJob(j)}>Apply</button>}
                 </>}
               />
             ))}
@@ -365,7 +366,7 @@ export function JobsPage() {
                       <div className="job-company">{j.company ?? '—'} · <span className="faint">{j.source}</span></div>
                     </td>
                     <td className="muted">{j.location ?? (j.remote ? 'Remote' : '—')}</td>
-                    <td><ScoreBar score={j.matchScore} /></td>
+                    <td><MiniFit score={j.matchScore} /></td>
                     <td><ApplyBadge type={j.applyType} /></td>
                     <td className="muted">{fmtDate(j.postedAt ?? j.fetchedAt)}</td>
                     <td>
@@ -506,7 +507,7 @@ function JobDetailModal({ job, onClose, onTrack, onApply }: {
         <dt>Location</dt><dd>{job.location ?? (job.remote ? 'Remote' : '—')}</dd>
         <dt>Source</dt><dd>{job.source}</dd>
         <dt>Apply</dt><dd><ApplyBadge type={job.applyType} />{job.applyEmail ? ` · ${job.applyEmail}` : ''}</dd>
-        <dt>Match score</dt><dd><ScoreBar score={job.matchScore} /></dd>
+        <dt>Match score</dt><dd><MiniFit score={job.matchScore} /></dd>
         {job.salaryText && <><dt>Salary</dt><dd>{job.salaryText}</dd></>}
         <dt>Posted</dt><dd>{fmtDate(job.postedAt ?? job.fetchedAt)}</dd>
       </dl>

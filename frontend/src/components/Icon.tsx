@@ -62,22 +62,17 @@ export function Icon({ name, size = 18, className, style }:
   );
 }
 
-/** The JobPilot brand mark — a paper-plane (send) in a rounded gradient tile. */
+/**
+ * The JobPilot brand mark — the "J" on a rounded tile. The mark itself is fixed; its colours
+ * come from the theme's primary pair (ink tile / white J in light, white tile / ink J in dark),
+ * so the logo is the same object as the primary button rather than a second brand colour.
+ * No gradient any more, so no per-instance gradient id to keep unique either.
+ */
 export function Logo({ size = 34 }: { size?: number }) {
-  // Unique per instance: a duplicated SVG gradient id breaks when the first copy sits in
-  // a display:none container (the mobile topbar) — Chrome then renders NO fill at all,
-  // which is why the sidebar logo vanished on desktop.
-  const id = React.useId();
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-label="JobPilot">
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6366f1" /><stop offset="1" stopColor="#4f46e5" />
-        </linearGradient>
-      </defs>
-      <rect width="40" height="40" rx="11" fill={`url(#${id})`} />
-      {/* Clean "J" mark — no white border, just the symbol on the gradient tile. */}
-      <g stroke="#fff" strokeWidth="4.4" strokeLinecap="round" fill="none">
+      <rect width="40" height="40" rx="11" style={{ fill: 'var(--primary)' }} />
+      <g strokeWidth="4.4" strokeLinecap="round" fill="none" style={{ stroke: 'var(--on-primary)' }}>
         <path d="M25.5 11.5 V22 a6 6 0 0 1 -12 0" />
         <path d="M18.5 11.5 H27.5" />
       </g>

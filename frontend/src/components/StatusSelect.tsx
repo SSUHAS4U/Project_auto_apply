@@ -4,13 +4,15 @@ import type { ApplicationStatus } from '../types';
 import { Icon } from './Icon';
 
 const ALL: ApplicationStatus[] = ['interested', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'];
+// Colour is semantic: blue = sent and waiting, amber = needs you, green = good outcome,
+// red = closed. "Interested" and "withdrawn" are neutral — nothing is happening on them.
 const DOT: Record<ApplicationStatus, string> = {
-  interested: 'var(--blue)',
-  applied: 'var(--accent-hi)',
+  interested: 'var(--ink-3)',
+  applied: 'var(--accent)',
   interviewing: 'var(--amber)',
   offer: 'var(--green)',
   rejected: 'var(--red)',
-  withdrawn: 'var(--text-faint)',
+  withdrawn: 'var(--line-strong)',
 };
 
 const MENU_W = 180;
@@ -74,17 +76,18 @@ export function StatusSelect({ value, onChange }: { value: ApplicationStatus; on
     <div className="status-select" onClick={(e) => e.stopPropagation()}>
       <button ref={triggerRef} type="button" className="status-trigger"
         onClick={() => (open ? setOpen(false) : openMenu())} aria-haspopup="listbox" aria-expanded={open}>
-        <span className="status-dot" style={{ background: DOT[value], color: DOT[value] }} />
+        <span className="status-dot" style={{ background: DOT[value] }} />
         <span className="status-label">{value}</span>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
+        <svg className="status-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && pos && createPortal(
         <div ref={menuRef} className="status-menu" role="listbox"
           style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom, width: MENU_W }}>
+          <div className="status-menu-h">Move to</div>
           {ALL.map((s) => (
             <button key={s} type="button" role="option" aria-selected={s === value}
               className={`status-opt ${s === value ? 'sel' : ''}`} onClick={(e) => pick(s, e)}>
-              <span className="status-dot" style={{ background: DOT[s], color: DOT[s] }} />
+              <span className="status-dot" style={{ background: DOT[s] }} />
               <span className="grow">{s}</span>
               {s === value && <span className="status-check"><Icon name="check" size={14} /></span>}
             </button>

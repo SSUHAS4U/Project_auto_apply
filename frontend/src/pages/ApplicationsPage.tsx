@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { Application, ApplicationEvent, ApplicationStatus } from '../types';
 import { StatusSelect } from '../components/StatusSelect';
-import { ApplyBadge, ScoreBar, fmtDate, useToast } from '../lib/ui';
+import { ApplyBadge, fmtDate, useToast } from '../lib/ui';
+import { MiniFit } from '../components/FitScale';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { JobCardV2 } from '../components/JobCardV2';
@@ -116,16 +117,12 @@ export function ApplicationsPage() {
                 postedLabel={a.appliedAt ? `applied ${fmtDate(a.appliedAt)}` : `updated ${fmtDate(a.updatedAt)}`}
                 skills={skills}
                 onOpen={() => setSelected(a)}
-                /* A manually-entered application has no linked job at all — no posting, no
-                   facts to derive. Omit them rather than assert "Not mentioned" about a
-                   listing that was never fetched. */
-                sparse={!a.job?.description}
-                extras={a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : undefined}
+                tag={a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : undefined}
                 actions={<>
                   {/* The status control is the one interactive element on a tracker card —
                       changing where an application stands IS the job of this screen. */}
                   <StatusSelect value={a.status} onChange={(st) => move(a, st)} />
-                  <button className="btn btn-sm" onClick={() => setSelected(a)}>Details</button>
+                  <button className="btn" onClick={() => setSelected(a)}>Details</button>
                 </>} />
             ))}
           </div>
@@ -146,7 +143,7 @@ export function ApplicationsPage() {
                       <div className="job-company">{a.job?.company ?? '—'}{a.job?.remote ? ' · Remote' : ''}</div>
                     </td>
                     <td className="muted cell-clip" title={a.job?.location ?? ''}>{a.job?.location ?? '—'}</td>
-                    <td>{typeof a.job?.matchScore === 'number' ? <ScoreBar score={a.job.matchScore} /> : <span className="faint">—</span>}</td>
+                    <td><MiniFit score={a.job?.matchScore} /></td>
                     <td>{a.job?.applyType ? <ApplyBadge type={a.job.applyType} /> : <span className="faint">—</span>}</td>
                     <td>
                       <StatusSelect value={a.status} onChange={(st) => move(a, st)} />

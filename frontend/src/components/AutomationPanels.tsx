@@ -324,12 +324,12 @@ function MetricList({ portal, cell, rows, done, onDone }: {
             skills={skills}
             actions={isManual && asked[key] ? (
               <>
-                <button className="btn btn-sm btn-primary" onClick={() => onDone(key)}>Applied</button>
-                <button className="btn btn-sm" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
+                <button className="btn" onClick={() => setAsked((a) => ({ ...a, [key]: false }))}>Not yet</button>
+                <button className="btn btn-primary" onClick={() => onDone(key)}>I applied</button>
               </>
             ) : (
-              <a className="btn btn-primary btn-sm" href={e.url} target="_blank" rel="noreferrer"
-                onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>Open ↗</a>
+              <a className="btn btn-primary" href={e.url} target="_blank" rel="noreferrer"
+                onClick={() => { if (isManual) setAsked((a) => ({ ...a, [key]: true })); }}>Open <Icon name="external" size={13} /></a>
             )} />
         );
       })}

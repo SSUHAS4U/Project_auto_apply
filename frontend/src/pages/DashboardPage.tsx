@@ -3,16 +3,22 @@ import { startPoll } from '../lib/poll';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentEvent, AgentStatus } from '../types';
-import { fmtDate, StatIcon } from '../lib/ui';
+import { fmtDate } from '../lib/ui';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { ActivityChart } from '../components/ActivityChart';
 import { sinceFor, countJobs, type Period } from '../lib/metrics';
 
 /**
- * Dashboard — the landing page. One glance at what the automation did today: status, the
- * eight metric tiles, an activity-trend chart (hand-rolled SVG, no deps), and the
- * recent-actions feed. Reads the agent brain (/api/agent) + engine (/api/engine).
+ * Dashboard — the first screen after sign-in. Read top to bottom it answers, in order:
+ *   1. how is the search going?          → four headline numbers in ONE strip
+ *   2. what else did the automation do?  → the outreach counts, smaller
+ *   3. is it trending up?                → the activity chart, beside the pipeline funnel
+ *   4. does anything need me?            → "Needs you", built only from real status signals
+ *   5. what just happened?               → recent activity
+ *
+ * Everything is computed from ONE events list (deduped, client-side, via lib/metrics) so the
+ * numbers, the funnel and the chart can never disagree.
  */
 
 const EVENT_LABEL: Record<string, string> = {
@@ -21,195 +27,208 @@ const EVENT_LABEL: Record<string, string> = {
   message_sent: 'Message sent', email_sent: 'Email sent', reply_received: 'Reply received',
   error: 'Issue', info: 'Update',
 };
-// Status chip per event type (HireDue-style "SUCCESS / PENDING" markers on tile recents).
 /**
- * Colour here is SEMANTIC, not categorical. Six tones across sixteen pills made a metric look
- * meaningfully different from its neighbour when it was not — see docs/UI_SPEC.md. Green now
- * means a good terminal outcome, red means a real problem, and every intermediate step of the
- * pipeline is neutral, because "sent" and "scanned" are progress, not verdicts.
+ * Colour here is SEMANTIC, not categorical (docs/UI_SPEC.md): green = a good outcome, red = a
+ * real problem, and every intermediate step of the pipeline is neutral — "sent" and "scanned"
+ * are progress, not verdicts.
  */
-const EVENT_STATUS: Record<string, { label: string; tone: string }> = {
-  applied: { label: 'applied', tone: 'green' }, easy_apply: { label: 'applied', tone: 'green' },
-  reply_received: { label: 'reply', tone: 'green' },
-  error: { label: 'issue', tone: 'red' },
-  email_sent: { label: 'sent', tone: 'slate' }, message_sent: { label: 'sent', tone: 'slate' },
-  connection_sent: { label: 'pending', tone: 'slate' },
-  relevant: { label: 'relevant', tone: 'slate' }, job_identified: { label: 'new', tone: 'slate' },
-  post_analysed: { label: 'scanned', tone: 'slate' },
+const EVENT_TONE: Record<string, 'ok' | 'danger' | 'accent' | 'neutral'> = {
+  applied: 'accent', easy_apply: 'accent', reply_received: 'ok', error: 'danger',
 };
 
-const PERIODS: { key: string; label: string }[] = [
+const PERIODS: { key: Period; label: string }[] = [
   { key: 'total', label: 'All time' }, { key: 'today', label: 'Today' },
   { key: 'week', label: 'This week' }, { key: 'month', label: 'This month' },
 ];
+
+function greeting(d = new Date()): string {
+  const h = d.getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+/** A share as "10.2%", or "—" when there is nothing to divide by — never "NaN%" or a fake 0%. */
+function pct(part: number, whole: number): string {
+  if (!whole) return '—';
+  const v = (part / whole) * 100;
+  return `${v >= 10 ? Math.round(v) : v.toFixed(1)}%`;
+}
+
+type NeedTone = 'danger' | 'warn' | 'info';
+interface Need { key: string; tone: NeedTone; ico: string; title: string; detail: string; action: string; to: string }
 
 export function DashboardPage() {
   const nav = useNavigate();
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [firstName, setFirstName] = useState('');
   const [period, setPeriod] = useState<Period>('total');   // default: everything so far
 
   useEffect(() => {
+    api.me().then((u) => setFirstName((u.fullName || '').trim().split(/\s+/)[0] || '')).catch(() => {});
     const pull = () => {
       api.agentStatus().then(setAgent).catch(() => {});
-      // Everything is computed from ONE events list (deduped, client-side) so the cards and the
-      // chart can never disagree. Pull enough to cover the range.
-      api.agentEvents(2000).then(setEvents).catch(() => {});
+      api.agentEvents(2000).then(setEvents).catch(() => {}).finally(() => setLoaded(true));
     };
-    const stop = startPoll(pull, 30000);    return stop;
+    return startPoll(pull, 30000);
   }, []);
 
   const running = !!agent?.activeRun && ['running', 'queued', 'needs_attention'].includes(agent.activeRun.status);
 
-  // The ONE filter — the dropdown — scopes both the cards and the chart to the same window.
+  // The ONE filter — the period — scopes the numbers, the funnel and the chart to one window.
   const since = sinceFor(period);
   const scoped = useMemo(
     () => events.filter((e) => e.createdAt && new Date(e.createdAt).getTime() >= since),
     [events, since]);
-  // Period → the chart's x-axis granularity (today: hourly, week/month: daily, all: monthly).
   const chartRange = ({ today: 'day', week: 'week', month: 'month', total: 'year' } as const)[period];
 
-  // Each card counts DISTINCT JOBS over the scoped window — same helper the chart uses, so
-  // "Jobs identified" here equals what the chart sums. (Was raw event counts → 100 jobs read
-  // as 710 because the same job appears in every city search.)
-  const tiles = [
-    { key: 'posts', label: 'Posts analysed', types: ['post_analysed'] },
-    { key: 'target', label: 'Jobs identified', types: ['job_identified'] },
-    { key: 'star', label: 'Relevant jobs', types: ['relevant'] },
-    { key: 'send', label: 'Applied', types: ['applied', 'easy_apply'] },
-    { key: 'link', label: 'Connections sent', types: ['connection_sent'] },
-    { key: 'chat', label: 'Messages sent', types: ['message_sent'] },
-    { key: 'mail', label: 'Emails sent', types: ['email_sent'] },
-    { key: 'reply', label: 'Replies received', types: ['reply_received'] },
-  ].map((t) => ({ ...t, value: countJobs(scoped, t.types) }));
+  const n = (types: string[]) => countJobs(scoped, types);
+  const posts = n(['post_analysed']);
+  const identified = n(['job_identified']);
+  const relevant = n(['relevant']);
+  const applied = n(['applied', 'easy_apply']);
+  const replies = n(['reply_received']);
+  const outreach = [
+    { label: 'Posts analysed', value: posts },
+    { label: 'Connections sent', value: n(['connection_sent']) },
+    { label: 'Messages sent', value: n(['message_sent']) },
+    { label: 'Emails sent', value: n(['email_sent']) },
+  ];
 
-  // Recent action per metric type (scoped), for the mini-lists on each tile.
-  const recentByType = useMemo(() => {
-    const map: Record<string, AgentEvent[]> = {};
-    for (const e of scoped) (map[e.type] ??= []).push(e);
-    return map;
-  }, [scoped]);
+  // Funnel: each stage as a share of the widest one, so the bars compare honestly.
+  const funnel = [
+    { label: 'Identified', value: identified },
+    { label: 'Relevant', value: relevant },
+    { label: 'Applied', value: applied, hl: true },
+    { label: 'Replied', value: replies },
+  ];
+  const funnelMax = Math.max(1, ...funnel.map((f) => f.value));
+
+  // Built only from signals the server actually reports — nothing here is inferred.
+  const needs: Need[] = [];
+  if (agent) {
+    if (!agent.workerConfigured) needs.push({ key: 'worker', tone: 'danger', ico: 'live', title: 'Desktop app not connected',
+      detail: 'Auto apply runs in the desktop app. Install it and sign in to start.', action: 'Set up', to: '/auto-apply' });
+    else if (!agent.workerOnline) needs.push({ key: 'offline', tone: 'warn', ico: 'live', title: 'Desktop app is offline',
+      detail: 'Open the desktop app on your computer so scheduled runs can start.', action: 'Open', to: '/auto-apply' });
+    if (agent.activeRun?.status === 'needs_attention') needs.push({ key: 'attn', tone: 'warn', ico: 'alert',
+      title: 'A run is waiting on you', detail: `${agent.activeRun.portal ?? 'The run'} stopped at a step it can't finish alone.`, action: 'Review', to: '/auto-apply' });
+    if (agent.pendingApprovals > 0) needs.push({ key: 'approvals', tone: 'info', ico: 'clipboard',
+      title: `${agent.pendingApprovals} ${agent.pendingApprovals === 1 ? 'approval' : 'approvals'} waiting`,
+      detail: 'Applications held for your OK before they are sent.', action: 'Review', to: '/auto-apply' });
+    if (agent.paused) needs.push({ key: 'paused', tone: 'info', ico: 'pause', title: 'Auto apply is paused',
+      detail: 'Nothing is sent until you resume it.', action: 'Resume', to: '/auto-apply' });
+  }
+
+  const statusText = running
+    ? `Running on ${agent?.activeRun?.portal ?? 'a portal'}${agent?.liveAction ? ` · ${agent.liveAction}` : ''}`
+    : events[0]?.createdAt ? `Idle · last activity ${fmtDate(events[0].createdAt)}` : 'Idle';
 
   return (
     <>
       <div className="page-head">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <div className="page-sub">Everything your automation has done, at a glance.</div>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="page-title">{greeting()}{firstName ? `, ${firstName}` : ''}</h1>
+          <div className="page-sub dash-status">
+            <span className={`dot ${running ? 'dot-live' : ''}`} aria-hidden="true" />{statusText}
+          </div>
         </div>
-        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span className={`tone ${running ? 'tone-green live-pulse' : 'tone-slate'}`} style={{ padding: '5px 12px' }}>
-            <span className="live-dot" /> {running ? `${agent?.activeRun?.portal} · scanning & applying` : 'idle'}
-          </span>
+        <div className="page-acts">
           <Select value={period} onChange={(v) => setPeriod(v as Period)} ariaLabel="Metrics period"
             options={PERIODS.map((p) => ({ value: p.key, label: p.label }))} />
+          <button className="btn btn-primary" onClick={() => nav('/auto-apply')}>
+            <Icon name="bolt" size={15} /> Auto apply
+          </button>
         </div>
       </div>
 
-      {/* Activity trend — same period + same data as the cards */}
-      <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-          <div><b style={{ fontSize: 15 }}>Activity trend</b></div>
-          <div className="faint" style={{ fontSize: 12.5 }}>tap a series to hide it</div>
+      <section className="kpis" aria-label="Headline numbers">
+        <Kpi label="Applied" value={applied} loaded={loaded} note={`${pct(applied, relevant)} of relevant jobs`} />
+        <Kpi label="Replies" value={replies} loaded={loaded} note={`${pct(replies, applied)} reply rate`} />
+        <Kpi label="Relevant jobs" value={relevant} loaded={loaded} note="matched your profile" />
+        <Kpi label="Jobs identified" value={identified} loaded={loaded} note="across every source" />
+      </section>
+
+      <section className="kpis kpis-sm" aria-label="Outreach">
+        {outreach.map((o) => <Kpi key={o.label} label={o.label} value={o.value} loaded={loaded} small />)}
+      </section>
+
+      <div className="dash-grid">
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Activity</h3><div className="card-sub">{PERIODS.find((p) => p.key === period)?.label} · tap a series to hide it</div></div>
+          </div>
+          <div className="card-body"><ActivityChart events={scoped} range={chartRange} /></div>
         </div>
-        <ActivityChart events={scoped} range={chartRange} />
+        <div className="card">
+          <div className="card-head"><div><h3>Pipeline</h3><div className="card-sub">From found to replied</div></div></div>
+          <div className="funnel">
+            {funnel.map((f, i) => (
+              <div key={f.label} className={`fn ${f.hl ? 'hl' : ''}`}>
+                <span className="fn-l">{f.label}</span>
+                <span className="fn-bar"><i style={{ width: `${(f.value / funnelMax) * 100}%` }} /></span>
+                <span className="fn-v">
+                  {loaded ? f.value.toLocaleString() : '—'}
+                  {i > 0 && <small>{pct(f.value, funnel[i - 1].value)}</small>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Metric tiles */}
-      <div className="dash-tiles">
-        {tiles.map((t) => {
-          const recent = (recentByType[t.key === 'posts' ? 'post_analysed'
-            : t.key === 'target' ? 'job_identified' : t.key === 'star' ? 'relevant'
-            : t.key === 'send' ? 'applied' : t.key === 'link' ? 'connection_sent'
-            : t.key === 'chat' ? 'message_sent' : t.key === 'mail' ? 'email_sent' : 'reply_received'] ?? [])
-            .concat(t.key === 'send' ? (recentByType['easy_apply'] ?? []) : []);
-          return (
-            <div key={t.key} className="card card-pad">
-              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div className="faint" style={{ fontSize: 11.5, letterSpacing: '.04em', textTransform: 'uppercase' }}>{t.label}</div>
-                  <div data-tilevalue style={{ fontWeight: 750, marginTop: 4, letterSpacing: '-.02em', lineHeight: 1 }}>{t.value.toLocaleString()}</div>
-                </div>
-                <StatIcon name={t.key} />
-              </div>
-              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                <div className="faint" style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>Recent</div>
-                {recent.slice(0, 2).map((e) => (
-                  <div key={e.id} className="row" style={{ fontSize: 12.5, gap: 8, flexWrap: 'nowrap', padding: '2px 0' }}>
-                    <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {e.title || EVENT_LABEL[e.type]}
-                      {e.company && <span className="faint" style={{ fontWeight: 400 }}> · {e.company}</span>}
-                    </span>
-                    {EVENT_STATUS[e.type] && (
-                      <span className={`tone tone-${EVENT_STATUS[e.type].tone}`} style={{ flex: 'none', textTransform: 'uppercase', fontSize: 10 }}>
-                        {EVENT_STATUS[e.type].label}
-                      </span>
-                    )}
-                  </div>
-                ))}
-                {recent.length === 0 && <div className="faint" style={{ fontSize: 12.5 }}>—</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Recent actions + engine snapshot */}
-      <div className="dash-cols">
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="card-pad" style={{ borderBottom: '1px solid var(--border)', fontWeight: 700 }}>Recent actions</div>
-          {events.length === 0 ? (
-            <div className="card-pad faint" style={{ fontSize: 13 }}>No activity yet — connect LinkedIn/Indeed and run the automation.</div>
-          ) : events.slice(0, 12).map((e) => (
-            <div key={e.id} className="row card-pad" style={{ gap: 10, alignItems: 'center', borderBottom: '1px solid var(--border)', padding: '10px 16px' }}>
-              <span className="chip" style={{ fontSize: 11 }}>{EVENT_LABEL[e.type] ?? e.type}</span>
-              <div style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {e.title ? <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{e.title}</a> : (e.detail || '—')}
-                {e.company && <span className="faint"> · {e.company}</span>}
-              </div>
-              <span className="faint" style={{ fontSize: 11.5, flexShrink: 0 }}>{fmtDate(e.createdAt)}</span>
+      <div className="dash-grid dash-grid-even">
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Needs you</h3><div className="card-sub">Runs pause on these until you act</div></div>
+            {needs.length > 0 && <span className="chip chip-warn">{needs.length}</span>}
+          </div>
+          {!agent ? (
+            <div className="list-empty">Checking the automation…</div>
+          ) : needs.length === 0 ? (
+            <div className="list-empty"><Icon name="check" size={16} /> Nothing needs you. The automation has everything it needs.</div>
+          ) : needs.map((x) => (
+            <div key={x.key} className="list-row">
+              <span className={`list-ico list-ico-${x.tone}`}><Icon name={x.ico} size={16} /></span>
+              <div className="list-body"><div className="list-t">{x.title}</div><div className="list-s">{x.detail}</div></div>
+              <button className="btn btn-sm" onClick={() => nav(x.to)}>{x.action}</button>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="card card-pad">
-            <div className="card-title"><Icon name="compass" size={15} /> Job board</div>
-            <div className="faint" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 4 }}>
-              Fresh jobs aggregated from company boards &amp; APIs — browse, filter, and apply yourself
-              (email-apply or open the posting).
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Recent activity</h3></div>
+            <button className="btn btn-ghost btn-sm" onClick={() => nav('/applications')}>Applications</button>
+          </div>
+          {!loaded ? (
+            <div className="list-empty">Loading activity…</div>
+          ) : events.length === 0 ? (
+            <div className="list-empty">No activity yet. Connect LinkedIn or Indeed and run auto apply, and what it does shows up here.</div>
+          ) : events.slice(0, 8).map((e) => (
+            <div key={e.id} className="list-row">
+              <span className={`chip chip-${EVENT_TONE[e.type] ?? 'neutral'}`}>{EVENT_LABEL[e.type] ?? e.type}</span>
+              <div className="list-body">
+                <div className="list-t">
+                  {e.title ? <a href={e.url} target="_blank" rel="noreferrer">{e.title}</a> : (e.detail || '—')}
+                </div>
+                {e.company && <div className="list-s">{e.company}</div>}
+              </div>
+              <span className="list-when">{fmtDate(e.createdAt)}</span>
             </div>
-            <button className="btn btn-sm" style={{ marginTop: 10, width: '100%' }} onClick={() => nav('/jobs')}>Open Job board <Icon name="external" size={13} /></button>
-          </div>
-
-          <div className="card card-pad">
-            <div className="card-title"><Icon name="live" size={15} /> Automation</div>
-            <Row label="Desktop worker" value={agent?.workerConfigured ? 'connected' : 'not connected'} tone={agent?.workerConfigured ? 'green' : 'slate'} />
-            <Row label="Active run" value={running ? (agent?.activeRun?.portal ?? 'running') : 'idle'} tone={running ? 'blue' : undefined} />
-            <Row label="Pending approvals" value={String(agent?.pendingApprovals ?? 0)} last />
-            <button className="btn btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => nav('/auto-apply')}>Open Auto Apply <Icon name="external" size={13} /></button>
-          </div>
-
-          <div className="card card-pad">
-            <div className="card-title"><Icon name="compass" size={15} /> Quick actions</div>
-            <div className="quick-grid">
-              <button className="quick-btn" onClick={() => nav('/connections')}><Icon name="link" size={16} /><span>Connect portals</span></button>
-              <button className="quick-btn" onClick={() => nav('/profile')}><Icon name="user" size={16} /><span>Edit profile</span></button>
-              <button className="quick-btn" onClick={() => nav('/resumes')}><Icon name="file" size={16} /><span>Resumes</span></button>
-              <button className="quick-btn" onClick={() => nav('/jobs')}><Icon name="compass" size={16} /><span>Browse jobs</span></button>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </>
   );
 }
 
-function Row({ label, value, tone, last }: { label: string; value: string; tone?: string; last?: boolean }) {
+function Kpi({ label, value, note, loaded, small }: { label: string; value: number; note?: string; loaded: boolean; small?: boolean }) {
   return (
-    <div className="row" style={{ justifyContent: 'space-between', padding: '7px 0', fontSize: 13.5, borderBottom: last ? 'none' : '1px solid var(--border)' }}>
-      <span className="faint">{label}</span>
-      {tone ? <span className={`tone tone-${tone}`}>{value}</span> : <b>{value}</b>}
+    <div className="kpi">
+      <div className="kpi-k">{label}</div>
+      <div className={`kpi-v ${small ? 'kpi-v-sm' : ''}`}>{loaded ? value.toLocaleString() : '—'}</div>
+      {note && <div className="kpi-d">{loaded ? note : ' '}</div>}
     </div>
   );
 }

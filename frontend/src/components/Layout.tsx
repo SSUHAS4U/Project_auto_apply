@@ -73,6 +73,7 @@ export function Layout() {
   const [appVersion, setAppVersion] = useState<string>('');
   useEffect(() => { desktop()?.getAppVersion?.().then(setAppVersion).catch(() => {}); }, []);
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [admin, setAdmin] = useState(isAdminUI());
   const [theme, setTheme] = useState<Theme>(getTheme());
   const location = useLocation();
@@ -106,7 +107,7 @@ export function Layout() {
 
   // Re-check role from the server (handles grants/revokes + sessions predating roles).
   useEffect(() => {
-    api.me().then((u) => { setEmail(u.email); setAdmin(!!u.isAdmin); setAdminUI(!!u.isAdmin); }).catch(() => {});
+    api.me().then((u) => { setEmail(u.email); setFullName(u.fullName || ''); setAdmin(!!u.isAdmin); setAdminUI(!!u.isAdmin); }).catch(() => {});
   }, []);
   const logout = () => { clearJwt(); nav('/login'); };
 
@@ -125,21 +126,18 @@ export function Layout() {
   const sidebar = (
     <aside className={`sidebar ${drawer ? 'open' : ''}`}>
       <div className="brand">
+        <Logo size={28} />
+        <div className="brand-id">
+          <div className="brand-name">JobPilot</div>
+          {/* The installed build. Auto-update makes the running version invisible otherwise,
+              and "still broken" against a build that predates the fix is unanswerable —
+              several rounds of debugging went into runs that turned out to be old builds. */}
+          {appVersion && <div className="brand-sub"><span className="brand-ver">v{appVersion}</span></div>}
+        </div>
         <button className="rail-toggle" onClick={() => setRailed(true)}
           title="Collapse sidebar" aria-label="Collapse sidebar">
           <Icon name="chevron" size={15} style={{ transform: 'rotate(180deg)' }} />
         </button>
-        <Logo />
-        <div>
-          <div className="brand-name">JobPilot</div>
-          <div className="brand-sub">
-            autonomous job agent
-            {/* The installed build. Auto-update makes the running version invisible otherwise,
-                and "still broken" against a build that predates the fix is unanswerable —
-                several rounds of debugging went into runs that turned out to be old builds. */}
-            {appVersion && <span className="brand-ver">v{appVersion}</span>}
-          </div>
-        </div>
       </div>
 
       {NAV.map((g) => g.children ? (
@@ -173,9 +171,10 @@ export function Layout() {
         </NavLink>
       ))}
 
-      <div className="sidebar-user su-col">
-        <div className="su-id">
-          <div className="su-avatar">{(email[0] || 'U').toUpperCase()}</div>
+      <div className="sidebar-user">
+        <div className="su-avatar" aria-hidden="true">{((fullName || email)[0] || 'U').toUpperCase()}</div>
+        <div className="su-who">
+          {fullName && <div className="su-name" title={fullName}>{fullName}</div>}
           <div className="su-email" title={email}>{email || 'account'}</div>
         </div>
         <div className="su-actions">

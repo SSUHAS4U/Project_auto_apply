@@ -63,12 +63,12 @@ export function DailyPicksPage() {
           </div>
         </div>
         <button className="btn btn-primary" onClick={runNow} disabled={running}>
-          {running ? <span className="spinner" /> : '⟳'} Run now
+          {running ? <span className="spinner" /> : <Icon name="refresh" size={14} />} Run now
         </button>
       </div>
 
       {briefing && (
-        <div className="card card-pad" style={{ marginBottom: 18, borderLeft: '3px solid var(--accent)' }}>
+        <div className="card card-pad" style={{ marginBottom: 18 }}>
           <div className="section-title" style={{ marginBottom: 8 }}><span className="si"><Icon name="bot" size={15} /></span>Today's briefing</div>
           <div className="pre" style={{ background: 'transparent', border: 'none', padding: 0 }}>{briefing}</div>
         </div>
@@ -94,10 +94,10 @@ export function DailyPicksPage() {
                 score={j.matchScore}
                 salaryText={j.salaryText}
                 skills={skills}
-                extras={<ApplyBadge type={j.applyType} />}
+                tag={<ApplyBadge type={j.applyType} />}
                 actions={<>
-                  <a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>
-                  <button className="btn btn-sm" onClick={() => track(j)}>Track</button>
+                  <button className="btn" onClick={() => track(j)}>Track</button>
+                  <a className="btn btn-primary" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply <Icon name="external" size={13} /></a>
                 </>} />
             ))}
           </div>

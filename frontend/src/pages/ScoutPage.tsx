@@ -125,14 +125,14 @@ export function ScoutPage() {
                   skills={skills}
                   extras={<>
                     {emails.map((e) => (
-                      <a key={e} className="jc2-act" href={`mailto:${e}`} title={`Email ${e}`}><Icon name="mail" size={14} /></a>
+                      <a key={e} className="btn btn-icon" href={`mailto:${e}`} title={`Email ${e}`}><Icon name="mail" size={14} /></a>
                     ))}
                     {phones.map((ph) => (
-                      <button key={ph} className="jc2-act" onClick={() => copy(ph)} title={`Copy ${ph}`}><Icon name="phone" size={14} /></button>
+                      <button key={ph} className="btn btn-icon" onClick={() => copy(ph)} title={`Copy ${ph}`}><Icon name="phone" size={14} /></button>
                     ))}
-                    <button className="jc2-act" onClick={() => remove(j.id)} title="Remove"><Icon name="x" size={14} /></button>
+                    <button className="btn btn-icon" onClick={() => remove(j.id)} title="Remove"><Icon name="x" size={14} /></button>
                   </>}
-                  actions={<a className="btn btn-primary btn-sm" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply ↗</a>} />
+                  actions={<a className="btn btn-primary" href={j.url} target="_blank" rel="noreferrer">Open &amp; apply <Icon name="external" size={13} /></a>} />
               );
             })}
           </div>

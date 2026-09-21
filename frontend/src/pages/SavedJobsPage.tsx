@@ -79,12 +79,12 @@ export function SavedJobsPage() {
         </Modal>
       )}
 
-      <div className="card card-pad" style={{ marginBottom: 18, display: 'flex', gap: 14, alignItems: 'flex-start', borderLeft: '3px solid var(--accent)' }}>
-        <Icon name="bookmark" size={20} />
-        <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+      <div className="note">
+        <Icon name="bookmark" size={16} />
+        <div>
           <b>What this is:</b> when you browse <b>LinkedIn / Naukri / Indeed</b> and find a job worth keeping,
-          click the extension's <b>“Save to JobPilot”</b> button — it lands here. Then <b>Promote</b> a saved
-          listing to turn it into a tracked application (it appears on the <b>Applications</b> board and gets a match score).
+          click the extension's <b>“Save to JobPilot”</b> button — it lands here. Then <b>Add to tracker</b> turns a saved
+          listing into a tracked application (it appears on the <b>Applications</b> board and gets a match score).
           <div className="faint" style={{ marginTop: 4 }}>This is how jobs from sites we can't legally fetch server-side still make it into your tracker.</div>
         </div>
       </div>
@@ -131,18 +131,15 @@ export function SavedJobsPage() {
                 score={s.matchScore}
                 postedLabel={`captured ${fmtDate(s.createdAt)}`}
                 skills={skills}
-                /* Anything saved before the extension collected descriptions has no facts to
-                   show. Omit them rather than print "Not mentioned" four times. */
-                sparse={!s.description}
                 extras={<>
-                  <button className="jc2-act" onClick={() => startEdit(s)} title="Edit details"><Icon name="pen" size={14} /></button>
-                  <button className="jc2-act" onClick={() => remove(s)} title="Delete saved listing"><Icon name="trash" size={14} /></button>
+                  <button className="btn btn-icon" onClick={() => startEdit(s)} title="Edit details" aria-label="Edit details"><Icon name="pen" size={15} /></button>
+                  <button className="btn btn-icon btn-danger" onClick={() => remove(s)} title="Delete saved listing" aria-label="Delete saved listing"><Icon name="trash" size={15} /></button>
                 </>}
                 actions={<>
                   {s.promotedJobId
-                    ? <span className="badge badge-ats meta-item"><Icon name="check" size={12} /> Promoted</span>
-                    : <button className="btn btn-primary btn-sm" onClick={() => promote(s)}>Promote to tracker</button>}
-                  <a className="btn btn-ghost btn-sm" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
+                    ? <span className="tracked" title="Already in your Applications tracker"><Icon name="check" size={14} /> Tracked</span>
+                    : <button className="btn btn-primary" onClick={() => promote(s)}>Add to tracker</button>}
+                  <a className="btn" href={s.url} target="_blank" rel="noreferrer">Open <Icon name="external" size={13} /></a>
                 </>} />
             ))}
           </div>
