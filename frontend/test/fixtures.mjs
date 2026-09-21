@@ -14,6 +14,9 @@ const page0 = { items: [], page: 0, size: 20, total: 0, totalPages: 0 };
 /** The empty state — one of the states every screen must render correctly. */
 export const EMPTY = {
   '/api/auth/me': { id: 'u1', email: 'dev@example.com', fullName: 'S Suhas', role: 'ADMIN', isAdmin: true },
+  // Google configured and sign-up open, so the register route renders its FULL form (the
+  // widest state) and the Google button's host is laid out.
+  '/api/auth/config': { googleClientId: 'test-client.apps.googleusercontent.com', registrationOpen: true },
   '/api/profile': {
     fullName: 'S Suhas', email: 'dev@example.com', phone: '', headline: '', location: '',
     skills: [], links: {}, experience: [], education: [], projects: [], achievements: [], certifications: [],
@@ -212,4 +215,5 @@ export const ROUTES = [
   ['/applications', 'Applications'], ['/saved', 'SavedJobs'],
   ['/notifications', 'Notifications'], ['/profile', 'Profile'],
   ['/settings', 'Settings'], ['/admin', 'Admin'], ['/login', 'Auth'],
+  ['/register', 'Register'], ['/welcome', 'Home'],
 ];

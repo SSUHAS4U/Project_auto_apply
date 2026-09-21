@@ -5,10 +5,10 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 
 const REPO = 'SSUHAS4U/Project_auto_apply';
-const RELEASE_BASE = `https://github.com/${REPO}/releases/latest/download`;
+export const RELEASE_BASE = `https://github.com/${REPO}/releases/latest/download`;
 
 // `match` finds this platform's asset in the release; `file` is the stable fallback name.
-const DOWNLOADS: Record<string, { label: string; file: string; match: RegExp }> = {
+export const DOWNLOADS: Record<string, { label: string; file: string; match: RegExp }> = {
   win: { label: 'Download for Windows', file: 'JobPilot-Windows-Setup.exe', match: /windows.*\.exe$/i },
   macArm: { label: 'Download for Mac', file: 'JobPilot-macOS.dmg', match: /macos.*\.dmg$/i },
   linux: { label: 'Download for Linux', file: 'JobPilot-Linux.AppImage', match: /linux.*\.appimage$/i },

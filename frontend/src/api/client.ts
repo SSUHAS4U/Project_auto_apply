@@ -98,6 +98,11 @@ export const api = {
     req<AuthResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, fullName: string) =>
     req<AuthResult>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, fullName }) }),
+  /** Sign in with the ID token the Google button returned. The server verifies it. */
+  googleLogin: (credential: string) =>
+    req<AuthResult>('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
+  /** Public: can the Google button render (client id set) and is sign-up open. */
+  authConfig: () => req<{ googleClientId: string; registrationOpen: boolean }>('/api/auth/config'),
   me: () => req<{ id: string; email: string; fullName: string; role: string; isAdmin: boolean }>('/api/auth/me'),
 
   jobs: (f: JobFilters = {}) => {

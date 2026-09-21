@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom';
 import './styles.css';
 import { initTheme } from './lib/theme';
 import { ToastProvider } from './lib/ui';
@@ -24,9 +24,19 @@ import { ScoutPage } from './pages/ScoutPage';
 import { ResumesPage } from './pages/ResumesPage';
 import { AdminPage } from './pages/AdminPage';
 import { AuthPage } from './pages/AuthPage';
+import { HomePage } from './pages/HomePage';
+import { isDesktopApp } from './lib/desktop';
 
+/**
+ * The app shell for a signed-in user. Signed out, "/" is the public home page on the web (the
+ * desktop app has no visitors to introduce itself to, so it goes straight to log in) and every
+ * other private route goes to /login.
+ */
 function Guard({ children }: { children: React.ReactNode }) {
-  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />;
+  const { pathname } = useLocation();
+  if (isLoggedIn()) return <>{children}</>;
+  if (pathname === '/' && !isDesktopApp()) return <HomePage />;
+  return <Navigate to="/login" replace />;
 }
 
 // Client-side hint only — the backend enforces ADMIN on every /api/admin route.
@@ -37,6 +47,8 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
 const router = createBrowserRouter([
   { path: '/login', element: <AuthPage mode="login" /> },
   { path: '/register', element: <AuthPage mode="register" /> },
+  // The home page at a stable address, whether or not you're signed in.
+  { path: '/welcome', element: <HomePage /> },
   {
     path: '/',
     element: <Guard><Layout /></Guard>,
