@@ -117,7 +117,7 @@ $('power').addEventListener('change', () => {
   const on = $('power').checked;
   chrome.storage.local.set({ jobpilotEnabled: on });
   applyEnabledUi(on);
-  add('ai', on ? 'JobPilot is back on ✓' : 'JobPilot is off — pages stay untouched until you switch it back on.');
+  add('ai', on ? 'JobPilot is back on' : 'JobPilot is off — pages stay untouched until you switch it back on.');
 });
 
 // --- action buttons -------------------------------------------------------
@@ -130,49 +130,49 @@ $('power').addEventListener('change', () => {
 // the three were fighting each other. There is now exactly one brain: build the plan, apply it.
 $('fillnow').onclick = async () => {
   add('me', 'Fill this form');
-  const prog = add('ai', '⏳ Reading every question and preparing answers…');
+  const prog = add('ai', 'Reading every question and preparing answers…');
   await bg('GET_PROFILE', { force: true });
   const r = await tabSend('PLAN_FILL');
-  if (!r.ok) { prog.remove(); return void add('ai', '⚠ ' + r.error); }
+  if (!r.ok) { prog.remove(); return void add('ai', r.error); }
   const items = (r.plan || []).filter((f) => String(f.value || '').trim());
   if (!items.length) { prog.remove(); return void add('ai', 'Nothing to fill here — every field already has a value.'); }
-  prog.textContent = `⏳ Filling ${items.length} field${items.length === 1 ? '' : 's'}…`;
+  prog.textContent = `Filling ${items.length} field${items.length === 1 ? '' : 's'}…`;
   const res = await tabSend('APPLY_FILL', { items: items.map((f) => ({ id: f.id, label: f.label, value: f.value })) });
   prog.remove();
-  if (!res.ok) return void add('ai', '⚠ ' + res.error);
-  let m = `✓ Filled ${res.applied} of ${items.length} — review the page & submit yourself.`;
+  if (!res.ok) return void add('ai', res.error);
+  let m = `Filled ${res.applied} of ${items.length} — review the page & submit yourself.`;
   const skipped = (r.plan || []).length - items.length;
   if (skipped > 0) m += `
 ${skipped} question${skipped === 1 ? '' : 's'} had no answer — use Scan & review to fill them in.`;
   if (res.failed && res.failed.length) m += `
-⚠ Couldn't set: ${res.failed.slice(0, 5).join('; ')}.`;
+Couldn't set: ${res.failed.slice(0, 5).join('; ')}.`;
   add('ai', m);
 };
 
 // --- Scan & review, then fill ----------------------------------------------
 // PLAN_FILL returns every empty field with a proposed answer + where it came from.
-// The user edits inline (text/selects), regenerates single answers with ✨, and
-// nothing touches the page until ✅ Apply.
+// The user edits inline (text/selects), regenerates single answers with the sparkle button, and
+// nothing touches the page until Apply.
 $('review').onclick = async () => {
   add('me', 'Scan & review this form');
-  const prog = add('ai', '⏳ Scanning the form and preparing an answer for every field…');
+  const prog = add('ai', 'Scanning the form and preparing an answer for every field…');
   await bg('GET_PROFILE', { force: true });
   const r = await tabSend('PLAN_FILL');
   prog.remove();
-  if (!r.ok) return void add('ai', '⚠ ' + r.error);
+  if (!r.ok) return void add('ai', r.error);
   if (!r.plan || !r.plan.length) return void add('ai', 'No empty fillable fields found here — everything may already be filled.');
   renderPlan(r.plan);
 };
 
-const SRC_LABEL = { profile: '👤 profile', ai: '✨ AI', '': '⚠ no answer' };
+const SRC_LABEL = { profile: 'From profile', ai: 'AI', '': 'No answer' };
 
 function renderPlan(plan) {
   const card = add('ai', '');
   card.classList.add('plan');
   const head = document.createElement('div');
   head.className = 'plan-head';
-  head.textContent = `📋 Found ${plan.length} field${plan.length === 1 ? '' : 's'} to fill. ` +
-    'Check each answer (👤 = from your profile, ✨ = AI), edit anything, then Apply.';
+  head.textContent = `Found ${plan.length} field${plan.length === 1 ? '' : 's'} to fill. ` +
+    'Check each answer (the tag says where it came from), edit anything, then Apply.';
   card.appendChild(head);
 
   const inputs = new Map(); // id → input/select
@@ -216,7 +216,7 @@ function renderPlan(plan) {
     const regen = document.createElement('button');
     regen.className = 'plan-regen';
     regen.title = 'Ask the AI again for this field';
-    regen.textContent = '✨';
+    regen.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4M22 5h-4"/></svg>'; regen.setAttribute('aria-label', 'Write a new answer');
     regen.onclick = async () => {
       regen.disabled = true; regen.textContent = '…';
       try {
@@ -229,7 +229,7 @@ function renderPlan(plan) {
           const ans = (a && a.data && a.data.answer) || (a && a.answer);
           if (ans) { input.value = ans; src.textContent = SRC_LABEL.ai; src.classList.remove('warn'); }
         }
-      } finally { regen.disabled = false; regen.textContent = '✨'; }
+      } finally { regen.disabled = false; regen.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4M22 5h-4"/></svg>'; }
     };
 
     const line = document.createElement('div');
@@ -243,13 +243,13 @@ function renderPlan(plan) {
   foot.className = 'plan-foot';
   const apply = document.createElement('button');
   apply.className = 'plan-apply';
-  apply.textContent = `✅ Apply ${plan.length} answers`;
+  apply.textContent = `Apply ${plan.length} answers`;
   apply.onclick = async () => {
-    apply.disabled = true; apply.textContent = '⏳ Applying…';
+    apply.disabled = true; apply.textContent = 'Applying…';
     const items = plan.map((f) => ({ id: f.id, value: inputs.get(f.id).value }));
     const res = await tabSend('APPLY_FILL', { items });
     apply.remove(); cancel.remove();
-    if (!res.ok) return void add('ai', '⚠ ' + res.error);
+    if (!res.ok) return void add('ai', res.error);
 
     // LEARN from corrections: any answer the user edited becomes a saved Q&A, so the
     // same question is answered THEIR way (bank first) on every future form.
@@ -261,10 +261,10 @@ function renderPlan(plan) {
       }
     }
 
-    let msgTxt = `✓ Applied ${res.applied} answer${res.applied === 1 ? '' : 's'} — review the page & submit yourself.`;
-    if (learned) msgTxt += `\n🧠 Learned ${learned} corrected answer${learned === 1 ? '' : 's'} — I'll use them automatically next time.`;
+    let msgTxt = `Applied ${res.applied} answer${res.applied === 1 ? '' : 's'} — review the page & submit yourself.`;
+    if (learned) msgTxt += `\nLearned ${learned} corrected answer${learned === 1 ? '' : 's'} — I'll use them automatically next time.`;
     if (res.failed && res.failed.length) {
-      msgTxt += `\n⚠ Couldn't set: ${res.failed.slice(0, 5).join('; ')}${res.failed.length > 5 ? '…' : ''} — set those manually.`;
+      msgTxt += `\nCouldn't set: ${res.failed.slice(0, 5).join('; ')}${res.failed.length > 5 ? '…' : ''} — set those manually.`;
     }
     add('ai', msgTxt);
   };
@@ -280,18 +280,18 @@ function renderPlan(plan) {
 // Resume picker: always ask WHICH resume to attach (profile + LaTeX builder PDFs).
 $('resume').onclick = async () => {
   const r = await bg('LIST_RESUMES', {});
-  if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'background unavailable'));
+  if (!r || !r.ok) return void add('ai', (r ? r.error : 'background unavailable'));
   const options = (r.data || []).filter((o) => o.hasPdf);
   if (!options.length) {
     return void add('ai', 'No resume PDFs yet — upload one in Profile, or compile one in Dashboard → Resumes.');
   }
   add('ai', 'Which resume should I attach?', options.map((o) => [
-    `${o.base ? '⭐ ' : ''}${o.name}`,
+    `${o.name}${o.base ? ' (base)' : ''}`,
     async () => {
       add('me', `Attach "${o.name}"`);
       const res = await tabSend('UPLOAD_RESUME', o.id ? { docId: o.id } : {});
-      if (!res.ok) return void add('ai', '⚠ ' + res.error);
-      add('ai', res.attached ? `Resume attached (${res.filename}) ✓` : (res.note || 'Downloaded your resume.'));
+      if (!res.ok) return void add('ai', res.error);
+      add('ai', res.attached ? `Resume attached (${res.filename})` : (res.note || 'Downloaded your resume.'));
     },
   ]));
 };
@@ -300,34 +300,34 @@ $('resume').onclick = async () => {
 $('tailor').onclick = async () => {
   add('me', 'Tailor resume to this job');
   const jd = await tabSend('EXTRACT_JD');
-  if (!jd.ok) return void add('ai', '⚠ ' + jd.error);
-  if (!jd.jdText || jd.jdText.length < 80) return void add('ai', '⚠ Couldn’t find a job description on this page.');
+  if (!jd.ok) return void add('ai', jd.error);
+  if (!jd.jdText || jd.jdText.length < 80) return void add('ai', 'Couldn’t find a job description on this page.');
   const name = [jd.role, jd.company].filter(Boolean).join(' – ').slice(0, 80) || 'Tailored resume';
-  const prog = add('ai', '⏳ Tailoring a copy of your base resume to this JD…');
+  const prog = add('ai', 'Tailoring a copy of your base resume to this JD…');
   const r = await bg('TAILOR_RESUME', { name, jobUrl: jd.url, jdText: jd.jdText });
   prog.remove();
   add('ai', r && r.ok
-    ? `✓ Created "${name}" — opened the editor. Review, compile, and it'll appear in 📎 Resume.`
-    : '⚠ ' + ((r && r.error) || 'tailor failed'));
+    ? `Created "${name}" — opened the editor. Review, compile, and it'll appear under Résumé.`
+    : ((r && r.error) || 'tailor failed'));
 };
 $('cover').onclick = async () => {
   const r = await tabSend('ATTACH_COVER_LETTER');
-  if (!r.ok) return void add('ai', '⚠ ' + r.error);
-  add('ai', r.attached ? 'Cover letter attached ✓ — review & submit.' : (r.note || 'Downloaded the cover-letter PDF.'));
+  if (!r.ok) return void add('ai', r.error);
+  add('ai', r.attached ? 'Cover letter attached — review & submit.' : (r.note || 'Downloaded the cover-letter PDF.'));
 };
-$('save').onclick = async () => { const r = await tabSend('SAVE_CURRENT'); add('ai', r.ok ? 'Saved to your tracker ✓' : '⚠ ' + r.error); };
+$('save').onclick = async () => { const r = await tabSend('SAVE_CURRENT'); add('ai', r.ok ? 'Saved to your tracker' : r.error); };
 
 // --- Auto Apply queue -------------------------------------------------------
 // The daily Auto Apply engine queues ATS/portal jobs it can't legally submit
 // server-side. Walk the queue here: open a job, hit Quick fill, submit, then
-// mark it ✓ so it lands in Applications.
+// mark it applied so it lands in Applications.
 $('queue').onclick = async () => {
   add('me', 'Show my Auto Apply queue');
   const r = await bg('AUTO_APPLY_QUEUE', {});
-  if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'background unavailable'));
+  if (!r || !r.ok) return void add('ai', (r ? r.error : 'background unavailable'));
   const items = r.data || [];
-  if (!items.length) return void add('ai', 'Queue is empty ✓ — the next daily run will refill it.');
-  add('ai', `⚡ ${items.length} job${items.length === 1 ? '' : 's'} queued. Open one, hit Fill now, submit, then mark it ✓.`);
+  if (!items.length) return void add('ai', 'Queue is empty — the next daily run will refill it.');
+  add('ai', `${items.length} job${items.length === 1 ? '' : 's'} queued. Open one, hit Fill now, submit, then choose Mark applied.`);
   items.slice(0, 10).forEach((it) => {
     const title = `${it.title || 'Job'}${it.company ? ' @ ' + it.company : ''}${it.matchScore != null ? ` (match ${it.matchScore})` : ''}`;
     add('ai', title, [
@@ -335,11 +335,11 @@ $('queue').onclick = async () => {
         await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'opened' });
         chrome.tabs.create({ url: it.url });
       }],
-      ['✓ Applied', async () => {
+      ['Mark applied', async () => {
         const res = await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'applied' });
-        add('ai', res && res.ok ? 'Marked applied — added to Applications ✓' : '⚠ ' + (res ? res.error : 'failed'));
+        add('ai', res && res.ok ? 'Marked applied — added to Applications' : (res ? res.error : 'failed'));
       }],
-      ['✕ Dismiss', async () => {
+      ['Dismiss', async () => {
         await bg('AUTO_APPLY_QUEUE_STATUS', { itemId: it.id, status: 'dismissed' });
         add('ai', 'Dismissed.');
       }],
@@ -361,29 +361,29 @@ async function ask(text) {
     const fields = (scan && scan.ok && scan.fields) || [];
     const r = await bg('ASSIST_COMMAND', { instruction: q, fields });
     thinking.remove();
-    if (!r || !r.ok) return void add('ai', '⚠ ' + (r ? r.error : 'request failed'));
+    if (!r || !r.ok) return void add('ai', (r ? r.error : 'request failed'));
     const d = r.data || {};
     if (d.action === 'fill' && d.field) {
       const fr = await tabSend('FILL_FIELD', { label: d.field, value: d.value });
-      add('ai', fr.ok ? `✓ Filled "${fr.label}" with "${d.value}"` : `⚠ ${fr.error}`);
+      add('ai', fr.ok ? `Filled "${fr.label}" with "${d.value}"` : `${fr.error}`);
     } else if (d.action === 'answer') {
       const cleanQ = d.question || q; // the extracted form question, not the chat instruction
       add('ai', d.value || '(no answer)', [
-        ['📋 Copy', () => navigator.clipboard.writeText(d.value || '')],
-        ['💾 Save to autofill', async () => { await bg('SAVE_QA', { question: cleanQ, answer: d.value }); add('ai', `Saved "${cleanQ}" ✓`); }],
+        ['Copy', () => navigator.clipboard.writeText(d.value || '')],
+        ['Save to autofill', async () => { await bg('SAVE_QA', { question: cleanQ, answer: d.value }); add('ai', `Saved "${cleanQ}"`); }],
       ]);
     } else if (d.action === 'save') {
       // backend already persisted it; show the clean question that was saved
-      add('ai', `Saved ${d.question ? `"${d.question}"` : 'this'} to your autofill answers ✓`);
+      add('ai', `Saved ${d.question ? `"${d.question}"` : 'this'} to your autofill answers`);
     } else if (d.action === 'save_job') {
       const sr = await tabSend('SAVE_CURRENT');
-      add('ai', sr.ok ? 'Saved this job to your tracker ✓' : '⚠ ' + (sr.error || 'could not save — reload the page and retry'));
+      add('ai', sr.ok ? 'Saved this job to your tracker' : (sr.error || 'could not save — reload the page and retry'));
     } else {
       add('ai', d.message || 'Done.');
     }
   } catch (e) {
     thinking.remove();
-    add('ai', '⚠ ' + e.message);
+    add('ai', e.message);
   }
 }
 $('send').onclick = () => ask();

@@ -124,7 +124,7 @@
       report.push({
         label: f.label || '(unlabelled)', kind: f.kind, status: 'unanswered',
         reason: error || (f.label ? 'no saved answer and the model did not return one'
-          : 'this field has no readable label — save an answer on it once with the ✨ pill'),
+          : 'this field has no readable label — save an answer on it once with the JobPilot pill'),
       });
     }
     return { filled, total: fields.length, pending: pending.length, report, error };

@@ -173,7 +173,7 @@
     window.JobPilot.highlight(el);
   }
 
-  // ---- focus pill (✨ AI answer · 💾 save) ----------------------------------
+  // ---- focus pill (AI answer · Save) ----------------------------------------
   // Instead of littering every field with permanent buttons, ONE compact pill
   // appears next to the question field you're focused on, and vanishes on blur.
 
@@ -185,32 +185,33 @@
     if (pill) return pill;
     pill = document.createElement('div');
     pill.id = 'jobpilot-pill';
-    // Base box only. The dark "pill" chrome (background/border/shadow/padding) is applied by
-    // renderPillMode ONLY when expanded — collapsed is just the ✨ star, nothing behind it.
+    // Base box only. The toolbar chrome (surface/border/shadow/padding) is applied by
+    // renderPillMode ONLY when expanded — collapsed is just the small "J" handle.
     pill.style.cssText = [
-      'position:absolute', 'z-index:2147483647', 'display:flex', 'align-items:center', 'gap:2px',
-      'border-radius:999px', 'font:600 12px system-ui,sans-serif',
+      'position:absolute', 'z-index:2147483647', 'display:flex', 'align-items:center', 'gap:4px',
+      'border-radius:12px', 'font:500 12.5px system-ui,-apple-system,"Segoe UI",sans-serif',
       'transition:opacity .12s ease', 'opacity:0',
     ].join(';');
+    const pal = JPUI.palette();
 
-    const mk = (label, title) => {
+    // Buttons carry an SVG icon + label, styled from the shared JobPilot palette (content/common/jpUi.js).
+    const mk = (role, ico, label, title) => {
       const b = document.createElement('button');
-      b.type = 'button'; b.textContent = label; b.title = title;
-      b.style.cssText = [
-        'border:none', 'border-radius:999px', 'padding:5px 11px', 'cursor:pointer',
-        'color:#e7e9ee', 'background:transparent', 'font:600 12px system-ui,sans-serif',
-        'transition:background .12s',
-      ].join(';');
-      b.addEventListener('mouseenter', () => { b.style.background = 'rgba(99,102,241,.35)'; });
-      b.addEventListener('mouseleave', () => { b.style.background = 'transparent'; });
+      b.type = 'button'; b.title = title;
+      b.innerHTML = JPUI.icon(ico, 14) + '<span></span>';
+      b.lastChild.textContent = label;
+      b.style.cssText = JPUI.buttonStyle(role, pal);
+      b._label = (t) => { b.lastChild.textContent = t; };
+      b.addEventListener('mouseenter', () => { b.style.opacity = '.86'; });
+      b.addEventListener('mouseleave', () => { b.style.opacity = '1'; });
       b.addEventListener('mousedown', (e) => e.preventDefault()); // keep field focus
       return b;
     };
 
-    const ai = mk('✨ AI answer', 'Generate an answer from your profile');
-    const save = mk('💾 Save', 'Save this Q&A for autofill');
+    const ai = mk('primary', 'sparkles', 'AI answer', 'Write an answer from your profile');
+    const save = mk('secondary', 'save', 'Save', 'Save this question and answer for autofill');
     const note = document.createElement('span');
-    note.style.cssText = 'color:#9aa1b1;font-weight:500;padding:0 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    note.style.cssText = `color:${pal.ink3};font-weight:500;padding:0 6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
 
     // Always act on the field that is focused RIGHT NOW (mousedown preventDefault
     // keeps it focused) — never a stale reference from an earlier focus.
@@ -223,14 +224,16 @@
     ai.addEventListener('click', async () => {
       const el = currentField();
       if (!el) return;
-      ai.disabled = true; const old = ai.textContent; ai.textContent = '✨ thinking…';
+      ai.disabled = true; ai._label('Writing…');
       try {
         note.title = '';
+        note.style.color = pal.ink3;
         await answerIntoField(el, note);
       } catch (e) {
-        note.textContent = '⚠ ' + e.message;
-        note.title = e.message + ' — click ✨ to retry'; // full text on hover (note truncates)
-      } finally { ai.disabled = false; ai.textContent = old; }
+        note.textContent = e.message;
+        note.style.color = pal.danger;
+        note.title = e.message + ' — click AI answer to retry'; // full text on hover (note truncates)
+      } finally { ai.disabled = false; ai._label('AI answer'); }
     });
 
     save.addEventListener('click', async () => {
@@ -238,11 +241,11 @@
       if (!el) return;
       const question = deriveQuestion(el);
       const answer = readValue(el).trim();
-      if (!question) { note.textContent = 'no question detected'; return; }
-      if (!answer) { note.textContent = 'type an answer first'; return; }
+      if (!question) { note.textContent = 'No question found on this field'; return; }
+      if (!answer) { note.textContent = 'Type an answer first'; return; }
       save.disabled = true;
-      try { await msg('SAVE_QA', { question, answer }); note.textContent = '✓ saved'; }
-      catch (e) { note.textContent = '⚠ ' + e.message; }
+      try { await msg('SAVE_QA', { question, answer }); note.style.color = pal.ok; note.textContent = 'Saved for autofill'; }
+      catch (e) { note.style.color = pal.danger; note.textContent = e.message; }
       finally { save.disabled = false; }
     });
 
@@ -251,12 +254,12 @@
     // while reading must not dismiss it.)
     pill.addEventListener('mouseenter', () => clearTimeout(pillHideTimer));
 
-    // Drag handle: grab the ⠿ grip (or the note area) and park the pill anywhere it
+    // Drag handle: grab the grip (or the note area) and park the pill anywhere it
     // doesn't cover the form. The manual position sticks until the pill hides.
     const grip = document.createElement('span');
-    grip.textContent = '⠿';
+    grip.innerHTML = JPUI.mark(20, pal);
     grip.title = 'Drag to move';
-    grip.style.cssText = 'cursor:grab;color:#6b7280;padding:0 4px 0 8px;font-size:12px;user-select:none';
+    grip.style.cssText = 'cursor:grab;padding:0 2px 0 3px;user-select:none;display:inline-flex';
     const startDrag = (e) => {
       e.preventDefault();
       const pr = pill.getBoundingClientRect();
@@ -278,26 +281,27 @@
     note.addEventListener('mousedown', startDrag);
 
     const close = document.createElement('button');
-    close.textContent = '✕';
+    close.type = 'button';
+    close.innerHTML = JPUI.icon('x', 14);
     close.title = 'Close (Esc)';
-    close.style.cssText = 'border:none;background:transparent;color:#9aa1b1;cursor:pointer;padding:4px 8px;font-size:12px;border-radius:999px';
+    close.setAttribute('aria-label', 'Close');
+    close.style.cssText = JPUI.buttonStyle('ghost', pal);
     close.addEventListener('mousedown', (e) => e.preventDefault());
     close.addEventListener('click', () => { pillExpanded = false; renderPillMode(); });
 
-    // Collapsed by default: ONE small ✨ handle. Clicking it expands to AI answer / Save.
+    // Collapsed by default: ONE small handle. Clicking it expands to AI answer / Save.
     // This keeps the feature on every field (nothing is taken away) while never throwing a
     // wide bar over the page unasked — which was the actual annoyance.
-    // Collapsed handle: JUST the star. No background box — a soft drop-shadow keeps it legible
-    // on light and dark pages, and hovering adds a faint circular halo so it still reads as a
-    // button, without a hard black pill sitting on the page.
+    // The handle is the JobPilot "J" mark — recognisably ours on any site, where a bare
+    // sparkle could belong to any AI widget. A soft shadow keeps it legible on light and dark.
     const dot = document.createElement('button');
-    dot.type = 'button'; dot.textContent = '✨';
-    dot.title = 'JobPilot — AI answer or save this Q&A';
-    dot.style.cssText = 'border:none;background:transparent;cursor:pointer;line-height:1;'
-      + 'font-size:18px;padding:2px;border-radius:999px;'
-      + 'filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));transition:background .12s';
-    dot.addEventListener('mouseenter', () => { dot.style.background = 'rgba(99,102,241,.20)'; });
-    dot.addEventListener('mouseleave', () => { dot.style.background = 'transparent'; });
+    dot.type = 'button'; dot.innerHTML = JPUI.mark(22, pal);
+    dot.title = 'JobPilot — AI answer or save this question';
+    dot.setAttribute('aria-label', 'JobPilot: AI answer or save');
+    dot.style.cssText = 'border:none;background:transparent;cursor:pointer;line-height:0;'
+      + 'padding:2px;border-radius:8px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.28));transition:transform .12s';
+    dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.08)'; });
+    dot.addEventListener('mouseleave', () => { dot.style.transform = 'none'; });
     dot.addEventListener('mousedown', (e) => e.preventDefault());
     dot.addEventListener('click', () => { pillExpanded = true; renderPillMode(); });
 
@@ -311,21 +315,25 @@
 
   let pillDragged = false;
   let pillPinned = false;
-  let pillExpanded = false; // collapsed = just the ✨ handle
+  let pillExpanded = false; // collapsed = just the "J" handle
 
   function renderPillMode() {
     if (!pill || !pill._parts) return;
     const { dot, grip, ai, save, note, close } = pill._parts;
     dot.style.display = pillExpanded ? 'none' : 'inline-flex';
-    [grip, ai, save, note, close].forEach((el) => { el.style.display = pillExpanded ? '' : 'none'; });
-    // The dark pill chrome belongs to the EXPANDED toolbar only. Collapsed = bare star.
+    // Restore each part's OWN display, not '' — '' drops back to the button default and stacks
+    // the icon above its label.
+    [grip, ai, save, close].forEach((el) => { el.style.display = pillExpanded ? 'inline-flex' : 'none'; });
+    note.style.display = pillExpanded ? '' : 'none';
+    // The toolbar chrome belongs to the EXPANDED state only. Collapsed = bare "J" handle.
     if (pillExpanded) {
-      pill.style.background = 'rgba(17,20,29,.92)';
-      pill.style.backdropFilter = 'blur(8px)';
-      pill.style.webkitBackdropFilter = 'blur(8px)';
-      pill.style.border = '1px solid rgba(99,102,241,.45)';
-      pill.style.boxShadow = '0 6px 24px rgba(0,0,0,.35)';
-      pill.style.padding = '3px';
+      const pal = JPUI.palette();
+      pill.style.background = pal.surface;
+      pill.style.backdropFilter = 'none';
+      pill.style.webkitBackdropFilter = 'none';
+      pill.style.border = '1px solid ' + pal.line;
+      pill.style.boxShadow = pal.shadow;
+      pill.style.padding = '4px';
     } else {
       pill.style.background = 'transparent';
       pill.style.backdropFilter = 'none';
@@ -393,21 +401,21 @@
   // format; only true open questions get prose.
   async function answerIntoField(el, note) {
     const question = deriveQuestion(el);
-    if (!question) { note.textContent = 'no question detected'; return; }
+    if (!question) { note.textContent = 'No question found on this field'; return; }
     const smart = window.JobPilotSmart;
 
     if (el.tagName === 'SELECT') {
       const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|please)/i.test(t));
-      if (!options.length) { note.textContent = 'no options in this dropdown'; return; }
+      if (!options.length) { note.textContent = 'This dropdown has no options'; return; }
       const r = await msg('ASSIST_CHOOSE', { question, options, multi: false });
       const pick = norm(((r && r.selected) || [])[0] || '');
       const opt = [...el.options].find((o) => norm(o.text) === pick)
         || (pick && [...el.options].find((o) => norm(o.text).includes(pick) || pick.includes(norm(o.text))));
-      if (!opt) { note.textContent = 'no option matched'; return; }
+      if (!opt) { note.textContent = 'No option matched your profile'; return; }
       el.value = opt.value;
       el.dispatchEvent(new Event('change', { bubbles: true }));
       window.JobPilot.highlight(el);
-      note.textContent = '✓ ' + opt.text.trim().slice(0, 26);
+      note.textContent = 'Chose ' + opt.text.trim().slice(0, 26);
       return;
     }
 
@@ -422,7 +430,7 @@
       context: qc.context, confidence: qc.confidence,
     });
     const answer = r && r.answer;
-    if (!answer || !String(answer).trim()) { note.textContent = 'nothing in your profile for this'; return; }
+    if (!answer || !String(answer).trim()) { note.textContent = 'Nothing in your profile answers this'; return; }
 
     if (isDrop) {
       const ok = smart.isCustomDropdown(el)
@@ -433,8 +441,8 @@
       writeValue(el, String(answer));
     }
     window.JobPilot.highlight(el);
-    note.textContent = r.source === 'saved' ? '↺ saved answer'
-      : r.source === 'profile' ? '👤 from profile' : '✓ AI';
+    note.textContent = r.source === 'saved' ? 'From a saved answer'
+      : r.source === 'profile' ? 'From your profile' : 'Written by AI';
   }
 
   // Everything the pill can act on — question fields PLUS selects, custom dropdowns

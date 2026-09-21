@@ -369,24 +369,29 @@
     if (document.getElementById('jobpilot-save')) return;
     const btn = document.createElement('button');
     btn.id = 'jobpilot-save';
-    btn.textContent = '🔖 Save to JobPilot';
+    // The JobPilot primary pair (ink / white, flipped on dark pages) with the "J" mark —
+    // recognisably ours on any job site. Styles come from content/common/jpUi.js.
+    const pal = JPUI.palette();
+    const label = (text) => { btn.innerHTML = JPUI.mark(20, { primary: pal.onPrimary, onPrimary: pal.primary }) + '<span></span>'; btn.lastChild.textContent = text; };
+    label('Save to JobPilot');
     btn.style.cssText = [
       'position:fixed', 'bottom:18px', 'left:18px', 'z-index:2147483647',
-      'background:linear-gradient(135deg,#6366f1,#4f46e5)', 'color:#fff', 'border:none',
-      'border-radius:10px', 'padding:10px 16px', 'font:700 13px system-ui,sans-serif',
-      'cursor:pointer', 'box-shadow:0 8px 24px rgba(79,70,229,.5)',
+      'display:inline-flex', 'align-items:center', 'gap:8px',
+      `background:${pal.primary}`, `color:${pal.onPrimary}`, 'border:none',
+      'border-radius:10px', 'padding:8px 14px 8px 8px', 'font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif',
+      'cursor:pointer', `box-shadow:${pal.shadow}`,
     ].join(';');
     btn.addEventListener('click', async () => {
-      btn.disabled = true; btn.textContent = 'Saving…';
+      btn.disabled = true; label('Saving…');
       try {
         const payload = extractor();
         payload.sourceSite = site;
         await saveJob(payload);
-        btn.textContent = '✓ Saved';
-        setTimeout(() => { btn.textContent = '🔖 Save to JobPilot'; btn.disabled = false; }, 2000);
+        label('Saved to your tracker');
+        setTimeout(() => { label('Save to JobPilot'); btn.disabled = false; }, 2000);
       } catch (e) {
-        btn.textContent = '⚠ ' + e.message;
-        setTimeout(() => { btn.textContent = '🔖 Save to JobPilot'; btn.disabled = false; }, 3000);
+        label("Couldn't save: " + e.message);
+        setTimeout(() => { label('Save to JobPilot'); btn.disabled = false; }, 3000);
       }
     });
     document.body.appendChild(btn);

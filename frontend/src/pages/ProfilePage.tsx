@@ -90,13 +90,16 @@ function SavedAnswers() {
 }
 
 type Tab = 'personal' | 'professional' | 'education' | 'autofill' | 'resume';
-const TABS: { id: Tab; label: string; ico: string }[] = [
-  { id: 'personal', label: 'Personal', ico: 'user' },
-  { id: 'professional', label: 'Professional', ico: 'clipboard' },
-  { id: 'education', label: 'Education', ico: 'file' },
-  { id: 'autofill', label: 'Autofill answers', ico: 'bolt' },
-  { id: 'resume', label: 'Resume', ico: 'file' },
+/** `checks` names the completeness items that live in each section, so the rail can mark a
+ *  section done or not. Autofill answers are optional by nature, so they carry none. */
+const TABS: { id: Tab; label: string; ico: string; checks: string[] }[] = [
+  { id: 'personal', label: 'Personal', ico: 'user', checks: ['Email', 'Phone', 'Location', 'Work authorization', 'LinkedIn / GitHub'] },
+  { id: 'professional', label: 'Professional', ico: 'clipboard', checks: ['Headline', 'Skills', 'Experience', 'Summary', 'Expected CTC', 'Notice period'] },
+  { id: 'education', label: 'Education', ico: 'file', checks: ['Education'] },
+  { id: 'autofill', label: 'Autofill answers', ico: 'bolt', checks: [] },
+  { id: 'resume', label: 'Résumé', ico: 'file', checks: ['Résumé'] },
 ];
+const TICKS = 20;
 
 export function ProfilePage() {
   const toast = useToast();
@@ -216,8 +219,8 @@ export function ProfilePage() {
   const pct = Math.round((gotW / totalW) * 100);
   // Most-important gaps first, so the hint names what's actually worth fixing.
   const missing = CHECKS.filter((c) => !c.ok).sort((a, b) => b.w - a.w).map((c) => c.label);
-  const ringTone = pct >= 90 ? 'var(--green)' : pct >= 60 ? 'var(--accent)'
-    : pct >= 35 ? 'var(--amber)' : 'var(--red)';
+  const missingSet = new Set(missing);
+  const tabDone = (t: (typeof TABS)[number]) => t.checks.length > 0 && t.checks.every((c) => !missingSet.has(c));
 
   return (
     <div className="pf">
@@ -228,6 +231,34 @@ export function ProfilePage() {
         </div>
       </div>
 
+      <div className="pf-layout">
+      <aside className="pf-rail" aria-label="Profile sections">
+        <div className="card pf-complete">
+          <div className="pf-complete-top"><b>{pct}%</b><span>complete</span></div>
+          <div className="pf-ticks" role="img" aria-label={`Profile ${pct}% complete`}>
+            {Array.from({ length: TICKS }, (_, i) => <i key={i} className={i < Math.round((pct / 100) * TICKS) ? 'on' : ''} />)}
+          </div>
+          <p>{missing.length === 0
+            ? 'Everything the automation and autofill need is here.'
+            : <>Add <b>{missing.slice(0, 2).join(' and ')}</b>{missing.length > 2 ? ` and ${missing.length - 2} more` : ''} to fill in more forms automatically.</>}</p>
+        </div>
+        <div className="pf-nav" role="tablist" aria-label="Profile sections">
+          {TABS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={tab === t.id}
+              className={`pf-nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
+              <Icon name={t.ico} size={15} /><span>{t.label}</span>
+              {t.checks.length > 0 && (
+                <span className={`pf-nav-st ${tabDone(t) ? 'ok' : 'todo'}`}
+                  title={tabDone(t) ? 'Complete' : 'Something here is still empty'}>
+                  {tabDone(t) && <Icon name="check" size={9} />}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div className="pf-main">
       <div className="pf-head">
         <div className="pf-avatar">{(p.fullName?.[0] ?? 'U').toUpperCase()}</div>
         <div className="pf-id">
@@ -248,23 +279,6 @@ export function ProfilePage() {
             )}
           </div>
         </div>
-        <div className="pf-ring" style={{ ['--pct']: pct, ['--rc']: ringTone } as React.CSSProperties}
-          role="img" aria-label={`Profile ${pct}% complete`}
-          title={missing.length ? `Still missing: ${missing.join(', ')}` : 'Profile complete'}>
-          <div className="pf-ring-in">
-            <div className="pf-ring-n">{pct}<span>%</span></div>
-            <div className="pf-ring-l">{pct >= 90 ? 'ready' : 'done'}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="pf-nav" role="tablist" aria-label="Profile sections">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id}
-            className={`pf-nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-            <Icon name={t.ico} size={14} /> {t.label}
-          </button>
-        ))}
       </div>
 
       {tab === 'personal' && (
@@ -585,6 +599,8 @@ export function ProfilePage() {
           {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save profile
         </button>
       </div>
+      </div>
+      </div>
     </div>
   );
 }
@@ -755,12 +771,16 @@ function DocumentsVault() {
 }
 
 /* ---- small building blocks ---- */
+/** A profile section: one card, a header row (icon · title · what it's used for), then the body. */
 function Section({ ico, title, sub, children }: { ico: string; title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="card card-pad section">
-      <div className="section-title"><span className="si"><Icon name={ico} size={15} /></span>{title}{sub && <span className="section-sub">{sub}</span>}</div>
-      {children}
-    </div>
+    <section className="card pf-sec">
+      <div className="pf-sec-h">
+        <span className="pf-sec-ic"><Icon name={ico} size={15} /></span>
+        <div className="pf-sec-t"><h3>{title}</h3>{sub && <div className="pf-sec-sub">{sub}</div>}</div>
+      </div>
+      <div className="pf-sec-b">{children}</div>
+    </section>
   );
 }
 /**

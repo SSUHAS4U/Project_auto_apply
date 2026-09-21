@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import type { AgentStatus, PortalConnection } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { CompanyLogo } from '../components/CompanyLogo';
 import { DownloadDesktop } from '../components/DownloadDesktop';
 import { isDesktopApp } from '../lib/desktop';
 
@@ -14,9 +15,10 @@ import { isDesktopApp } from '../lib/desktop';
  * automation may do. Status + Connect are desktop-only; the web build explains how instead.
  */
 
-const PORTALS: Record<string, { name: string; color: string; letter: string; sub: string; parked?: boolean }> = {
-  linkedin: { name: 'LinkedIn', color: '#0A66C2', letter: 'in', sub: 'Easy Apply · connections · messages' },
-  indeed: { name: 'Indeed', color: '#2557A7', letter: 'i', sub: 'Indeed Apply on your session' },
+// The real brand marks (looked up by domain), not a letter on a hand-picked colour.
+const PORTALS: Record<string, { name: string; url: string; sub: string; parked?: boolean }> = {
+  linkedin: { name: 'LinkedIn', url: 'https://linkedin.com', sub: 'Easy Apply · connections · messages' },
+  indeed: { name: 'Indeed', url: 'https://indeed.com', sub: 'Indeed Apply on your session' },
 };
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -141,7 +143,7 @@ export function ConnectionsPage() {
           return (
             <div key={key} className="card conn-card">
               <div className="conn-top">
-                <div className="conn-logo" style={{ background: p.color }}>{p.letter}</div>
+                <CompanyLogo company={p.name} url={p.url} size={44} radius={11} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="conn-name">{p.name}</div>
                   <div className="faint" style={{ fontSize: 12.5 }}>{p.sub}</div>
@@ -181,7 +183,7 @@ export function ConnectionsPage() {
         {/* Email — configured in Settings (Brevo/SMTP), used for email-type applications */}
         <div className="card conn-card">
           <div className="conn-top">
-            <div className="conn-logo" style={{ background: '#DB4437' }}><Icon name="mail" size={20} /></div>
+            <div className="conn-logo"><Icon name="mail" size={20} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="conn-name">Email</div>
               <div className="faint" style={{ fontSize: 12.5 }}>Email-type applications &amp; outreach</div>
@@ -194,7 +196,7 @@ export function ConnectionsPage() {
         {/* Desktop app — the engine that runs the portal automation on the user's PC */}
         <div className="card conn-card">
           <div className="conn-top">
-            <div className="conn-logo" style={{ background: 'linear-gradient(135deg, var(--accent-hi), var(--accent))' }}>
+            <div className="conn-logo">
               <Icon name="terminal" size={18} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>

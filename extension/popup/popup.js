@@ -87,7 +87,7 @@ async function loadProfile(force) {
     conn.innerHTML = '<span class="dot"></span>not connected';
     conn.className = 'sub err';
     $('profile').innerHTML = `<div class="muted">${resp ? resp.error : 'background unavailable'}</div>
-      <div class="muted" style="margin-top:4px">Sign in via <b>⚙ Options</b>.</div>`;
+      <div class="muted" style="margin-top:4px">Sign in from <b>Options</b> below.</div>`;
     return;
   }
   conn.innerHTML = '<span class="dot"></span>connected';
@@ -125,7 +125,7 @@ function renderFillNow(r) {
   if (skipped.length) {
     const h = document.createElement('div');
     h.className = 'rephead';
-    h.textContent = `⚠ ${skipped.length} field${skipped.length === 1 ? '' : 's'} left for you`;
+    h.textContent = `${skipped.length} field${skipped.length === 1 ? '' : 's'} left for you`;
     box.appendChild(h);
     skipped.slice(0, 8).forEach((label) => {
       const row = document.createElement('div');
@@ -187,7 +187,7 @@ function renderReport(fillReport, aiReport) {
 
   const h = document.createElement('div');
   h.className = 'rephead';
-  h.textContent = `⚠ ${unfilled.length} field${unfilled.length === 1 ? '' : 's'} need${unfilled.length === 1 ? 's' : ''} you`;
+  h.textContent = `${unfilled.length} field${unfilled.length === 1 ? '' : 's'} need${unfilled.length === 1 ? 's' : ''} you`;
   box.appendChild(h);
   unfilled.slice(0, 8).forEach((item) => {
     const row = document.createElement('div');
@@ -266,8 +266,12 @@ $('resume').addEventListener('click', async () => {
     const b = document.createElement('button');
     b.className = 'picker-item';
     b.disabled = !o.hasPdf;
-    b.innerHTML = `<span>${o.base ? '⭐ ' : ''}${o.name}</span>` +
-      (o.hasPdf ? '' : '<span class="pi-sub" style="margin-left:auto">not compiled</span>');
+    // Built with textContent: a résumé name is user text and must never be parsed as HTML.
+    const nm = document.createElement('span');
+    nm.textContent = o.name;
+    b.appendChild(nm);
+    if (o.base) { const t = document.createElement('span'); t.className = 'pi-base'; t.textContent = 'Base'; b.appendChild(t); }
+    if (!o.hasPdf) { const t = document.createElement('span'); t.className = 'pi-sub'; t.style.marginLeft = 'auto'; t.textContent = 'not compiled'; b.appendChild(t); }
     b.addEventListener('click', async () => {
       picker.hidden = true;
       status(`Attaching “${o.name}”…`);

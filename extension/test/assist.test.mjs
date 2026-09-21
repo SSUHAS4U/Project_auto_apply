@@ -14,6 +14,7 @@ import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as F from './fixtures.mjs';
 
@@ -21,9 +22,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { chromium } = require(path.resolve(here, '../../worker/node_modules/playwright-core'));
 
-// The full content-script set, in manifest order.
-const SCRIPTS = ['smartFill.js', 'fieldEngine.js', 'formEngine.js', 'assistEngine.js']
-  .map((f) => path.resolve(here, '../content/common', f));
+// The full content-script set, READ FROM manifest.json so it can't drift: a hand-copied list
+// here missed jpUi.js when it was added, and every pill test failed on a missing global.
+const MANIFEST = JSON.parse(readFileSync(path.resolve(here, '../manifest.json'), 'utf8'));
+const SCRIPTS = MANIFEST.content_scripts[0].js.map((f) => path.resolve(here, '..', f));
 
 // Minimal MV3 surface. The engines call these at load; nothing here reaches a network.
 const CHROME_STUB = `
