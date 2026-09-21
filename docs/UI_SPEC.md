@@ -3,127 +3,155 @@
 The agreed look, and where it came from. Read this before any UI change; it exists so the same
 decisions are not re-derived every session.
 
+Approved mockups (2026-09-21): https://claude.ai/artifact/Kz5HbKUB5StoNW1ts1ZnLk — home page,
+sign-up / log-in, the three match-score options (A was chosen), job cards, profile, dashboard,
+auto apply, fields and controls, the dock, mobile.
+
 ---
 
 ## Product references
 
-Agreed 2026-09-14. **Linear** is the anchor.
+Agreed 2026-09-21, replacing the 2026-09-14 Linear anchor. **Ashby** is the anchor.
 
 | Reference | Captured | Why this one |
 |---|---|---|
-| **Linear — Method** | `~/.claude/design-library/notes/linear.md` | JobPilot is a dense internal tool with long settings surfaces and a lot of numbers. Linear is the reference for restraint in exactly that shape. |
-
-Groww and Wise are in the design library and remain available for specific patterns (data density,
-captioned figures) but are not the anchor.
+| **Ashby** (ashbyhq.com) | `~/.claude/design-library/notes/ashby.md` | Recruiting software people pay for: the owner asked for "a professional auto-apply website" that doesn't look AI-made. |
+| **Huntr** (huntr.co) | `~/.claude/design-library/notes/huntr.md` | A job-seeker product — outcome-first copy, a tracker by status. What NOT to take: its confetti shapes. |
+| Linear — Method | `~/.claude/design-library/notes/linear.md` | Still the reference for restraint in dense settings surfaces. |
 
 ---
 
 ## REFERENCE NOTES
 
-What was taken from the reference, as decisions rather than colours.
-
 ```
 Source           Decision replicated
-Linear/Method    Emphasis comes from WEIGHT and SIZE, never from colour.
-Linear/Method    A three-step text ladder and nothing more:
-                   heading (--text) · body (--text-dim) · meta (--text-faint)
-Linear/Method    ONE saturated element per surface. Everything else greyscale.
-Linear/Method    A border appears only where two different KINDS of thing meet —
-                 not around every item.
-Linear/Method    Background near-black, not black, so elevated surfaces can lift
-                 off it. (--bg #0a0b0f already satisfies this.)
-Linear/Method    Vertical rhythm is large and consistent; the gap size itself
-                 signals the hierarchy level.
-Groww #10        The accent is brand/CTA only — NEVER a data colour.
-Groww #13        A hero number is large, semibold, in the UI face — not mono.
+Ashby/home       One heavy headline carries the page; nothing competes with it.
+Ashby/home       "Log in" is a TEXT link beside ONE filled button. Never two buttons.
+Ashby/home       Social proof is a flat row of logos — here, the real job sources — no cards.
+Ashby/home       Feature sections are big white cards on an off-white canvas, hairline + faint shadow.
+Ashby/home       ONE saturated colour. Everything else black / grey.
+Huntr/home       Outcome-first headline; a real product fragment beside it, not an illustration.
+Linear/Method    Emphasis from WEIGHT and SIZE, never from colour.
+Linear/Method    A border only where two different kinds of thing meet.
 ```
 
-### What this rules out, specifically
+### What this rules out
 
-The dashboard had **eight hardcoded hex colours**, one per metric tile
-(`#5b5bd6 #2563eb #d97706 #16a34a #7c3aed #0891b2 #db2777 #16a34a`), tinting an icon in each card,
-plus six pill tones across sixteen pills on one screen. None of it carried meaning: a metric is not
-"more purple" than another. That is colour as decoration, and it is the clearest generated-UI tell
-on the page. Under this spec colour is only ever semantic.
+Indigo gradients (every one was removed), colour as decoration (eight tile colours on one
+dashboard), a card for every number, emoji as icons — in the app and in the extension.
 
 ---
 
 ## Tokens
 
-The token layer already exists in `frontend/src/styles.css` under `:root` and
-`:root[data-theme="light"]`. Rules that follow from having it:
+`frontend/src/styles.css`, top of file. Light is the default; dark is designed alongside, not
+inverted. The legacy names (`--bg`, `--bg-card`, `--text-dim`, `--green`, …) are ALIASES of the
+roles below, so every older component re-skinned from the one block.
 
-- **No raw hex in a component.** If a colour is needed that no token covers, the token set is wrong.
-- **Semantic names.** `--danger`, not `--red`, at the point of use.
-- Light and dark are designed together and contrast-checked separately.
+| Role | Light | Dark | Used for |
+|---|---|---|---|
+| `--canvas` / `--surface` / `--surface-2` / `--sunken` | `#F4F5F7` / `#FFF` / `#FAFBFC` / `#EEF0F3` | `#0C0E11` / `#14171C` / `#181B21` / `#0F1115` | page, cards, raised rows, wells |
+| `--line` / `--line-strong` | `#E3E6EB` / `#CDD2DA` | `#252A32` / `#353B45` | hairlines, control borders |
+| `--ink` / `--ink-2` / `--ink-3` | `#0F1217` / `#4A5260` / `#737C8A` | `#ECEEF2` / `#A6ADB8` / `#7D8592` | heading / body / meta — a three-step ladder, nothing more |
+| `--primary` / `--on-primary` | ink / white | white / ink | THE primary action, the logo tile, the dock highlight |
+| `--accent` | `#2152D9` | `#7FA2FF` | links, the active nav icon, focus rings. Never a button fill. |
+| `--success` / `--warning` / `--danger` (+ `-soft`) | | | real state only |
+
+- **No raw hex in a component.** The one exception is the logo tile's white background: logos
+  are drawn for white.
+- Type: **Onest** for the interface, **Geist Mono** for numbers (`tabular-nums`).
+- Radius: 14 (card) / 9 (control) / 6 (chip). Controls are 36–38px; card actions are 36px.
+- Motion: 160 ms, one curve (`--ease`); `prefers-reduced-motion` disables it.
 
 ### Colour budget per surface
 
-| Role | Token | Used for |
-|---|---|---|
-| Accent | `--accent` / `--accent-hi` | The one primary action, and the active nav state. Nothing else. |
-| Success | `--green` | A good terminal outcome only: applied, reply received. |
-| Danger | `--red` | A real problem only. |
-| Everything else | `--text` / `--text-dim` / `--text-faint` | All other state, all chrome, all icons. |
+| Colour | Means |
+|---|---|
+| Ink fill | the one primary action |
+| Blue (accent) | a link, where you are, where focus is — and "applied, waiting" in status dots |
+| Green | a good outcome: applied, connected, tracked, a great fit |
+| Amber | needs you: an unanswered question, a fair fit |
+| Red | a real problem: signed out, failed, a weak fit |
+| Everything else | greys |
 
-Warning (`--amber`) is reserved for a state the user must act on. It is not a category colour.
+---
 
-### Numbers
+## Match score — the fit scale
 
-- `font-variant-numeric: tabular-nums` on anything that updates or aligns.
-- Thousands separated (`360,780`, never `360780`).
-- Unknown renders `—`, never `0`. A zero is a claim.
+`components/FitScale.tsx`, bands in `lib/fit.ts` (the ONLY place the thresholds live).
+
+```
+ 74 /100      [Good fit]        number · verdict WORD (colour is never the only carrier)
+ ▒▒▒▒▒▒▒▒ ▒▒ ████▌░░░░          four bands at their REAL widths, marker at the score
+ weak <40  fair <55  good <75  great
+```
+
+Hover or keyboard focus opens the reasons: skills matched of total, experience the posting asks,
+location, what's missing. Rows appear only for facts the posting gave. On narrow cards the scale
+becomes a full-width bar under the title. `MiniFit` is the compact form for tables and lists.
+
+---
+
+## One job card, everywhere
+
+`components/JobCardV2.tsx`. Logo · title/company · fit scale; facts; skills; then ONE bottom row
+— source + apply-method tag on the left, every control on the right at 36px. The status dropdown
+and "Tracked" sit in that row beside Details; they looked misplaced when they hugged their text
+in a narrow side column between full-width panels.
+
+- A fact the posting doesn't state is **left out** — never "Not mentioned".
+- Missing skills are a dashed outline (a gap to fill), not red (an error).
+- Logos: by the company's **domain** when the job link is on its own site, then by company name,
+  then the initial. Never by job title. See `lib/companyDomain.ts`.
+
+---
+
+## Shell
+
+- Sidebar: logo + name, five modules, the active one a raised white row with a blue icon; one
+  footer row — avatar, name, email, bell, theme, sign out.
+- **The bottom dock keeps its shape, glass and sliding motion**; only its colours follow the
+  theme — the sliding highlight is `--primary`.
+- Pages are size containers (`.page { container-type: inline-size }`), so cards reflow on the
+  width they actually get. A full-page layout (home, auth) uses media queries — an element can't
+  query its own size.
+
+---
+
+## Public pages
+
+- `/` signed out on the web, and `/welcome` always: the home page. The desktop app skips it.
+- `/login`, `/register`: split layout. The Google button renders only when the server reports a
+  client id AND this is a browser. Register asks the server whether sign-up is open and shows an
+  invite-only explanation when it isn't.
+- Every claim on the home page is something the product does. No user counts, ratings or quotes.
+
+---
+
+## Extension
+
+Popup, side panel, the on-page pill and the "Save to JobPilot" button use the same tokens,
+following the browser's light/dark setting (they can't see the dashboard's toggle). The pill's
+collapsed handle is the "J" mark; expanded it is `AI answer` (primary) · `Save` · a status note.
+Shared through `content/common/jpUi.js`. SVG icons only.
 
 ---
 
 ## Density
 
-`comfortable` on settings and profile surfaces; `compact` on tables and the job board. Decided per
-surface, not per component.
+`comfortable` on settings and profile surfaces; `compact` on tables and the job board.
 
 ---
 
 ## Verification
 
-`frontend/test/responsive.test.mjs` renders every route at 360/768/1280 in both themes against
-empty AND populated fixtures, and fails on horizontal page scroll or any element escaping the
-viewport. A UI change is not done until that suite passes and the screenshots have been looked at.
+`frontend/test/responsive.test.mjs` renders every route (including `/welcome`, `/login`,
+`/register`) at 360 / 768 / 1280 in both themes against empty AND populated fixtures, and fails on
+horizontal page scroll or any element escaping the viewport. A UI change is not done until that
+suite passes and the screenshots have been looked at.
 
----
+Found by that discipline during the redesign, so they aren't reintroduced:
 
-## REFERENCE NOTES — one job card on every job surface
-
-Added 2026-09-19. Source: `~/.claude/design-library/notes/linear.md` (already captured — not
-re-browsed, per the library rule) plus this repo's own `JobCardV2`.
-
-**This task was component REUSE, not component design.** The highest-preference option in the
-reuse order — "a component this project already has" — applied directly: `JobCardV2` was already
-serving the board, Daily picks, Scout and the portal panels, and the request was to extend it to
-Saved jobs and the tracker. No registry was searched and no alternative card was offered, because
-offering alternatives would have meant re-opening a decision the owner had already made by
-pointing at the board and saying "like that".
-
-```
-Source            Decision replicated
-Linear/Method     Absence is shown by absence. A fact the posting never carried is OMITTED,
-                  not printed as "Not mentioned" — the same reason Linear puts a border only
-                  where two KINDS of thing meet rather than around every block. Four
-                  "Not mentioned" cells is a card apologising for itself.
-Linear/Method     Emphasis from weight and size, never colour. The tracker card's status
-                  control is the one interactive element; the match score stays data-coloured.
-Linear/Method     Vertical rhythm signals hierarchy — the card's existing 24px card padding
-                  and 12px inter-card gap are kept, not re-derived per surface.
-JobCardV2         The card already degrades when `score` is absent (no fit panel). `sparse`
-                  extends that same principle to the fact row instead of adding a second
-                  card shape.
-UI_SPEC Groww#10  The accent is CTA only. "Promote to tracker" is the one accent-filled
-                  button on a saved card; everything else is ghost.
-```
-
-### What this rules out
-
-A second card component for "saved" or "tracked" listings. There is one card; a surface that
-cannot fill it either gets its data fixed at the source (which is what the extension capture and
-the `JobSummary` DTO change do) or passes `sparse`. A fork would drift within a release — that is
-exactly how the tracker ended up with a desktop table and a *separate* mobile card that had
-already diverged in what it showed.
+- A `visibility:hidden` popover still counts toward the page's scroll width. Hidden-until-hover
+  UI must be `display:none` until shown.
+- Two components sharing a class name (`.flow-step`) — new global classes need a unique prefix.

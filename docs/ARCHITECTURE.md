@@ -42,7 +42,7 @@ tag. A web refresh cannot update the desktop app. See `CLAUDE.md` → Shipping.
 | `web/` | 1.4k | REST controllers only. No logic. |
 | `connector/` | 1.3k | Job-board feeds (Careerjet, Jooble, IndianAPI, the keyless aggregators, …) |
 | `domain/` + `repository/` | 1.2k | JPA entities and Spring Data repositories |
-| `security/` | 0.4k | `AuthFilter` (JWT for users, static token for admin, worker tokens), CORS |
+| `security/` | 0.5k | `AuthFilter` (JWT for users, static token for admin, worker tokens), CORS, `GoogleIdTokenVerifier` |
 | `config/` | 0.4k | `JobPilotProperties` (all tunables), `WebConfig` (the one shared `RestClient`) |
 
 ### Invariant: every LLM call goes through `AiService`
@@ -78,7 +78,8 @@ The piece the owner touches most, and the one with the least structure.
 
 | File | Lines | Owns |
 |---|---|---|
-| `content/common/assistEngine.js` | 1768 | The ✨ pill, question derivation, AI answer, save-answer, plan-fill, cover letter, listing scan |
+| `content/common/jpUi.js` | 68 | `JPUI` — the "J" mark, SVG icons, light/dark palette and button styles for everything drawn INSIDE other sites. Loaded first. |
+| `content/common/assistEngine.js` | 1799 | The on-page pill ("J" handle → AI answer · Save), question derivation, AI answer, save-answer, plan-fill, cover letter, listing scan |
 | `content/common/fieldEngine.js` | 365 | `window.JobPilot` — label derivation, synonym matching, value setting, the fill entry point |
 | `content/common/smartFill.js` | 186 | Trusted-event value setting, shadow-DOM query, ATS fingerprint, typeahead driving |
 | `content/sites/*.js` | 17–63 each | Per-ATS adapters; `generic.js` is the fallback |
@@ -143,16 +144,34 @@ referencing a variable from another function's scope; all were valid JavaScript,
 Router in `main.tsx`, shell in `components/Layout.tsx`, one API client in `api/client.ts`, one
 type barrel in `types/index.ts`.
 
-### The styling problem
+Public pages: `pages/HomePage.tsx` (`/` signed out on the web, `/welcome` always) and
+`pages/AuthPage.tsx` (`/login`, `/register`). The routing rule lives in `main.tsx`'s `Guard`.
 
-**All styling is one 2065-line `styles.css` with 37 media queries across 14 ad-hoc breakpoints**
-(480, 520, 560, 620, 640, 700, 720, 860, 900, 920, 1000, 1080, 1100, 1180). There is no token
-layer and no shared breakpoint set, so every component was made responsive on its own, at
-whatever width its author happened to test.
+| File | Owns |
+|---|---|
+| `styles.css` (top) | The token layer — every colour, type and spacing role. Legacy names are aliases. See docs/UI_SPEC.md |
+| `lib/fit.ts` | The four fit bands and their thresholds — the ONLY place they live |
+| `components/FitScale.tsx` | The fit scale (with its reasons) and `MiniFit` for tables |
+| `lib/companyDomain.ts` | A job URL → the employer's domain, or null for job boards / ATS hosts |
+| `components/CompanyLogo.tsx` | Logo by domain → by company name → initial. Never by job title |
+| `components/GoogleButton.tsx` | Google Identity Services button; hands the ID token to `/api/auth/google` |
 
-That is precisely why some components break on some devices: **nothing in the codebase defines
-what the device classes are.** Fixing it means a token-first pass — one defined breakpoint
-scale, then each component moved onto it — not more one-off media queries.
+### Invariant: sign-in is decided by the server
+
+The browser never tells the backend who signed in. Google's ID token is verified server-side
+(`GoogleIdTokenVerifier`: signature against Google's keys, `aud`, `iss`, `exp`, `email_verified`),
+and a Google account only ever gets a NEW JobPilot account under the register form's own rule —
+first account, or `JOBPILOT_REGISTRATION_OPEN=true`. Google is not a side door around closed
+sign-up. The desktop app never shows the Google button: it opens pop-ups in the system browser,
+where Google's result can't reach it.
+
+### Styling
+
+Still one `styles.css`, but no longer ad hoc: a token layer at the top that every rule reads,
+and pages are size containers (`.page { container-type: inline-size }`), so a component reflows
+on the width it actually gets rather than the window's. Full-page layouts (home, auth) use
+media queries — an element can't query its own size. Older rules still carry some one-off
+breakpoints; new work uses container queries.
 
 ---
 
@@ -174,16 +193,14 @@ scale, then each component moved onto it — not more one-off media queries.
 `components/JobCardV2.tsx` is the ONLY job card. It serves the board, Daily picks, Scout, the
 portal panels, the Applications tracker and Saved jobs.
 
-A surface that cannot fill it does not get its own card — it gets its data fixed at the source,
-or it passes `sparse`. That rule exists because the tracker previously had a desktop table AND a
-separate mobile card, and the two had already diverged: the mobile one showed a bare score chip
-where the board showed a fit panel. `responsive.test.mjs` asserts `.jc2` renders on all five job
+A surface that cannot fill it does not get its own card — it gets its data fixed at the source.
+That rule exists because the tracker previously had a desktop table AND a separate mobile card,
+and the two had already diverged. `responsive.test.mjs` asserts `.jc2` renders on all five job
 surfaces, so a sixth bespoke card fails the build.
 
-`sparse` means "omit a fact we never collected", not "hide a fact the posting didn't state". A
-board listing that states no salary prints *Not mentioned* — that is true about the posting. A
-job saved before the extension captured descriptions has nothing to be true or false about, so
-its cells are omitted. Both behaviours are asserted separately.
+Every control sits in ONE bottom row at 36px (`actions`, then `extras`); the apply-method badge
+goes in `tag`, beside the source. A fact the posting doesn't state is omitted — the old `sparse`
+prop and "Not mentioned" cells are gone (2026-09-21), and the suite asserts no card prints it.
 
 ### What feeds it
 

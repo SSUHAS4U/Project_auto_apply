@@ -644,8 +644,10 @@ export function ActivityFeed({ portal }: { portal?: string } = {}) {
   if (events.length === 0) {
     return <div className="card card-pad empty"><div className="big"><Icon name="clipboard" size={34} /></div>No activity yet — it fills as the automation runs.</div>;
   }
+  // Scrolls inside its own card: up to 120 rows beside the small Runs card used to make the
+  // page ~14,000px tall, with the Runs card stranded at the top.
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
+    <div className="card feed-card" tabIndex={0} aria-label="Activity">
       {events.map((e) => {
         const ei = EVENT_ICON[e.type] ?? EVENT_ICON.info;
         return (

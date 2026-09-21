@@ -3,6 +3,15 @@
 Base URL: `http://localhost:8080`. All `/api/**` routes require header `X-Api-Token: <token>`.
 `/health` is public.
 
+## Auth (public — no token)
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/auth/login` | `{email, password}` → `{token, user}`. Throttled per account and per address |
+| POST | `/api/auth/register` | `{email, password, fullName}`. Refused (403) once an account exists unless `JOBPILOT_REGISTRATION_OPEN=true` |
+| POST | `/api/auth/google` | `{credential}` — the Google Identity Services ID token. Verified server-side; signs in the account with that verified email; creates one only when sign-up is open. 409 if `JOBPILOT_GOOGLE_CLIENT_ID` is unset, 403 for an unknown email while sign-up is closed |
+| GET | `/api/auth/config` | `{googleClientId, registrationOpen}` — what the sign-in screens may show. Nothing secret |
+| GET | `/api/auth/me` | current user (JWT required) |
+
 ## Jobs
 | Method | Path | Notes |
 |---|---|---|

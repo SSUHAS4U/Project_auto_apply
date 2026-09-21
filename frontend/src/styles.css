@@ -518,6 +518,7 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Centered content column: pages stop stretching edge-to-edge on wide monitors
    (the "everything hugs the left, dead space on the right" problem). */
 .page { max-width: 1240px; margin: 0 auto; container-type: inline-size; }
+.feed-card { max-height: min(640px, 70vh); overflow-y: auto; overscroll-behavior: contain; }
 
 /* ============================================================================
    DASHBOARD — headline strip, outreach strip, chart + funnel, needs-you + recent.

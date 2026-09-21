@@ -243,11 +243,11 @@ describe('one job card on every job surface', () => {
   }
 
   /**
-   * A listing captured before the extension collected descriptions has no facts to state.
-   * Those rows must render SHORTER, not four cells of "Not mentioned" — the honest rendering
-   * of "never gathered" is absence, not a denial.
+   * A fact a posting doesn't state is LEFT OUT, on every card (agreed in the 2026-09-21
+   * redesign). Four cells of "Not mentioned" read as a broken card; a shorter card says the same
+   * thing honestly. A listing with no facts at all drops the facts row entirely.
    */
-  test('a saved job with no description renders sparse, not "Not mentioned"', async (t) => {
+  test('no card prints "Not mentioned"; a card with no facts drops the row', async (t) => {
     if (unavailable) return t.skip(unavailable);
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     await ctx.addInitScript(() => {
@@ -267,37 +267,25 @@ describe('one job card on every job surface', () => {
     await page.goto(BASE + '/saved', { waitUntil: 'networkidle', timeout: 25000 });
     await page.waitForTimeout(300);
 
-    // The fixture deliberately mixes both shapes, and they must behave DIFFERENTLY:
-    //
-    //   modern row  — has a description, so a fact the posting never stated is a true
-    //                 "Not mentioned". Those cells SHOULD be there.
-    //   legacy row  — has no description at all, so there is nothing to state or not state.
-    //                 Asserting "Not mentioned" about a posting we never read is a lie.
-    //
-    // Scoped per card for exactly that reason: counting `.na` across the whole page conflates
-    // the two and passes or fails for the wrong reason.
+    // The fixture mixes a row WITH a description (modern) and one without (legacy). Neither may
+    // say "Not mentioned"; the modern one must still show the facts it does have.
     const cards = await page.locator('.jc2').count();
+    const notMentioned = await page.locator('.jc2', { hasText: 'Not mentioned' }).count();
 
     const legacy = page.locator('.jc2', { hasText: 'Single Position' }).first();
-    const legacyNa = await legacy.locator('.na').count();
     const legacyMeta = await legacy.locator('.jc2-meta').count();
 
-    // A modern row keeps the full treatment — this is what proves `sparse` is targeted
-    // rather than quietly switched on for the whole page.
     const modern = page.locator('.jc2').first();
     const modernFacts = await modern.locator('.jc2-meta span').count();
-    const modernFit = await modern.locator('.fitpanel').count();
+    const modernFit = await modern.locator('.fit').count();
     await ctx.close();
 
     assert.ok(cards >= 6, `expected the mixed fixture to render at least 6 cards, got ${cards}`);
-    assert.equal(legacyNa, 0,
-      `a pre-migration saved job showed ${legacyNa} "Not mentioned" cells — it has no description, so it must render sparse`);
+    assert.equal(notMentioned, 0, `${notMentioned} card(s) printed "Not mentioned" — an unstated fact is omitted`);
     assert.equal(legacyMeta, 0,
-      'a pre-migration saved job with no facts at all must drop the meta row entirely, not leave an empty one');
-    assert.ok(modernFacts > 0,
-      'a saved job WITH a description must still show its facts — sparse must not leak onto modern rows');
-    assert.equal(modernFit, 1,
-      'a scored saved job must show the same fit panel as the board');
+      'a saved job with no facts at all must drop the meta row entirely, not leave an empty one');
+    assert.ok(modernFacts > 0, 'a saved job WITH a description must still show its facts');
+    assert.equal(modernFit, 1, 'a scored saved job must show the same fit scale as the board');
   }, { timeout: 120000 });
 });
 
