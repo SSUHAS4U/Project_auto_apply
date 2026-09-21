@@ -17,7 +17,7 @@ import java.util.UUID;
 
 /**
  * Guards {@code /api/**} with a defence-in-depth model:
- *  - {@code /api/auth/login|register} → public.
+ *  - {@code /api/auth/login|register|google|config} → public.
  *  - {@code /api/admin/**} → JWT whose user has role=ADMIN (checked in the DB,
  *    never from the token). A static token can NEVER reach these routes, so a
  *    leaked machine token cannot manage users or escalate privileges.
@@ -60,7 +60,8 @@ public class AuthFilter extends OncePerRequestFilter {
         if (HttpMethod.OPTIONS.matches(req.getMethod())) { chain.doFilter(req, res); return; }
 
         String path = req.getServletPath();
-        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")) {
+        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")
+                || path.equals("/api/auth/google") || path.equals("/api/auth/config")) {
             chain.doFilter(req, res); return; // public
         }
 

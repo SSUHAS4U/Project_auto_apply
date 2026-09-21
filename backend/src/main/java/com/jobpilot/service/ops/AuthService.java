@@ -4,6 +4,7 @@ import com.jobpilot.config.JobPilotProperties;
 import com.jobpilot.domain.AppUser;
 import com.jobpilot.domain.Profile;
 import com.jobpilot.repository.*;
+import com.jobpilot.security.GoogleIdTokenVerifier;
 import com.jobpilot.security.JwtService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,11 +29,13 @@ public class AuthService {
     private final NotificationRepository notifications;
     private final JwtService jwt;
     private final JobPilotProperties props;
+    private final GoogleIdTokenVerifier google;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public AuthService(AppUserRepository users, ProfileRepository profiles,
                        ApplicationRepository applications, SavedJobRepository savedJobs,
-                       NotificationRepository notifications, JwtService jwt, JobPilotProperties props) {
+                       NotificationRepository notifications, JwtService jwt, JobPilotProperties props,
+                       GoogleIdTokenVerifier google) {
         this.users = users;
         this.profiles = profiles;
         this.applications = applications;
@@ -40,6 +43,7 @@ public class AuthService {
         this.notifications = notifications;
         this.jwt = jwt;
         this.props = props;
+        this.google = google;
     }
 
     /** Opt-in re-opening of sign-up; see the check in register(). */
@@ -60,6 +64,47 @@ public class AuthService {
         if (users.existsByEmailIgnoreCase(e)) {
             throw new IllegalStateException("an account with that email already exists");
         }
+        return createAccount(e, encoder.encode(password), fullName);
+    }
+
+    /**
+     * Sign in with a Google ID token.
+     *
+     * An EXISTING account is matched by the Google account's verified email — Google has proven
+     * the caller owns that address, which is the same thing a correct password proves. A
+     * Google account with no matching JobPilot account gets one ONLY under the same rule as the
+     * register form (first account, or JOBPILOT_REGISTRATION_OPEN=true): Google sign-in must not
+     * become a side door around closed sign-up.
+     */
+    @Transactional
+    public Map<String, Object> google(String credential) {
+        GoogleIdTokenVerifier.GoogleIdentity id = google.verify(credential);
+        return users.findByEmailIgnoreCase(id.email())
+                .map(u -> {
+                    if (isOwnerEmail(u.getEmail()) && !u.isAdmin()) { u.setRole("ADMIN"); users.save(u); }
+                    return token(u);
+                })
+                .orElseGet(() -> {
+                    if (!signUpOpen()) {
+                        throw new SecurityException("No JobPilot account uses " + id.email()
+                                + ". Sign-up is invite only on this server — log in with the email you were invited with.");
+                    }
+                    // No password: the account signs in with Google. A random hash that no input
+                    // can match keeps the column non-null without creating a guessable password.
+                    return createAccount(id.email(), encoder.encode(UUID.randomUUID() + ":" + UUID.randomUUID()), id.name());
+                });
+    }
+
+    /** What the sign-in screens need to know before anyone is signed in. Nothing secret. */
+    public Map<String, Object> publicConfig() {
+        return Map.of("googleClientId", google.clientId(), "registrationOpen", signUpOpen());
+    }
+
+    private boolean signUpOpen() {
+        return registrationOpen || users.count() == 0;
+    }
+
+    private Map<String, Object> createAccount(String e, String passwordHash, String fullName) {
         boolean firstUser = users.count() == 0;
 
         // REGISTRATION IS CLOSED once an account exists.
@@ -79,7 +124,7 @@ public class AuthService {
 
         AppUser u = new AppUser();
         u.setEmail(e);
-        u.setPasswordHash(encoder.encode(password));
+        u.setPasswordHash(passwordHash);
         u.setFullName(fullName);
         if (isOwnerEmail(e)) u.setRole("ADMIN"); // the configured owner is always admin
         u = users.saveAndFlush(u); // flush so FK references resolve in the bulk claim updates below

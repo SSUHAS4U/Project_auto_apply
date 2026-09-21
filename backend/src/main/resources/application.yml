@@ -62,6 +62,9 @@ jobpilot:
     enforce-secrets: ${JOBPILOT_ENFORCE_SECRETS:true}
     # Sign-up closes once the first account exists. Set true to re-open deliberately.
     registration-open: ${JOBPILOT_REGISTRATION_OPEN:false}
+    # OAuth client id for "Sign in with Google" (Google Cloud Console → Credentials). Empty = the
+    # Google button is hidden and /api/auth/google refuses. Public by design; not a secret.
+    google-client-id: ${JOBPILOT_GOOGLE_CLIENT_ID:}
   jwt:
     # NO DEFAULT ON PURPOSE. This repository is public, so any literal here is a key anyone
     # can read — and an unset variable in production meant exactly that until 2026-09-19.

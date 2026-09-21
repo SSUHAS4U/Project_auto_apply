@@ -70,6 +70,32 @@ public class AuthController {
         }
     }
 
+    /**
+     * Sign in with Google. The body carries the ID token ("credential") that the Google button
+     * returned; the server verifies it — the browser's word is never taken for who signed in.
+     * Throttled per address like password login: a flood of forged tokens costs the caller a
+     * lockout, not us a JWKS fetch each.
+     */
+    @PostMapping("/google")
+    public Map<String, Object> google(@RequestBody Map<String, String> body, HttpServletRequest req) {
+        String addr = clientAddress(req);
+        throttle.checkAllowed("google", addr);
+        try {
+            Map<String, Object> out = auth.google(body.get("credential"));
+            throttle.recordSuccess("google", addr);
+            return out;
+        } catch (IllegalArgumentException | SecurityException e) {
+            throttle.recordFailure("google", addr);
+            throw e;
+        }
+    }
+
+    /** Public: whether Google sign-in is available and whether sign-up is open. */
+    @GetMapping("/config")
+    public Map<String, Object> config() {
+        return auth.publicConfig();
+    }
+
     /** Current user (requires a valid JWT — not under /auth public exception). */
     @GetMapping("/me")
     public Map<String, Object> me() {

@@ -47,12 +47,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Roll out on the VM
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           command_timeout: 10m
+          envs: GOOGLE_CLIENT_ID
           script: |
             set -e
             COMPOSE_DIR=~/jobpilot
@@ -140,6 +143,20 @@ jobs:
               echo "bootstrap: as JOBPILOT_DOC_KEY_PREVIOUS so the startup re-key can read legacy rows"
             fi
             # ------------------------------------------------------------------------------
+
+            # "Sign in with Google" client id, from the GOOGLE_CLIENT_ID repository secret.
+            # Optional: unset leaves the env file alone and the Google button stays hidden.
+            # Validated to the shape Google issues before it is written, so a malformed secret
+            # can never inject extra lines into the env file compose loads.
+            if [ -n "$GOOGLE_CLIENT_ID" ]; then
+              if printf '%s' "$GOOGLE_CLIENT_ID" | grep -Eq '^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$'; then
+                sudo sed -i '/^JOBPILOT_GOOGLE_CLIENT_ID=/d' "$ENVFILE"
+                echo "JOBPILOT_GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" | sudo tee -a "$ENVFILE" >/dev/null
+                echo "google: client id set"
+              else
+                echo "::warning::GOOGLE_CLIENT_ID secret is not a Google OAuth client id (ends .apps.googleusercontent.com), left unchanged"
+              fi
+            fi
 
             cd ~/jobpilot
             sudo docker compose pull
