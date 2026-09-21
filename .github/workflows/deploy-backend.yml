@@ -49,13 +49,14 @@ jobs:
       - name: Roll out on the VM
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          REGISTRATION_OPEN: ${{ vars.REGISTRATION_OPEN }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           command_timeout: 10m
-          envs: GOOGLE_CLIENT_ID
+          envs: GOOGLE_CLIENT_ID,REGISTRATION_OPEN
           script: |
             set -e
             COMPOSE_DIR=~/jobpilot
@@ -156,6 +157,15 @@ jobs:
               else
                 echo "::warning::GOOGLE_CLIENT_ID secret is not a Google OAuth client id (ends .apps.googleusercontent.com), left unchanged"
               fi
+            fi
+
+            # Whether anyone may create an account, from the REGISTRATION_OPEN repository VARIABLE
+            # (Settings → Secrets and variables → Actions → Variables). Only the exact words
+            # true/false are honoured; unset leaves the env file as it is (closed by default).
+            if [ "$REGISTRATION_OPEN" = "true" ] || [ "$REGISTRATION_OPEN" = "false" ]; then
+              sudo sed -i '/^JOBPILOT_REGISTRATION_OPEN=/d' "$ENVFILE"
+              echo "JOBPILOT_REGISTRATION_OPEN=$REGISTRATION_OPEN" | sudo tee -a "$ENVFILE" >/dev/null
+              echo "registration open: $REGISTRATION_OPEN"
             fi
 
             cd ~/jobpilot
