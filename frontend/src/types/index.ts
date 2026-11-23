@@ -138,6 +138,8 @@ export interface Profile {
   willingToRelocate?: boolean | null;
   // Easy-Apply autofill answers
   phoneCountryCode?: string;
+  /** The number WhatsApp messages from Compose go out from. */
+  whatsappNumber?: string;
   willingRemote?: boolean | null;
   willingOnsite?: boolean | null;
   securityClearance?: boolean | null;

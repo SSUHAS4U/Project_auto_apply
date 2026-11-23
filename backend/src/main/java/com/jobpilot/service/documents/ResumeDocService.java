@@ -29,7 +29,10 @@ import com.jobpilot.service.NotFoundException;
  *  - per-JD tailored copies (AI rewrites the base to emphasise the JD, honestly);
  *  - compile to PDF through the free texlive.net service (no local TeX install,
  *    works on the 256MB Render free tier);
- *  - stored PDFs are what the extension offers in its "which resume?" picker.
+ *  - stored PDFs are what the extension offers in its "which resume?" picker;
+ *  - UPLOADED résumés (PDF/DOCX, used as-is) live in the same table, so there is one library:
+ *    each row can carry the role it targets, and one row is the default that is copied into
+ *    profile.resume_data for the worker and the extension (V40).
  */
 @Service
 public class ResumeDocService {
@@ -78,6 +81,14 @@ public class ResumeDocService {
             ResumeDoc src = repo.findByIdAndUserId(fromId, userId)
                     .orElseThrow(() -> new NotFoundException("source resume not found"));
             d.setLatex(src.getLatex());
+            d.setRole(src.getRole());
+            if (src.isUploaded()) {
+                // A copy of an uploaded file is the same file — there is no source to rebuild it from.
+                d.setSource(ResumeDoc.SOURCE_UPLOADED);
+                d.setPdf(src.getPdf());
+                d.setFilename(src.getFilename());
+                d.setContentType(src.getContentType());
+            }
         } else if (latex != null && !latex.isBlank()) {
             d.setLatex(latex);
         } else if (blank) {
@@ -111,15 +122,153 @@ public class ResumeDocService {
                 d.setLatex(starterTemplate(profiles.get()));
             }
         }
-        // First-ever document becomes the base automatically.
-        if (repo.findFirstByUserIdAndBaseTrue(userId).isEmpty()) d.setBase(true);
+        // First-ever BUILT document becomes the base automatically (the base is a LaTeX source
+        // that tailoring copies, so an uploaded file can never be it).
+        if (!d.isUploaded() && repo.findFirstByUserIdAndBaseTrue(userId).isEmpty()) d.setBase(true);
         return repo.save(d);
+    }
+
+    // ---- the library: uploaded résumés, roles, the default ---------------------
+
+    /** 10 MB — the multipart limit; checked again here so the message names the cause. */
+    static final int MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+    /**
+     * Add an uploaded résumé to the library. Only PDF and Word files are accepted, checked by
+     * their first bytes rather than the browser's claimed type, because this file is later
+     * attached to emails sent in the user's name and served from a public share link.
+     * The first résumé a user ever stores also becomes the default.
+     */
+    @Transactional
+    public ResumeDoc upload(byte[] data, String filename, String role, String name) {
+        UUID userId = UserContext.require();
+        if (data == null || data.length == 0) throw new IllegalArgumentException("The résumé file is empty.");
+        if (data.length > MAX_UPLOAD_BYTES) {
+            throw new IllegalArgumentException("That file is over 10 MB — export a smaller PDF and upload it again.");
+        }
+        String type = sniffType(data);
+        if (type == null) {
+            throw new IllegalArgumentException("Only PDF or Word (.docx/.doc) résumés can be uploaded — "
+                    + "that file is neither. Export it as PDF and try again.");
+        }
+        String file = cleanFilename(filename, type);
+        ResumeDoc d = new ResumeDoc();
+        d.setUserId(userId);
+        d.setSource(ResumeDoc.SOURCE_UPLOADED);
+        d.setName(name == null || name.isBlank() ? stripExtension(file) : clip(name.trim(), 200));
+        d.setRole(role == null || role.isBlank() ? null : clip(role.trim(), 120));
+        d.setFilename(file);
+        d.setContentType(type);
+        d.setPdf(data);
+        d.setLatex("");
+        boolean first = repo.findFirstByUserIdAndDefaultResumeTrue(userId).isEmpty();
+        ResumeDoc saved = repo.save(d);
+        if (first) return makeDefault(saved.getId());
+        return saved;
+    }
+
+    /** Make this résumé the default: the one profile.resume_data holds, which the worker and
+     *  the extension attach when nothing more specific is chosen. */
+    @Transactional
+    public ResumeDoc makeDefault(UUID id) {
+        UUID userId = UserContext.require();
+        ResumeDoc d = get(id);
+        if (d.getPdf() == null || d.getPdf().length == 0) {
+            throw new IllegalStateException("\"" + d.getName() + "\" has no PDF yet — open it in Documents → Resumes "
+                    + "and press Recompile, then make it the default.");
+        }
+        repo.findFirstByUserIdAndDefaultResumeTrue(userId).ifPresent(prev -> {
+            if (!prev.getId().equals(d.getId())) {
+                prev.setDefaultResume(false);
+                repo.save(prev);
+            }
+        });
+        d.setDefaultResume(true);
+        profiles.setResumeData(d.getPdf(), fileOf(d).filename());
+        return repo.save(d);
+    }
+
+    /** The file to attach or share, with the name and type a recipient should see. */
+    public record ResumeFile(byte[] data, String filename, String contentType) {}
+
+    /** The current user's résumé file, for attaching to an email. */
+    public ResumeFile file(UUID id) {
+        ResumeDoc d = get(id);
+        if (d.getPdf() == null || d.getPdf().length == 0) {
+            throw new IllegalStateException("\"" + d.getName() + "\" has no PDF yet — open it in Documents → Resumes "
+                    + "and press Recompile, or pick another résumé.");
+        }
+        return fileOf(d);
+    }
+
+    /** A résumé file by owner, for the public share link (no signed-in user on that request). */
+    public java.util.Optional<ResumeFile> fileFor(UUID userId, UUID id) {
+        return repo.findByIdAndUserId(id, userId)
+                .filter(d -> d.getPdf() != null && d.getPdf().length > 0)
+                .map(ResumeDocService::fileOf);
+    }
+
+    static ResumeFile fileOf(ResumeDoc d) {
+        String type = d.getContentType() == null ? "application/pdf" : d.getContentType();
+        String filename = d.getFilename();
+        if (filename == null || filename.isBlank()) {
+            String base = d.getName() == null ? "" : d.getName().replaceAll("[^A-Za-z0-9 _-]", "").trim();
+            filename = (base.isEmpty() ? "resume" : base.replace(' ', '_')) + ".pdf";
+        }
+        return new ResumeFile(d.getPdf(), filename, type);
+    }
+
+    static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    static final String DOC = "application/msword";
+
+    /** The file's real type from its first bytes, or null when it isn't PDF/DOCX/DOC. */
+    static String sniffType(byte[] b) {
+        if (b == null || b.length < 4) return null;
+        if (b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F') return "application/pdf";
+        if (b[0] == 'P' && b[1] == 'K' && b[2] == 3 && b[3] == 4) return DOCX;
+        if ((b[0] & 0xFF) == 0xD0 && (b[1] & 0xFF) == 0xCF && (b[2] & 0xFF) == 0x11 && (b[3] & 0xFF) == 0xE0) return DOC;
+        return null;
+    }
+
+    /** A filename safe for a Content-Disposition header and an email attachment, with the
+     *  extension that matches the sniffed type (a renamed file gets its real one). */
+    static String cleanFilename(String filename, String type) {
+        String ext = "application/pdf".equals(type) ? ".pdf" : DOCX.equals(type) ? ".docx" : ".doc";
+        String raw = filename == null ? "" : filename.replace('\\', '/');
+        raw = raw.substring(raw.lastIndexOf('/') + 1);
+        String stem = stripExtension(raw).replaceAll("[^A-Za-z0-9 ._()-]", "").trim();
+        if (stem.isEmpty()) stem = "resume";
+        return clip(stem, 120) + ext;
+    }
+
+    private static String stripExtension(String f) {
+        int dot = f.lastIndexOf('.');
+        return dot > 0 ? f.substring(0, dot) : f;
+    }
+
+    private static String clip(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max);
     }
 
     @Transactional
     public ResumeDoc update(UUID id, String name, String latex) {
+        return update(id, name, latex, null);
+    }
+
+    /** Rename, edit the LaTeX, and/or set the target role. {@code role} null = unchanged,
+     *  blank = cleared. LaTeX on an uploaded résumé is refused — there is none to edit. */
+    @Transactional
+    public ResumeDoc update(UUID id, String name, String latex, String role) {
         ResumeDoc d = get(id);
         if (name != null && !name.isBlank()) d.setName(name.trim());
+        if (role != null) d.setRole(role.isBlank() ? null : clip(role.trim(), 120));
+        if (latex != null && d.isUploaded()) {
+            if (!latex.isBlank()) {
+                throw new IllegalStateException("\"" + d.getName() + "\" is an uploaded file, not LaTeX — "
+                        + "upload a new version instead of editing it here.");
+            }
+            latex = null;
+        }
         if (latex != null) {
             if (!latex.equals(d.getLatex())) d.setPdf(null); // source changed -> stale PDF
             d.setLatex(latex);
@@ -137,11 +286,16 @@ public class ResumeDocService {
     @Transactional
     public ResumeDoc setBase(UUID id) {
         UUID userId = UserContext.require();
+        ResumeDoc d = get(id);
+        if (d.isUploaded()) {
+            throw new IllegalStateException("The base is the LaTeX résumé that tailoring copies — an uploaded file "
+                    + "can't be it. Use \"Make default\" to send this file by default instead.");
+        }
         repo.findFirstByUserIdAndBaseTrue(userId).ifPresent(prev -> {
+            if (prev.getId().equals(d.getId())) return;
             prev.setBase(false);
             repo.save(prev);
         });
-        ResumeDoc d = get(id);
         d.setBase(true);
         d.setUpdatedAt(Instant.now());
         return repo.save(d);
@@ -161,6 +315,10 @@ public class ResumeDocService {
     @Transactional
     public byte[] compile(UUID id) {
         ResumeDoc d = get(id);
+        if (d.isUploaded()) {
+            if (d.getPdf() == null) throw new IllegalStateException("This uploaded résumé has no file.");
+            return d.getPdf(); // nothing to build — the upload IS the output
+        }
         byte[] pdf = compileLatex(d.getLatex());
         d.setPdf(pdf);
         d.setUpdatedAt(Instant.now());

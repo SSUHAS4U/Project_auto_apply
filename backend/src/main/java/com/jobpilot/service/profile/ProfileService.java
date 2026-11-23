@@ -105,6 +105,11 @@ public class ProfileService {
         p.setWillingToRelocate(in.getWillingToRelocate());
         // Easy-Apply autofill answers
         p.setPhoneCountryCode(in.getPhoneCountryCode());
+        // Only when sent: a client that doesn't know this field (an older extension) must not
+        // wipe it. "" clears it.
+        if (in.getWhatsappNumber() != null) {
+            p.setWhatsappNumber(in.getWhatsappNumber().isBlank() ? null : in.getWhatsappNumber().strip());
+        }
         p.setWillingRemote(in.getWillingRemote());
         p.setWillingOnsite(in.getWillingOnsite());
         p.setSecurityClearance(in.getSecurityClearance());

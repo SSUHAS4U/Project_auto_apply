@@ -48,6 +48,7 @@ const NAV: NavEntry[] = [
     children: [
       { to: '/resumes', label: 'Resumes', ico: 'file' },
       { to: '/compose', label: 'Compose & send', ico: 'pen' },
+      { to: '/history', label: 'History', ico: 'clock' },
     ],
   },
   {

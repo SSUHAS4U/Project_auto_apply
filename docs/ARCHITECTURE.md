@@ -32,7 +32,7 @@ tag. A web refresh cannot update the desktop app. See `CLAUDE.md` → Shipping.
 | `service/assist/` | 1.7k | The extension's question-answering brain (`AssistService`) and the chat assistant |
 | `service/documents/` | 1.0k | Résumé storage, parsing, analysis, PDF rendering, the document vault |
 | `service/ai/` | 1.0k | The ONLY package allowed to touch a provider client — see the invariant below |
-| `service/mail/` | 0.9k | SMTP + Brevo transports, compose, digest, email-apply |
+| `service/mail/` | 1.4k | SMTP + Brevo transports, compose (+ paste extraction, WhatsApp links), sent history, digest, email-apply |
 | `service/ops/` | 0.6k | Auth, admin, secrets, settings, notifications, the background runner |
 | `service/profile/` | 0.2k | The profile and its derived name parts |
 | `service/cover/` | 0.2k | Cover-letter generation |
@@ -71,6 +71,35 @@ Settings → AI model. The dashboard reads the model name *from the backend*; ha
 once meant changing a model left the panel naming the old one.
 
 ---
+
+### Compose & send, History, the résumé library (V40, 2026-11-23)
+
+| File | Owns |
+|---|---|
+| `service/mail/ComposeExtractor.java` | Pure rules that read a pasted post: emails, a REQUESTED subject, phone numbers, labelled role/company, phone normalisation |
+| `service/mail/ComposeService.java` | `extract` (rules, then one fast AI call), `generate` (email + cover + WhatsApp text in one call), `send`, `whatsapp` |
+| `service/mail/SentMessageService.java` + `sent_message` | The History page. Every send that reaches the mail server is recorded — failures too |
+| `service/mail/ShareLinkService.java` + `shared_doc` | Résumé / cover-letter links a WhatsApp message carries |
+| `web/PublicDocController.java` | `GET /api/public/doc/{token}` — the ONLY unauthenticated document route |
+| `service/documents/ResumeDocService.java` + `resume_doc` | The ONE résumé library: built (LaTeX) and uploaded (PDF/Word) rows, a role tag each, one default |
+
+**Invariants**
+
+- **A recipient is never invented.** An AI-suggested email, phone or subject is accepted only if it
+  is literally in the pasted post (`ComposeExtractor.appearsIn` / the rules' own matches); a
+  company only if it is in the post or the email's domain. A subject the post asks for outranks
+  the AI's, and a field the user typed is never overwritten by a later paste (`lib/outreach.ts`).
+- **A history row never fails a send.** `SentMessageService.record` swallows its own errors and
+  is not `@Transactional` — a delivered email reported as an error gets retried, i.e. sent twice.
+- **WhatsApp is click-to-chat, not automation.** `wa.me` opens WhatsApp with the text filled
+  in; the user presses Send. History records it as `OPENED`, never `SENT`. Files can't ride a
+  `wa.me` link, so the message carries share links (256-bit token, 60-day expiry, `noindex`).
+- **One résumé library.** `resume_doc` holds both kinds; `profile.resume_data` is a COPY of the
+  default row, kept because the worker and the extension read it. Uploaded types are decided by
+  the file's first bytes, never by its name. An uploaded file can't be the LaTeX base.
+- **`outreach_log` is not the history.** It is the agent's anti-spam ledger: a unique key that
+  refuses a repeat, lower-cased names, no text. Merging the two would block a legitimate second
+  email or lose what was sent.
 
 ## 3. Extension — `extension/`
 
@@ -155,6 +184,10 @@ Public pages: `pages/HomePage.tsx` (`/` signed out on the web, `/welcome` always
 | `lib/companyDomain.ts` | A job URL → the employer's domain, or null for job boards / ATS hosts |
 | `components/CompanyLogo.tsx` | Logo by domain → by company name → initial. Never by job title |
 | `components/GoogleButton.tsx` | Google Identity Services button; hands the ID token to `/api/auth/google` |
+| `lib/outreach.ts` | Résumé suggestion by role, which pasted values may fill a field, "already contacted" |
+| `components/ResumeLibrary.tsx` | Profile → Résumé: upload with a role, default, view, delete — same rows as Documents → Resumes |
+| `pages/HistoryPage.tsx` | Documents → History (`/history`) |
+| `pages/ProfilePage.tsx` | Autosaves 1.2 s after the last edit (dirty keys only, overlaid on the server copy); the manual save sits under the section menu |
 
 ### Invariant: sign-in is decided by the server
 

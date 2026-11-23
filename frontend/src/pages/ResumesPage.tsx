@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, type ResumeDoc } from '../api/client';
 import { Modal } from '../components/Modal';
 import { Icon } from '../components/Icon';
@@ -16,6 +16,8 @@ export function ResumesPage() {
   const [docs, setDocs] = useState<ResumeDoc[]>([]);
   const [sel, setSel] = useState<ResumeDoc | null>(null);
   const [name, setName] = useState('');
+  // The role this résumé targets — Compose uses it to suggest the right one for a job.
+  const [role, setRole] = useState('');
   const [latex, setLatex] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState('');
@@ -42,6 +44,7 @@ export function ResumesPage() {
   const pick = (d: ResumeDoc) => {
     setSel(d);
     setName(d.name);
+    setRole(d.role ?? '');
     setLatex(d.latex);
     setDirty(false);
     setNotesOpen(true);
@@ -56,7 +59,7 @@ export function ResumesPage() {
       const want = selectId ?? params.get('id') ?? sel?.id;
       const d = list.find((x) => x.id === want) ?? list[0];
       if (d) pick(d);
-      else { setSel(null); setName(''); setLatex(''); }
+      else { setSel(null); setName(''); setRole(''); setLatex(''); }
       return list;
     }).catch((e) => toast(e.message, 'error'));
 
@@ -90,7 +93,7 @@ export function ResumesPage() {
     if (!sel) return;
     setBusy('save');
     try {
-      await api.resumeUpdate(sel.id, { name, latex });
+      await api.resumeUpdate(sel.id, isUploaded ? { name, role } : { name, latex, role });
       setDirty(false);
       toast('Saved', 'success');
       await load(sel.id);
@@ -102,7 +105,7 @@ export function ResumesPage() {
     if (!sel) return;
     setBusy('compile');
     try {
-      if (dirty) { await api.resumeUpdate(sel.id, { name, latex }); setDirty(false); }
+      if (dirty) { await api.resumeUpdate(sel.id, { name, latex, role }); setDirty(false); }
       const blob = await api.resumeCompile(sel.id);
       setPreview(blob);
       setMobileTab('pdf');
@@ -118,7 +121,7 @@ export function ResumesPage() {
       const blob = pdfUrl ? await (await fetch(pdfUrl)).blob() : await api.resumePdf(sel.id);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `${name.replace(/[^A-Za-z0-9 _-]/g, '') || 'resume'}.pdf`;
+      a.download = sel.filename || `${name.replace(/[^A-Za-z0-9 _-]/g, '') || 'resume'}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } catch (e) { toast((e as Error).message, 'error'); }
@@ -182,6 +185,10 @@ export function ResumesPage() {
     document.addEventListener('mouseup', onUp);
   };
 
+  // An uploaded file (PDF/Word) is used as-is: no LaTeX to edit, compile or tailor.
+  const isUploaded = !!sel && (sel.source === 'uploaded' || !!sel.uploaded);
+  const isPdf = !sel?.contentType || sel.contentType === 'application/pdf';
+
   const B = ({ id, label, ico, onClick, disabled, cls, title }: {
     id?: string; label: string; ico: string; onClick: () => void;
     disabled?: boolean; cls?: string; title?: string;
@@ -208,14 +215,17 @@ export function ResumesPage() {
         </button>
         {sel ? (
           <>
-            <input className="ov-name" value={name} placeholder="Resume name"
+            <input className="ov-name" value={name} placeholder="Resume name" aria-label="Resume name"
               onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+            <input className="ov-name ov-role" value={role} placeholder="Role it's for" aria-label="Role this resume is for"
+              title="The role this résumé targets — Compose suggests it for matching jobs" maxLength={120}
+              onChange={(e) => { setRole(e.target.value); setDirty(true); }} />
             <B id="save" label={dirty ? 'Save*' : 'Save'} ico="check" onClick={save} disabled={!!busy || !dirty} />
-            <B id="compile" label="Recompile" ico="play" cls="green" onClick={compile} disabled={!!busy} />
-            <B label="PDF" ico="download" onClick={download} disabled={!pdfUrl && !sel.hasPdf} title="Download PDF" />
-            <B label="Tailor" ico="sparkles" onClick={() => setTailorOpen(true)} title="Tailor to a job description" />
+            {!isUploaded && <B id="compile" label="Recompile" ico="play" cls="green" onClick={compile} disabled={!!busy} />}
+            <B label={isPdf ? 'PDF' : 'File'} ico="download" onClick={download} disabled={!pdfUrl && !sel.hasPdf} title="Download" />
+            {!isUploaded && <B label="Tailor" ico="sparkles" onClick={() => setTailorOpen(true)} title="Tailor to a job description" />}
             <span style={{ flex: 1 }} />
-            {!sel.base && <B label="Base" ico="star" onClick={setBase} title="Make this the base resume" />}
+            {!sel.base && !isUploaded && <B label="Base" ico="star" onClick={setBase} title="Make this the base resume" />}
             <B id="dup" label="Copy" ico="copy" onClick={duplicate} disabled={!!busy} title="Duplicate" />
             <B label="" ico="trash" cls="danger" onClick={remove} title="Delete" />
             <div className="ov-seg">
@@ -244,9 +254,10 @@ export function ResumesPage() {
             )}
             {docs.map((d) => (
               <div key={d.id} className={`ov-file ${sel?.id === d.id ? 'sel' : ''}`} onClick={() => pick(d)}>
-                <div className="ov-file-name"><Icon name="file" size={14} style={{ flex: 'none' }} /><span>{d.name}</span>{d.base && <Icon name="star" size={13} style={{ flex: 'none', color: 'var(--amber)' }} />}</div>
+                <div className="ov-file-name"><Icon name={d.source === 'uploaded' ? 'file' : 'pen'} size={14} style={{ flex: 'none' }} /><span>{d.name}</span>{d.base && <Icon name="star" size={13} style={{ flex: 'none', color: 'var(--amber)' }} />}</div>
                 <div className="ov-file-sub">
-                  {d.hasPdf ? 'PDF ready' : 'not compiled'}{d.updatedAt ? ` · ${fmtDate(d.updatedAt)}` : ''}
+                  {d.role ? `${d.role} · ` : ''}
+                  {d.source === 'uploaded' ? 'uploaded' : d.hasPdf ? 'PDF ready' : 'not compiled'}{d.updatedAt ? ` · ${fmtDate(d.updatedAt)}` : ''}
                 </div>
               </div>
             ))}
@@ -257,6 +268,13 @@ export function ResumesPage() {
         {sel ? (
           <>
             <section className={`ov-edit ${mobileTab === 'pdf' ? 'hide' : ''}`}>
+              {isUploaded ? (
+                <div className="ov-empty">
+                  This is an uploaded {isPdf ? 'PDF' : 'Word file'} ({sel.filename}), sent exactly as it is — there's
+                  no LaTeX to edit. Set its role above; to replace it, upload a new version in{' '}
+                  <Link to="/profile">Profile → Résumé</Link>.
+                </div>
+              ) : <>
               {sel.tailorNotes && (
                 <div className="ov-notes">
                   <div className="ov-notes-head" onClick={() => setNotesOpen((v) => !v)}>
@@ -272,13 +290,16 @@ export function ResumesPage() {
               )}
               <textarea className="ov-code" value={latex} spellCheck={false}
                 onChange={(e) => { setLatex(e.target.value); setDirty(true); }} />
+              </>}
             </section>
             <div className="ov-divider" onMouseDown={dragStart} onDoubleClick={() => setPdfPct(46)}
               title="Drag to resize · double-click to reset" />
             <section className={`ov-view ${mobileTab === 'code' ? 'hide' : ''}`} style={{ width: `${pdfPct}%` }}>
-              {pdfUrl
+              {pdfUrl && isPdf
                 ? <iframe title="PDF preview" src={`${pdfUrl}#zoom=page-width&view=FitH`} />
-                : <div className="ov-empty">No PDF yet — hit <b style={{ color: 'var(--green)' }}>▶ Recompile</b> to build one from the LaTeX source.</div>}
+                : isUploaded
+                  ? <div className="ov-empty">{isPdf ? 'Loading the preview…' : "Word files can't be previewed here — use Download to open it."}</div>
+                  : <div className="ov-empty">No PDF yet — hit <b style={{ color: 'var(--green)' }}>▶ Recompile</b> to build one from the LaTeX source.</div>}
             </section>
           </>
         ) : (

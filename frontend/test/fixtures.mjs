@@ -52,6 +52,7 @@ export const EMPTY = {
   '/api/scout/jobs': [],
   '/api/saved-jobs': [],
   '/api/resumes': [],
+  '/api/history': [],
   '/api/documents': [],
   '/api/jobs': page0,
   '/api/applications': [],
@@ -145,11 +146,40 @@ export const POPULATED = {
     fetchedAt: '2026-09-14T06:00:00Z',
   })),
   '/api/daily/picks': { briefing: 'w'.repeat(500), generatedAt: '2026-09-14T06:00:00Z', curated: true, jobs: JOBS.slice(0, 5) },
-  '/api/resumes': Array.from({ length: 4 }, (_, i) => ({
-    id: 'r' + i, name: 'Suhas_Backend_Java_SpringBoot_Resume_v' + (i + 1) + '_final_FINAL.pdf',
-    type: 'resume', filename: 'resume' + i + '.pdf', contentType: 'application/pdf',
-    sizeBytes: 248000, createdAt: '2026-08-01T09:00:00Z',
-  })),
+  // The résumé library (resume_doc): built AND uploaded rows, one default, one not compiled,
+  // one with no role, and the longest name/role there is.
+  '/api/resumes': [
+    { id: 'r0', name: 'Suhas_Backend_Java_SpringBoot_Resume_v1_final_FINAL', role: 'Java Backend Developer',
+      source: 'uploaded', uploaded: true, filename: 'Suhas_Java.pdf', contentType: 'application/pdf',
+      latex: '', base: false, hasPdf: true, defaultResume: true, updatedAt: '2026-11-01T09:00:00Z' },
+    { id: 'r1', name: NOBREAK, role: 'Senior Staff Software Engineer, Platform Infrastructure & Developer Experience',
+      source: 'built', latex: '\\documentclass{article}', base: true, hasPdf: true, updatedAt: '2026-10-01T09:00:00Z' },
+    { id: 'r2', name: 'Data analyst draft', role: 'Data Analyst', source: 'built', latex: 'x', base: false,
+      hasPdf: false, updatedAt: '2026-09-01T09:00:00Z' },
+    { id: 'r3', name: 'Word CV', role: null, source: 'uploaded', uploaded: true, filename: 'cv.docx',
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      latex: '', base: false, hasPdf: true, updatedAt: '2026-08-01T09:00:00Z' },
+  ],
+  // History at the extremes: both channels, all three statuses, a failure with a long error,
+  // the longest company/role/subject, a free-mail recipient (no logo by domain), no company.
+  '/api/history': [
+    { id: 'h0', channel: 'EMAIL', status: 'SENT', company: LONG_CO, roleTitle: LONG_TITLE,
+      recipient: 'careers.recruitment.team@' + NOBREAK.toLowerCase() + '.com',
+      subject: 'Application for ' + LONG_TITLE + ' | S Suhas', body: 'Hi,\n' + 'b'.repeat(900),
+      coverLetter: 'c'.repeat(1200), resumeName: 'Suhas_Backend_Java_SpringBoot_Resume_v1_final_FINAL',
+      resumeAttached: true, coverAttached: true, createdAt: new Date(Date.now() - 36e5).toISOString() },
+    { id: 'h1', channel: 'WHATSAPP', status: 'OPENED', company: 'EdHike', roleTitle: 'Software Developer',
+      recipient: '+918796166228', body: 'Hello,\nI am S Suhas.\n\nRésumé: https://x/api/public/doc/' + 'a'.repeat(43),
+      resumeName: 'Java', resumeAttached: true, coverAttached: false, createdAt: new Date(Date.now() - 864e5).toISOString() },
+    { id: 'h2', channel: 'EMAIL', status: 'FAILED', company: null, roleTitle: null, recipient: 'someone@gmail.com',
+      subject: 'Application', body: 'x', error: 'Mail server rejected the message: ' + 'e'.repeat(300),
+      resumeAttached: false, coverAttached: false, createdAt: '2026-09-01T09:00:00Z' },
+    ...Array.from({ length: 12 }, (_, i) => ({
+      id: 'hx' + i, channel: i % 3 ? 'EMAIL' : 'WHATSAPP', status: 'SENT', company: 'Company ' + i, roleTitle: 'QA',
+      recipient: 'hr' + i + '@company' + i + '.com', subject: 'Hi', body: 'b', resumeAttached: i % 2 === 0,
+      coverAttached: true, createdAt: '2026-08-' + String(10 + i).padStart(2, '0') + 'T09:00:00Z',
+    })),
+  ],
   // Volume, not a token sample. The dashboard tiles COUNT these, so a handful of identical
   // events produced single-digit metrics and the tiles were never laid out with a real number
   // in them — which is exactly the case that overflows. 'post_analysed' is summed from the
@@ -191,7 +221,8 @@ export const POPULATED = {
       type: 'transcript', filename: 't.pdf', contentType: 'application/pdf', sizeBytes: 812000, createdAt: '2026-05-01T09:00:00Z' },
   ],
   '/api/profile': {
-    fullName: 'S Suhas', email: 'dev@example.com', phone: '+91 90000 00000',
+    fullName: 'S Suhas', email: 'dev@example.com', phone: '+91 90000 00000', whatsappNumber: '+91 90000 00000',
+    resumeFilename: 'Suhas_Java.pdf',
     headline: 'Senior Java Backend Engineer — Spring Boot, Kafka, GCP, Kubernetes, Microservices',
     location: LONG_LOC, summary: 'q'.repeat(600),
     skills: ['Java', 'Spring Boot', 'Kafka', 'PostgreSQL', 'Kubernetes', 'GCP', 'Terraform', 'React', 'TypeScript', 'Docker'],
@@ -211,7 +242,7 @@ export const POPULATED = {
 export const ROUTES = [
   ['/', 'Dashboard'], ['/jobs', 'Jobs'], ['/auto-apply', 'Engine'],
   ['/connections', 'Connections'], ['/daily', 'DailyPicks'], ['/scout', 'Scout'],
-  ['/resumes', 'Resumes'], ['/assistant', 'Assistant'], ['/compose', 'Compose'],
+  ['/resumes', 'Resumes'], ['/assistant', 'Assistant'], ['/compose', 'Compose'], ['/history', 'History'],
   ['/applications', 'Applications'], ['/saved', 'SavedJobs'],
   ['/notifications', 'Notifications'], ['/profile', 'Profile'],
   ['/settings', 'Settings'], ['/admin', 'Admin'], ['/login', 'Auth'],

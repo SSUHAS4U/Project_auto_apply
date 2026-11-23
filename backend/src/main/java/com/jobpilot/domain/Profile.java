@@ -168,6 +168,10 @@ public class Profile {
     // ---- Easy-Apply autofill answers (all optional) -------------------------
     @Column(name = "phone_country_code")
     private String phoneCountryCode;      // e.g. "+91"
+
+    /** The number WhatsApp messages from Compose go out from (V40). Null = use the phone. */
+    @Column(name = "whatsapp_number")
+    private String whatsappNumber;
     @Column(name = "willing_remote")
     private Boolean willingRemote;
     @Column(name = "willing_onsite")

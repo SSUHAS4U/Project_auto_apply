@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type QaPair, type DocItem } from '../api/client';
 import type { CertificationItem, EducationItem, ExperienceItem, Profile } from '../types';
 import { fmtDate, useToast } from '../lib/ui';
@@ -9,6 +9,7 @@ import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { LOCATION_SUGGESTIONS } from '../lib/locations';
 import { nameParts } from '../lib/nameParts';
+import { ResumeLibrary } from '../components/ResumeLibrary';
 import { SKILL_SUGGESTIONS, LANGUAGE_SUGGESTIONS, GENDER_OPTIONS, NOTICE_OPTIONS, WORK_AUTH_OPTIONS, COUNTRY_SUGGESTIONS } from '../lib/options';
 
 /** Questions the extension saved (you clicked "Save" on a form). Listed + deletable here. */
@@ -94,12 +95,14 @@ type Tab = 'personal' | 'professional' | 'education' | 'autofill' | 'resume';
  *  section done or not. Autofill answers are optional by nature, so they carry none. */
 const TABS: { id: Tab; label: string; ico: string; checks: string[] }[] = [
   { id: 'personal', label: 'Personal', ico: 'user', checks: ['Email', 'Phone', 'Location', 'Work authorization', 'LinkedIn / GitHub'] },
-  { id: 'professional', label: 'Professional', ico: 'clipboard', checks: ['Headline', 'Skills', 'Experience', 'Summary', 'Expected CTC', 'Notice period'] },
+  { id: 'professional', label: 'Professional', ico: 'clipboard', checks: ['Headline', 'Skills', 'Experience', 'Expected CTC', 'Notice period'] },
   { id: 'education', label: 'Education', ico: 'file', checks: ['Education'] },
   { id: 'autofill', label: 'Autofill answers', ico: 'bolt', checks: [] },
   { id: 'resume', label: 'Résumé', ico: 'file', checks: ['Résumé'] },
 ];
 const TICKS = 20;
+/** Quiet time after the last edit before the profile saves itself. */
+const AUTOSAVE_MS = 1200;
 
 export function ProfilePage() {
   const toast = useToast();
@@ -123,36 +126,93 @@ export function ProfilePage() {
     }).catch((e) => toast(e.message, 'error'));
   }, []); // eslint-disable-line
 
+  // ---- saving: automatic after every change, plus the manual button under the section menu ----
+  //
+  // Refs so a save that finishes LATER still sees the newest edits: a field changed while a
+  // save is in flight stays dirty and keeps its local value instead of being overwritten by
+  // the server's copy of the older one.
+  const pRef = useRef<Profile | null>(null);
+  pRef.current = p;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const inFlight = useRef<Promise<void> | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
+
+  const save = useCallback(async (manual: boolean) => {
+    if (inFlight.current) await inFlight.current.catch(() => {});
+    const snap = pRef.current;
+    const keys = [...dirtyRef.current];
+    if (!snap) return;
+    if (keys.length === 0) {
+      if (manual) toast('Everything is already saved', 'success');
+      return;
+    }
+    const run = (async () => {
+      setSaving(true);
+      setSaveState('saving');
+      try {
+        // Overlay only what changed here onto the freshest server copy, so the two editors of
+        // the same profile record can't silently revert each other.
+        const latest = await api.profile().catch(() => snap);
+        const overlay: Record<string, unknown> = {};
+        keys.forEach((k) => { overlay[k] = (snap as unknown as Record<string, unknown>)[k]; });
+        const saved = await api.saveProfile({ ...latest, ...overlay } as Profile);
+        const now = (pRef.current ?? snap) as unknown as Record<string, unknown>;
+        const before = snap as unknown as Record<string, unknown>;
+        // Still dirty: keys edited during the save, and keys saved but changed again since.
+        const remaining = new Set<string>();
+        dirtyRef.current.forEach((k) => { if (!keys.includes(k) || now[k] !== before[k]) remaining.add(k); });
+        setDirty(remaining);
+        setP((prev) => {
+          const next = { ...saved } as unknown as Record<string, unknown>;
+          if (prev) remaining.forEach((k) => { next[k] = (prev as unknown as Record<string, unknown>)[k]; });
+          return next as unknown as Profile;
+        });
+        setSaveState('saved');
+        setSaveError('');
+        if (manual) toast('Profile saved', 'success');
+      } catch (e) {
+        const msg = (e as Error).message;
+        setSaveState('error');
+        setSaveError(msg);
+        if (manual) toast(msg, 'error');
+      } finally { setSaving(false); }
+    })();
+    inFlight.current = run;
+    try { await run; } finally { if (inFlight.current === run) inFlight.current = null; }
+  }, [toast]);
+
+  // Autosave: 1.2 s after the last change. Each keystroke restarts the timer, so typing a
+  // sentence is one save, not forty.
+  useEffect(() => {
+    if (dirty.size === 0) return;
+    const t = setTimeout(() => { save(false); }, AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [p, dirty, save]);
+
+  // Leaving the page (another route) flushes whatever is still pending rather than dropping it.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => () => { if (dirtyRef.current.size > 0) saveRef.current(false); }, []);
+
   if (!p) return <div className="empty"><span className="spinner" /></div>;
 
   // Shown as placeholders so the user can see the split that will actually be submitted.
   const nameGuess = nameParts(p.fullName);
 
   const mark = (keys: string[]) => setDirty((d) => { const n = new Set(d); keys.forEach((k) => n.add(k)); return n; });
-  const set = (patch: Partial<Profile>) => { setP({ ...p, ...patch }); mark(Object.keys(patch)); };
-  const setLink = (k: string, v: string) => { setP({ ...p, links: { ...(p.links ?? {}), [k]: v } }); mark(['links']); };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      // Overlay only what changed here onto the freshest server copy, so the two editors of
-      // the same profile record can't silently revert each other.
-      const latest = await api.profile().catch(() => p);
-      const overlay: Record<string, unknown> = {};
-      dirty.forEach((k) => { overlay[k] = (p as unknown as Record<string, unknown>)[k]; });
-      const saved = await api.saveProfile({ ...latest, ...overlay } as Profile);
-      setDirty(new Set());
-      setP(saved);
-      toast('Profile saved', 'success');
-    } catch (e) { toast((e as Error).message, 'error'); }
-    finally { setSaving(false); }
+  // Functional updates: an autosave landing between two edits must not be undone by a stale `p`.
+  const set = (patch: Partial<Profile>) => { setP((prev) => ({ ...(prev ?? p), ...patch })); mark(Object.keys(patch)); };
+  const setLink = (k: string, v: string) => {
+    setP((prev) => { const b = prev ?? p; return { ...b, links: { ...(b.links ?? {}), [k]: v } }; });
+    mark(['links']);
   };
-
-  const onResume = async (file?: File) => {
-    if (!file) return;
-    try { const r = await api.uploadResume(file); set({ resumeFilename: r.filename }); toast('Resume uploaded', 'success'); }
-    catch (e) { toast((e as Error).message, 'error'); }
-  };
+  const saveStatus = saveState === 'saving' ? 'Saving…'
+    : saveState === 'error' ? `Couldn't save: ${saveError}`
+      : dirty.size > 0 ? 'Unsaved changes — saving shortly'
+        : saveState === 'saved' ? 'All changes saved'
+          : 'Changes save automatically';
 
   const onAnalyze = async (file?: File) => {
     if (!file) return;
@@ -208,7 +268,6 @@ export function ProfilePage() {
     { label: 'Skills', ok: (p.skills ?? []).length >= 3, w: 2 },
     { label: 'Experience', ok: (p.experience ?? []).length > 0, w: 2 },
     { label: 'Education', ok: (p.education ?? []).length > 0, w: 2 },
-    { label: 'Summary', ok: !!p.summary, w: 2 },
     { label: 'Expected CTC', ok: !!p.expectedCtc, w: 1 },
     { label: 'Notice period', ok: !!p.noticePeriod, w: 1 },
     { label: 'Work authorization', ok: !!p.workAuthorization, w: 1 },
@@ -256,6 +315,17 @@ export function ProfilePage() {
             </button>
           ))}
         </div>
+        {/* Saving lives with the section menu: every change also saves itself (AUTOSAVE_MS
+            after the last edit), so the button is for "save it NOW", not the only way. */}
+        <div className="pf-savebox">
+          <button className="btn btn-primary btn-block" onClick={() => save(true)} disabled={saving}>
+            {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save profile
+          </button>
+          <div className={`pf-savebox-st ${saveState === 'error' ? 'err' : ''}`} role="status" aria-live="polite">
+            {saveState === 'error' ? <Icon name="alert" size={12} /> : dirty.size === 0 && saveState === 'saved' ? <Icon name="check" size={12} /> : null}
+            <span>{saveStatus}</span>
+          </div>
+        </div>
       </aside>
 
       <div className="pf-main">
@@ -294,6 +364,10 @@ export function ProfilePage() {
               <Field label="Last name" hint="auto from full name if blank"><input className="input" value={p.lastName ?? ''} onChange={(e) => set({ lastName: e.target.value })} placeholder={nameGuess.last} /></Field>
               <Field label="Email"><input className="input" value={p.email ?? ''} onChange={(e) => set({ email: e.target.value })} /></Field>
               <Field label="Phone"><input className="input" value={p.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} /></Field>
+              <Field label="WhatsApp number" hint="Compose sends WhatsApp messages from this">
+                <input className="input" inputMode="tel" value={p.whatsappNumber ?? ''} placeholder={p.phone || '+91 98765 43210'}
+                  onChange={(e) => set({ whatsappNumber: e.target.value })} />
+              </Field>
               <Field label="Headline" full hint="one line, shown on every application"
                 action={sugBtn('headline', p.headline ?? '', (v) => set({ headline: v }))}>
                 <input className="input" placeholder="Backend Engineer · Java, Spring Boot" value={p.headline ?? ''} onChange={(e) => set({ headline: e.target.value })} />
@@ -494,17 +568,9 @@ export function ProfilePage() {
             )}
           />
 
-          <Section ico="pen" title="Summary & cover-letter notes" sub="used by the LLM cover-letter generator">
-            <label className="pf-f full">
-              <span className="pf-f-l">
-                Professional summary
-                <span className="pf-f-hint">2–4 sentences — feeds cover letters</span>
-                {sugBtn('professional summary', p.summary ?? '', (v) => set({ summary: v }))}
-              </span>
-              <textarea className="input" rows={4} value={p.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} />
-            </label>
-            <Field label="Cover-letter style/notes (optional)" full><textarea className="input" rows={3} value={p.coverLetterTemplate ?? ''} onChange={(e) => set({ coverLetterTemplate: e.target.value })} placeholder="Tone, things to emphasize, custom intro…" /></Field>
-          </Section>
+          {/* No "Summary & cover-letter notes" here any more (owner, 2026-11-23): the cover-letter
+              template is edited in Compose → My templates, and two editors of one field was a
+              duplicate. The saved summary still feeds generation; it just isn't edited here. */}
         </div>
       )}
 
@@ -565,20 +631,17 @@ export function ProfilePage() {
 
       {tab === 'resume' && (
         <div>
-          <Section ico="file" title="Resume" sub="attached to email-apply jobs">
-            <div className="row">
-              <span className="muted meta-item">{p.resumeFilename ? <><Icon name="file" size={13} /> {p.resumeFilename}</> : 'No resume uploaded'}</span>
-              <label className="btn btn-sm">Upload only
-                <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={(e) => onResume(e.target.files?.[0])} />
-              </label>
-            </div>
-            <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
-              <div className="meta-item" style={{ fontWeight: 600, marginBottom: 6 }}><Icon name="sparkles" size={14} /> Smart auto-fill</div>
-              <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>
-                Upload a PDF/DOCX resume and AI extracts your name, contact, skills, experience &
-                education — then fills and saves the profile. You review and tweak.
+          <ResumeLibrary
+            // The default résumé is the profile's résumé — reflect it without marking the
+            // profile dirty (the server already stored it).
+            onDefaultChange={(filename) => setP((prev) => (prev ? { ...prev, resumeFilename: filename } : prev))} />
+          <Section ico="sparkles" title="Fill my profile from a résumé" sub="optional">
+            <div>
+              <div className="faint" style={{ fontSize: 12.5, marginBottom: 10 }}>
+                Pick a PDF/DOCX résumé and the AI reads your name, contact, skills, experience &amp;
+                education into this profile and saves it. It does not add the file to your library.
               </div>
-              <label className="btn btn-primary btn-sm">
+              <label className="btn btn-sm">
                 {analyzing ? <span className="spinner" /> : <Icon name="bolt" size={13} />} Analyze resume & auto-fill
                 <input type="file" accept=".pdf,.docx" style={{ display: 'none' }} disabled={analyzing} onChange={(e) => onAnalyze(e.target.files?.[0])} />
               </label>
@@ -588,17 +651,6 @@ export function ProfilePage() {
         </div>
       )}
 
-      {/* Long form → the primary action follows you instead of hiding at the top. */}
-      <div className="pf-save">
-        <span className="pf-save-t">
-          {missing.length === 0
-            ? 'Profile complete — everything the automation needs.'
-            : `${missing.length} field${missing.length === 1 ? '' : 's'} still empty: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}`}
-        </span>
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saving}>
-          {saving ? <span className="spinner" /> : <Icon name="check" size={14} />} Save profile
-        </button>
-      </div>
       </div>
       </div>
     </div>

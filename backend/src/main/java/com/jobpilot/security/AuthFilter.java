@@ -65,6 +65,12 @@ public class AuthFilter extends OncePerRequestFilter {
             chain.doFilter(req, res); return; // public
         }
 
+        // --- a résumé / cover letter behind a WhatsApp share link. The recipient has no account;
+        //     the 256-bit token in the path is the credential (ShareLinkService). GET only. ---
+        if (path.startsWith("/api/public/doc/") && HttpMethod.GET.matches(req.getMethod())) {
+            chain.doFilter(req, res); return;
+        }
+
         // --- local worker : dedicated worker token (bound to its owning user) ---
         // The Playwright worker on the owner's PC hits /api/worker/** with X-Worker-Token.
         // It can NEVER reach any other route, so a leaked worker token can't touch user data.

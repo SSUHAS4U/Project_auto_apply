@@ -159,14 +159,28 @@ export const api = {
       method: 'POST', body: JSON.stringify({ messages }),
     }),
 
+  /** Read a pasted job post: role, company, recipient, the subject it asks for, a phone. */
+  composeExtract: (text: string) =>
+    req<ComposeExtract>('/api/compose/extract', { method: 'POST', body: JSON.stringify({ text }) }),
   composeGenerate: (role: string, company: string, jobDetails: string) =>
-    req<{ subject: string; coverLetter: string; coldEmail: string }>('/api/compose/generate', {
+    req<{ subject: string; coverLetter: string; coldEmail: string; whatsapp?: string }>('/api/compose/generate', {
       method: 'POST', body: JSON.stringify({ role, company, jobDetails }),
     }),
-  composeSend: (body: { to: string; subject?: string; coldEmail: string; coverLetter: string; attachResume: boolean }) =>
-    req<{ sentTo: string; subject: string; resumeAttached: boolean; coverLetterAttached: boolean }>('/api/compose/send', {
+  composeSend: (body: {
+    to: string; subject?: string; coldEmail: string; coverLetter: string; attachResume: boolean;
+    /** A library résumé; omitted = the profile default. */
+    resumeId?: string; company?: string; role?: string;
+  }) =>
+    req<{ sentTo: string; subject: string; resumeAttached: boolean; coverLetterAttached: boolean; resumeName?: string }>('/api/compose/send', {
       method: 'POST', body: JSON.stringify(body),
     }),
+  /** Build the WhatsApp click-to-chat link (message + résumé / cover-letter links) and log it. */
+  composeWhatsapp: (body: {
+    phone: string; message: string; company?: string; role?: string;
+    resumeId?: string; includeResume: boolean; coverLetter?: string;
+  }) => req<{ url: string; phone: string; text: string }>('/api/compose/whatsapp', { method: 'POST', body: JSON.stringify(body) }),
+  history: () => req<SentMessage[]>('/api/history'),
+  historyDelete: (id: string) => req<{ deleted: boolean }>(`/api/history/${id}`, { method: 'DELETE' }),
   composeRefine: (body: { coldEmail: string; coverLetter: string; instruction: string }) =>
     req<{ coldEmail: string; coverLetter: string }>('/api/compose/refine', {
       method: 'POST', body: JSON.stringify(body),
@@ -291,7 +305,16 @@ export const api = {
   resumeList: () => req<ResumeDoc[]>('/api/resumes'),
   resumeCreate: (body: { name?: string; latex?: string; fromId?: string; blank?: string }) =>
     req<ResumeDoc>('/api/resumes', { method: 'POST', body: JSON.stringify(body) }),
-  resumeUpdate: (id: string, body: { name?: string; latex?: string }) =>
+  /** Add an uploaded PDF/Word résumé to the library, tagged with the role it targets. */
+  resumeUpload: (file: File, role?: string, name?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (role) fd.append('role', role);
+    if (name) fd.append('name', name);
+    return req<ResumeDoc>('/api/resumes/upload', { method: 'POST', body: fd });
+  },
+  resumeMakeDefault: (id: string) => req<ResumeDoc>(`/api/resumes/${id}/default`, { method: 'POST' }),
+  resumeUpdate: (id: string, body: { name?: string; latex?: string; role?: string }) =>
     req<ResumeDoc>(`/api/resumes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   resumeDelete: (id: string) => req<{ deleted: boolean }>(`/api/resumes/${id}`, { method: 'DELETE' }),
   resumeSetBase: (id: string) => req<ResumeDoc>(`/api/resumes/${id}/base`, { method: 'POST' }),
@@ -363,6 +386,32 @@ export type ScoutRunResult = {
 export type ResumeDoc = {
   id: string; name: string; latex: string; base: boolean; hasPdf: boolean;
   jobUrl?: string; tailorNotes?: string; createdAt?: string; updatedAt?: string;
+  /** The role this résumé targets, e.g. "Backend Engineer". */
+  role?: string | null;
+  /** 'built' in the LaTeX editor, or 'uploaded' (a PDF/Word file used as-is). */
+  source?: 'built' | 'uploaded';
+  uploaded?: boolean;
+  filename?: string | null;
+  contentType?: string | null;
+  /** The one the worker and the extension attach by default. */
+  defaultResume?: boolean;
+};
+
+export type ComposeExtract = {
+  role: string; company: string; email: string; emails: string[];
+  phone: string; phones: string[];
+  /** The subject line, when the post explicitly asks for one ('' otherwise). */
+  subject: string; subjectRequested: boolean;
+  source: 'ai' | 'rules';
+};
+
+/** One message sent from Compose — the History page. */
+export type SentMessage = {
+  id: string; channel: 'EMAIL' | 'WHATSAPP'; status: 'SENT' | 'FAILED' | 'OPENED';
+  company?: string | null; roleTitle?: string | null; recipient: string;
+  subject?: string | null; body?: string | null; coverLetter?: string | null;
+  resumeName?: string | null; coverAttached: boolean; resumeAttached: boolean;
+  error?: string | null; createdAt: string;
 };
 
 export type QaPair = {

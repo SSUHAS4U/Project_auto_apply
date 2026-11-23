@@ -9,7 +9,15 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import com.jobpilot.domain.SentMessage;
+import com.jobpilot.service.documents.ResumeDocService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.jobpilot.service.documents.PdfUtil;
 import com.jobpilot.service.ops.SettingsService;
 import com.jobpilot.service.profile.ProfileService;
@@ -21,6 +29,8 @@ import com.jobpilot.service.profile.ProfileService;
  */
 @Service
 public class ComposeService {
+
+    private static final Logger log = LoggerFactory.getLogger(ComposeService.class);
 
     private static final String SYSTEM = """
             You are an expert job-application writer. Produce a cold email AND a cover letter tailored
@@ -49,28 +59,131 @@ public class ComposeService {
                 Portfolio: <url>
               Never paste bare URLs strung together with "|", and never write a second signature.
 
+            - whatsapp    — a SHORT WhatsApp message to the recruiter (45-75 words, 3-5 short lines):
+                            a greeting, who the candidate is in one line, the role + company, ONE concrete
+                            strength tied to the job, and a polite ask to review the résumé. Sign off with the
+                            name only. NO links, NO signature block (the résumé and cover-letter links are
+                            appended automatically), no markdown, at most one emoji (prefer none).
+
             Output EXACTLY in this format — use the delimiter lines verbatim, NO JSON, NO markdown:
             @@SUBJECT@@
             <subject line>
             @@EMAIL@@
             <cold email body>
             @@COVER@@
-            <cover letter body>""";
+            <cover letter body>
+            @@WHATSAPP@@
+            <whatsapp message>""";
 
     private final AiService ai;
     private final ProfileService profileService;
     private final MailService mail;
     private final SettingsService settings;
     private final JobPilotProperties props;
+    private final ResumeDocService resumes;
+    private final SentMessageService history;
+    private final ShareLinkService links;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComposeService(AiService ai, ProfileService profileService,
-                          MailService mail, SettingsService settings, JobPilotProperties props) {
+                          MailService mail, SettingsService settings, JobPilotProperties props,
+                          ResumeDocService resumes, SentMessageService history, ShareLinkService links) {
         this.ai = ai;
         this.profileService = profileService;
         this.mail = mail;
         this.settings = settings;
         this.props = props;
+        this.resumes = resumes;
+        this.history = history;
+        this.links = links;
+    }
+
+    // ---- read a pasted job post ------------------------------------------------------------
+
+    private static final String EXTRACT_SYSTEM = """
+            You read a job post that a candidate pasted and pull out what they need to apply.
+            Return ONLY a JSON object, no markdown, with these string keys (use "" when absent):
+              role     — the job title being hired for, as a short title ("Java Developer").
+              company  — the HIRING company's name as written in the post (not a job board).
+              email    — the address applications should be SENT to, copied exactly from the post.
+              phone    — the number to contact on WhatsApp/phone, copied exactly from the post.
+              subject  — ONLY if the post explicitly tells applicants what subject line to use,
+                         copy that subject exactly; otherwise "". Never write one yourself.
+            Never invent anything: every value must come from the post.""";
+
+    /**
+     * What Compose can fill from a pasted post: role, company, recipient email, a requested
+     * subject, a phone number. Rules run first ({@link ComposeExtractor}); the AI, when on, picks
+     * among them and adds role/company — but an AI email, phone or subject is accepted only if it
+     * is literally in the post, and a company only if it is in the post or the email's domain.
+     */
+    public Map<String, Object> extract(String text) {
+        String post = text == null ? "" : text.strip();
+        if (post.length() > 20_000) post = post.substring(0, 20_000);
+        List<String> emails = ComposeExtractor.emails(post);
+        List<String> phones = ComposeExtractor.phones(post);
+        String subject = ComposeExtractor.subject(post);
+        String role = ComposeExtractor.role(post);
+        String company = ComposeExtractor.company(post);
+        String email = emails.isEmpty() ? null : emails.get(0);
+        String phone = phones.isEmpty() ? null : phones.get(0);
+        String source = "rules";
+
+        if (!post.isEmpty() && ai.isEnabled()) {
+            try {
+                String raw = ai.complete(EXTRACT_SYSTEM, "JOB POST:\n" + clip(post, 12_000), true, true, 400);
+                JsonNode j = parseJson(raw);
+                if (j != null) {
+                    source = "ai";
+                    String aiEmail = j.path("email").asText("").strip();
+                    for (String e : emails) if (e.equalsIgnoreCase(aiEmail)) email = e;
+                    String aiPhone = j.path("phone").asText("").replaceAll("\\D", "");
+                    if (aiPhone.length() >= 8) {
+                        for (String p : phones) if (p.replaceAll("\\D", "").endsWith(aiPhone) || aiPhone.endsWith(p.replaceAll("\\D", ""))) phone = p;
+                    }
+                    String aiSubject = j.path("subject").asText("").strip();
+                    if (subject == null && aiSubject.length() >= 3 && ComposeExtractor.appearsIn(aiSubject, post)) subject = aiSubject;
+                    String aiRole = oneLine(j.path("role").asText(""));
+                    if (aiRole != null) role = aiRole;
+                    String aiCompany = oneLine(j.path("company").asText(""));
+                    String stem = ComposeExtractor.domainStem(email);
+                    if (aiCompany != null && (ComposeExtractor.appearsIn(aiCompany, post)
+                            || (stem != null && aiCompany.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "").contains(stem)))) {
+                        company = aiCompany;
+                    }
+                }
+            } catch (RuntimeException e) {
+                // The rules' answer still stands; the AI only refines it.
+                log.warn("compose extract: AI step failed, using the rules only: {}", e.getMessage());
+            }
+        }
+
+        Profile p = profileService.get();
+        boolean requested = subject != null;
+        if (requested) subject = ComposeExtractor.fillPlaceholders(subject, p.getFullName(), role, company);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("role", nz(role));
+        out.put("company", nz(company));
+        out.put("email", nz(email));
+        out.put("emails", emails);
+        out.put("phone", nz(phone));
+        out.put("phones", phones);
+        out.put("subject", nz(subject));
+        out.put("subjectRequested", requested);
+        out.put("source", source);
+        return out;
+    }
+
+    private static String oneLine(String s) {
+        if (s == null) return null;
+        String t = s.strip();
+        if (t.isEmpty() || t.contains("\n") || t.length() > 120) return null;
+        return t;
+    }
+
+    private static String clip(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max);
     }
 
     public Map<String, String> generate(String role, String company, String jobDetails) {
@@ -118,11 +231,27 @@ public class ComposeService {
         String subject = parsed.get("subject");
         String cover = parsed.get("cover");
         String cold = parsed.get("email");
+        String whatsapp = parsed.get("whatsapp");
         if (subject == null || subject.isBlank()) {
             subject = "Application for " + nz(role) + (notBlank(company) ? " - " + company : "")
                     + " | " + nz(p.getFullName());
         }
-        return Map.of("subject", subject, "coverLetter", nz(cover), "coldEmail", nz(cold));
+        if (whatsapp == null || whatsapp.isBlank()) whatsapp = defaultWhatsapp(p, role, company);
+        return Map.of("subject", subject, "coverLetter", nz(cover), "coldEmail", nz(cold), "whatsapp", whatsapp);
+    }
+
+    /** The WhatsApp message when the model didn't write one — short, true, and complete. */
+    static String defaultWhatsapp(Profile p, String role, String company) {
+        String name = nz(p.getFullName()).strip();
+        String who = notBlank(p.getHeadline()) ? p.getHeadline().strip()
+                : notBlank(p.getCurrentTitle()) ? p.getCurrentTitle().strip() : "";
+        StringBuilder sb = new StringBuilder("Hello,\n\n");
+        sb.append(name.isEmpty() ? "I" : "I'm " + name).append(who.isEmpty() ? "" : ", " + who).append(".\n");
+        sb.append("I'd like to apply for the ").append(notBlank(role) ? role.strip() : "open").append(" role")
+                .append(notBlank(company) ? " at " + company.strip() : "").append(".\n");
+        sb.append("Please find my résumé and cover letter below — I'd be glad to talk.\n\nThank you");
+        if (!name.isEmpty()) sb.append(",\n").append(name);
+        return sb.toString();
     }
 
     /** Parse the @@SUBJECT@@/@@EMAIL@@/@@COVER@@ format, falling back to JSON, then raw. */
@@ -132,7 +261,10 @@ public class ComposeService {
         if (raw.contains("@@EMAIL@@") || raw.contains("@@COVER@@")) {
             out.put("subject", between(raw, "@@SUBJECT@@", "@@EMAIL@@"));
             out.put("email", between(raw, "@@EMAIL@@", "@@COVER@@"));
-            out.put("cover", between(raw, "@@COVER@@", null));
+            // between() runs to the end when the end marker is missing, so a reply without a
+            // WhatsApp section still yields the whole cover letter.
+            out.put("cover", between(raw, "@@COVER@@", "@@WHATSAPP@@"));
+            out.put("whatsapp", between(raw, "@@WHATSAPP@@", null));
             return out;
         }
         // Fallback: the model emitted JSON after all.
@@ -271,7 +403,23 @@ public class ComposeService {
 
     public Map<String, Object> send(String to, String subject, String coldEmail,
                                     String coverLetter, boolean attachResume) {
+        return send(to, subject, coldEmail, coverLetter, attachResume, null, null, null);
+    }
+
+    /**
+     * Send the composed email. {@code resumeId} picks a résumé from the library; null attaches
+     * the profile's default. {@code company}/{@code role} are for the History page only.
+     * Every attempt that reaches the mail server is recorded — a failure too, with its reason.
+     */
+    public Map<String, Object> send(String to, String subject, String coldEmail,
+                                    String coverLetter, boolean attachResume,
+                                    UUID resumeId, String company, String role) {
         if (to == null || to.isBlank()) throw new IllegalArgumentException("recipient email required");
+        String recipient = to.strip();
+        if (!recipient.matches("[^\\s@,;<>]+@[^\\s@,;<>]+\\.[A-Za-z]{2,}")) {
+            throw new IllegalArgumentException("\"" + recipient + "\" isn't an email address — check the Recipient field.");
+        }
+        to = recipient;
         enforceMailLimit();
         Profile p = profileService.get();
 
@@ -309,22 +457,122 @@ public class ComposeService {
                     PdfUtil.textToPdf(coverDocument(p, cover))));
             coverAttached = true;
         }
-        byte[] resumeBytes = p.getResumeData();
-        boolean hasResume = attachResume && resumeBytes != null && resumeBytes.length > 0;
-        if (hasResume) {
-            attachments.add(new MailAttachment(
-                    p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename(), resumeBytes));
+        boolean hasResume = false;
+        String resumeName = null;
+        if (attachResume && resumeId != null) {
+            // The résumé the user picked. Fails BEFORE sending, naming it, if it has no file —
+            // sending without the résumé they chose would be worse than not sending.
+            ResumeDocService.ResumeFile f = resumes.file(resumeId);
+            attachments.add(new MailAttachment(f.filename(), f.data()));
+            hasResume = true;
+            resumeName = resumes.get(resumeId).getName();
+        } else if (attachResume) {
+            byte[] resumeBytes = p.getResumeData();
+            if (resumeBytes != null && resumeBytes.length > 0) {
+                resumeName = p.getResumeFilename() == null ? "resume.pdf" : p.getResumeFilename();
+                attachments.add(new MailAttachment(resumeName, resumeBytes));
+                hasResume = true;
+            }
         }
 
+        SentMessage rec = new SentMessage();
+        rec.setChannel(SentMessage.EMAIL);
+        rec.setCompany(company);
+        rec.setRoleTitle(role);
+        rec.setRecipient(to);
+        rec.setSubject(subj);
+        rec.setBody(body.toString());
+        rec.setCoverLetter(cover.isBlank() ? null : cover);
+        rec.setCoverAttached(coverAttached);
+        rec.setResumeAttached(hasResume);
+        rec.setResumeName(resumeName);
+
         String bcc = p.getEmail(); // keep a copy in the sender's own inbox
-        mail.sendWithAttachments(to, subj, body.toString(), attachments, bcc);
+        try {
+            mail.sendWithAttachments(to, subj, body.toString(), attachments, bcc);
+        } catch (RuntimeException e) {
+            rec.setStatus(SentMessage.FAILED);
+            rec.setError(e.getMessage());
+            history.record(rec);
+            throw e;
+        }
         incrementMail();
-        return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume, "coverLetterAttached", coverAttached);
+        rec.setStatus(SentMessage.SENT);
+        history.record(rec);
+        return Map.of("sentTo", to, "subject", subj, "resumeAttached", hasResume, "coverLetterAttached", coverAttached,
+                "resumeName", nz(resumeName));
+    }
+
+    // ---- WhatsApp ----------------------------------------------------------------------------
+
+    /**
+     * Prepare a WhatsApp message: the text plus links to the chosen résumé and the cover letter,
+     * and the click-to-chat URL that opens it in WhatsApp addressed to {@code phone}.
+     *
+     * The user presses Send inside WhatsApp — JobPilot cannot and does not send on their behalf
+     * this way — so History records it as OPENED, never as SENT.
+     *
+     * @param baseUrl where a recipient reaches this API, for the links (configured or derived)
+     */
+    public Map<String, Object> whatsapp(String phone, String message, String company, String role,
+                                        UUID resumeId, boolean includeResume, String coverLetter,
+                                        String baseUrl) {
+        Profile p = profileService.get();
+        String cc = notBlank(p.getPhoneCountryCode()) ? p.getPhoneCountryCode() : "91";
+        String number = ComposeExtractor.normalizePhone(phone, cc);
+        if (number == null) {
+            throw new IllegalArgumentException("\"" + nz(phone).strip() + "\" isn't a phone number WhatsApp can open — "
+                    + "use the full number with country code, e.g. +91 98765 43210.");
+        }
+        String text = message == null ? "" : message.strip();
+        if (text.isEmpty()) throw new IllegalArgumentException("Write the WhatsApp message first (Generate fills it in).");
+
+        StringBuilder full = new StringBuilder(text);
+        String resumeName = null;
+        boolean resumeLinked = false;
+        boolean coverLinked = false;
+        String base = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
+        if (includeResume) {
+            if (resumeId == null) {
+                throw new IllegalArgumentException("Choose which résumé to link — pick one under \"Résumé to send\".");
+            }
+            String token = links.shareResume(resumeId);
+            resumeName = resumes.get(resumeId).getName();
+            full.append("\n\nRésumé: ").append(base).append("/api/public/doc/").append(token);
+            resumeLinked = true;
+        }
+        if (coverLetter != null && !coverLetter.isBlank()) {
+            String token = links.shareCover(coverLetter);
+            full.append(resumeLinked ? "\n" : "\n\n").append("Cover letter: ").append(base).append("/api/public/doc/").append(token);
+            coverLinked = true;
+        }
+        String finalText = full.toString();
+        String url = "https://wa.me/" + number + "?text="
+                + java.net.URLEncoder.encode(finalText, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+
+        SentMessage rec = new SentMessage();
+        rec.setChannel(SentMessage.WHATSAPP);
+        rec.setStatus(SentMessage.OPENED);
+        rec.setCompany(company);
+        rec.setRoleTitle(role);
+        rec.setRecipient("+" + number);
+        rec.setBody(finalText);
+        rec.setCoverLetter(coverLinked ? coverLetter.strip() : null);
+        rec.setCoverAttached(coverLinked);
+        rec.setResumeAttached(resumeLinked);
+        rec.setResumeName(resumeName);
+        history.record(rec);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("url", url);
+        out.put("phone", "+" + number);
+        out.put("text", finalText);
+        return out;
     }
 
     /** Build a printable cover-letter document for the PDF. If the letter already carries its own
      *  letterhead (template starts with the candidate's name), use it as-is; else prepend one. */
-    private String coverDocument(Profile p, String cover) {
+    static String coverDocument(Profile p, String cover) {
         String body = cover.replace("[Your Name]", nz(p.getFullName())).replace("[Name]", nz(p.getFullName()));
         String name = nz(p.getFullName()).trim();
         boolean hasLetterhead = !name.isBlank() && body.stripLeading().regionMatches(true, 0, name, 0, name.length());
@@ -339,7 +587,7 @@ public class ComposeService {
         return sb.toString();
     }
 
-    private static String safeName(String s) {
+    static String safeName(String s) {
         String n = (s == null ? "JobPilot" : s).replaceAll("[^A-Za-z0-9]", "");
         return n.isBlank() ? "JobPilot" : n;
     }

@@ -44,9 +44,29 @@ public class ResumeDocController {
         return resumes.create(body.get("name"), body.get("latex"), fromId, blank);
     }
 
+    /** {name?, latex?, role?} — role null leaves it, "" clears it. */
     @PutMapping("/{id}")
     public ResumeDoc update(@PathVariable UUID id, @RequestBody Map<String, String> body) {
-        return resumes.update(id, body.get("name"), body.get("latex"));
+        return resumes.update(id, body.get("name"), body.get("latex"), body.get("role"));
+    }
+
+    /** Add an uploaded PDF/Word résumé to the library, tagged with the role it targets. */
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResumeDoc upload(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                            @RequestParam(value = "role", required = false) String role,
+                            @RequestParam(value = "name", required = false) String name) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("The résumé file is empty.");
+        try {
+            return resumes.upload(file.getBytes(), file.getOriginalFilename(), role, name);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Couldn't read the uploaded file: " + e.getMessage(), e);
+        }
+    }
+
+    /** Make this the default résumé (copied to the profile for the worker and the extension). */
+    @PostMapping("/{id}/default")
+    public ResumeDoc makeDefault(@PathVariable UUID id) {
+        return resumes.makeDefault(id);
     }
 
     @DeleteMapping("/{id}")
@@ -67,10 +87,18 @@ public class ResumeDocController {
         return pdfResponse(pdf, resumes.get(id).getName());
     }
 
-    /** The last compiled PDF. */
+    /** The last compiled PDF — or, for an uploaded résumé, the file itself with its own type. */
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> pdf(@PathVariable UUID id) {
-        return pdfResponse(resumes.pdf(id), resumes.get(id).getName());
+        ResumeDoc d = resumes.get(id);
+        if (d.isUploaded()) {
+            ResumeDocService.ResumeFile f = resumes.file(id);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(f.contentType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + f.filename() + "\"")
+                    .body(f.data());
+        }
+        return pdfResponse(resumes.pdf(id), d.getName());
     }
 
     /** Duplicate the base resume tailored to a JD: {name?, jobUrl?, jdText}. */

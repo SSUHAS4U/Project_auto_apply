@@ -836,7 +836,7 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .pf-rail { position: sticky; top: 24px; display: grid; gap: 14px; min-width: 0; }
 .pf-main { min-width: 0; display: grid; gap: 16px; }
 /* The active tab's sections stack with the same gap as the cards around them. */
-.pf-main > div:not(.pf-head):not(.pf-save) { display: grid; gap: 16px; min-width: 0; }
+.pf-main > div:not(.pf-head) { display: grid; gap: 16px; min-width: 0; }
 .pf-complete { padding: 14px; display: grid; gap: 10px; }
 .pf-complete-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .pf-complete-top b { font: 650 22px var(--f-num); letter-spacing: -.04em; }
@@ -1017,16 +1017,15 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .pf-sug:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .pf-sug:disabled { opacity: .55; cursor: default; }
 
-/* --- sticky save bar: a long form must never hide its primary action --- */
-/* Clears the floating sub-nav dock.
-   The dock is fixed at bottom:26px and is 58px tall (42px items + 8px padding either side),
-   so it occupies 26-84px from the bottom edge — and it has z-index 60 against this bar's 20.
-   At bottom:14px the two simply sat on top of each other, with the dock covering the Save
-   button: the primary action on the page, unreachable behind a navigation control. */
-.pf-save { position: sticky; bottom: 96px; z-index: 20; display: flex; align-items: center; gap: 12px;
-  margin-top: 20px; padding: 12px 16px; border-radius: var(--radius);
-  background: var(--bg-card); border: 1px solid var(--border-strong); box-shadow: var(--shadow); }
-.pf-save-t { font-size: 12.5px; color: var(--text-dim); }
+/* --- save, under the section menu (2026-11-23): the profile autosaves, so the button is
+   "save now" and the line beneath it says what state the profile is in. Replaces the sticky
+   bar that floated over the form. --- */
+.pf-savebox { display: grid; gap: 8px; }
+.pf-savebox-st { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: 12px; color: var(--text-faint); }
+.pf-savebox-st span { min-width: 0; overflow-wrap: anywhere; }
+.pf-savebox-st svg { flex: none; color: var(--green); }
+.pf-savebox-st.err { color: var(--red); }
+.pf-savebox-st.err svg { color: var(--red); }
 
 /* Mobile: keep the header as ONE row (avatar · identity · ring) and simply scale it down.
    The old rule wrapped it and pushed the ring to the front with order:-1, which put the
@@ -1040,10 +1039,6 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   .pf-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .pf-sec-h { padding: 14px 16px; }
   .pf-sec-b { padding: 16px; }
-  /* Save bar stacks so the button never overlaps its own status text. */
-  .pf-save { flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
-  .pf-save-t { flex: 1 1 100%; }
-  .pf-save .btn { width: 100%; justify-content: center; }
 }
 
 /* ---- Job board filters (inside the Filters dialog) -------------------------
@@ -2408,4 +2403,110 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
    finger-tracking highlight is the feedback there. */
 @media (hover: none) {
   .dock-label { display: none; }
+}
+
+/* ============================================================================
+   COMPOSE & SEND / HISTORY / RESUME LIBRARY (2026-11-23)
+   Prefixes: cp- (Compose), hist- (History), rl- (resume library). Tokens only.
+   ========================================================================== */
+
+/* What the pasted post filled in: a quiet line under the textarea, not a banner. */
+.cp-detect { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-height: 30px;
+  font-size: 12.5px; color: var(--text-dim); }
+.cp-detect > svg { flex: none; color: var(--text-faint); }
+.cp-detect .spinner { width: 13px; height: 13px; border-width: 2px; }
+.cp-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cp-label .chip { height: 20px; font-size: 11px; }
+.cp-need { color: var(--amber); }
+.cp-checks { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 6px; }
+.cp-checks .check-row { margin: 8px 0 0; }
+.check-row.is-off { cursor: default; color: var(--text-faint); }
+
+/* A one-line notice inside a card: icon + text, tinted by meaning. */
+.cp-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; line-height: 1.5; color: var(--text); border: 1px solid transparent; overflow-wrap: anywhere; }
+.cp-note > svg { flex: none; margin-top: 2px; }
+.cp-note-warn { background: var(--warning-soft); border-color: color-mix(in srgb, var(--amber) 22%, transparent); }
+.cp-note-warn > svg { color: var(--amber); }
+.cp-note-err { background: var(--danger-soft); border-color: color-mix(in srgb, var(--red) 22%, transparent); }
+.cp-note-err > svg { color: var(--red); }
+
+/* History: one flat list. Filters on top; each row is logo, who/what, status, when. */
+.hist { padding: 0; overflow: hidden; }
+.hist-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.hist-n { margin-left: 4px; font: 500 11.5px var(--f-num); color: var(--text-faint); }
+.hist-search { position: relative; flex: 1 1 220px; min-width: 0; max-width: 360px; margin-left: auto; }
+.hist-search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
+.hist-search .input { width: 100%; padding-left: 32px; }
+.hist-row { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 12px 20px; text-align: left;
+  background: transparent; border: 0; border-top: 1px solid var(--border); color: inherit; font: inherit; cursor: pointer;
+  transition: background .16s var(--ease); }
+.hist-bar + .hist-row { border-top: 0; }
+.hist-row:hover { background: var(--surface-2); }
+.hist-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hist-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.hist-t { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-role { font-weight: 450; color: var(--text-dim); }
+.hist-s { display: block; min-width: 0; font-size: 12.5px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-s > svg { vertical-align: -2px; }
+.hist-chip { flex: none; }
+.hist-empty { display: grid; justify-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
+.hist-empty-ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--sunken); color: var(--text-faint); }
+.hist-empty-t { font-size: 14.5px; font-weight: 650; }
+.hist-empty-d { max-width: 42ch; font-size: 13px; color: var(--text-faint); }
+.hist-detail { display: grid; gap: 12px; min-width: 0; }
+.hist-kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+.hist-kv dt { color: var(--text-faint); }
+.hist-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.hist-h { font-size: 12px; font-weight: 650; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.hist-body { margin: 0; padding: 12px 14px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: inherit; font-size: 13px; line-height: 1.55; background: var(--sunken); border-radius: var(--radius-sm); }
+@container (max-width: 560px) {
+  .hist-bar { padding: 12px 14px; }
+  .hist-search { max-width: none; margin-left: 0; flex-basis: 100%; }
+  .hist-row { padding: 12px 14px; flex-wrap: wrap; }
+  .hist-main { flex-basis: calc(100% - 48px); }
+  .hist-chip { margin-left: 48px; }
+  .hist-row .list-when { margin-left: auto; }
+}
+@media (max-width: 560px) {
+  .hist-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .hist-kv dd { margin-bottom: 6px; }
+}
+
+/* Resume library (Profile, Resume tab). */
+.rl-add { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.rl-role { flex: 1 1 260px; min-width: 0; }
+.rl-list { margin: 16px -20px -20px; border-top: 1px solid var(--border); }
+.rl-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border); min-width: 0; }
+.rl-row:first-child { border-top: 0; }
+.rl-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rl-name .chip { flex: none; height: 20px; font-size: 11px; }
+.rl-role-btn { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--text-dim);
+  font: inherit; cursor: pointer; }
+.rl-role-btn:hover { color: var(--text); text-decoration: underline; }
+.rl-role-btn svg { color: var(--text-faint); }
+.rl-edit { display: flex; gap: 6px; align-items: center; margin-top: 4px; min-width: 0; }
+.rl-edit .input { flex: 1; min-width: 0; height: 32px; }
+.rl-acts { display: flex; align-items: center; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.rl-lbl { margin-left: 5px; }
+@container (max-width: 620px) {
+  .rl-row { flex-wrap: wrap; }
+  .rl-row .list-body { flex-basis: calc(100% - 44px); }
+  .rl-acts { width: 100%; justify-content: flex-start; padding-left: 44px; }
+  .rl-lbl { display: none; }
+  .rl-add .btn { width: 100%; justify-content: center; }
+}
+
+/* Documents, Resumes: the role tag beside the name. */
+.ov-role { font-size: 13px; font-weight: 500; color: var(--text-dim); width: clamp(110px, 16vw, 220px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hist-row { transition: none; }
+}
+/* Matches .pf-sec-b's 16px padding on phones, so the list still bleeds to the card edge. */
+@media (max-width: 620px) {
+  .rl-list { margin: 14px -16px -16px; }
+  .rl-row { padding: 12px 16px; }
 }

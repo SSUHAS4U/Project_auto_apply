@@ -28,7 +28,9 @@ public class ResumeDoc {
     @Column(nullable = false, columnDefinition = "text")
     private String latex = "";
 
-    /** Last compiled PDF (null until first successful compile). Not serialized. */
+    /** The file that gets sent: the last compiled PDF of a built résumé (null until the first
+     *  compile), or the uploaded file itself — which may be a DOCX, see {@link #contentType}.
+     *  Not serialized. */
     @JsonIgnore
     @Column(columnDefinition = "bytea")
     private byte[] pdf;
@@ -49,8 +51,34 @@ public class ResumeDoc {
     @Column(name = "tailor_notes", columnDefinition = "text")
     private String tailorNotes;
 
+    /** The role this résumé targets ("Backend Engineer"), so the right one can be picked per job. */
+    private String role;
+
+    /** {@code built} (LaTeX, compiled on demand) or {@code uploaded} (a file used as-is). */
+    @Column(nullable = false)
+    private String source = SOURCE_BUILT;
+
+    /** Original filename of an uploaded résumé; null for built ones. */
+    private String filename;
+
+    /** MIME type of {@link #pdf}. Null means application/pdf (every built résumé). */
+    @Column(name = "content_type")
+    private String contentType;
+
+    /** The library default — copied into profile.resume_data for the worker and extension. */
+    @Column(name = "is_default", nullable = false)
+    private boolean defaultResume = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    public static final String SOURCE_BUILT = "built";
+    public static final String SOURCE_UPLOADED = "uploaded";
+
+    @Transient
+    public boolean isUploaded() {
+        return SOURCE_UPLOADED.equals(source);
+    }
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();

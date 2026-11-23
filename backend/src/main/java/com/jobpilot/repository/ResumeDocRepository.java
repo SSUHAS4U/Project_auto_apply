@@ -11,4 +11,5 @@ public interface ResumeDocRepository extends JpaRepository<ResumeDoc, UUID> {
     List<ResumeDoc> findByUserIdOrderByUpdatedAtDesc(UUID userId);
     Optional<ResumeDoc> findFirstByUserIdAndBaseTrue(UUID userId);
     Optional<ResumeDoc> findByIdAndUserId(UUID id, UUID userId);
+    Optional<ResumeDoc> findFirstByUserIdAndDefaultResumeTrue(UUID userId);
 }

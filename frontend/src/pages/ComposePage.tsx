@@ -1,7 +1,17 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api, type ComposeExtract, type ResumeDoc, type SentMessage } from '../api/client';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
+import { Select } from '../components/Select';
+import { ago, mergeDetected, previousContacts, resumeLabel, suggestResume, type Fillable } from '../lib/outreach';
+
+/** Résumé choice: a library id, the profile's own file (no library yet), or none. */
+const PROFILE_FILE = '__profile__';
+const NO_RESUME = '__none__';
+
+/** Where the subject came from — a subject the POST asked for is never replaced by the AI's. */
+type SubjectSource = '' | 'post' | 'ai' | 'user';
 
 export function ComposePage() {
   const toast = useToast();
@@ -10,9 +20,9 @@ export function ComposePage() {
   const [details, setDetails] = useState('');
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
+  const [subjectSource, setSubjectSource] = useState<SubjectSource>('');
   const [coverLetter, setCoverLetter] = useState('');
   const [coldEmail, setColdEmail] = useState('');
-  const [attachResume, setAttachResume] = useState(true);
   const [mode, setMode] = useState<'both' | 'email' | 'cover'>('both');
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
@@ -23,10 +33,100 @@ export function ComposePage() {
   const [refineText, setRefineText] = useState('');
   const [refining, setRefining] = useState(false);
 
+  // Reading the pasted post.
+  const [detecting, setDetecting] = useState(false);
+  const [detected, setDetected] = useState<{ found: string[]; info: ComposeExtract } | null>(null);
+  // Fields the user typed in — a later paste never overwrites those.
+  const typed = useRef<Set<Fillable>>(new Set());
+  const touch = (k: Fillable) => { typed.current.add(k); };
+
+  // Résumé to send — always an explicit choice.
+  const [resumes, setResumes] = useState<ResumeDoc[] | null>(null);
+  const [profileResume, setProfileResume] = useState('');
+  const [resumeChoice, setResumeChoice] = useState('');
+  const [resumePicked, setResumePicked] = useState(false); // chosen by the user, not suggested
+
+  // WhatsApp.
+  const [phone, setPhone] = useState('');
+  const [myWhatsapp, setMyWhatsapp] = useState('');
+  const [myCountryCode, setMyCountryCode] = useState('91');
+  const [waMessage, setWaMessage] = useState('');
+  const [waResume, setWaResume] = useState(true);
+  const [waCover, setWaCover] = useState(true);
+  const [waBusy, setWaBusy] = useState(false);
+
+  const [history, setHistory] = useState<SentMessage[]>([]);
+
   useEffect(() => { api.aiStatus().then(setAi).catch(() => {}); }, []);
   useEffect(() => {
-    api.profile().then((p) => { setEmailTpl(p.emailTemplate ?? ''); setCoverTpl(p.coverLetterTemplate ?? ''); }).catch(() => {});
+    api.profile().then((p) => {
+      setEmailTpl(p.emailTemplate ?? '');
+      setCoverTpl(p.coverLetterTemplate ?? '');
+      setProfileResume(p.resumeFilename ?? '');
+      setMyWhatsapp(p.whatsappNumber || p.phone || '');
+      setMyCountryCode((p.phoneCountryCode || '91').replace(/\D/g, '') || '91');
+    }).catch(() => {});
+    api.resumeList().then(setResumes).catch(() => setResumes([]));
+    api.history().then(setHistory).catch(() => {});
   }, []);
+
+  // ---- résumé choice ----
+  const sendable = useMemo(() => (resumes ?? []).filter((r) => r.hasPdf), [resumes]);
+  const suggested = useMemo(() => suggestResume(resumes ?? [], role), [resumes, role]);
+  // Suggest, never silently decide: a match by role, or the only résumé there is. With several
+  // and no match the choice stays empty and Send asks for it.
+  useEffect(() => {
+    if (resumePicked || resumes === null) return;
+    if (suggested) setResumeChoice(suggested.id);
+    else if (sendable.length === 1) setResumeChoice(sendable[0].id);
+    else if (sendable.length === 0 && profileResume) setResumeChoice(PROFILE_FILE);
+    else setResumeChoice('');
+  }, [suggested, sendable, profileResume, resumes, resumePicked]);
+
+  const resumeOptions = [
+    { value: '', label: 'Choose a résumé…' },
+    ...(resumes ?? []).filter((r) => r.hasPdf).map((r) => ({ value: r.id, label: resumeLabel(r) })),
+    ...(sendable.length === 0 && profileResume ? [{ value: PROFILE_FILE, label: `Profile résumé · ${profileResume}` }] : []),
+    { value: NO_RESUME, label: "Don't attach a résumé" },
+  ];
+  const chosenResume = (resumes ?? []).find((r) => r.id === resumeChoice) ?? null;
+  const unbuilt = (resumes ?? []).filter((r) => !r.hasPdf).length;
+  const resumeHint = resumes === null ? 'Loading your résumés…'
+    : !resumeChoice ? (sendable.length === 0 && !profileResume
+      ? 'You have no résumé yet — add one in Profile → Résumé, or send without one.'
+      : `Pick the résumé for this job — you have ${sendable.length}.`)
+      : resumeChoice === NO_RESUME ? 'The email goes out without a résumé.'
+        : !resumePicked && suggested && resumeChoice === suggested.id ? `Suggested because its role matches “${role}”. Change it if another fits better.`
+          : chosenResume ? `Attaching “${chosenResume.name}”.` : 'Attaching your profile résumé.';
+
+  // ---- earlier contact with this company / recipient ----
+  const earlier = useMemo(() => previousContacts(history, { company, email: to, phone }), [history, company, to, phone]);
+
+  // ---- read the pasted post ----
+  const detect = async (text: string, quiet = false) => {
+    if (text.trim().length < 20) { if (!quiet) toast('Paste the job post first', 'info'); return; }
+    setDetecting(true);
+    try {
+      const r = await api.composeExtract(text);
+      const changes = mergeDetected(
+        { role, company, to, subject, phone },
+        typed.current,
+        { role: r.role, company: r.company, to: r.email, phone: r.phone, subject: r.subjectRequested ? r.subject : '' },
+      );
+      if (changes.role !== undefined) setRole(changes.role);
+      if (changes.company !== undefined) setCompany(changes.company);
+      if (changes.to !== undefined) setTo(changes.to);
+      if (changes.phone !== undefined) setPhone(changes.phone);
+      if (changes.subject !== undefined) { setSubject(changes.subject); setSubjectSource('post'); }
+      const found = [
+        r.role && 'role', r.company && 'company', r.email && 'email',
+        r.subjectRequested && 'subject', r.phone && 'phone',
+      ].filter(Boolean) as string[];
+      setDetected({ found, info: r });
+    } catch (e) {
+      if (!quiet) toast((e as Error).message, 'error');
+    } finally { setDetecting(false); }
+  };
 
   const saveTemplates = async () => {
     setSavingTpl(true);
@@ -45,8 +145,13 @@ export function ComposePage() {
       const r = await api.composeGenerate(role, company, details);
       setCoverLetter(r.coverLetter || '');
       setColdEmail(r.coldEmail || '');
-      if (r.subject) setSubject(r.subject);
-      toast('Generated subject, cold email & cover letter — review before sending', 'success');
+      if (r.whatsapp) setWaMessage(r.whatsapp);
+      // The post's own subject and one the user typed both outrank the AI's.
+      if (r.subject && subjectSource !== 'post' && !(subjectSource === 'user' && subject.trim())) {
+        setSubject(r.subject);
+        setSubjectSource('ai');
+      }
+      toast('Generated — review before sending', 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
     finally { setGenerating(false); }
   };
@@ -91,30 +196,73 @@ export function ComposePage() {
     } catch (e) { toast((e as Error).message, 'error'); }
   };
 
+  const refreshHistory = () => api.history().then(setHistory).catch(() => {});
+
   const send = async () => {
     if (!to) { toast('Recipient email required', 'error'); return; }
     if (!coldEmail && !coverLetter) { toast('Generate the content first', 'error'); return; }
-    // Send mode decides which parts go out.
+    if (!resumeChoice) { toast('Choose which résumé to send — or "Don\'t attach a résumé"', 'error'); return; }
     const sendEmail = mode === 'both' || mode === 'email' ? coldEmail : '';
     const sendCover = mode === 'both' || mode === 'cover' ? coverLetter : '';
     if (!sendEmail && !sendCover) { toast('Nothing to send for this mode', 'error'); return; }
     setSending(true);
     try {
-      const r = await api.composeSend({ to, subject, coldEmail: sendEmail, coverLetter: sendCover, attachResume });
-      const att = [r.coverLetterAttached && 'cover letter', r.resumeAttached && 'resume'].filter(Boolean).join(' + ');
-      toast(`Sent to ${r.sentTo}${att ? ` (${att} attached as PDF)` : ''}`, 'success');
+      const r = await api.composeSend({
+        to, subject, coldEmail: sendEmail, coverLetter: sendCover,
+        attachResume: resumeChoice !== NO_RESUME,
+        resumeId: resumeChoice === NO_RESUME || resumeChoice === PROFILE_FILE ? undefined : resumeChoice,
+        company, role,
+      });
+      const att = [r.coverLetterAttached && 'cover letter', r.resumeAttached && (r.resumeName ? `“${r.resumeName}”` : 'résumé')].filter(Boolean).join(' + ');
+      toast(`Sent to ${r.sentTo}${att ? ` with ${att}` : ''}`, 'success');
     } catch (e) { toast((e as Error).message, 'error'); }
-    finally { setSending(false); }
+    finally { setSending(false); refreshHistory(); }
+  };
+
+  // ---- WhatsApp ----
+  const waLinkResume = waResume && !!chosenResume;
+  const openWhatsapp = async () => {
+    if (!phone.trim()) { toast('Add the recruiter\'s WhatsApp number', 'error'); return; }
+    if (!waMessage.trim()) { toast('Write the message first — Generate fills it in', 'error'); return; }
+    // Open the tab NOW, inside the click, or the browser blocks it as a pop-up once the request
+    // returns. The desktop app has no blank window to open; it opens the final URL externally.
+    const win = window.open('', '_blank');
+    setWaBusy(true);
+    try {
+      const r = await api.composeWhatsapp({
+        phone, message: waMessage, company, role,
+        includeResume: waLinkResume, resumeId: waLinkResume ? chosenResume!.id : undefined,
+        coverLetter: waCover && coverLetter ? coverLetter : undefined,
+      });
+      if (win) win.location.href = r.url;
+      else window.open(r.url, '_blank');
+      toast(`WhatsApp opened for ${r.phone} — press Send there`, 'success');
+    } catch (e) {
+      win?.close();
+      toast((e as Error).message, 'error');
+    } finally { setWaBusy(false); refreshHistory(); }
+  };
+
+  /** Send the message to your own number first, to see exactly what the recruiter will get. */
+  const previewOnMyPhone = () => {
+    const digits = myWhatsapp.replace(/\D/g, '');
+    if (digits.length < 8) { toast('Add your WhatsApp number in Profile → Personal', 'error'); return; }
+    const own = myWhatsapp.trim().startsWith('+') ? digits : digits.length === 10 ? myCountryCode + digits : digits.replace(/^0/, myCountryCode);
+    window.open(`https://wa.me/${own}?text=${encodeURIComponent(waMessage || 'Test from JobPilot')}`, '_blank');
   };
 
   const hasContent = !!(coldEmail || coverLetter);
+  const label = (k: string) => ({ role: 'Role', company: 'Company', email: 'Recipient', subject: 'Subject', phone: 'Phone' } as Record<string, string>)[k] ?? k;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1 className="page-title">Compose &amp; send</h1>
-          <div className="page-sub">Generate a tailored cold email + cover letter from any job, review, then send with your resume.</div>
+          <div className="page-sub">Paste a job post — the role, company, recipient and any subject it asks for are filled in. Review, then send by email or WhatsApp.</div>
+        </div>
+        <div className="page-acts">
+          <Link to="/history" className="btn"><Icon name="clock" size={14} /> History</Link>
         </div>
       </div>
 
@@ -131,7 +279,7 @@ export function ComposePage() {
               <textarea className="input" rows={8} value={coverTpl} onChange={(e) => setCoverTpl(e.target.value)} placeholder="Dear Hiring Manager, I am writing to express my interest in the [Role] role at [Company]…" />
             </label>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={saveTemplates} disabled={savingTpl}>
+          <button className="btn" style={{ marginTop: 12 }} onClick={saveTemplates} disabled={savingTpl}>
             {savingTpl ? <span className="spinner" /> : <Icon name="check" size={14} />} Save templates
           </button>
         </details>
@@ -142,15 +290,48 @@ export function ComposePage() {
         <div className="card card-pad">
           <div className="step-head">
             <span className="step-num">1</span>
-            <div><div className="step-title">Job details</div><div className="step-sub">What you're applying to — the more detail, the more tailored the writing.</div></div>
+            <div><div className="step-title">Job details</div><div className="step-sub">Paste the whole post — contact details and a requested subject are picked up automatically.</div></div>
           </div>
-          <div className="grid2">
-            <label className="field">Role / title<input className="input" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Backend Engineer" /></label>
-            <label className="field">Company<input className="input" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" /></label>
-          </div>
-          <label className="field" style={{ marginTop: 14 }}>Job description / details
-            <textarea className="input" rows={7} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Paste responsibilities, requirements, anything you want the letter to address…" />
+          <label className="field">Job description / details
+            <textarea className="input" rows={7} value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              onPaste={(e) => {
+                // Read the textarea AFTER the paste lands, so the whole post is detected — not
+                // just the pasted fragment.
+                const el = e.currentTarget;
+                requestAnimationFrame(() => detect(el.value, true));
+              }}
+              placeholder="Paste the job post — responsibilities, requirements, and the How to apply part with the email or phone…" />
           </label>
+          <div className="cp-detect" aria-live="polite">
+            {detecting ? <><span className="spinner" /> Reading the post…</>
+              : detected ? (
+                detected.found.length > 0 ? (
+                  <>
+                    <Icon name="check" size={13} />
+                    <span>Found in the post:</span>
+                    {detected.found.map((k) => <span key={k} className="chip chip-neutral">{label(k)}</span>)}
+                    {!detected.found.includes('subject') && <span className="faint">· no subject asked for — one will be written</span>}
+                  </>
+                ) : <><Icon name="alert" size={13} /> Nothing to fill found in this post — type the details in.</>
+              ) : <span className="faint">Paste a post to fill the fields below.</span>}
+            <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => detect(details)} disabled={detecting || details.trim().length < 20}>
+              <Icon name="refresh" size={13} /> Read again
+            </button>
+          </div>
+          <div className="grid2" style={{ marginTop: 14 }}>
+            <label className="field">Role / title<input className="input" value={role} onChange={(e) => { setRole(e.target.value); touch('role'); }} placeholder="Backend Engineer" /></label>
+            <label className="field">Company<input className="input" value={company} onChange={(e) => { setCompany(e.target.value); touch('company'); }} placeholder="Acme" /></label>
+          </div>
+          {earlier.length > 0 && (
+            <div className="cp-note cp-note-warn" style={{ marginTop: 14 }}>
+              <Icon name="alert" size={15} />
+              <div>
+                You already contacted {earlier[0].company || earlier[0].recipient} {ago(earlier[0].createdAt)} by {earlier[0].channel === 'EMAIL' ? 'email' : 'WhatsApp'}
+                {earlier.length > 1 ? ` (${earlier.length} times in all)` : ''}. <Link to="/history">See History</Link>
+              </div>
+            </div>
+          )}
           <div className="row" style={{ marginTop: 14, justifyContent: 'space-between' }}>
             <button className="btn btn-primary" onClick={generate} disabled={generating || (ai !== null && !ai.enabled)}>
               {generating ? <span className="spinner" /> : <Icon name="sparkles" size={14} />} {hasContent ? 'Regenerate' : 'Generate'}
@@ -168,7 +349,7 @@ export function ComposePage() {
           {!hasContent ? (
             <div className="empty" style={{ padding: '28px 20px' }}>
               <div className="big"><Icon name="pen" size={34} /></div>
-              Your cold email and cover letter will appear here after you generate.
+              Your cold email, cover letter and WhatsApp message will appear here after you generate.
             </div>
           ) : (
             <>
@@ -193,13 +374,12 @@ export function ComposePage() {
                   <textarea rows={12} value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} placeholder="Generated cover letter appears here…" />
                 </div>
               </div>
-              {/* Refine chat — tweak specific words or the whole thing in natural language */}
               <div className="row" style={{ marginTop: 14, gap: 8 }}>
-                <input className="input" style={{ flex: 1 }} value={refineText}
+                <input className="input" style={{ flex: 1, minWidth: 0 }} value={refineText}
                   onChange={(e) => setRefineText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') refine(); }}
-                  placeholder='Tell the AI how to tweak it — e.g. "make the email shorter", "mention my React projects", "more formal tone"' />
-                <button className="btn btn-primary" onClick={refine} disabled={refining}>
+                  placeholder='Tell the AI how to tweak it — e.g. "make the email shorter", "mention my React projects"' />
+                <button className="btn" onClick={refine} disabled={refining}>
                   {refining ? <span className="spinner" /> : <Icon name="sparkles" size={13} />} Refine
                 </button>
               </div>
@@ -207,29 +387,83 @@ export function ComposePage() {
           )}
         </div>
 
-        {/* Step 3 — Send */}
+        {/* Step 3 — Send by email */}
         <div className="card card-pad">
           <div className="step-head">
             <span className="step-num">3</span>
-            <div><div className="step-title">Send</div><div className="step-sub">Goes out via your configured mail. A copy is BCC'd to you.</div></div>
+            <div><div className="step-title">Send by email</div><div className="step-sub">Goes out via your configured mail. A copy is BCC'd to you, and it's logged in History.</div></div>
           </div>
           <div className="grid2">
-            <label className="field">Recipient email<input className="input" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recruiter@company.com" /></label>
-            <label className="field">Subject<input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Application for…" /></label>
+            <label className="field">Recipient email<input className="input" type="email" value={to} onChange={(e) => { setTo(e.target.value); touch('to'); }} placeholder="recruiter@company.com" /></label>
+            <label className="field">
+              <span className="cp-label">Subject
+                {subjectSource === 'post' && <span className="chip chip-neutral" title="The post asks applicants to use this subject">From the post</span>}
+              </span>
+              <input className="input" value={subject} onChange={(e) => { setSubject(e.target.value); setSubjectSource('user'); touch('subject'); }} placeholder="Application for…" />
+            </label>
           </div>
-          <div className="field" style={{ marginTop: 14 }}>What to send
-            <div className="seg" style={{ marginTop: 6 }}>
-              {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, label]) => (
-                <button key={k} type="button" className={`seg-btn ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{label}</button>
-              ))}
+          <div className="grid2" style={{ marginTop: 14, alignItems: 'start' }}>
+            <div className="field">Résumé to send
+              <Select value={resumeChoice} options={resumeOptions} ariaLabel="Résumé to send"
+                onChange={(v) => { setResumeChoice(v); setResumePicked(true); }} style={{ marginTop: 6 }} />
+              <span className={`field-hint ${!resumeChoice && resumes !== null ? 'cp-need' : ''}`} style={{ marginTop: 6 }}>
+                {resumeHint}
+                {unbuilt > 0 && <> {unbuilt} built résumé{unbuilt === 1 ? ' isn\'t' : 's aren\'t'} compiled yet — <Link to="/resumes">compile</Link> to send {unbuilt === 1 ? 'it' : 'them'}.</>}
+              </span>
+            </div>
+            <div className="field">What to send
+              <div className="seg" style={{ marginTop: 6 }}>
+                {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, l]) => (
+                  <button key={k} type="button" className={`seg-btn ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{l}</button>
+                ))}
+              </div>
             </div>
           </div>
-          <label className="row" style={{ marginTop: 14, gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={attachResume} onChange={(e) => setAttachResume(e.target.checked)} /> Attach my resume
-          </label>
-          <button className="btn btn-primary" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={send} disabled={sending || !hasContent}>
-            {sending ? <span className="spinner" /> : <Icon name="send" size={14} />} Send {mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'email + cover letter'} to {to || 'recipient'}
+          <button className="btn btn-primary" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={send}
+            disabled={sending || !hasContent || !resumeChoice}>
+            {sending ? <span className="spinner" /> : <Icon name="send" size={14} />}
+            {!resumeChoice ? ' Choose a résumé to send' : ` Send ${mode === 'email' ? 'email' : mode === 'cover' ? 'cover letter' : 'email + cover letter'} to ${to || 'recipient'}`}
           </button>
+        </div>
+
+        {/* Step 4 — WhatsApp */}
+        <div className="card card-pad">
+          <div className="step-head">
+            <span className="step-num">4</span>
+            <div><div className="step-title">Send on WhatsApp</div><div className="step-sub">Opens WhatsApp with a short message ready, addressed to the recruiter — you press Send. Your résumé and cover letter go as links; WhatsApp can't attach files this way.</div></div>
+          </div>
+          <div className="grid2">
+            <label className="field">Recruiter's WhatsApp number
+              <input className="input" inputMode="tel" value={phone} onChange={(e) => { setPhone(e.target.value); touch('phone'); }} placeholder="+91 98765 43210" />
+              <span className="field-hint">A 10-digit number gets +{myCountryCode} in front.</span>
+            </label>
+            <label className="field">Sent from
+              <input className="input" value={myWhatsapp || 'Not set'} readOnly aria-readonly="true" />
+              <span className="field-hint">The WhatsApp signed in on this device sends it. Change your number in <Link to="/profile">Profile → Personal</Link>.</span>
+            </label>
+          </div>
+          <label className="field" style={{ marginTop: 14 }}>Message
+            <textarea className="input" rows={6} value={waMessage} onChange={(e) => setWaMessage(e.target.value)}
+              placeholder="Generate fills in a short WhatsApp message here — or write your own." />
+          </label>
+          <div className="cp-checks">
+            <label className={`check-row ${!chosenResume ? 'is-off' : ''}`}>
+              <input type="checkbox" checked={waLinkResume} disabled={!chosenResume} onChange={(e) => setWaResume(e.target.checked)} />
+              {chosenResume ? <>Link my résumé — “{chosenResume.name}”</> : <>Link my résumé <span className="faint">(choose a library résumé in step 3)</span></>}
+            </label>
+            <label className={`check-row ${!coverLetter ? 'is-off' : ''}`}>
+              <input type="checkbox" checked={waCover && !!coverLetter} disabled={!coverLetter} onChange={(e) => setWaCover(e.target.checked)} />
+              Link my cover letter {!coverLetter && <span className="faint">(generate one first)</span>}
+            </label>
+          </div>
+          <div className="row" style={{ marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" onClick={openWhatsapp} disabled={waBusy || !phone.trim() || !waMessage.trim()}>
+              {waBusy ? <span className="spinner" /> : <Icon name="chat" size={14} />} Open in WhatsApp{phone.trim() ? ` for ${phone.trim()}` : ''}
+            </button>
+            <button className="btn btn-ghost" onClick={previewOnMyPhone} disabled={!waMessage.trim()} title="Opens a chat with your own number so you can see the message first">
+              <Icon name="phone" size={14} /> Preview on my phone
+            </button>
+          </div>
         </div>
       </div>
     </>
