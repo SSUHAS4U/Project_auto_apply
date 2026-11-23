@@ -29,7 +29,10 @@ jobs:
           - os: ubuntu-latest
             script: dist:linux
             out: JobPilot-Linux.AppImage
-          - os: macos-14
+          # macos-15, not macos-14: GitHub retired the macos-14 image (2026-11-23, desktop-v171:
+          # "configuration 'macos-14-arm64-us-default' is not supported" — the job was cancelled
+          # in 1s with no steps). Still Apple silicon, so the .dmg is the same arm64 build.
+          - os: macos-15
             script: dist:mac
             out: JobPilot-macOS.dmg
     runs-on: ${{ matrix.os }}
