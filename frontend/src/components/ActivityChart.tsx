@@ -20,10 +20,10 @@ const RANGES: { key: Range; label: string }[] = [
 
 type Series = { key: string; label: string; color: string; types: string[] };
 const SERIES: Series[] = [
-  { key: 'found', label: 'Jobs found', color: 'var(--accent)', types: ['job_identified'] },
+  { key: 'found', label: 'Jobs found', color: 'var(--ink)', types: ['job_identified'] },
   { key: 'relevant', label: 'Relevant', color: 'var(--amber)', types: ['relevant'] },
   { key: 'applied', label: 'Applied', color: 'var(--green)', types: ['applied', 'easy_apply'] },
-  { key: 'manual', label: 'Manual', color: 'var(--blue)', types: ['manual_apply'] },
+  { key: 'manual', label: 'Manual', color: 'var(--ink-3)', types: ['manual_apply'] },
   { key: 'failed', label: 'Failed', color: 'var(--red)', types: ['apply_failed'] },
 ];
 

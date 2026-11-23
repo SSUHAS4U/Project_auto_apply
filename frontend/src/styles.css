@@ -3,8 +3,9 @@
 /* ============================================================================
    TOKENS — the recruiting-SaaS system agreed 2026-09-21 (docs/UI_SPEC.md).
 
-   One accent (deep blue) for links, the active nav item and focus; near-black ink for the
-   primary action; green / amber / red only for real state. The legacy names (--bg, --bg-card,
+   Black and white (owner's decision, 2026-09-21: "no blue at all"). --accent is the ink
+   colour, so the active nav item, focus rings and links are ink; green / amber / red appear
+   only for real state. The legacy names (--bg, --bg-card,
    --text-dim, --green …) are kept as ALIASES of the new roles so every existing component
    re-skins from this block alone — there is one palette, not two.
    ========================================================================== */
@@ -14,7 +15,7 @@
   --line: #252A32; --line-strong: #353B45;
   --ink: #ECEEF2; --ink-2: #A6ADB8; --ink-3: #7D8592;
   --primary: #ECEEF2; --primary-hover: #FFFFFF; --on-primary: #0F1217;
-  --accent: #7FA2FF; --accent-soft: rgba(127,162,255,.13); --accent-line: rgba(127,162,255,.35);
+  --accent: #ECEEF2; --accent-soft: rgba(236,238,242,.08); --accent-line: #4A515D;
   --success: #4CC38A; --success-soft: rgba(76,195,138,.13);
   --warning: #E9A94B; --warning-soft: rgba(233,169,75,.13);
   --danger-c: #F2776C; --danger-soft: rgba(242,119,108,.13);
@@ -30,7 +31,7 @@
   --text: var(--ink); --text-dim: var(--ink-2); --text-faint: var(--ink-3);
   --accent-hi: var(--accent);
   --green: var(--success); --amber: var(--warning); --red: var(--danger-c);
-  --blue: var(--accent); --purple: var(--accent);
+  --blue: var(--ink-2); --purple: var(--ink-2);
   --danger: var(--danger-c);
   --btn-bg: var(--surface); --btn-bg-hover: #1C2027;
   --shadow-sm: var(--shadow-1); --shadow: var(--shadow-2);
@@ -60,7 +61,7 @@
   --line: #E3E6EB; --line-strong: #CDD2DA;
   --ink: #0F1217; --ink-2: #4A5260; --ink-3: #737C8A;
   --primary: #0F1217; --primary-hover: #262B33; --on-primary: #FFFFFF;
-  --accent: #2152D9; --accent-soft: #E9EFFD; --accent-line: #BFD0F7;
+  --accent: #0F1217; --accent-soft: rgba(15,18,23,.06); --accent-line: #A9B0BB;
   --success: #157347; --success-soft: #E3F3EA;
   --warning: #9A5B00; --warning-soft: #FCEFD9;
   --danger-c: #B42318; --danger-soft: #FDE9E7;
@@ -92,8 +93,10 @@ body {
 ::-webkit-scrollbar-thumb { background: #232a38; border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: #2e3648; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
-a { color: var(--accent-hi); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* No colour for links (the palette is black and white): ink + an underline that firms up on hover. */
+a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+a:hover { text-decoration-color: currentColor; }
+.btn, .btn:hover, a.btn, .jc2-title, .nav-item, .lp-links a, .lp-login, .dl a, .brand, .lp-foot a, .list-t a { text-decoration: none; }
 
 /* Keyboard focus — visible ring on every interactive element (accessibility). */
 :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 6px; }
@@ -1641,13 +1644,53 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
 .step-title { font-size: 15.5px; font-weight: 700; letter-spacing: -.01em; }
 .step-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; line-height: 1.5; }
 
-/* Segmented control (pill group). */
-.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--bg-elev);
-  border: 1px solid var(--border-strong); border-radius: 11px; }
-.seg-btn { border: none; background: transparent; color: var(--text-dim); cursor: pointer;
-  padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; transition: background .15s, color .15s; }
-.seg-btn:hover { color: var(--text); }
-.seg-btn.active { background: var(--accent-soft); color: var(--accent-hi); }
+/* Segmented control: a sunken track, the chosen option a raised white chip. */
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; background: var(--sunken); border-radius: 9px; }
+.seg > button, .seg-btn { min-height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; white-space: nowrap;
+  transition: background .16s var(--ease), color .16s var(--ease); }
+.seg > button:hover, .seg-btn:hover { color: var(--text); }
+.seg > button.on, .seg-btn.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
+
+/* ============================================================================
+   BUILDING BLOCKS (components/Page.tsx) — the structure every screen shares.
+   ========================================================================== */
+.page-badge { margin-left: 10px; vertical-align: middle; }
+.sc { min-width: 0; }
+.sc-danger { border-color: color-mix(in srgb, var(--red) 30%, var(--border)); }
+.sc-h { display: flex; align-items: flex-start; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.sc-ic { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; background: var(--sunken); color: var(--text-dim); }
+.sc-danger .sc-ic { background: var(--danger-soft); color: var(--red); }
+.sc-t { flex: 1; min-width: 0; }
+.sc-t h3 { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; line-height: 30px; }
+.sc-sub { margin-top: -4px; font-size: 12.5px; color: var(--text-faint); }
+.sc-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; align-self: center; }
+.sc-b { padding: 20px; }
+.sc-b-flush { padding: 0; }
+.sc-f { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap;
+  padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 var(--radius) var(--radius); }
+.sc-f .sc-f-note { margin-right: auto; font-size: 12.5px; color: var(--text-faint); }
+.stack { display: grid; gap: 16px; min-width: 0; }
+
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 8px 24px; align-items: center;
+  padding: 16px 20px; border-top: 1px solid var(--border); }
+.sc-b-flush > .srow:first-child { border-top: 0; }
+.srow-t { font-size: 14px; font-weight: 600; color: var(--text); }
+.srow-d { margin-top: 2px; font-size: 12.5px; color: var(--text-faint); max-width: 54ch; }
+.srow-c { display: flex; justify-content: flex-end; min-width: 0; }
+.srow-c > .input, .srow-c > .tsel, .srow-c > .taginput, .srow-c > div:only-child:not(.seg) { width: 100%; }
+@container (max-width: 640px) {
+  .srow { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; }
+  .srow-c { justify-content: flex-start; }
+  .sc-h { padding: 14px 16px; }
+  .sc-b { padding: 16px; }
+  .sc-f { padding: 12px 16px; }
+}
+
+.empty2 { display: grid; justify-items: center; gap: 8px; padding: 36px 20px; text-align: center; }
+.empty2-ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--sunken); color: var(--text-faint); }
+.empty2-t { font-size: 14.5px; font-weight: 650; }
+.empty2-d { max-width: 42ch; font-size: 13px; color: var(--text-faint); }
 .section-title { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; margin: 0 0 14px; color: var(--text); }
 .section-title .si { width: 26px; height: 26px; border-radius: 7px; background: var(--sunken); color: var(--text-dim); display: grid; place-items: center; font-size: 14px; }
 .section-sub { font-size: 12px; color: var(--text-faint); font-weight: 400; margin-left: auto; }
