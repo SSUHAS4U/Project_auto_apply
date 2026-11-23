@@ -2553,3 +2553,46 @@ code { background: var(--bg-elev); border: 1px solid var(--border); border-radiu
   .rl-list { margin: 14px -16px -16px; }
   .rl-row { padding: 12px 16px; }
 }
+
+/* ---- Compose step 3: labelled groups, and the résumé chooser (components/ResumeChooser) ----
+   Cards instead of a dropdown: every résumé visible with its role, one click to choose. */
+.cp-group { margin-top: 18px; min-width: 0; }
+.cp-group-h { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.cp-group-t { font-size: 13px; font-weight: 550; color: var(--text); }
+.cp-group-hint { font-size: 12px; color: var(--text-faint); }
+.cp-group-link { margin-left: auto; font-size: 12.5px; }
+
+.rc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  max-height: 292px; overflow-y: auto; padding: 2px; margin: -2px; }
+.rc-opt { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 60px; padding: 10px 12px;
+  text-align: left; font: inherit; color: var(--text); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  transition: border-color .16s var(--ease), background .16s var(--ease), box-shadow .16s var(--ease); }
+.rc-opt:hover { border-color: var(--ink-3); background: var(--surface-2); }
+.rc-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rc-opt.on { border-color: var(--ink); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--ink); }
+.rc-radio { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 1.5px solid var(--line-strong);
+  background: var(--surface); transition: border-color .16s var(--ease), box-shadow .16s var(--ease); }
+.rc-opt.on .rc-radio { border-color: var(--ink); box-shadow: inset 0 0 0 3.5px var(--surface), inset 0 0 0 8px var(--ink); }
+.rc-ic { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center;
+  background: var(--sunken); color: var(--text-dim); }
+.rc-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.rc-t { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-m { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.rc-tags .chip { height: 20px; font-size: 11px; }
+.rc-none .rc-t { font-weight: 550; color: var(--text-dim); }
+.rc-skel { height: 60px; border-radius: var(--radius-sm); background: var(--sunken); }
+@container (max-width: 640px) {
+  .rc { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-opt, .rc-radio { transition: none; }
+}
+/* A long résumé name in "Link my résumé — “…”" must wrap, not push the page sideways
+   (found at 360px: 71px of horizontal scroll). */
+.cp-checks .check-row { max-width: 100%; min-width: 0; align-items: flex-start; }
+.cp-checks .check-row input { margin-top: 1px; flex: none; }
+.cp-checks .check-row > span { min-width: 0; overflow-wrap: anywhere; }
+/* Badges sit under the name, so a narrow card never squeezes the name to a few letters. */
+.rc-tags { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; align-items: center; margin-top: 3px; }

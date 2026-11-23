@@ -406,3 +406,45 @@ describe('interactive states at 360', () => {
     }, { timeout: 120000 });
   }
 });
+
+// Compose with a résumé CHOSEN. The page-wide sweeps above never pick one, and a chosen
+// résumé's name is what appears in "Link my résumé — “…”" in the WhatsApp step: an
+// unbreakable 50-character filename there pushed the page 71px sideways at 360. Pick one two
+// ways — by typing a role that matches, and by clicking a card — in both themes.
+describe('compose with a résumé chosen', () => {
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: résumé cards and the WhatsApp step fit at 360`, async (t) => {
+      if (unavailable) return t.skip(unavailable);
+      const ctx = await browser.newContext({ viewport: { width: 360, height: 740 } });
+      await ctx.addInitScript((th) => {
+        localStorage.setItem('jobpilot_jwt', 'test.jwt.token');
+        localStorage.setItem('jobpilot_theme', th);
+      }, theme);
+      await ctx.route(`${API}/**`, (r) => {
+        const p = r.request().url().replace(API, '').split('?')[0];
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(POPULATED[p] ?? {}) });
+      });
+      const page = await ctx.newPage();
+      const problems = [];
+      page.on('pageerror', (e) => problems.push('JS error — ' + String(e.message).slice(0, 120)));
+      try {
+        await page.goto(BASE + '/compose', { waitUntil: 'networkidle', timeout: 25000 });
+        await page.getByPlaceholder('Backend Engineer').fill('Java Developer');
+        await page.waitForTimeout(250);
+        const picked = await page.locator('.rc-opt[aria-checked="true"] .rc-t').textContent();
+        assert.match(picked ?? '', /Java/, 'typing a matching role should pre-select the Java résumé');
+        let m = await page.evaluate(MEASURE_FN);
+        if (m.pageOverflow > 1) problems.push(`suggested: page scrolls ${m.pageOverflow}px sideways`);
+        for (const e of m.escaping) problems.push(`suggested: ${e}`);
+
+        await page.locator('.rc-opt').nth(1).click(); // the no-space company-name résumé
+        m = await page.evaluate(MEASURE_FN);
+        if (m.pageOverflow > 1) problems.push(`clicked: page scrolls ${m.pageOverflow}px sideways`);
+        for (const e of m.escaping) problems.push(`clicked: ${e}`);
+      } finally {
+        await ctx.close();
+      }
+      assert.deepEqual(problems, []);
+    });
+  }
+});

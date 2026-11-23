@@ -3,12 +3,8 @@ import { Link } from 'react-router-dom';
 import { api, type ComposeExtract, type ResumeDoc, type SentMessage } from '../api/client';
 import { useToast } from '../lib/ui';
 import { Icon } from '../components/Icon';
-import { Select } from '../components/Select';
-import { ago, mergeDetected, previousContacts, resumeLabel, suggestResume, type Fillable } from '../lib/outreach';
-
-/** Résumé choice: a library id, the profile's own file (no library yet), or none. */
-const PROFILE_FILE = '__profile__';
-const NO_RESUME = '__none__';
+import { NO_RESUME, PROFILE_FILE, ResumeChooser } from '../components/ResumeChooser';
+import { ago, mergeDetected, previousContacts, suggestResume, type Fillable } from '../lib/outreach';
 
 /** Where the subject came from — a subject the POST asked for is never replaced by the AI's. */
 type SubjectSource = '' | 'post' | 'ai' | 'user';
@@ -83,21 +79,13 @@ export function ComposePage() {
     else setResumeChoice('');
   }, [suggested, sendable, profileResume, resumes, resumePicked]);
 
-  const resumeOptions = [
-    { value: '', label: 'Choose a résumé…' },
-    ...(resumes ?? []).filter((r) => r.hasPdf).map((r) => ({ value: r.id, label: resumeLabel(r) })),
-    ...(sendable.length === 0 && profileResume ? [{ value: PROFILE_FILE, label: `Profile résumé · ${profileResume}` }] : []),
-    { value: NO_RESUME, label: "Don't attach a résumé" },
-  ];
   const chosenResume = (resumes ?? []).find((r) => r.id === resumeChoice) ?? null;
   const unbuilt = (resumes ?? []).filter((r) => !r.hasPdf).length;
-  const resumeHint = resumes === null ? 'Loading your résumés…'
-    : !resumeChoice ? (sendable.length === 0 && !profileResume
-      ? 'You have no résumé yet — add one in Profile → Résumé, or send without one.'
-      : `Pick the résumé for this job — you have ${sendable.length}.`)
-      : resumeChoice === NO_RESUME ? 'The email goes out without a résumé.'
-        : !resumePicked && suggested && resumeChoice === suggested.id ? `Suggested because its role matches “${role}”. Change it if another fits better.`
-          : chosenResume ? `Attaching “${chosenResume.name}”.` : 'Attaching your profile résumé.';
+  const resumeHint = !resumeChoice
+    ? (sendable.length === 0 && !profileResume
+      ? 'No résumé yet — add one in Profile → Résumé, or send without one.'
+      : 'Choose one to continue.')
+    : !resumePicked && suggested && resumeChoice === suggested.id ? `Picked because its role matches “${role}”.` : '';
 
   // ---- earlier contact with this company / recipient ----
   const earlier = useMemo(() => previousContacts(history, { company, email: to, phone }), [history, company, to, phone]);
@@ -402,21 +390,28 @@ export function ComposePage() {
               <input className="input" value={subject} onChange={(e) => { setSubject(e.target.value); setSubjectSource('user'); touch('subject'); }} placeholder="Application for…" />
             </label>
           </div>
-          <div className="grid2" style={{ marginTop: 14, alignItems: 'start' }}>
-            <div className="field">Résumé to send
-              <Select value={resumeChoice} options={resumeOptions} ariaLabel="Résumé to send"
-                onChange={(v) => { setResumeChoice(v); setResumePicked(true); }} style={{ marginTop: 6 }} />
-              <span className={`field-hint ${!resumeChoice && resumes !== null ? 'cp-need' : ''}`} style={{ marginTop: 6 }}>
-                {resumeHint}
-                {unbuilt > 0 && <> {unbuilt} built résumé{unbuilt === 1 ? ' isn\'t' : 's aren\'t'} compiled yet — <Link to="/resumes">compile</Link> to send {unbuilt === 1 ? 'it' : 'them'}.</>}
-              </span>
+          <div className="cp-group">
+            <div className="cp-group-h">
+              <span className="cp-group-t" id="cp-resume-t">Résumé to send</span>
+              {resumeHint && <span className={`cp-group-hint ${!resumeChoice ? 'cp-need' : ''}`}>{resumeHint}</span>}
+              <Link to="/profile" className="cp-group-link">Manage résumés</Link>
             </div>
-            <div className="field">What to send
-              <div className="seg" style={{ marginTop: 6 }}>
-                {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, l]) => (
-                  <button key={k} type="button" className={`seg-btn ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{l}</button>
-                ))}
+            {resumes === null
+              ? <div className="rc"><div className="rc-skel" /><div className="rc-skel" /></div>
+              : <ResumeChooser resumes={sendable} profileFile={profileResume} value={resumeChoice}
+                  suggestedId={suggested?.id} onChange={(v) => { setResumeChoice(v); setResumePicked(true); }} />}
+            {unbuilt > 0 && (
+              <div className="field-hint" style={{ marginTop: 8 }}>
+                {unbuilt} résumé{unbuilt === 1 ? ' built in Documents isn\'t' : 's built in Documents aren\'t'} compiled yet, so {unbuilt === 1 ? "it isn't" : "they aren't"} listed — <Link to="/resumes">compile</Link> to send {unbuilt === 1 ? 'it' : 'them'}.
               </div>
+            )}
+          </div>
+          <div className="cp-group">
+            <div className="cp-group-h"><span className="cp-group-t">What to send</span></div>
+            <div className="seg">
+              {([['both', 'Email + cover letter'], ['email', 'Email only'], ['cover', 'Cover letter only']] as const).map(([k, l]) => (
+                <button key={k} type="button" className={`seg-btn ${mode === k ? 'active' : ''}`} onClick={() => setMode(k)}>{l}</button>
+              ))}
             </div>
           </div>
           <button className="btn btn-primary" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={send}
@@ -449,11 +444,11 @@ export function ComposePage() {
           <div className="cp-checks">
             <label className={`check-row ${!chosenResume ? 'is-off' : ''}`}>
               <input type="checkbox" checked={waLinkResume} disabled={!chosenResume} onChange={(e) => setWaResume(e.target.checked)} />
-              {chosenResume ? <>Link my résumé — “{chosenResume.name}”</> : <>Link my résumé <span className="faint">(choose a library résumé in step 3)</span></>}
+              <span>{chosenResume ? <>Link my résumé — “{chosenResume.name}”</> : <>Link my résumé <span className="faint">(choose a library résumé in step 3)</span></>}</span>
             </label>
             <label className={`check-row ${!coverLetter ? 'is-off' : ''}`}>
               <input type="checkbox" checked={waCover && !!coverLetter} disabled={!coverLetter} onChange={(e) => setWaCover(e.target.checked)} />
-              Link my cover letter {!coverLetter && <span className="faint">(generate one first)</span>}
+              <span>Link my cover letter {!coverLetter && <span className="faint">(generate one first)</span>}</span>
             </label>
           </div>
           <div className="row" style={{ marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
