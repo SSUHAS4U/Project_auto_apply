@@ -160,6 +160,11 @@ export const POPULATED = {
       contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       latex: '', base: false, hasPdf: true, updatedAt: '2026-08-01T09:00:00Z' },
   ],
+  // The Resumes page previews the selected résumé's file. The body is irrelevant to layout
+  // (it lands in an iframe); what matters is that the request is answered, not guessed.
+  '/api/resumes/r0/pdf': 'pdf',
+  '/api/resumes/r1/pdf': 'pdf',
+  '/api/resumes/r3/pdf': 'docx',
   // History at the extremes: both channels, all three statuses, a failure with a long error,
   // the longest company/role/subject, a free-mail recipient (no logo by domain), no company.
   '/api/history': [
